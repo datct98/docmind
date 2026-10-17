@@ -36,7 +36,10 @@ _OFFICE_MIMES = {
     "application/vnd.ms-excel",
     "application/vnd.ms-powerpoint",
     "text/markdown",
+    "text/x-web-markdown",
+    "text/x-markdown",
     "text/plain",
+    "text/csv",
 }
 _WEB_MIMES = {"text/html"}
 _IMAGE_PREFIX = "image/"

@@ -41,9 +41,14 @@ public class GeminiLlmClient implements LlmClient {
     @Override
     @SuppressWarnings("unchecked")
     public String complete(String prompt) {
+        long startNs = System.nanoTime();
+        String endpoint = props.getBaseUrl() + "/models/" + props.getModel() + ":generateContent";
+        log.info("[LLM] Calling provider=gemini, model={}, endpoint={}", props.getModel(), endpoint);
         String key = nextKey();
         if (key == null) {
-            log.warn("Không có Gemini key hợp lệ -> trả câu trả lời fallback.");
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            log.warn("[LLM] Response received from provider=gemini, model={}, latencyMs={}, status=fallback (reason=missing_key)",
+                    props.getModel(), latencyMs);
             return "[gemini-unavailable] Chưa cấu hình được Gemini key hợp lệ.";
         }
         try {
@@ -57,10 +62,16 @@ public class GeminiLlmClient implements LlmClient {
                     .body(body)
                     .retrieve()
                     .body(Map.class);
-            return extractText(resp);
+            String result = extractText(resp);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            boolean isFallback = result != null && result.startsWith("[gemini-");
+            log.info("[LLM] Response received from provider=gemini, model={}, latencyMs={}, status={}",
+                    props.getModel(), latencyMs, isFallback ? "fallback" : "ok");
+            return result;
         } catch (Exception e) {
-            // TODO: retry + fallback-models + round-robin key khi 429/5xx.
-            log.error("Gọi Gemini thất bại, fallback: {}", e.getMessage());
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            log.warn("[LLM] Response received from provider=gemini, model={}, latencyMs={}, status=fallback (error={})",
+                    props.getModel(), latencyMs, e.getMessage());
             return "[gemini-error] Không gọi được Gemini: " + e.getMessage();
         }
     }

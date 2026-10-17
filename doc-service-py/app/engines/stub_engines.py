@@ -288,28 +288,38 @@ class OfficeEngine(_BaseEngine):
     _XLSX_MIME = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    _MD_MIMES = {
+        "text/markdown",
+        "text/x-web-markdown",
+        "text/x-markdown",
+        "text/plain",
+    }
 
     def supports(self, page_kind: PageKind) -> bool:
         return page_kind in (PageKind.OFFICE, PageKind.WEB)
 
     def _format(self, ctx: ParseContext) -> str:
-        """Return 'docx' | 'xlsx' | 'stub' from the detected mime (+ filename).
+        """Return 'docx' | 'xlsx' | 'md' | 'stub' from the detected mime (+ filename).
 
         Magic-byte mime is authoritative (see validation.detect_mime); the
         filename extension is a secondary tiebreak when the mime is a generic
         zip/ole value that the sniffer could not disambiguate.
         """
         mime = ctx.mime or ""
+        name = (ctx.filename or "").lower()
         if mime == self._DOCX_MIME:
             return "docx"
         if mime == self._XLSX_MIME:
             return "xlsx"
-        name = (ctx.filename or "").lower()
+        if mime in self._MD_MIMES:
+            return "md"
         if mime in ("application/zip", "application/octet-stream"):
             if name.endswith(".docx"):
                 return "docx"
             if name.endswith(".xlsx"):
                 return "xlsx"
+        if name.endswith((".md", ".markdown", ".txt")):
+            return "md"
         return "stub"
 
     def _make_block_factory(self, ctx: ParseContext):
@@ -356,7 +366,7 @@ class OfficeEngine(_BaseEngine):
             fmt = self._format(ctx)
 
             if fmt == "stub":
-                # Legacy .doc / .ppt / .pptx / md / txt / web -> stub blocks.
+                # Legacy .doc / .ppt / .pptx / web -> stub blocks.
                 log.info(
                     "office stub path (real parsing out of scope for this type)",
                     stage="parse",
@@ -365,6 +375,32 @@ class OfficeEngine(_BaseEngine):
                     mime=ctx.mime,
                 )
                 return self._emit(self._sample_blocks(ctx), ctx, started)
+
+            if fmt == "md":
+                try:
+                    mk = self._make_block_factory(ctx)
+                    blocks = office_parser.parse_markdown(payload, mk)
+                    parse_version = (
+                        blocks[0].parse_version if blocks else "builtin-markdown-1.0"
+                    )
+                    log.info(
+                        "office parsed markdown",
+                        stage="parse",
+                        engine=self.name,
+                        page=ctx.page,
+                        library=parse_version,
+                        block_count=len(blocks),
+                    )
+                    return self._emit(blocks, ctx, started)
+                except Exception as exc:  # unexpected parse error
+                    log.warning(
+                        "office markdown parse failed; using stub",
+                        stage="parse",
+                        engine=self.name,
+                        page=ctx.page,
+                        error=str(exc),
+                    )
+                    return self._emit(self._sample_blocks(ctx), ctx, started)
 
             if fmt == "docx":
                 if office_parser.load_docx() is None:

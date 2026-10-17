@@ -20,7 +20,7 @@ public class GeminiProperties {
     /** Danh sách API key (round-robin sau này). Trống => stub. */
     private Api api = new Api();
 
-    private String model = "gemini-2.5-flash-lite";
+    private String model = "gemini-2.5-flash";
 
     private String baseUrl = "https://generativelanguage.googleapis.com/v1beta";
 

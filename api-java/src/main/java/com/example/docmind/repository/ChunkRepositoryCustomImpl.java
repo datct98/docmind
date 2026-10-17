@@ -37,40 +37,72 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                             double[] bbox,
                             String text,
                             float[] embedding) {
+        insertChunk(id, documentId, null, headingPath, sourceBlockIds, page, bbox, text, embedding);
+    }
+
+    @Override
+    public void insertChunk(UUID id,
+                            UUID documentId,
+                            UUID pageId,
+                            String[] headingPath,
+                            UUID[] sourceBlockIds,
+                            int page,
+                            double[] bbox,
+                            String text,
+                            float[] embedding) {
 
         String vectorLiteral = embedding == null ? null : toVectorLiteral(embedding);
 
         jdbc.update(connection -> {
             String sql = """
                     INSERT INTO chunks
-                        (id, document_id, heading_path, source_block_ids, page, bbox, text, embedding, tsv)
+                        (id, document_id, page_id, heading_path, source_block_ids, page, bbox, text, embedding, tsv)
                     VALUES
-                        (?, ?, ?, ?, ?, ?, ?, CAST(? AS vector), to_tsvector('simple', ?))
+                        (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS vector), to_tsvector('simple', ?))
                     """;
             var ps = connection.prepareStatement(sql);
             ps.setObject(1, id);
             ps.setObject(2, documentId);
+            ps.setObject(3, pageId);
             Array headingArray = connection.createArrayOf("text", headingPath);
             Array blockIdsArray = connection.createArrayOf("uuid", sourceBlockIds);
             Array bboxArray = connection.createArrayOf("float8", toObjectArray(bbox));
-            ps.setArray(3, headingArray);
-            ps.setArray(4, blockIdsArray);
-            ps.setInt(5, page);
-            ps.setArray(6, bboxArray);
-            ps.setString(7, text);
-            ps.setString(8, vectorLiteral); // null => NULL::vector
-            ps.setString(9, text);
+            ps.setArray(4, headingArray);
+            ps.setArray(5, blockIdsArray);
+            ps.setInt(6, page);
+            ps.setArray(7, bboxArray);
+            ps.setString(8, text);
+            ps.setString(9, vectorLiteral); // null => NULL::vector
+            ps.setString(10, text);
             return ps;
         });
     }
 
     @Override
+    public int updatePageIdByDocumentId(UUID documentId, UUID pageId) {
+        if (documentId == null) {
+            return 0;
+        }
+        return jdbc.update(
+                "UPDATE chunks SET page_id = ? WHERE document_id = ?",
+                pageId,
+                documentId
+        );
+    }
+
+    @Override
     public List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit) {
+        return searchByVector(documentIds, queryEmbedding, limit, null);
+    }
+
+    @Override
+    public List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit, UUID pageId) {
         if (documentIds == null || documentIds.isEmpty() || queryEmbedding == null) {
             return List.of();
         }
         String vectorLiteral = toVectorLiteral(queryEmbedding);
         String inClause = inPlaceholders(documentIds.size());
+        String pageFilter = pageId != null ? "AND page_id = ?" : "";
         // score = 1 - cosine_distance; ORDER BY distance (toán tử <=> = cosine distance).
         String sql = """
                 SELECT id, document_id, heading_path, source_block_ids, page, bbox, text,
@@ -78,15 +110,19 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                 FROM chunks
                 WHERE embedding IS NOT NULL
                   AND document_id IN (%s)
+                  %s
                 ORDER BY embedding <=> CAST(? AS vector)
                 LIMIT ?
-                """.formatted(inClause);
+                """.formatted(inClause, pageFilter);
 
-        Object[] args = new Object[1 + documentIds.size() + 2];
+        Object[] args = new Object[1 + documentIds.size() + (pageId != null ? 1 : 0) + 2];
         int i = 0;
         args[i++] = vectorLiteral;
         for (UUID d : documentIds) {
             args[i++] = d;
+        }
+        if (pageId != null) {
+            args[i++] = pageId;
         }
         args[i++] = vectorLiteral;
         args[i] = limit;
@@ -94,32 +130,135 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
         return jdbc.query(sql, this::mapRow, args);
     }
 
+    private static final java.util.Set<String> VI_STOP_WORDS = java.util.Set.of(
+            "và", "hoặc", "hay", "là", "thì", "mà", "ở", "tại", "trong", "ngoài", "của", "cho",
+            "với", "từ", "đến", "để", "do", "bởi", "vì", "nên", "nếu", "có", "không", "được",
+            "bị", "các", "những", "một", "cái", "con", "người", "này", "đó", "kia", "nào",
+            "gì", "sao", "đâu", "ai", "mấy", "bao", "nhiêu", "thuộc", "hãy", "xem", "biết",
+            "giúp", "tôi", "em", "anh", "chị", "xin", "vui", "lòng", "như", "thế",
+            "bên", "bạn", "mình", "shop", "ad", "admin", "vậy", "nhé", "nha", "ạ", "ơi", "hỏi", "chút"
+    );
+
+    static String buildTsQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String lowerQuery = query.toLowerCase();
+        String[] rawTokens = lowerQuery.split("(?U)[^\\p{L}\\p{Nd}]+");
+        List<String> validTokens = new ArrayList<>();
+        List<String> contentTokens = new ArrayList<>();
+        for (String t : rawTokens) {
+            if (!t.isBlank()) {
+                validTokens.add(t);
+                if (!VI_STOP_WORDS.contains(t) && t.length() > 1) {
+                    contentTokens.add(t);
+                }
+            }
+        }
+        List<String> tokensToUse = contentTokens.isEmpty() ? validTokens : contentTokens;
+        if (tokensToUse.isEmpty()) {
+            return null;
+        }
+
+        List<String> parts = new ArrayList<>();
+        // Cặp từ liền kề (phrase matching: 'dịch' <-> 'vụ', 'chi' <-> 'phí')
+        for (int i = 0; i < tokensToUse.size() - 1; i++) {
+            String w1 = tokensToUse.get(i).replace("'", "''");
+            String w2 = tokensToUse.get(i + 1).replace("'", "''");
+            parts.add("('" + w1 + "' <-> '" + w2 + "')");
+        }
+        // Từng từ đơn lẻ
+        for (String t : tokensToUse) {
+            parts.add("'" + t.replace("'", "''") + "'");
+        }
+
+        // Mở rộng từ đồng nghĩa bán hàng phổ biến (VD: khách hỏi "chi phí bao nhiêu" -> khớp "bảng giá", "niêm yết")
+        if (lowerQuery.contains("chi phí") || lowerQuery.contains("bao nhiêu") || lowerQuery.contains("giá")
+                || lowerQuery.contains("dịch vụ") || lowerQuery.contains("gói") || lowerQuery.contains("liệu trình")) {
+            parts.add("('bảng' <-> 'giá')");
+            parts.add("('đơn' <-> 'giá')");
+            parts.add("('niêm' <-> 'yết')");
+            parts.add("('tên' <-> 'gói')");
+            parts.add("('liệu' <-> 'trình')");
+            parts.add("'giá'");
+        }
+
+        return String.join(" | ", parts);
+    }
+
     @Override
     public List<RetrievedChunk> searchByFullText(List<UUID> documentIds, String query, int limit) {
+        return searchByFullText(documentIds, query, limit, null);
+    }
+
+    @Override
+    public List<RetrievedChunk> searchByFullText(List<UUID> documentIds, String query, int limit, UUID pageId) {
         if (documentIds == null || documentIds.isEmpty() || query == null || query.isBlank()) {
             return List.of();
         }
         String inClause = inPlaceholders(documentIds.size());
-        String sql = """
-                SELECT id, document_id, heading_path, source_block_ids, page, bbox, text,
-                       ts_rank(tsv, plainto_tsquery('simple', ?)) AS score
-                FROM chunks
-                WHERE tsv @@ plainto_tsquery('simple', ?)
-                  AND document_id IN (%s)
-                ORDER BY score DESC
-                LIMIT ?
-                """.formatted(inClause);
+        String pageFilter = pageId != null ? "AND page_id = ?" : "";
+        String tsQueryStr = buildTsQuery(query);
 
-        Object[] args = new Object[2 + documentIds.size() + 1];
-        int i = 0;
-        args[i++] = query;
-        args[i++] = query;
-        for (UUID d : documentIds) {
-            args[i++] = d;
+        if (tsQueryStr == null) {
+            return List.of();
         }
-        args[i] = limit;
 
-        return jdbc.query(sql, this::mapRow, args);
+        try {
+            String sql = """
+                    SELECT id, document_id, heading_path, source_block_ids, page, bbox, text,
+                           (ts_rank_cd(tsv, to_tsquery('simple', ?)) +
+                            CASE WHEN tsv @@ plainto_tsquery('simple', ?) THEN 10.0 ELSE 0.0 END) AS score
+                    FROM chunks
+                    WHERE (tsv @@ to_tsquery('simple', ?) OR tsv @@ plainto_tsquery('simple', ?))
+                      AND document_id IN (%s)
+                      %s
+                    ORDER BY score DESC
+                    LIMIT ?
+                    """.formatted(inClause, pageFilter);
+
+            Object[] args = new Object[4 + documentIds.size() + (pageId != null ? 1 : 0) + 1];
+            int i = 0;
+            args[i++] = tsQueryStr;
+            args[i++] = query;
+            args[i++] = tsQueryStr;
+            args[i++] = query;
+            for (UUID d : documentIds) {
+                args[i++] = d;
+            }
+            if (pageId != null) {
+                args[i++] = pageId;
+            }
+            args[i] = limit;
+
+            return jdbc.query(sql, this::mapRow, args);
+        } catch (Exception e) {
+            // Fallback an toàn về plainto_tsquery nếu to_tsquery gặp cú pháp lạ
+            String fallbackSql = """
+                    SELECT id, document_id, heading_path, source_block_ids, page, bbox, text,
+                           ts_rank(tsv, plainto_tsquery('simple', ?)) AS score
+                    FROM chunks
+                    WHERE tsv @@ plainto_tsquery('simple', ?)
+                      AND document_id IN (%s)
+                      %s
+                    ORDER BY score DESC
+                    LIMIT ?
+                    """.formatted(inClause, pageFilter);
+
+            Object[] args = new Object[2 + documentIds.size() + (pageId != null ? 1 : 0) + 1];
+            int i = 0;
+            args[i++] = query;
+            args[i++] = query;
+            for (UUID d : documentIds) {
+                args[i++] = d;
+            }
+            if (pageId != null) {
+                args[i++] = pageId;
+            }
+            args[i] = limit;
+
+            return jdbc.query(fallbackSql, this::mapRow, args);
+        }
     }
 
     // --- helpers ---

@@ -4,10 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -47,6 +49,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoStaticResource(NoResourceFoundException ex) {
+        log.warn("Không tìm thấy endpoint hoặc tài nguyên: {}", ex.getResourcePath());
+        return build(HttpStatus.NOT_FOUND, "Không tìm thấy đường dẫn API: /" + ex.getResourcePath(), null);
+    }
+
+    @ExceptionHandler(ErrorResponseException.class)
+    public ResponseEntity<Map<String, Object>> handleErrorResponse(ErrorResponseException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.BAD_REQUEST;
+        }
+        String detail = ex.getBody() != null && ex.getBody().getDetail() != null
+                ? ex.getBody().getDetail()
+                : ex.getMessage();
+        return build(status, detail, null);
     }
 
     @ExceptionHandler(DocServiceException.class)

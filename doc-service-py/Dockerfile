@@ -23,11 +23,6 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
-# ML deps (sentence-transformers + torch): embedding THẬT trong container.
-# Lớp riêng để cache tốt; image phình ~2-3GB. Model (~470MB) tải ở lần embed đầu.
-COPY requirements-ml.txt ./
-RUN python -m pip install -r requirements-ml.txt
-
 # App code.
 COPY app ./app
 

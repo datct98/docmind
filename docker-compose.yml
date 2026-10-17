@@ -58,13 +58,31 @@ services:
       - ./.env
     environment:
       # Trong mạng compose dùng hostname service + cổng nội bộ 5432.
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/docmind}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/docmind
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-docmind}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:-docmind}}
-      - DOC_SERVICE_BASE_URL=${DOC_SERVICE_BASE_URL:-http://doc-service-py:8091}
-      # Trống mặc định -> chat dùng LLM stub cho tới khi gắn key Gemini.
+      - DOC_SERVICE_BASE_URL=http://doc-service-py:8091
+      # Unified Multi-Provider LLM Configuration (R4)
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-120}
+      - LLM_REASONING_EFFORT=${LLM_REASONING_EFFORT:-}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-0}
+      # Legacy fallbacks
       - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
+    volumes:
+      # Mount trực tiếp .env để khi sửa .env và bấm Restart container (docker restart docmind-api),
+      # DocmindApiApplication.loadDotenv() sẽ nạp ngay cấu hình / API key mới nhất mà không cần recreate container.
+      - ./.env:/app/.env:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

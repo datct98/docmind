@@ -37,13 +37,14 @@ from __future__ import annotations
 
 import html as _html
 import io
+import re
 from typing import Callable
 
 from app.schema import Block, BlockType
 
-# Cap data rows per Excel table block so a huge sheet cannot explode into tens of
-# thousands of rows (bounds token/memory cost); truncation is logged by caller.
-_MAX_TABLE_ROWS = 200
+# Bounded row-window size for Excel table blocks (bounds token/memory cost).
+WINDOW_SIZE = 100
+_MARKDOWN_VERSION = "builtin-markdown-1.0"
 
 # A ``block_factory`` closure owned by the caller. It assigns block_id / order /
 # parse_engine / version / the office field-value conventions above, so this
@@ -260,18 +261,253 @@ def parse_docx(payload: bytes, mk: BlockFactory) -> list[Block]:
     return blocks
 
 
+def _is_table_delimiter(line: str) -> bool:
+    """Check if line is a GFM table delimiter row like `|---|:---|---:|`."""
+    stripped = line.strip()
+    if not stripped or "|" not in stripped:
+        return False
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    cells = [c.strip() for c in stripped.split("|")]
+    if not cells:
+        return False
+    return all(bool(re.match(r"^:?-+:?$", c)) for c in cells)
+
+
+def _split_table_row(line: str) -> list[str]:
+    """Split a markdown table row into cells, handling escaped pipes."""
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    raw_cells = re.split(r"(?<!\\)\|", stripped)
+    return [c.strip().replace(r"\|", "|") for c in raw_cells]
+
+
+def _is_list_marker(line: str) -> bool:
+    """Check if line starts with an unordered or ordered list marker."""
+    stripped = line.strip()
+    return bool(re.match(r"^(?:[*+-]|\d+\.)\s+", stripped))
+
+
+def _render_list_html(lines: list[str]) -> str:
+    """Render markdown list lines to HTML (<ul> or <ol>)."""
+    if not lines:
+        return "<ul></ul>"
+    first = ""
+    for l in lines:
+        if l.strip():
+            first = l.strip()
+            break
+    is_ol = bool(re.match(r"^\d+\.", first))
+    tag = "ol" if is_ol else "ul"
+    items: list[str] = []
+    current: list[str] = []
+    for l in lines:
+        m = re.match(r"^\s*(?:[*+-]|\d+\.)\s+(.*)$", l)
+        if m:
+            if current:
+                items.append(" ".join(current))
+                current = []
+            current.append(m.group(1))
+        elif l.strip():
+            if current:
+                current.append(l.strip())
+            else:
+                current.append(l.strip())
+    if current:
+        items.append(" ".join(current))
+    lis = "".join(f"<li>{_html.escape(it)}</li>" for it in items)
+    return f"<{tag}>{lis}</{tag}>"
+
+
+# --------------------------------------------------------------------------- #
+# Markdown (.md / .markdown / .txt)
+# --------------------------------------------------------------------------- #
+def parse_markdown(payload: bytes, mk: BlockFactory) -> list[Block]:
+    """Parse UTF-8 Markdown text into canonical blocks.
+
+    Zero-dependency pure-Python parser emitting:
+      * HEADING: ATX `#` .. `######` (maintains running `heading_path` breadcrumb)
+      * TABLE: GFM pipe tables (`| ... |` with delimiter row)
+      * LIST: bullet (`- `, `* `, `+ `) or numbered (`1. `) lists
+      * PARAGRAPH: standard text paragraphs
+    """
+    raw_text = payload.decode("utf-8", errors="replace").lstrip("\ufeff")
+    raw_text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = raw_text.split("\n")
+
+    blocks: list[Block] = []
+    heading_path: list[str] = []
+    local_index = 0
+    parse_version = _MARKDOWN_VERSION
+
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+
+        # 1. Blank line -> advance
+        if not stripped:
+            i += 1
+            continue
+
+        # 2. ATX Heading: # .. ######
+        m_head = re.match(r"^(#{1,6})\s+(.*?)(?:\s+#+)?$", stripped)
+        if m_head:
+            level = len(m_head.group(1))
+            h_text = m_head.group(2).strip()
+            heading_path = _apply_heading(heading_path, level, h_text)
+            md_level = max(1, min(6, level))
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.HEADING,
+                    text=h_text,
+                    markdown=f"{'#' * md_level} {h_text}",
+                    html=f"<h{md_level}>{_html.escape(h_text)}</h{md_level}>",
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+            i += 1
+            continue
+
+        # 3. GFM Table: current line has pipe, next line is table delimiter
+        if "|" in line and i + 1 < n and _is_table_delimiter(lines[i + 1]):
+            header_cells = _split_table_row(lines[i])
+            width = len(header_cells)
+            body_rows: list[list[str]] = []
+            j = i + 2
+            while j < n:
+                row_line = lines[j]
+                r_strip = row_line.strip()
+                if not r_strip or "|" not in row_line or re.match(r"^#{1,6}\s+", r_strip):
+                    break
+                row_cells = _split_table_row(row_line)
+                padded = (row_cells + [""] * width)[:width]
+                body_rows.append(padded)
+                j += 1
+
+            all_rows = [header_cells, *body_rows]
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.TABLE,
+                    text=_text_table(all_rows),
+                    markdown=_md_table(all_rows),
+                    html=_html_table(all_rows),
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+            i = j
+            continue
+
+        # 4. List: starts with bullet or number
+        if _is_list_marker(line):
+            list_lines: list[str] = [line]
+            j = i + 1
+            while j < n:
+                next_line = lines[j]
+                n_strip = next_line.strip()
+                if not n_strip:
+                    # Look ahead: if next non-empty line is a list item, continue loose list
+                    k = j + 1
+                    while k < n and not lines[k].strip():
+                        k += 1
+                    if k < n and _is_list_marker(lines[k]):
+                        list_lines.append("")
+                        j += 1
+                        continue
+                    else:
+                        break
+                if re.match(r"^#{1,6}\s+", n_strip):
+                    break
+                if "|" in next_line and j + 1 < n and _is_table_delimiter(lines[j + 1]):
+                    break
+                if _is_list_marker(next_line) or next_line.startswith((" ", "\t")):
+                    list_lines.append(next_line)
+                    j += 1
+                else:
+                    break
+
+            # Strip trailing blank lines
+            while list_lines and not list_lines[-1].strip():
+                list_lines.pop()
+
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.LIST,
+                    text="\n".join(list_lines),
+                    markdown="\n".join(list_lines),
+                    html=_render_list_html(list_lines),
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+            i = j
+            continue
+
+        # 5. Paragraph: consecutive text lines
+        para_lines: list[str] = [line]
+        j = i + 1
+        while j < n:
+            next_line = lines[j]
+            n_strip = next_line.strip()
+            if not n_strip:
+                break
+            if re.match(r"^#{1,6}\s+", n_strip):
+                break
+            if "|" in next_line and j + 1 < n and _is_table_delimiter(lines[j + 1]):
+                break
+            if _is_list_marker(next_line):
+                break
+            para_lines.append(next_line)
+            j += 1
+
+        p_text = "\n".join(para_lines).strip()
+        if p_text:
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.PARAGRAPH,
+                    text=p_text,
+                    markdown="\n".join(para_lines),
+                    html=f"<p>{_html.escape(p_text)}</p>",
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+        i = j
+
+    return blocks
+
+
 # --------------------------------------------------------------------------- #
 # Excel (.xlsx)
 # --------------------------------------------------------------------------- #
 def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> list[Block]:
-    """Parse Excel ``.xlsx`` bytes into canonical blocks (one group per sheet).
+    """Parse Excel ``.xlsx`` bytes into canonical blocks.
 
-    Per worksheet: one ``heading`` block with the sheet name, then one ``table``
-    block over the used range (markdown + html + plain-text flatten), capped at
-    :data:`_MAX_TABLE_ROWS` data rows. Observability facts (sheet names, per-sheet
-    row counts, truncated sheets) are written into the optional ``meta`` dict so
-    the caller can log them. ``order`` increments continuously across sheets via
-    ``mk``'s running index.
+    Per worksheet:
+      * one ``heading`` block with the sheet name (heading_path = [sheet_title]).
+      * partitioned ``table`` blocks in windows of :data:`WINDOW_SIZE` (100) rows.
+      * every table block retains the detected column header row at index 0 and
+        has heading_path = [sheet_title].
+      * trailing and leading empty rows and empty trailing columns are stripped.
+
+    Observability facts (sheet names, per-sheet row counts, truncated_sheets=[])
+    are written into the optional ``meta`` dict.
     """
     openpyxl = load_openpyxl()
     assert openpyxl is not None, "parse_xlsx called without openpyxl available"
@@ -281,10 +517,9 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
 
     sheet_names: list[str] = []
     sheet_rows: dict[str, int] = {}
-    truncated_sheets: list[str] = []
-
     blocks: list[Block] = []
     local_index = 0
+
     try:
         for worksheet in workbook.worksheets:
             title = worksheet.title
@@ -304,41 +539,80 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
             )
             local_index += 1
 
-            # Read the used range, stringifying cells. Cap data rows at the limit.
-            rows: list[list[str]] = []
-            total_rows = 0
-            truncated = False
+            # Read raw rows stringifying values
+            raw_rows: list[list[str]] = []
             for raw in worksheet.iter_rows(values_only=True):
-                total_rows += 1
-                if len(rows) >= _MAX_TABLE_ROWS:
-                    truncated = True
-                    continue
-                rows.append([_stringify(v) for v in raw])
+                raw_rows.append([_stringify(v) for v in raw])
 
-            sheet_rows[title] = total_rows
-            if truncated:
-                truncated_sheets.append(title)
+            # Detect max non-empty column index across all rows
+            max_col = -1
+            for r in raw_rows:
+                for c_idx in range(len(r) - 1, -1, -1):
+                    if r[c_idx].strip():
+                        if c_idx > max_col:
+                            max_col = c_idx
+                        break
 
-            table_text = _text_table(rows)
-            if truncated:
-                note = (
-                    f"[truncated: showing first {_MAX_TABLE_ROWS} of "
-                    f"{total_rows} rows]"
+            if max_col >= 0:
+                rows = [r[: max_col + 1] for r in raw_rows]
+                # Strip trailing empty rows
+                while rows and all(not c.strip() for c in rows[-1]):
+                    rows.pop()
+                # Strip leading empty rows
+                while rows and all(not c.strip() for c in rows[0]):
+                    rows.pop(0)
+            else:
+                rows = []
+
+            sheet_rows[title] = len(rows)
+
+            if not rows:
+                # Empty sheet: emit single empty table block
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.TABLE,
+                        text="",
+                        markdown="",
+                        html="<table></table>",
+                        heading_path=[title],
+                        parse_version=parse_version,
+                    )
                 )
-                table_text = f"{table_text}\n{note}" if table_text else note
-
-            blocks.append(
-                mk(
-                    local_index,
-                    type=BlockType.TABLE,
-                    text=table_text,
-                    markdown=_md_table(rows),
-                    html=_html_table(rows),
-                    heading_path=[title],
-                    parse_version=parse_version,
+                local_index += 1
+            elif len(rows) == 1:
+                # Only header row
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.TABLE,
+                        text=_text_table(rows),
+                        markdown=_md_table(rows),
+                        html=_html_table(rows),
+                        heading_path=[title],
+                        parse_version=parse_version,
+                    )
                 )
-            )
-            local_index += 1
+                local_index += 1
+            else:
+                # Multiple rows: header row + data rows partitioned into windows
+                header_row = rows[0]
+                data_rows = rows[1:]
+                for start_idx in range(0, len(data_rows), WINDOW_SIZE):
+                    chunk = data_rows[start_idx : start_idx + WINDOW_SIZE]
+                    window_rows = [header_row] + chunk
+                    blocks.append(
+                        mk(
+                            local_index,
+                            type=BlockType.TABLE,
+                            text=_text_table(window_rows),
+                            markdown=_md_table(window_rows),
+                            html=_html_table(window_rows),
+                            heading_path=[title],
+                            parse_version=parse_version,
+                        )
+                    )
+                    local_index += 1
     finally:
         workbook.close()
 
@@ -346,6 +620,6 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
         meta["library"] = parse_version
         meta["sheet_names"] = sheet_names
         meta["sheet_rows"] = sheet_rows
-        meta["truncated_sheets"] = truncated_sheets
+        meta["truncated_sheets"] = []
 
     return blocks

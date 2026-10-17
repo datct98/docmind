@@ -1,13 +1,17 @@
 package com.example.docmind.controller;
 
+import com.example.docmind.dto.DocumentPageAssignRequest;
 import com.example.docmind.dto.DocumentStatusResponse;
 import com.example.docmind.dto.DocumentUploadResponse;
 import com.example.docmind.service.DocumentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,17 +31,43 @@ public class DocumentController {
     }
 
     @PostMapping
-    public ResponseEntity<DocumentUploadResponse> upload(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file));
+    public ResponseEntity<DocumentUploadResponse> upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "page_id", required = false) String pageId
+    ) {
+        if (pageId == null || pageId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file));
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file, pageId));
     }
 
     @GetMapping
-    public ResponseEntity<List<DocumentStatusResponse>> list() {
-        return ResponseEntity.ok(documentService.listAll());
+    public ResponseEntity<List<DocumentStatusResponse>> list(
+            @RequestParam(value = "page_id", required = false) String pageId
+    ) {
+        if (pageId == null || pageId.isBlank()) {
+            return ResponseEntity.ok(documentService.listAll());
+        }
+        return ResponseEntity.ok(documentService.listAll(pageId));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<DocumentStatusResponse> status(@PathVariable("id") String id) {
         return ResponseEntity.ok(documentService.getStatus(id));
+    }
+
+    @PutMapping("/{id}/page")
+    public ResponseEntity<DocumentStatusResponse> assignPage(
+            @PathVariable("id") String id,
+            @RequestBody(required = false) DocumentPageAssignRequest request
+    ) {
+        String pageId = request != null ? request.pageId() : null;
+        return ResponseEntity.ok(documentService.assignPage(id, pageId));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") String id) {
+        documentService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

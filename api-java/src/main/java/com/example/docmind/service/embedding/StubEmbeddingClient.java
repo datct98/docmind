@@ -36,16 +36,17 @@ public class StubEmbeddingClient implements EmbeddingClient {
         String src = text == null ? "" : text.toLowerCase();
         float[] v = new float[dim];
 
-        // Băm theo từng token để vector phản ánh (phần nào) nội dung text.
-        for (String token : src.split("\\W+")) {
+        // Băm theo từng token để vector phản ánh nội dung text (hỗ trợ Unicode tiếng Việt đầy đủ).
+        String[] tokens = src.split("(?U)[^\\p{L}\\p{Nd}]+");
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
             if (token.isEmpty()) {
                 continue;
             }
-            int h = token.hashCode();
-            int idx = Math.floorMod(h, dim);
-            // dấu dựa trên bit cao để phân tán +/-.
-            float sign = ((h >>> 31) & 1) == 0 ? 1f : -1f;
-            v[idx] += sign;
+            addToken(v, token, 1.0f);
+            if (i < tokens.length - 1 && !tokens[i + 1].isEmpty()) {
+                addToken(v, token + "_" + tokens[i + 1], 1.5f);
+            }
         }
 
         // Nếu text rỗng, tạo vector tất định nhỏ để tránh toàn 0 (chia 0 khi normalize).
@@ -56,6 +57,13 @@ public class StubEmbeddingClient implements EmbeddingClient {
 
         l2Normalize(v);
         return v;
+    }
+
+    private void addToken(float[] v, String token, float weight) {
+        int h = token.hashCode();
+        int idx = Math.floorMod(h, dim);
+        float sign = ((h >>> 31) & 1) == 0 ? weight : -weight;
+        v[idx] += sign;
     }
 
     private static boolean isAllZero(float[] v) {

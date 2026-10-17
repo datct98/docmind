@@ -26,9 +26,17 @@ public final class FileValidation {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
             "text/html",
             "text/markdown",
+            "text/x-web-markdown",
+            "text/x-markdown",
             "text/plain",
+            "text/csv",
             "image/png",
             "image/jpeg"
+    );
+
+    private static final Set<String> MARKDOWN_MIME_ALIASES = Set.of(
+            "text/x-web-markdown",
+            "text/x-markdown"
     );
 
     private FileValidation() {
@@ -39,7 +47,13 @@ public final class FileValidation {
         try (InputStream in = new ByteArrayInputStream(bytes)) {
             // Tika.detect dựa chủ yếu vào magic-byte; filename chỉ là gợi ý thêm.
             String mime = TIKA.detect(in, filename);
-            return mime == null ? "application/octet-stream" : mime;
+            if (mime == null) {
+                return "application/octet-stream";
+            }
+            if (MARKDOWN_MIME_ALIASES.contains(mime)) {
+                return "text/markdown";
+            }
+            return mime;
         } catch (IOException e) {
             throw new IllegalStateException("Không đọc được bytes để detect MIME", e);
         }
@@ -47,20 +61,23 @@ public final class FileValidation {
 
     /** Nhận diện MIME chỉ theo magic-byte (không dùng filename) — dùng cho test đối chiếu. */
     public static String detectMime(byte[] bytes) {
-        return TIKA.detect(bytes);
+        String mime = TIKA.detect(bytes);
+        if (mime != null && MARKDOWN_MIME_ALIASES.contains(mime)) {
+            return "text/markdown";
+        }
+        return mime;
     }
 
     /** Ném {@link UnsupportedFileTypeException} nếu MIME không nằm trong allow-list. */
     public static void requireSupported(String mime) {
-        // text/markdown đôi khi bị Tika trả về text/plain cho .md — chấp nhận cả hai.
-        if (!ALLOWED_MIME.contains(mime)) {
+        if (!isSupported(mime)) {
             throw new UnsupportedFileTypeException(
                     "Loại file không được hỗ trợ (magic-byte MIME=" + mime + ")");
         }
     }
 
     public static boolean isSupported(String mime) {
-        return ALLOWED_MIME.contains(mime);
+        return mime != null && ALLOWED_MIME.contains(mime);
     }
 
     /** SHA-256 hex của raw bytes. */

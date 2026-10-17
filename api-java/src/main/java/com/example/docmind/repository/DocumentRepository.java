@@ -12,4 +12,10 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, UUID> 
     Optional<DocumentEntity> findBySha256(String sha256);
 
     List<DocumentEntity> findAllByOrderByCreatedAtDesc();
+
+    List<DocumentEntity> findByPageIdOrderByCreatedAtDesc(UUID pageId);
+
+    List<DocumentEntity> findByPageIdIsNullOrderByCreatedAtDesc();
+
+    long countByPageId(UUID pageId);
 }

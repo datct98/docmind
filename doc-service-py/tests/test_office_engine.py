@@ -26,6 +26,8 @@ _DOCX_MIME = (
 _XLSX_MIME = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+_MD_MIME = "text/markdown"
+_TXT_MIME = "text/plain"
 
 
 def _docx_bytes() -> bytes:
@@ -208,3 +210,310 @@ def test_office_blocks_normalize_into_valid_document():
     orders = [b.order for b in document.blocks]
     assert orders == list(range(len(document.blocks)))
     assert document.stats.engine_breakdown.get("office") == len(document.blocks)
+
+
+# --------------------------------------------------------------------------- #
+# Large multi-sheet Excel window partitioning tests
+# --------------------------------------------------------------------------- #
+def _large_multisheet_xlsx_bytes() -> bytes:
+    """Build a multi-sheet .xlsx workbook with 350+ data rows, trailing/leading empty cells."""
+    import openpyxl  # noqa: PLC0415
+
+    wb = openpyxl.Workbook()
+
+    # Sheet 1: 350 data rows + 1 header row, with 3 trailing empty cols and 5 trailing empty rows
+    ws1 = wb.active
+    ws1.title = "Danh mục sản phẩm"
+    ws1.append(["Mã SP", "Tên sản phẩm", "Đơn giá", "Tồn kho", "", "", ""])
+    for i in range(1, 351):
+        ws1.append([f"SP_{i:04d}", f"Sản phẩm {i}", 100000 + i * 1000, i % 50, None, "", "   "])
+    for _ in range(5):
+        ws1.append(["", None, "   ", "", None, "", ""])
+
+    # Sheet 2: 150 data rows with 2 leading empty rows
+    ws2 = wb.create_sheet("Khách hàng VIP")
+    ws2.append(["", "", ""])
+    ws2.append([None, None, None])
+    ws2.append(["Mã KH", "Họ và tên", "Cấp bậc", "Doanh số"])
+    for i in range(1, 151):
+        ws2.append([f"KH_{i:04d}", f"Khách hàng {i}", "VIP 1", 50000000])
+
+    # Sheet 3: Empty sheet
+    ws3 = wb.create_sheet("Ghi chú trống")
+    ws3.append(["", None])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_office_parses_large_xlsx_without_truncation_and_partitions_windows():
+    pytest.importorskip("openpyxl")
+    data = _large_multisheet_xlsx_bytes()
+    blocks = OfficeEngine().parse(data, _ctx(_XLSX_MIME, "catalog_large.xlsx"))
+
+    # Assert no truncation occurred
+    for b in blocks:
+        assert "[truncated" not in b.text
+        assert "[truncated" not in b.markdown
+
+    # Sheet 1: Heading + 4 Table windows (350 data rows / 100 per window = 4 windows)
+    # Sheet 2: Heading + 2 Table windows (150 data rows / 100 per window = 2 windows)
+    # Sheet 3: Heading + 1 empty Table
+    # Total blocks: 1 + 4 + 1 + 2 + 1 + 1 = 10 blocks
+    assert len(blocks) == 10
+
+    # Sheet 1 Heading
+    assert blocks[0].type == "heading"
+    assert blocks[0].text == "Danh mục sản phẩm"
+    assert blocks[0].heading_path == ["Danh mục sản phẩm"]
+
+    # Sheet 1 Table windows
+    sheet1_tables = blocks[1:5]
+    for idx, tbl in enumerate(sheet1_tables):
+        assert tbl.type == "table"
+        assert tbl.heading_path == ["Danh mục sản phẩm"]
+        # Column header row retained in every window
+        assert "Mã SP" in tbl.text and "Tên sản phẩm" in tbl.text
+        assert "Mã SP" in tbl.markdown
+        # Empty trailing columns were stripped (no extra empty pipes)
+        assert not tbl.markdown.endswith("|  |")
+        assert tbl.parse_engine == "office"
+        assert tbl.bbox == (0.0, 0.0, 0.0, 0.0)
+        assert tbl.confidence == 1.0
+
+    # Check row counts in windows:
+    # First 3 windows have header + 100 data rows = 101 lines in text
+    assert len(sheet1_tables[0].text.split("\n")) == 101
+    assert "SP_0001" in sheet1_tables[0].text
+    assert "SP_0100" in sheet1_tables[0].text
+    assert "SP_0101" not in sheet1_tables[0].text
+
+    assert len(sheet1_tables[1].text.split("\n")) == 101
+    assert "SP_0101" in sheet1_tables[1].text
+    assert "SP_0200" in sheet1_tables[1].text
+
+    assert len(sheet1_tables[2].text.split("\n")) == 101
+    assert "SP_0201" in sheet1_tables[2].text
+    assert "SP_0300" in sheet1_tables[2].text
+
+    # 4th window has header + remaining 50 data rows = 51 lines in text
+    assert len(sheet1_tables[3].text.split("\n")) == 51
+    assert "SP_0301" in sheet1_tables[3].text
+    assert "SP_0350" in sheet1_tables[3].text
+
+    # Sheet 2 Heading
+    assert blocks[5].type == "heading"
+    assert blocks[5].text == "Khách hàng VIP"
+    assert blocks[5].heading_path == ["Khách hàng VIP"]
+
+    # Sheet 2 Table windows (leading empty rows stripped so header is detected)
+    sheet2_tables = blocks[6:8]
+    assert len(sheet2_tables) == 2
+    assert sheet2_tables[0].heading_path == ["Khách hàng VIP"]
+    assert "Mã KH" in sheet2_tables[0].text and "Họ và tên" in sheet2_tables[0].text
+    assert len(sheet2_tables[0].text.split("\n")) == 101  # header + 100
+    assert len(sheet2_tables[1].text.split("\n")) == 51   # header + 50
+
+    # Sheet 3 Heading & Empty Table
+    assert blocks[8].type == "heading"
+    assert blocks[8].text == "Ghi chú trống"
+    assert blocks[9].type == "table"
+    assert blocks[9].heading_path == ["Ghi chú trống"]
+
+    # Monotonic reading order across all blocks
+    orders = [b.order for b in blocks]
+    assert orders == list(range(len(blocks)))
+
+
+# --------------------------------------------------------------------------- #
+# Markdown parsing tests
+# --------------------------------------------------------------------------- #
+def test_office_parses_markdown_into_canonical_blocks():
+    md_content = """# Báo cáo Doanh số Sales 2026
+Tổng quan tình hình kinh doanh trong hai quý đầu năm 2026.
+Bao gồm kênh trực tiếp và đại lý phân phối.
+
+## Kênh Trực tiếp
+Chi tiết kết quả bán hàng tại các chi nhánh:
+
+| Chi nhánh | Số đơn | Doanh thu | Tỷ lệ tăng trưởng |
+| --- | --- | --- | --- |
+| Hà Nội | 1,250 | 2,500,000,000 | +15% |
+| TP.HCM | 3,400 | 5,100,000,000 | +28% |
+| Đà Nẵng | 850 | 1,200,000,000 | +10% |
+
+### Chính sách Ưu đãi
+Các chương trình khuyến mại đang áp dụng:
+- Giảm 10% cho đơn hàng đầu tiên
+- Miễn phí giao hàng với đơn từ 500k
+- Tặng voucher 200k cho thành viên thân thiết
+
+Quy trình bảo hành:
+1. Tiếp nhận yêu cầu bảo hành
+2. Kiểm tra tình trạng sản phẩm
+3. Đổi mới linh kiện hoặc sản phẩm
+
+## Kênh Đại lý
+Chính sách chiết khấu dành cho đại lý cấp 1 và cấp 2.
+"""
+    payload = md_content.encode("utf-8")
+    blocks = OfficeEngine().parse(payload, _ctx(_MD_MIME, "report.md"))
+
+    assert len(blocks) >= 12
+
+    # First block: H1 heading
+    assert blocks[0].type == "heading"
+    assert blocks[0].text == "Báo cáo Doanh số Sales 2026"
+    assert blocks[0].heading_path == ["Báo cáo Doanh số Sales 2026"]
+    assert blocks[0].markdown == "# Báo cáo Doanh số Sales 2026"
+
+    # Paragraph under H1
+    assert blocks[1].type == "paragraph"
+    assert "Tổng quan tình hình" in blocks[1].text
+    assert blocks[1].heading_path == ["Báo cáo Doanh số Sales 2026"]
+
+    # H2 heading
+    assert blocks[2].type == "heading"
+    assert blocks[2].text == "Kênh Trực tiếp"
+    assert blocks[2].heading_path == ["Báo cáo Doanh số Sales 2026", "Kênh Trực tiếp"]
+
+    # Paragraph under H2
+    assert blocks[3].type == "paragraph"
+    assert blocks[3].heading_path == ["Báo cáo Doanh số Sales 2026", "Kênh Trực tiếp"]
+
+    # Table under H2
+    table_block = blocks[4]
+    assert table_block.type == "table"
+    assert table_block.heading_path == ["Báo cáo Doanh số Sales 2026", "Kênh Trực tiếp"]
+    assert "| Chi nhánh |" in table_block.markdown
+    assert "Hà Nội" in table_block.text
+    assert "<td>TP.HCM</td>" in table_block.html
+
+    # H3 heading under H2
+    assert blocks[5].type == "heading"
+    assert blocks[5].text == "Chính sách Ưu đãi"
+    assert blocks[5].heading_path == [
+        "Báo cáo Doanh số Sales 2026",
+        "Kênh Trực tiếp",
+        "Chính sách Ưu đãi",
+    ]
+
+    # Paragraph under H3
+    assert blocks[6].type == "paragraph"
+    assert blocks[6].heading_path == [
+        "Báo cáo Doanh số Sales 2026",
+        "Kênh Trực tiếp",
+        "Chính sách Ưu đãi",
+    ]
+
+    # Bullet list under H3
+    bullet_list = blocks[7]
+    assert bullet_list.type == "list"
+    assert bullet_list.heading_path == [
+        "Báo cáo Doanh số Sales 2026",
+        "Kênh Trực tiếp",
+        "Chính sách Ưu đãi",
+    ]
+    assert "Giảm 10%" in bullet_list.text
+    assert "<ul>" in bullet_list.html
+    assert "<li>Giảm 10% cho đơn hàng đầu tiên</li>" in bullet_list.html
+
+    # Paragraph under H3
+    assert blocks[8].type == "paragraph"
+    assert "Quy trình bảo hành" in blocks[8].text
+
+    # Numbered list under H3
+    numbered_list = blocks[9]
+    assert numbered_list.type == "list"
+    assert numbered_list.heading_path == [
+        "Báo cáo Doanh số Sales 2026",
+        "Kênh Trực tiếp",
+        "Chính sách Ưu đãi",
+    ]
+    assert "1. Tiếp nhận" in numbered_list.text
+    assert "<ol>" in numbered_list.html
+    assert "<li>Tiếp nhận yêu cầu bảo hành</li>" in numbered_list.html
+
+    # H2 heading: level 2 pops previous level 2 & 3 breadcrumbs!
+    assert blocks[10].type == "heading"
+    assert blocks[10].text == "Kênh Đại lý"
+    assert blocks[10].heading_path == ["Báo cáo Doanh số Sales 2026", "Kênh Đại lý"]
+
+    # Paragraph under new H2
+    assert blocks[11].type == "paragraph"
+    assert blocks[11].heading_path == ["Báo cáo Doanh số Sales 2026", "Kênh Đại lý"]
+
+    # Canonical office conventions
+    for b in blocks:
+        assert b.parse_engine == "office"
+        assert b.parse_version == "builtin-markdown-1.0"
+        assert b.bbox == (0.0, 0.0, 0.0, 0.0)
+        assert b.confidence == 1.0
+        assert b.latex is None
+        assert b.page == 1
+
+
+def test_office_markdown_routes_through_parser_router():
+    router = ParserRouter()
+    md_bytes = b"# Tieu de\n\nNoi dung ngan."
+
+    for mime, fname in [
+        ("text/markdown", "sales.md"),
+        ("text/plain", "notes.txt"),
+        ("application/octet-stream", "doc.markdown"),
+    ]:
+        decisions = router.classify(mime, md_bytes)
+        assert len(decisions) == 1
+        assert decisions[0].kind == PageKind.OFFICE
+
+        engine = router.engine_for(PageKind.OFFICE)
+        blocks = engine.parse(md_bytes, _ctx(mime, fname))
+        assert len(blocks) == 2
+        assert blocks[0].type == "heading"
+        assert blocks[0].text == "Tieu de"
+        assert blocks[1].type == "paragraph"
+        assert blocks[1].text == "Noi dung ngan."
+        assert blocks[0].parse_version == "builtin-markdown-1.0"
+
+
+def test_office_markdown_edge_cases():
+    # 1. Empty payload
+    empty_blocks = OfficeEngine().parse(b"", _ctx(_MD_MIME, "empty.md"))
+    assert empty_blocks == []
+
+    # 2. Heading with trailing hashes and pipe escaping
+    content = """# Tiêu đề chính #
+## Mục phụ ###
+
+| Cột A | Cột B |
+| :--- | ---: |
+| Dữ liệu có \\| dấu gạch đứng | Giá trị 2 |
+"""
+    blocks = OfficeEngine().parse(content.encode("utf-8"), _ctx(_MD_MIME, "escape.md"))
+    assert len(blocks) == 3
+    assert blocks[0].text == "Tiêu đề chính"
+    assert blocks[0].markdown == "# Tiêu đề chính"
+    assert blocks[1].text == "Mục phụ"
+    assert blocks[1].markdown == "## Mục phụ"
+    assert blocks[2].type == "table"
+    assert "Dữ liệu có | dấu gạch đứng" in blocks[2].text
+
+
+def test_office_markdown_normalizes_into_valid_document():
+    content = b"# Document Title\n\nSome introductory text.\n"
+    blocks = OfficeEngine().parse(content, _ctx(_MD_MIME, "test.md"))
+
+    document = normalize(
+        document_id="doc-office-md-1",
+        filename="test.md",
+        sha256="1" * 64,
+        mime=_MD_MIME,
+        pages=1,
+        page_blocks=[blocks],
+    )
+
+    orders = [b.order for b in document.blocks]
+    assert orders == [0, 1]
+    assert document.stats.engine_breakdown.get("office") == 2
+

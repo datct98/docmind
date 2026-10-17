@@ -13,6 +13,10 @@ public class GeminiEnabledCondition implements Condition {
 
     @Override
     public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
+        String provider = context.getEnvironment().getProperty("llm.provider");
+        if (provider != null && !provider.isBlank()) {
+            return false;
+        }
         return hasKey(context);
     }
 
@@ -30,11 +34,15 @@ public class GeminiEnabledCondition implements Condition {
         return false;
     }
 
-    /** Negation: active khi KHÔNG có Gemini key -> StubLlmClient dùng cái này. */
+    /** Negation: active khi KHÔNG có Gemini key và KHÔNG bật Ollama -> StubLlmClient dùng cái này. */
     public static class Disabled implements Condition {
         @Override
         public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-            return !hasKey(context);
+            String provider = context.getEnvironment().getProperty("llm.provider");
+            if (provider != null && !provider.isBlank()) {
+                return false;
+            }
+            return !hasKey(context) && !OllamaEnabledCondition.isOllamaEnabled(context);
         }
     }
 }

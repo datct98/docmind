@@ -56,4 +56,7 @@ public class ChunkEntity {
 
     @Column(name = "text", nullable = false)
     private String text;
+
+    @Column(name = "page_id")
+    private UUID pageId;
 }

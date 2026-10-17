@@ -73,6 +73,7 @@ is only involved during **ingest**.
 | POST   | `/api/documents`         | Upload a file (`multipart/form-data`, field `file`) -> starts ingest. Returns **201** with `{ "document_id": "...", "job_id": "...", "status": "..." }`. |
 | GET    | `/api/documents`         | List all uploaded documents with status, pages count, and engine breakdown. |
 | GET    | `/api/documents/{id}`    | Ingest job status (mirrors parser states + indexing). |
+| DELETE | `/api/documents/{id}`    | Delete a document and cascade delete all its blocks and embedded chunks (pgvector + tsvector). Returns **204 No Content**. |
 | POST   | `/api/chat`              | Ask a question. Request `{ "question": "...", "document_ids": [...], "top_k": N }`; response includes the answer and `citations[]` referencing `document_id` + `page` + `bbox` + `block_ids`. |
 
 The exact block/chunk fields these endpoints exchange are defined in

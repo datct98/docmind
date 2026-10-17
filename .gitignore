@@ -37,6 +37,10 @@ debug/
 .project
 .settings/
 
-### OS ###
+### OS & Local Index ###
 .DS_Store
 Thumbs.db
+.codegraph/
+.agents/
+*_verify*.json
+

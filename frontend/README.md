@@ -24,11 +24,16 @@ Giao diện Web Frontend hiện đại cho hệ thống **DocMind (Document-grou
    - Điều chỉnh tham số `Top-K` chunks linh hoạt (3, 5, 10, 20 chunks).
    - Các gợi ý câu hỏi bắt đầu (Starter prompts).
 
-4. **Inspector xem chi tiết tài liệu (Document Details Modal)**:
+4. **Xóa tài liệu & Toàn bộ dữ liệu nhúng (Cascade Delete & Confirmation Modal)**:
+   - Nút xóa trực tiếp trên từng thẻ tài liệu và bên trong modal chi tiết tài liệu.
+   - Hộp thoại cảnh báo xác nhận rõ ràng trước khi xóa: giải thích chi tiết việc xóa vĩnh viễn tệp, blocks văn bản và toàn bộ **vector embeddings (384-dim pgvector)** + chỉ mục tìm kiếm full-text trong PostgreSQL database.
+   - Tự động hủy polling và cập nhật giao diện ngay lập tức.
+
+5. **Inspector xem chi tiết tài liệu (Document Details Modal)**:
    - Thanh tiến trình trực quan phân bổ engine bóc tách (Engine Breakdown: PyMuPDF / Docling / PaddleOCR).
    - Thông tin hash SHA-256, số trang, Document ID.
 
-5. **Chế độ Demo trực quan (Standalone Demo Mode)**:
+6. **Chế độ Demo trực quan (Standalone Demo Mode)**:
    - Tự động phát hiện trạng thái backend. Nếu backend `http://localhost:8090` chưa bật, ứng dụng tự động hiển thị dữ liệu mẫu để trải nghiệm giao diện ngay lập tức mà không gặp lỗi.
    - Có nút chuyển đổi linh hoạt giữa Live API và Demo Mode.
 

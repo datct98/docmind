@@ -71,6 +71,12 @@ public class DocumentService {
     /** Upload: validate + hash + persist + submit parse. Trả về 201 payload. */
     @Transactional
     public DocumentUploadResponse upload(MultipartFile file) {
+        return upload(file, null);
+    }
+
+    /** Upload kèm phân loại vào Page / Thư mục tri thức (pageId có thể null). */
+    @Transactional
+    public DocumentUploadResponse upload(MultipartFile file, String pageIdRaw) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File rỗng");
         }
@@ -81,6 +87,7 @@ public class DocumentService {
             throw new IllegalStateException("Không đọc được file upload", e);
         }
         String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        UUID targetPageId = parseNullableUuid(pageIdRaw);
 
         // stage=validate + detect-mime (magic-byte, KHÔNG theo đuôi file).
         CorrelationIds.setStage("validate");
@@ -97,6 +104,13 @@ public class DocumentService {
         var existing = documentRepository.findBySha256(sha256);
         if (existing.isPresent()) {
             DocumentEntity doc = existing.get();
+            if (targetPageId != null && !targetPageId.equals(doc.getPageId())) {
+                doc.setPageId(targetPageId);
+                documentRepository.save(doc);
+                int movedChunks = chunkRepository.updatePageIdByDocumentId(doc.getId(), targetPageId);
+                log.info("dedup sha256 page reassigned document_id={} page_id={} synced_chunks={}",
+                        doc.getId(), targetPageId, movedChunks);
+            }
             CorrelationIds.putDocumentId(doc.getId().toString());
             log.info("dedup sha256 hit -> document_id={} status={}", doc.getId(), doc.getStatus());
             return new DocumentUploadResponse(doc.getId().toString(), doc.getJobId(), doc.getStatus());
@@ -124,9 +138,11 @@ public class DocumentService {
                 .pages(0)
                 .status("PARSING")
                 .jobId(submit.jobId())
+                .pageId(targetPageId)
                 .build();
         documentRepository.save(doc);
-        log.info("persist documents row document_id={} job_id={} status=PARSING", documentId, submit.jobId());
+        log.info("persist documents row document_id={} job_id={} page_id={} status=PARSING",
+                documentId, submit.jobId(), targetPageId);
 
         // Nếu parser báo cached => kết quả sẵn, poll ngay (async) để persist.
         pollAndPersistAsync(documentId, submit.jobId(), correlationId);
@@ -215,15 +231,22 @@ public class DocumentService {
         List<ChunkBuilder.BuiltChunk> builtChunks = ChunkBuilder.build(documentId, blocks);
         log.info("chunk built_chunks={}", builtChunks.size());
 
-        // stage=embed: embed + insert chunk (native, cast vector/tsvector).
+        // stage=embed: embed + insert chunk (native, cast vector/tsvector + gán page_id hiện tại của doc).
         CorrelationIds.setStage("embed");
+        UUID currentPageId = doc.getPageId();
         for (ChunkBuilder.BuiltChunk c : builtChunks) {
             float[] embedding = embeddingClient.embed(c.text());
             chunkRepository.insertChunk(
-                    c.id(), c.documentId(), c.headingPath(), c.sourceBlockIds(),
+                    c.id(), c.documentId(), currentPageId, c.headingPath(), c.sourceBlockIds(),
                     c.page(), c.bbox(), c.text(), embedding);
         }
-        log.info("embed embedded_chunks={} dim={}", builtChunks.size(), embeddingClient.dim());
+        // Đảm bảo nếu user đã đổi Page trong lúc doc đang PARSING thì đồng bộ lại theo trạng thái mới nhất
+        DocumentEntity refreshedDoc = documentRepository.findById(documentId).orElse(doc);
+        if ((currentPageId == null && refreshedDoc.getPageId() != null)
+                || (currentPageId != null && !currentPageId.equals(refreshedDoc.getPageId()))) {
+            chunkRepository.updatePageIdByDocumentId(documentId, refreshedDoc.getPageId());
+        }
+        log.info("embed embedded_chunks={} dim={} page_id={}", builtChunks.size(), embeddingClient.dim(), refreshedDoc.getPageId());
         CorrelationIds.clearStage();
 
         // Cập nhật document: pages + stats + READY.
@@ -237,16 +260,23 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public List<DocumentStatusResponse> listAll() {
-        return documentRepository.findAllByOrderByCreatedAtDesc().stream().map(doc -> {
-            Map<String, Integer> breakdown = parseBreakdown(doc.getStatsJson());
-            return new DocumentStatusResponse(
-                    doc.getId().toString(),
-                    doc.getFilename(),
-                    doc.getStatus(),
-                    doc.getPages(),
-                    breakdown
-            );
-        }).toList();
+        return listAll(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DocumentStatusResponse> listAll(String pageIdRaw) {
+        List<DocumentEntity> docs;
+        if (pageIdRaw == null || pageIdRaw.isBlank()) {
+            docs = documentRepository.findAllByOrderByCreatedAtDesc();
+        } else if ("unassigned".equalsIgnoreCase(pageIdRaw.strip())) {
+            docs = documentRepository.findByPageIdIsNullOrderByCreatedAtDesc();
+        } else {
+            UUID pageId = parseNullableUuid(pageIdRaw);
+            docs = pageId != null
+                    ? documentRepository.findByPageIdOrderByCreatedAtDesc(pageId)
+                    : documentRepository.findAllByOrderByCreatedAtDesc();
+        }
+        return docs.stream().map(this::toStatusResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -254,14 +284,57 @@ public class DocumentService {
         UUID documentId = safeUuid(documentIdRaw);
         DocumentEntity doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
+        return toStatusResponse(doc);
+    }
+
+    @Transactional
+    public DocumentStatusResponse assignPage(String documentIdRaw, String pageIdRaw) {
+        UUID documentId = safeUuid(documentIdRaw);
+        DocumentEntity doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
+        UUID targetPageId = parseNullableUuid(pageIdRaw);
+        doc.setPageId(targetPageId);
+        DocumentEntity saved = documentRepository.saveAndFlush(doc);
+        int updatedChunks = chunkRepository.updatePageIdByDocumentId(documentId, targetPageId);
+        log.info("assign_page document_id={} target_page_id={} synced_chunks={}",
+                documentId, targetPageId, updatedChunks);
+        return toStatusResponse(saved);
+    }
+
+    private DocumentStatusResponse toStatusResponse(DocumentEntity doc) {
         Map<String, Integer> breakdown = parseBreakdown(doc.getStatsJson());
         return new DocumentStatusResponse(
                 doc.getId().toString(),
                 doc.getFilename(),
                 doc.getStatus(),
                 doc.getPages(),
-                breakdown
+                breakdown,
+                doc.getPageId() != null ? doc.getPageId().toString() : null
         );
+    }
+
+    private static UUID parseNullableUuid(String raw) {
+        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw.strip())) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.strip());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** Xóa document cùng toàn bộ blocks và chunks (embedding pgvector + fulltext tsv). */
+    @Transactional
+    public void delete(String documentIdRaw) {
+        UUID documentId = safeUuid(documentIdRaw);
+        DocumentEntity doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
+        CorrelationIds.putDocumentId(documentId.toString());
+        chunkRepository.deleteByDocumentId(documentId);
+        blockRepository.deleteByDocumentId(documentId);
+        documentRepository.delete(doc);
+        log.info("delete document_id={} and all associated chunks (embeddings) + blocks", documentId);
     }
 
     // --- helpers ---

@@ -55,6 +55,9 @@ public class DocumentEntity {
     @Column(name = "stats_json")
     private String statsJson;
 
+    @Column(name = "page_id")
+    private UUID pageId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

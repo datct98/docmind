@@ -54,6 +54,22 @@
           Lỗi phân tích
         </span>
 
+        <!-- Page / Folder Assignment Badge & Quick Switcher -->
+        <div v-if="pages && pages.length > 0" class="page-assign-wrapper" @click.stop>
+          <select 
+            class="page-assign-select" 
+            :class="{ 'is-unassigned': !doc.page_id }"
+            :value="doc.page_id || ''"
+            title="Chuyển tài liệu sang Page / Thư mục tri thức khác"
+            @change="$emit('assign-page', { documentId: doc.document_id, docId: doc.document_id, pageId: $event.target.value || null })"
+          >
+            <option value="">📁 Chưa phân loại</option>
+            <option v-for="p in pages" :key="p.id" :value="p.id">
+              📂 {{ p.name }}
+            </option>
+          </select>
+        </div>
+
         <!-- Engine Breakdown pills if ready -->
         <div v-if="doc.engine_breakdown && Object.keys(doc.engine_breakdown).length > 0" class="engine-tags">
           <span 
@@ -67,7 +83,7 @@
       </div>
     </div>
 
-    <!-- Quick action / ID preview -->
+    <!-- Quick action / ID preview & Delete -->
     <div class="card-right" @click.stop>
       <button 
         class="btn-icon" 
@@ -78,6 +94,20 @@
           <circle cx="12" cy="12" r="1"/>
           <circle cx="19" cy="12" r="1"/>
           <circle cx="5" cy="12" r="1"/>
+        </svg>
+      </button>
+
+      <button 
+        class="btn-icon btn-delete" 
+        title="Xóa tài liệu & dữ liệu embedding"
+        @click="$emit('delete-doc', doc)"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/>
+          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
         </svg>
       </button>
     </div>
@@ -95,10 +125,14 @@ const props = defineProps({
   isSelected: {
     type: Boolean,
     default: false
+  },
+  pages: {
+    type: Array,
+    default: () => []
   }
 })
 
-defineEmits(['toggle-select', 'view-detail'])
+defineEmits(['toggle-select', 'view-detail', 'delete-doc', 'assign-page'])
 
 const fileExtension = computed(() => {
   const parts = (props.doc.filename || '').split('.')
@@ -286,6 +320,41 @@ const fileTypeClass = computed(() => {
   gap: 4px;
 }
 
+.page-assign-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.page-assign-select {
+  background: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #c7d2fe;
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 155px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.page-assign-select:hover {
+  background: rgba(99, 102, 241, 0.24);
+  border-color: rgba(99, 102, 241, 0.55);
+}
+
+.page-assign-select.is-unassigned {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: var(--text-dim);
+}
+
+.page-assign-select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 .engine-pill {
   font-size: 0.68rem;
   font-family: var(--font-mono);
@@ -317,5 +386,10 @@ const fileTypeClass = computed(() => {
 .btn-icon:hover {
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-delete:hover {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.16);
 }
 </style>

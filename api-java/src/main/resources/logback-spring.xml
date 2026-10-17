@@ -16,7 +16,8 @@
         <encoder class="ch.qos.logback.classic.encoder.JsonEncoder">
             <withSequenceNumber>false</withSequenceNumber>
             <withArguments>false</withArguments>
-            <withMessage>true</withMessage>
+            <withFormattedMessage>true</withFormattedMessage>
+            <withMessage>false</withMessage>
             <withLoggerName>true</withLoggerName>
             <withLevel>true</withLevel>
             <withThreadName>true</withThreadName>

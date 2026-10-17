@@ -54,6 +54,19 @@ class FileValidationTest {
     }
 
     @Test
+    void detectsAndSupportsMarkdownTemplateFile() {
+        byte[] mdBytes = "# BỘ TRI THỨC BÁN HÀNG CHUẨN\n\n## 1. BẢNG GIÁ\n| Mã SP | Giá |\n| --- | --- |\n"
+                .getBytes(StandardCharsets.UTF_8);
+        String mime = FileValidation.detectMime(mdBytes, "Template_Tri_Thuc_Sale_Chuan.md");
+        assertThat(mime).isEqualTo("text/markdown");
+        assertThat(FileValidation.isSupported(mime)).isTrue();
+        assertThat(FileValidation.isSupported("text/x-web-markdown")).isTrue();
+        assertThat(FileValidation.isSupported("text/x-markdown")).isTrue();
+        FileValidation.requireSupported(mime);
+        FileValidation.requireSupported("text/x-web-markdown");
+    }
+
+    @Test
     void rejectsUnsupportedType() {
         // ELF binary magic (0x7F 'E' 'L' 'F') -> application/x-elf, không nằm allow-list.
         byte[] elf = new byte[]{0x7F, 'E', 'L', 'F', 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};

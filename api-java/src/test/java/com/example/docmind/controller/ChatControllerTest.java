@@ -3,16 +3,19 @@ package com.example.docmind.controller;
 import com.example.docmind.dto.ChatRequest;
 import com.example.docmind.dto.ChatResponse;
 import com.example.docmind.dto.Citation;
+import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.service.ChatService;
-import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -53,6 +56,52 @@ class ChatControllerTest {
                 .andExpect(jsonPath("$.citations[0].page").value(1))
                 .andExpect(jsonPath("$.citations[0].heading_path[0]").value("Derivatives"))
                 .andExpect(jsonPath("$.citations[0].block_ids[0]").value("block-1"));
+    }
+
+    @Test
+    void chatReturnsAppliedRulesAndNewlyLearnedRuleWhenPresent() throws Exception {
+        LearnedRuleDto appliedRule = new LearnedRuleDto(
+                UUID.randomUUID(),
+                "PRICING_CALCULATION",
+                "Khi tính chiết khấu",
+                "Bỏ sót ngưỡng",
+                "Kiểm tra kỹ điều kiện số lượng.",
+                List.of("chiết khấu"),
+                true,
+                Instant.now(),
+                Instant.now()
+        );
+        LearnedRuleDto newlyLearned = new LearnedRuleDto(
+                UUID.randomUUID(),
+                "TABLE_LOOKUP",
+                "Khi tra cứu bảng",
+                "Đọc nhầm cột",
+                "Đối soát tiêu đề cột.",
+                List.of("bảng"),
+                true,
+                Instant.now(),
+                Instant.now()
+        );
+
+        when(chatService.chat(any()))
+                .thenReturn(new ChatResponse("Câu trả lời sửa lại", List.of(), List.of(appliedRule), newlyLearned));
+
+        ChatRequest req = new ChatRequest(
+                List.of("doc-1"),
+                "Sai rồi, phải là 15%",
+                5,
+                "Chiết khấu bao nhiêu?",
+                "5%",
+                "conv-1"
+        );
+
+        mockMvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("Câu trả lời sửa lại"))
+                .andExpect(jsonPath("$.applied_rules[0].category").value("PRICING_CALCULATION"))
+                .andExpect(jsonPath("$.newly_learned_rule.category").value("TABLE_LOOKUP"));
     }
 
     @Test

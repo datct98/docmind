@@ -14,7 +14,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -73,5 +75,13 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$[0].document_id").value("doc-123"))
                 .andExpect(jsonPath("$[0].filename").value("notes.pdf"))
                 .andExpect(jsonPath("$[0].status").value("READY"));
+    }
+
+    @Test
+    void deleteReturns204NoContent() throws Exception {
+        mockMvc.perform(delete("/api/documents/doc-123"))
+                .andExpect(status().isNoContent());
+
+        verify(documentService).delete("doc-123");
     }
 }
