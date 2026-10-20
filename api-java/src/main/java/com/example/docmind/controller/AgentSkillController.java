@@ -51,6 +51,11 @@ public class AgentSkillController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @PostMapping("/smart-parse")
+    public ResponseEntity<AgentSkillDto> smartParseSkill(@RequestBody AgentSkillRequest request) {
+        return ResponseEntity.ok(agentSkillService.smartParseSkill(request));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<AgentSkillDto> updateSkill(
             @PathVariable UUID id,

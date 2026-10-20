@@ -251,4 +251,233 @@ class CustomerInsightEngineTest {
             java.nio.file.Files.deleteIfExists(parentEnv);
         }
     }
+
+    @Test
+    void selectActiveSkillsBoostsProvenHighConversionAndHighConfidenceSkill() {
+        CustomerInsightDto insight = engine.analyzeInsight(
+                "Giá gói trị nám bên em cao thế, có giảm không?",
+                List.of(),
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null
+        );
+
+        AgentSkillDto unprovenSkill = new AgentSkillDto(
+                UUID.randomUUID(),
+                "SALES_UNPROVEN",
+                "Chiến thuật chưa kiểm chứng",
+                "SALES_STRATEGY",
+                "Mô tả",
+                "giá cao",
+                "Chỉ dẫn 1",
+                "Ví dụ",
+                "Anti",
+                85,
+                true,
+                null,
+                0,
+                0,
+                0.70,
+                Instant.now(),
+                Instant.now()
+        );
+
+        AgentSkillDto provenChampionSkill = new AgentSkillDto(
+                UUID.randomUUID(),
+                "SALES_PROVEN_CHAMPION",
+                "Chiến thuật Chốt SĐT Thực chiến",
+                "SALES_STRATEGY",
+                "Mô tả",
+                "giá cao",
+                "Chỉ dẫn 2",
+                "Ví dụ",
+                "Anti",
+                80,
+                true,
+                null,
+                40,
+                12,
+                0.98,
+                Instant.now(),
+                Instant.now()
+        );
+
+        List<AgentSkillDto> selected = engine.selectActiveSkills(
+                insight,
+                "Giá gói trị nám bên em cao thế",
+                List.of(),
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                List.of(unprovenSkill, provenChampionSkill)
+        );
+
+        assertThat(selected).isNotEmpty();
+        assertThat(selected.get(0).code()).isEqualTo("SALES_PROVEN_CHAMPION");
+    }
+
+    @Test
+    void decaysTemperatureOnHalfHeartedBrushOffAndSelectsZeroPressureTakeawaySkill() {
+        CustomerInsightDto insight = engine.analyzeInsight(
+                "ừ để chị xem thêm",
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Liệu trình trị mụn bên em bao nhiêu tiền?"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Trị Mụn Chuẩn Y Khoa bên em là 1.500.000 VNĐ ạ.")
+                ),
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null,
+                75, // previous_temperature was hot/warm (75)
+                null,
+                null
+        );
+
+        assertThat(insight.buyingTemperature()).isLessThanOrEqualTo(55);
+        assertThat(insight.previousTemperature()).isEqualTo(75);
+        assertThat(insight.temperatureDelta()).isLessThan(0);
+        assertThat(insight.momentum()).isEqualTo("COOLING_HALF_HEARTED");
+        assertThat(insight.decayReason()).isEqualTo("COOLING_HALF_HEARTED");
+        assertThat(insight.recommendedStrategy()).contains("Takeaway & Pattern Interrupt");
+
+        List<AgentSkillDto> activeSkills = engine.selectActiveSkills(
+                insight,
+                "ừ để chị xem thêm",
+                List.of(),
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                CustomerInsightEngine.builtInDefaultSkills()
+        );
+
+        assertThat(activeSkills)
+                .extracting(AgentSkillDto::code)
+                .containsAnyOf("PSYCH_ZERO_PRESSURE_TAKEAWAY", "PSYCH_TAKEAWAY_REVERSE");
+        assertThat(activeSkills)
+                .extracting(AgentSkillDto::code)
+                .doesNotContain("SALES_MICRO_COMMITMENT_CLOSE", "SALES_APPOINTMENT_HOOK_CLOSE");
+    }
+
+    @Test
+    void decaysTemperatureOnPriceHesitation() {
+        CustomerInsightDto insight = engine.analyzeInsight(
+                "hơi đắt so với dự tính của chị em ơi",
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Bên em có trị nám không?"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ có ạ, 4.500.000đ/buổi ạ.")
+                ),
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null,
+                72,
+                null,
+                null
+        );
+
+        assertThat(insight.buyingTemperature()).isLessThan(72);
+        assertThat(insight.previousTemperature()).isEqualTo(72);
+        assertThat(insight.temperatureDelta()).isLessThan(0);
+        assertThat(insight.momentum()).isEqualTo("COOLING_HALF_HEARTED");
+        assertThat(insight.decayReason()).isEqualTo("PRICE_HESITATION");
+    }
+
+    @Test
+    void decaysTemperatureOnIdleSeconds5MinutesAnd30Minutes() {
+        // 5 minutes (300 seconds) decay ~18 pts
+        CustomerInsightDto insight5m = engine.analyzeInsight(
+                "",
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Tư vấn cho chị phác đồ phục hồi da"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ phác đồ bên em chuẩn y khoa ạ.")
+                ),
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null,
+                75,
+                null,
+                300
+        );
+
+        assertThat(insight5m.buyingTemperature()).isEqualTo(57);
+        assertThat(insight5m.previousTemperature()).isEqualTo(75);
+        assertThat(insight5m.temperatureDelta()).isEqualTo(-18);
+        assertThat(insight5m.momentum()).isEqualTo("COOLING_IDLE");
+        assertThat(insight5m.decayReason()).isEqualTo("COOLING_IDLE");
+        assertThat(insight5m.recommendedStrategy()).contains("Loss-Aversion Reservation");
+
+        // 30 minutes (1800 seconds) decay ~35 pts
+        CustomerInsightDto insight30m = engine.analyzeInsight(
+                "",
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Tư vấn cho chị phác đồ phục hồi da"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ phác đồ bên em chuẩn y khoa ạ.")
+                ),
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null,
+                75,
+                null,
+                1800
+        );
+
+        assertThat(insight30m.buyingTemperature()).isEqualTo(40);
+        assertThat(insight30m.previousTemperature()).isEqualTo(75);
+        assertThat(insight30m.temperatureDelta()).isEqualTo(-35);
+        assertThat(insight30m.momentum()).isEqualTo("COOLING_IDLE");
+        assertThat(insight30m.decayReason()).isEqualTo("COOLING_IDLE");
+    }
+
+    @Test
+    void derivesPreviousTemperatureFromHistoryWhenNotExplicitlyProvided() {
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Chị bị nám lâu năm, gói Laser Pico giá sao em?"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Trị Nám Laser Pico bên em giá 4.500.000 VNĐ/buổi ạ.")
+        );
+
+        CustomerInsightDto insight = engine.analyzeInsight(
+                "ừ để chị xem",
+                history,
+                "Chị",
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                null,
+                null, // No previousTemperature passed
+                null,
+                null
+        );
+
+        assertThat(insight.previousTemperature()).isNotNull();
+        assertThat(insight.previousTemperature()).isGreaterThanOrEqualTo(58);
+        assertThat(insight.temperatureDelta()).isLessThan(0);
+        assertThat(insight.momentum()).isEqualTo("COOLING_HALF_HEARTED");
+    }
+
+    @Test
+    void boostsCuriosityAndLossAversionSkillsOnCoolingLead() {
+        CustomerInsightDto coolingInsight = new CustomerInsightDto(
+                "PRICE_CONSCIOUS",
+                "Khách cân nhắc giá",
+                52,
+                75,
+                -23,
+                "COOLING_HALF_HEARTED",
+                "WARM",
+                "COOLING_HALF_HEARTED",
+                "Chị",
+                List.of("Mụn viêm"),
+                List.of("Đắn đo chi phí"),
+                "Chiến thuật"
+        );
+
+        List<AgentSkillDto> activeSkills = engine.selectActiveSkills(
+                coolingInsight,
+                "ừ để chị nghĩ thêm",
+                List.of(),
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                CustomerInsightEngine.builtInDefaultSkills()
+        );
+
+        assertThat(activeSkills).hasSize(3);
+        assertThat(activeSkills)
+                .extracting(AgentSkillDto::code)
+                .containsAnyOf(
+                        "PSYCH_ZERO_PRESSURE_TAKEAWAY",
+                        "PSYCH_PATTERN_INTERRUPT_CURIOSITY",
+                        "SALES_LOSS_AVERSION_RESERVATION"
+                );
+    }
 }

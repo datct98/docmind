@@ -57,4 +57,24 @@ public interface LearnedRuleRepositoryCustom {
     }
 
     List<LearnedRuleEntity> searchSimilarActiveRules(float[] queryEmbedding, double minScore, int limit, UUID pageId);
+
+    default List<LearnedRuleEntity> searchSimilarRulesForEvolution(float[] queryEmbedding, double minScore, int limit, UUID pageId) {
+        return List.of();
+    }
+
+    void updateRuleEvolutionMetadata(UUID id,
+                                     int version,
+                                     String previousRuleText,
+                                     double confidenceScore,
+                                     String quarantinedReason);
+
+    void recordRulesApplied(List<UUID> ruleIds);
+
+    void recordRuleConversionSuccess(UUID id, double confidenceBoost);
+
+    void recordRuleNegativeFeedback(UUID id,
+                                    int failCount,
+                                    double confidenceScore,
+                                    boolean active,
+                                    String quarantinedReason);
 }

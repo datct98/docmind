@@ -33,10 +33,20 @@ public class RuleController {
 
     private final LearnedRuleRepository learnedRuleRepository;
     private final EmbeddingClient embeddingClient;
+    private final com.example.docmind.service.MetaLearningService metaLearningService;
 
-    public RuleController(LearnedRuleRepository learnedRuleRepository, EmbeddingClient embeddingClient) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public RuleController(LearnedRuleRepository learnedRuleRepository,
+                          EmbeddingClient embeddingClient,
+                          @org.springframework.beans.factory.annotation.Autowired(required = false)
+                          com.example.docmind.service.MetaLearningService metaLearningService) {
         this.learnedRuleRepository = learnedRuleRepository;
         this.embeddingClient = embeddingClient;
+        this.metaLearningService = metaLearningService;
+    }
+
+    public RuleController(LearnedRuleRepository learnedRuleRepository, EmbeddingClient embeddingClient) {
+        this(learnedRuleRepository, embeddingClient, null);
     }
 
     @GetMapping
@@ -199,7 +209,23 @@ public class RuleController {
             embedding = embeddingClient.embed(trigger + " " + genRule);
         }
 
+        boolean ruleTextChanged = entity.getGeneralizedRule() != null && !genRule.equals(entity.getGeneralizedRule());
+        String previousRuleText = ruleTextChanged ? entity.getGeneralizedRule() : entity.getPreviousRuleText();
+        int nextVersion = ruleTextChanged ? Math.max(1, entity.getVersion()) + 1 : Math.max(1, entity.getVersion());
+        double nextConfidence = ruleTextChanged
+                ? 0.90
+                : ((active && !entity.isActive())
+                        ? Math.max(0.85, entity.getConfidenceScore())
+                        : (entity.getConfidenceScore() <= 0.0 ? 0.85 : entity.getConfidenceScore()));
+        int nextFailCount = (ruleTextChanged || (active && !entity.isActive())) ? 0 : entity.getFailCount();
+        String nextQuarantineReason = active ? null : entity.getQuarantinedReason();
+
         try {
+            if (ruleTextChanged || (active && !entity.isActive())) {
+                learnedRuleRepository.updateRuleEvolutionMetadata(
+                        id, nextVersion, previousRuleText, nextConfidence, nextQuarantineReason
+                );
+            }
             if (request.pageId() != null || entity.getPageId() != null) {
                 learnedRuleRepository.updateRuleWithEmbedding(
                         id, category, trigger, rootCause, genRule, kw, active, embedding, pageId
@@ -217,6 +243,11 @@ public class RuleController {
             entity.setRetrievalKeywords(kw);
             entity.setActive(active);
             entity.setPageId(pageId);
+            entity.setVersion(nextVersion);
+            entity.setPreviousRuleText(previousRuleText);
+            entity.setConfidenceScore(nextConfidence);
+            entity.setFailCount(nextFailCount);
+            entity.setQuarantinedReason(nextQuarantineReason);
             entity.setUpdatedAt(Instant.now());
             learnedRuleRepository.save(entity);
         }
@@ -230,10 +261,68 @@ public class RuleController {
                 Arrays.asList(kw),
                 active,
                 pageId != null ? pageId.toString() : null,
+                nextConfidence,
+                entity.getAppliedCount(),
+                entity.getSuccessCount(),
+                nextFailCount,
+                nextVersion,
+                previousRuleText,
+                nextQuarantineReason,
+                entity.getLastAppliedAt(),
                 entity.getCreatedAt(),
                 Instant.now()
         );
         return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/{id}/rollback")
+    public ResponseEntity<LearnedRuleDto> rollbackRule(@PathVariable UUID id) {
+        if (metaLearningService != null) {
+            return ResponseEntity.ok(metaLearningService.rollbackRuleVersion(id));
+        }
+
+        LearnedRuleEntity entity = learnedRuleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy quy tắc với id: " + id));
+        if (entity.getPreviousRuleText() == null || entity.getPreviousRuleText().isBlank()) {
+            throw new IllegalArgumentException("Quy tắc này chưa có phiên bản trước để khôi phục.");
+        }
+
+        String restoredRule = entity.getPreviousRuleText().strip();
+        int currentVersion = entity.getVersion() <= 0 ? 1 : entity.getVersion();
+        int newVersion = Math.max(1, currentVersion - 1);
+        double restoredConfidence = 0.85;
+        String trigger = entity.getTriggerCondition() != null ? entity.getTriggerCondition() : "";
+        float[] embedding = embeddingClient.embed(trigger + " " + restoredRule);
+
+        entity.setGeneralizedRule(restoredRule);
+        entity.setPreviousRuleText(null);
+        entity.setVersion(newVersion);
+        entity.setActive(true);
+        entity.setConfidenceScore(restoredConfidence);
+        entity.setFailCount(0);
+        entity.setQuarantinedReason(null);
+        entity.setUpdatedAt(Instant.now());
+
+        try {
+            if (entity.getPageId() != null) {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(), entity.getCategory(), trigger, entity.getRootCause(),
+                        restoredRule, entity.getRetrievalKeywords(), true, embedding, entity.getPageId()
+                );
+            } else {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(), entity.getCategory(), trigger, entity.getRootCause(),
+                        restoredRule, entity.getRetrievalKeywords(), true, embedding
+                );
+            }
+            learnedRuleRepository.updateRuleEvolutionMetadata(entity.getId(), newVersion, null, restoredConfidence, null);
+            learnedRuleRepository.recordRuleNegativeFeedback(entity.getId(), 0, restoredConfidence, true, null);
+            learnedRuleRepository.save(entity);
+        } catch (Exception e) {
+            learnedRuleRepository.save(entity);
+        }
+
+        return ResponseEntity.ok(LearnedRuleDto.fromEntity(entity));
     }
 
     @DeleteMapping("/{id}")

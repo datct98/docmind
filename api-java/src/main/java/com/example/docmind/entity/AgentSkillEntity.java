@@ -64,6 +64,18 @@ public class AgentSkillEntity {
     @Column(name = "page_id")
     private UUID pageId;
 
+    @Builder.Default
+    @Column(name = "applied_count", nullable = false)
+    private int appliedCount = 0;
+
+    @Builder.Default
+    @Column(name = "conversion_count", nullable = false)
+    private int conversionCount = 0;
+
+    @Builder.Default
+    @Column(name = "confidence_score", nullable = false)
+    private double confidenceScore = 0.90;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

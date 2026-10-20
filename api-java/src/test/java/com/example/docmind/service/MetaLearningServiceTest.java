@@ -299,4 +299,248 @@ class MetaLearningServiceTest {
                 .contains("số điện thoại", "liên hệ tư vấn")
                 .doesNotContain("thông tin không cần thiết", "gói dịch vụ", "chiết khấu combo");
     }
+
+    @Test
+    void smartRuleEvolutionUpdatesGeneralizedRuleSavesPreviousTextIncrementsVersionAndCapsKeywordsAt8() {
+        UUID existingId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        LearnedRuleEntity existing = LearnedRuleEntity.builder()
+                .id(existingId)
+                .category("PRICING_CALCULATION")
+                .triggerCondition("Khi khách hỏi chiết khấu combo")
+                .rootCause("Nhầm mức giảm")
+                .generalizedRule("Quy tắc cũ: Combo 5 buổi giảm 10%.")
+                .retrievalKeywords(new String[]{"kw1", "kw2", "kw3", "kw4", "kw5", "kw6", "kw7"})
+                .pageId(pageId)
+                .active(false)
+                .confidenceScore(0.40)
+                .version(1)
+                .quarantinedReason("Tự động tạm ngắt")
+                .createdAt(Instant.now().minusSeconds(3600))
+                .updatedAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        when(ruleRepo.searchSimilarActiveRules(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of(existing));
+
+        LearnedRuleDto evolved = service.learnFromFeedback(
+                "Combo 5 buổi giảm bao nhiêu %?",
+                "Dạ giảm 10% ạ.",
+                "Sai rồi: Combo Toàn Diện (5 - 9 buổi) phải được giảm 15% trên tổng hóa đơn trước VAT!",
+                "conv-evolve",
+                null,
+                pageId.toString()
+        );
+
+        assertThat(evolved.id()).isEqualTo(existingId);
+        assertThat(evolved.version()).isEqualTo(2);
+        assertThat(evolved.previousRuleText()).isEqualTo("Quy tắc cũ: Combo 5 buổi giảm 10%.");
+        assertThat(evolved.generalizedRule()).contains("15%");
+        assertThat(evolved.confidenceScore()).isEqualTo(0.90);
+        assertThat(evolved.active()).isTrue();
+        assertThat(evolved.quarantinedReason()).isNull();
+        assertThat(evolved.retrievalKeywords().size()).isLessThanOrEqualTo(8);
+    }
+
+    @Test
+    void selectiveBlameAttributionOnlyPenalizesMatchingRuleAndAutoQuarantinesRepeatedlyFailingRule() {
+        UUID innocentRuleId = UUID.randomUUID();
+        UUID faultyRuleId = UUID.randomUUID();
+
+        LearnedRuleEntity innocentRule = LearnedRuleEntity.builder()
+                .id(innocentRuleId)
+                .category("POLICY")
+                .triggerCondition("Khi xưng hô với khách nam")
+                .generalizedRule("Luôn xưng Anh với khách nam.")
+                .retrievalKeywords(new String[]{"khách nam", "xưng anh"})
+                .active(true)
+                .confidenceScore(0.90)
+                .appliedCount(5)
+                .successCount(2)
+                .failCount(0)
+                .version(1)
+                .build();
+
+        LearnedRuleEntity faultyRule = LearnedRuleEntity.builder()
+                .id(faultyRuleId)
+                .category("PRICING_CALCULATION")
+                .triggerCondition("Khi tính chiết khấu combo")
+                .generalizedRule("Áp dụng cộng dồn chiết khấu combo và voucher sinh nhật.")
+                .retrievalKeywords(new String[]{"chiết khấu", "combo", "voucher sinh nhật"})
+                .active(true)
+                .confidenceScore(0.60)
+                .appliedCount(3)
+                .successCount(0)
+                .failCount(1)
+                .version(1)
+                .build();
+
+        when(ruleRepo.findById(innocentRuleId)).thenReturn(java.util.Optional.of(innocentRule));
+        when(ruleRepo.findById(faultyRuleId)).thenReturn(java.util.Optional.of(faultyRule));
+
+        service.recordNegativeFeedbackAndAutoQuarantine(
+                List.of(innocentRuleId, faultyRuleId),
+                "Combo 5 buổi có cộng dồn voucher sinh nhật không?",
+                "Dạ được cộng dồn chiết khấu combo và voucher sinh nhật ạ.",
+                "Sai rồi, chiết khấu combo không được cộng dồn với voucher sinh nhật!"
+        );
+
+        // Innocent rule must NOT be penalized
+        assertThat(innocentRule.getFailCount()).isEqualTo(0);
+        assertThat(innocentRule.getConfidenceScore()).isEqualTo(0.90);
+        assertThat(innocentRule.isActive()).isTrue();
+
+        // Faulty rule overlaps with feedback -> penalized (0.60 - 0.25 = 0.35 < 0.45, failCount = 2 > successCount = 0) -> auto-quarantined!
+        assertThat(faultyRule.getFailCount()).isEqualTo(2);
+        assertThat(faultyRule.getConfidenceScore()).isEqualTo(0.35);
+        assertThat(faultyRule.isActive()).isFalse();
+        assertThat(faultyRule.getQuarantinedReason()).contains("Tự động tạm ngắt");
+    }
+
+    @Test
+    void rollbackRuleVersionRestoresPreviousRuleTextDecrementsVersionAndReEnablesQuarantinedRule() {
+        UUID ruleId = UUID.randomUUID();
+        LearnedRuleEntity entity = LearnedRuleEntity.builder()
+                .id(ruleId)
+                .category("POLICY")
+                .triggerCondition("Khi báo giá")
+                .rootCause("Báo sai")
+                .generalizedRule("Quy tắc phiên bản 2 bị lỗi")
+                .previousRuleText("Quy tắc phiên bản 1 chuẩn xác")
+                .retrievalKeywords(new String[]{"bảng giá"})
+                .active(false)
+                .confidenceScore(0.30)
+                .failCount(2)
+                .version(2)
+                .quarantinedReason("Tự động tạm ngắt do bị báo sai lặp lại")
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(ruleRepo.findById(ruleId)).thenReturn(java.util.Optional.of(entity));
+
+        LearnedRuleDto rolledBack = service.rollbackRuleVersion(ruleId);
+
+        assertThat(rolledBack.generalizedRule()).isEqualTo("Quy tắc phiên bản 1 chuẩn xác");
+        assertThat(rolledBack.previousRuleText()).isNull();
+        assertThat(rolledBack.version()).isEqualTo(1);
+        assertThat(rolledBack.active()).isTrue();
+        assertThat(rolledBack.confidenceScore()).isEqualTo(0.85);
+        assertThat(rolledBack.failCount()).isEqualTo(0);
+        assertThat(rolledBack.quarantinedReason()).isNull();
+    }
+
+    @Test
+    void smartRuleEvolutionFindsQuarantinedRuleViaTriggerFallbackWhenActiveVectorSearchReturnsEmpty() {
+        UUID existingId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        LearnedRuleEntity quarantined = LearnedRuleEntity.builder()
+                .id(existingId)
+                .category("PRICING_CALCULATION")
+                .triggerCondition("Khi khách hỏi chiết khấu đơn hàng trên 500 cái")
+                .rootCause("Nhầm mức giảm")
+                .generalizedRule("Đơn hàng trên 500 cái được chiết khấu 10%.")
+                .retrievalKeywords(new String[]{"chiết khấu", "500 cái"})
+                .pageId(pageId)
+                .active(false)
+                .confidenceScore(0.35)
+                .failCount(2)
+                .version(1)
+                .quarantinedReason(MetaLearningService.AUTO_QUARANTINE_REASON)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .updatedAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        // Simulate real PostgreSQL WHERE active = true returning empty for quarantined rule
+        when(ruleRepo.searchSimilarActiveRules(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of());
+        when(ruleRepo.searchSimilarRulesForEvolution(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of());
+        when(ruleRepo.searchRulesByPage(any(), any(), any(), any(), any(Boolean.class), any(Boolean.class)))
+                .thenReturn(List.of(quarantined));
+
+        LearnedRuleDto evolved = service.learnFromFeedback(
+                "Chính sách chiết khấu đơn hàng trên 500 cái là bao nhiêu?",
+                "Đơn hàng trên 500 cái được chiết khấu 10%.",
+                "Đơn hàng trên 500 cái phải được chiết khấu 20% theo bảng giá mới!",
+                "conv-quarantined-evolve",
+                null,
+                pageId.toString()
+        );
+
+        assertThat(evolved.id()).isEqualTo(existingId);
+        assertThat(evolved.version()).isEqualTo(2);
+        assertThat(evolved.previousRuleText()).isEqualTo("Đơn hàng trên 500 cái được chiết khấu 10%.");
+        assertThat(evolved.generalizedRule()).contains("20%");
+        assertThat(evolved.confidenceScore()).isEqualTo(0.90);
+        assertThat(evolved.failCount()).isEqualTo(0);
+        assertThat(evolved.active()).isTrue();
+        assertThat(evolved.quarantinedReason()).isNull();
+    }
+
+    @Test
+    void repeatedBlameQuarantinesRuleOnSecondFailureAndSubsequentReteachEvolvesAndReactivatesRule() {
+        UUID ruleId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        LearnedRuleEntity rule = LearnedRuleEntity.builder()
+                .id(ruleId)
+                .category("PRICING_CALCULATION")
+                .triggerCondition("Khi khách hỏi chiết khấu đơn hàng trên 500 cái")
+                .rootCause("Nhầm mức giảm")
+                .generalizedRule("Đơn hàng trên 500 cái được chiết khấu 10%.")
+                .retrievalKeywords(new String[]{"chiết khấu", "500 cái"})
+                .pageId(pageId)
+                .active(true)
+                .confidenceScore(0.60)
+                .failCount(1)
+                .successCount(0)
+                .version(1)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .updatedAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        when(ruleRepo.findById(ruleId)).thenReturn(java.util.Optional.of(rule));
+        when(ruleRepo.searchSimilarRulesForEvolution(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of(rule));
+
+        // 2nd failure with appliedRuleIds=[ruleId] -> triggers Auto-Quarantine Circuit Breaker
+        service.recordNegativeFeedbackAndAutoQuarantine(
+                List.of(ruleId),
+                "Chính sách chiết khấu đơn hàng trên 500 cái là bao nhiêu?",
+                "Đơn hàng trên 500 cái được chiết khấu 10%.",
+                "Sai rồi, đơn hàng trên 500 cái phải được chiết khấu 15%!"
+        );
+        LearnedRuleDto afterSecondFail = service.learnFromFeedback(
+                "Chính sách chiết khấu đơn hàng trên 500 cái là bao nhiêu?",
+                "Đơn hàng trên 500 cái được chiết khấu 10%.",
+                "Sai rồi, đơn hàng trên 500 cái phải được chiết khấu 15%!",
+                "conv-q2",
+                null,
+                pageId.toString()
+        );
+
+        assertThat(afterSecondFail.id()).isEqualTo(ruleId);
+        assertThat(afterSecondFail.active()).isFalse();
+        assertThat(afterSecondFail.failCount()).isEqualTo(2);
+        assertThat(afterSecondFail.confidenceScore()).isEqualTo(0.35);
+        assertThat(afterSecondFail.quarantinedReason()).isEqualTo(MetaLearningService.AUTO_QUARANTINE_REASON);
+
+        // Subsequent re-teach on the quarantined rule -> evolves to v2 and reactivates with confidence 0.90
+        LearnedRuleDto afterReteach = service.learnFromFeedback(
+                "Chính sách chiết khấu đơn hàng trên 500 cái là bao nhiêu?",
+                "Đơn hàng trên 500 cái được chiết khấu 10%.",
+                "Đơn hàng trên 500 cái được chiết khấu 20% theo quy định mới!",
+                "conv-q3",
+                null,
+                pageId.toString()
+        );
+
+        assertThat(afterReteach.id()).isEqualTo(ruleId);
+        assertThat(afterReteach.version()).isEqualTo(2);
+        assertThat(afterReteach.previousRuleText()).isEqualTo("Đơn hàng trên 500 cái được chiết khấu 10%.");
+        assertThat(afterReteach.active()).isTrue();
+        assertThat(afterReteach.confidenceScore()).isEqualTo(0.90);
+        assertThat(afterReteach.failCount()).isEqualTo(0);
+        assertThat(afterReteach.quarantinedReason()).isNull();
+    }
 }

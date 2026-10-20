@@ -121,21 +121,21 @@ const calcPercent = (count) => {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 1000;
   padding: 20px;
 }
 
 .modal-card {
   width: 100%;
   max-width: 520px;
-  background: var(--bg-card);
+  background: #FFFFFF;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: modalEnter 0.2s ease-out;
@@ -153,8 +153,9 @@ const calcPercent = (count) => {
 }
 
 .modal-header {
-  padding: 16px 20px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--border-subtle);
+  background: #F8FAFD;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -167,19 +168,19 @@ const calcPercent = (count) => {
 }
 
 .title-icon {
-  color: #818cf8;
+  color: var(--accent-primary);
 }
 
 .modal-title {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 1.02rem;
+  font-weight: 700;
   color: var(--text-main);
 }
 
 .btn-close {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-size: 1.5rem;
   cursor: pointer;
   line-height: 1;
@@ -187,11 +188,11 @@ const calcPercent = (count) => {
 }
 
 .btn-close:hover {
-  color: #ffffff;
+  color: var(--text-main);
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -205,7 +206,8 @@ const calcPercent = (count) => {
 }
 
 .meta-label {
-  color: var(--text-dim);
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .meta-value {
@@ -218,13 +220,16 @@ const calcPercent = (count) => {
 }
 
 .meta-value.bold {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .font-mono {
   font-family: var(--font-mono);
   font-size: 0.78rem;
-  color: #a5b4fc;
+  color: var(--accent-primary);
+  background: #E8F0FE;
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 
 .engine-breakdown-section {
@@ -234,11 +239,11 @@ const calcPercent = (count) => {
 }
 
 .section-heading {
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.76rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -262,24 +267,24 @@ const calcPercent = (count) => {
 
 .engine-name {
   font-family: var(--font-mono);
-  color: #e2e8f0;
+  color: var(--text-main);
   font-weight: 600;
 }
 
 .engine-count {
-  color: var(--text-dim);
+  color: var(--text-secondary);
 }
 
 .progress-bar-bg {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 7px;
+  background: #E9EEF6;
   border-radius: var(--radius-full);
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: var(--accent-gradient);
+  background: var(--accent-primary);
   border-radius: var(--radius-full);
 }
 
@@ -295,25 +300,26 @@ const calcPercent = (count) => {
   align-items: flex-start;
   margin-top: 8px;
   padding: 10px 12px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: var(--radius-sm);
-  font-size: 0.74rem;
-  color: #c7d2fe;
+  background: #E8F0FE;
+  border: 1px solid #D3E3FD;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  color: #041E49;
   line-height: 1.5;
 }
 
 .info-note svg {
   flex-shrink: 0;
   margin-top: 2px;
-  stroke: #818cf8;
+  stroke: var(--accent-primary);
 }
 
 .modal-footer {
-  padding: 12px 20px;
+  padding: 12px 22px;
   border-top: 1px solid var(--border-subtle);
-  background: rgba(10, 15, 26, 0.4);
+  background: #F8FAFD;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 10px;
 }
 </style>

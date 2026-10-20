@@ -1,13 +1,14 @@
 # ============================================================
-# DocMind — docker-compose
+# DocMind — Full-Stack Docker Compose (1-Command Ubuntu & Dev Deploy)
 #   postgres        : PostgreSQL 16 + pgvector (host 5433 -> 5432)
-#   doc-service-py  : FastAPI document parser (host 8091)
-#   api-java        : Spring Boot 4 orchestrator + chat/RAG (host 8090)
-# Validate without a running daemon:
-#   docker compose -f docmind/docker-compose.yml config
-# NOTE: api-java/ and doc-service-py/ build contexts exist now; their
-# Dockerfiles are added in FEAT-003 / FEAT-002. `docker compose config`
-# only validates the file and does not require the Dockerfiles yet.
+#   doc-service-py  : FastAPI document parser + embedding engine (host 8091 -> 8091)
+#   api-java        : Spring Boot 4 orchestrator + RAG + Fanpage Bot (host 8090 -> 8090)
+#   frontend        : Vue 3 SPA + Nginx Reverse Proxy /api -> api-java:8090 (host 3000 -> 80)
+#   tunnel          : Cloudflare Quick Tunnel (Tự động cấp link https://*.trycloudflare.com
+#                     miễn phí có sẵn SSL cho Chrome & Facebook Webhook mà không cần mua Domain)
+#
+# Quick start (Ubuntu / Linux / macOS / Windows):
+#   chmod +x deploy.sh && ./deploy.sh
 # ============================================================
 
 services:
@@ -42,6 +43,12 @@ services:
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
       # false = không ghi artifact debug (ảnh render, JSON trung gian) ra đĩa.
       - DOCMIND_PERSIST_ARTIFACTS=${DOCMIND_PERSIST_ARTIFACTS:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   api-java:
@@ -55,7 +62,8 @@ services:
       doc-service-py:
         condition: service_started
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     environment:
       # Trong mạng compose dùng hostname service + cổng nội bộ 5432.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/docmind
@@ -83,6 +91,37 @@ services:
       - ./.env:/app/.env:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8090/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: docmind-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      api-java:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: docmind-tunnel
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      frontend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

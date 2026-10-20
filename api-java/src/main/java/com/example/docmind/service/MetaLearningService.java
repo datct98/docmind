@@ -1,8 +1,10 @@
 package com.example.docmind.service;
 
 import com.example.docmind.dto.LearnedRuleDto;
+import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.entity.FeedbackLogEntity;
 import com.example.docmind.entity.LearnedRuleEntity;
+import com.example.docmind.exception.ResourceNotFoundException;
 import com.example.docmind.repository.FeedbackLogRepository;
 import com.example.docmind.repository.LearnedRuleRepository;
 import com.example.docmind.service.bot.AgentSkillService;
@@ -20,6 +22,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -28,14 +32,19 @@ import java.util.regex.Pattern;
  * Service xử lý vòng lặp Meta-Learning (F9, F10, F11):
  * - Trích xuất nguyên nhân gốc rễ (root_cause) và quy tắc tổng quát (generalized_rule) qua LLM hoặc heuristic fallback.
  * - Loại bỏ các dữ kiện dễ biến động (giá tiền, số lượng, ngày tháng).
- * - Khử trùng lặp và gộp quy tắc tương đồng (deduplication với cosine similarity >= 0.85).
+ * - Khử trùng lặp và tiến hóa quy tắc tương đồng (Smart Rule Evolution với cosine similarity >= 0.85, lưu previous_rule_text & tăng version).
  * - Tự động phát hiện phản hồi đính chính trong hội thoại chat (conversational correction detection).
+ * - Selective Blame Attribution & Auto-Quarantine Circuit Breaker khi quy tắc bị báo sai lặp lại.
  */
 @Service
 public class MetaLearningService {
 
     private static final Logger log = LoggerFactory.getLogger(MetaLearningService.class);
     private static final double SIMILARITY_THRESHOLD = 0.85;
+    private static final int MAX_KEYWORDS_PER_RULE = 8;
+    public static final double QUARANTINE_CONFIDENCE_THRESHOLD = 0.45;
+    public static final String AUTO_QUARANTINE_REASON =
+            "Tự động tạm ngắt do bị báo sai lặp lại — cần kiểm tra lại nội dung quy tắc";
 
     private static final Pattern DATE_PATTERN =
             Pattern.compile("(?i)\\b\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}\\b|\\b\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4}\\b");
@@ -87,6 +96,15 @@ public class MetaLearningService {
             "được", "bị", "các", "những", "một", "này", "đó", "kia", "nào", "gì", "sao",
             "tôi", "em", "anh", "chị", "hãy", "biết", "bao", "nhiêu", "thế"
     );
+
+    private static final Set<String> TRIGGER_STOP_WORDS = Set.of(
+            "khi", "xử", "lý", "câu", "hỏi", "tình", "huống", "liên", "quan", "đến",
+            "khách", "hàng", "về", "mức", "chính", "sách", "quy", "định", "là", "bao",
+            "nhiêu", "như", "thế", "nào", "sao", "có", "không", "cho", "của", "trong",
+            "theo", "với", "các", "những", "một", "được", "và", "hoặc", "hay", "thì", "phần", "trăm"
+    );
+
+    private final ThreadLocal<Set<UUID>> penalizedInCurrentFeedback = ThreadLocal.withInitial(LinkedHashSet::new);
 
     private final LearnedRuleRepository learnedRuleRepository;
     private final FeedbackLogRepository feedbackLogRepository;
@@ -387,7 +405,7 @@ public class MetaLearningService {
                                             String userCorrection,
                                             String conversationId,
                                             String retrievedContext) {
-        return learnFromFeedback(question, faultyAnswer, userCorrection, conversationId, retrievedContext, null);
+        return learnFromFeedback(question, faultyAnswer, userCorrection, conversationId, retrievedContext, null, null);
     }
 
     @Transactional
@@ -397,77 +415,424 @@ public class MetaLearningService {
                                             String conversationId,
                                             String retrievedContext,
                                             String pageIdRaw) {
+        return learnFromFeedback(question, faultyAnswer, userCorrection, conversationId, retrievedContext, pageIdRaw, null);
+    }
+
+    @Transactional
+    public LearnedRuleDto learnFromFeedback(String question,
+                                            String faultyAnswer,
+                                            String userCorrection,
+                                            String conversationId,
+                                            String retrievedContext,
+                                            String pageIdRaw,
+                                            List<UUID> appliedRuleIds) {
         UUID pageId = parsePageId(pageIdRaw);
-        ExtractedRule extracted = extractRule(question, faultyAnswer, userCorrection, retrievedContext);
+        try {
+            // 0. Selective Blame Attribution & Auto-Quarantine Circuit Breaker cho các quy tắc vừa áp dụng ở câu trả lời bị báo sai
+            if (appliedRuleIds != null && !appliedRuleIds.isEmpty() && penalizedInCurrentFeedback.get().isEmpty()) {
+                recordNegativeFeedbackAndAutoQuarantine(appliedRuleIds, question, faultyAnswer, userCorrection);
+            }
 
-        String textToEmbed = extracted.triggerCondition() + " " + extracted.generalizedRule();
-        float[] embedding = embeddingClient.embed(textToEmbed);
+            ExtractedRule extracted = extractRule(question, faultyAnswer, userCorrection, retrievedContext);
 
-        // Khử trùng lặp / Gộp quy tắc tương đồng nếu cosine similarity >= 0.85
-        LearnedRuleEntity ruleEntity = deduplicateOrSaveRule(extracted, embedding, pageId);
+            String textToEmbed = extracted.triggerCondition() + " " + extracted.generalizedRule();
+            float[] embedding = embeddingClient.embed(textToEmbed);
 
-        // Ghi nhận log phản hồi vào feedback_logs
-        FeedbackLogEntity logEntry = FeedbackLogEntity.builder()
-                .id(UUID.randomUUID())
-                .conversationId(conversationId)
-                .question(question)
-                .retrievedContext(retrievedContext)
-                .faultyAnswer(faultyAnswer)
-                .userCorrection(userCorrection)
-                .extractedRuleId(ruleEntity.getId())
-                .pageId(pageId)
-                .createdAt(Instant.now())
-                .build();
-        feedbackLogRepository.save(logEntry);
+            // Khử trùng lặp / Tiến hóa quy tắc tương đồng nếu cosine similarity >= 0.85 và cùng phạm vi pageId
+            LearnedRuleEntity ruleEntity = deduplicateOrSaveRule(
+                    extracted, embedding, pageId, question, penalizedInCurrentFeedback.get());
 
-        if (agentSkillService != null) {
-            agentSkillService.syncSkillFromFeedbackIfApplicable(
-                    question,
-                    userCorrection,
-                    extracted.generalizedRule(),
-                    extracted.retrievalKeywords(),
-                    pageId
-            );
+            // Nếu client không truyền applied_rule_ids và đây là quy tắc mới (không phải vừa tiến hóa một quy tắc cũ),
+            // tự động đối chiếu các quy tắc đang active đã khớp từ khóa với câu hỏi và liên quan tới lỗi sai
+            if ((appliedRuleIds == null || appliedRuleIds.isEmpty())
+                    && penalizedInCurrentFeedback.get().isEmpty()
+                    && ruleEntity.getVersion() <= 1
+                    && ruleEntity.getPreviousRuleText() == null) {
+                penalizeMatchedActiveRulesForQuestion(pageId, question, faultyAnswer, userCorrection, ruleEntity.getId());
+            }
+
+            // Ghi nhận log phản hồi vào feedback_logs
+            FeedbackLogEntity logEntry = FeedbackLogEntity.builder()
+                    .id(UUID.randomUUID())
+                    .conversationId(conversationId)
+                    .question(question)
+                    .retrievedContext(retrievedContext)
+                    .faultyAnswer(faultyAnswer)
+                    .userCorrection(userCorrection)
+                    .extractedRuleId(ruleEntity.getId())
+                    .pageId(pageId)
+                    .createdAt(Instant.now())
+                    .build();
+            feedbackLogRepository.save(logEntry);
+
+            if (agentSkillService != null) {
+                agentSkillService.syncSkillFromFeedbackIfApplicable(
+                        question,
+                        userCorrection,
+                        extracted.generalizedRule(),
+                        extracted.retrievalKeywords(),
+                        pageId
+                );
+            }
+
+            log.info("stage=meta_learning rule_id={} category={} page_id={} version={} deduplicated={}",
+                    ruleEntity.getId(), ruleEntity.getCategory(), pageId, ruleEntity.getVersion(),
+                    ruleEntity.getUpdatedAt().isAfter(ruleEntity.getCreatedAt()));
+
+            return LearnedRuleDto.fromEntity(ruleEntity);
+        } finally {
+            penalizedInCurrentFeedback.remove();
         }
+    }
 
-        log.info("stage=meta_learning rule_id={} category={} page_id={} deduplicated={}",
-                ruleEntity.getId(), ruleEntity.getCategory(), pageId, ruleEntity.getUpdatedAt().isAfter(ruleEntity.getCreatedAt()));
-
-        return LearnedRuleDto.fromEntity(ruleEntity);
+    private void penalizeMatchedActiveRulesForQuestion(UUID pageId,
+                                                       String question,
+                                                       String faultyAnswer,
+                                                       String userCorrection,
+                                                       UUID excludedRuleId) {
+        if (question == null || question.isBlank() || faultyAnswer == null || faultyAnswer.isBlank()) {
+            return;
+        }
+        try {
+            List<LearnedRuleEntity> activeRules = pageId != null
+                    ? learnedRuleRepository.findActiveForPage(pageId)
+                    : learnedRuleRepository.findByActiveTrue();
+            if (activeRules == null || activeRules.isEmpty()) {
+                return;
+            }
+            String lowerQ = question.toLowerCase(Locale.ROOT);
+            List<UUID> matchedRuleIds = new ArrayList<>();
+            for (LearnedRuleEntity r : activeRules) {
+                if (r == null || !r.isActive() || Objects.equals(r.getId(), excludedRuleId)) {
+                    continue;
+                }
+                boolean kwInQuestion = false;
+                if (r.getRetrievalKeywords() != null) {
+                    for (String kw : r.getRetrievalKeywords()) {
+                        if (kw != null && kw.strip().length() >= 3 && lowerQ.contains(kw.strip().toLowerCase(Locale.ROOT))) {
+                            kwInQuestion = true;
+                            break;
+                        }
+                    }
+                }
+                if (kwInQuestion && isRuleTopicallyRelatedToCorrection(r, question, faultyAnswer, userCorrection)) {
+                    matchedRuleIds.add(r.getId());
+                }
+            }
+            if (!matchedRuleIds.isEmpty()) {
+                recordNegativeFeedbackAndAutoQuarantine(matchedRuleIds, question, faultyAnswer, userCorrection);
+            }
+        } catch (Exception e) {
+            log.debug("Không thể tự động đối chiếu quy tắc gây lỗi theo câu hỏi: {}", e.getMessage());
+        }
     }
 
     /**
-     * Tìm quy tắc tương đồng theo vector similarity; nếu >= 0.85 thì hợp nhất từ khóa, ngược lại tạo mới.
+     * Selective Blame Attribution & Auto-Quarantine Circuit Breaker:
+     * - Chỉ trừ điểm tín nhiệm (confidence_score) và tăng fail_count đối với quy tắc thực sự liên quan
+     *   đến nội dung câu trả lời bị báo sai hoặc lời dạy đính chính (hoặc khi chỉ có duy nhất 1 quy tắc được áp dụng).
+     * - Nếu quy tắc bị báo sai lặp lại (fail_count >= 2, confidence_score < 0.45, fail_count > success_count),
+     *   tự động tạm ngắt (active = false) và gắn lý do cách ly (quarantined_reason).
      */
-    private LearnedRuleEntity deduplicateOrSaveRule(ExtractedRule extracted, float[] embedding, UUID pageId) {
+    @Transactional
+    public void recordNegativeFeedbackAndAutoQuarantine(List<UUID> appliedRuleIds,
+                                                        String question,
+                                                        String faultyAnswer,
+                                                        String userCorrection) {
+        if (appliedRuleIds == null || appliedRuleIds.isEmpty()) {
+            return;
+        }
+        boolean singleRuleApplied = appliedRuleIds.size() == 1;
+        for (UUID ruleId : appliedRuleIds) {
+            if (ruleId == null) {
+                continue;
+            }
+            LearnedRuleEntity rule = learnedRuleRepository.findById(ruleId).orElse(null);
+            if (rule == null) {
+                continue;
+            }
+            // Nếu quy tắc đã bị tạm ngắt/cách ly từ lượt trước thì không trừ điểm lặp lại để cho phép Admin dạy lại và khôi phục
+            if (!rule.isActive() && rule.getQuarantinedReason() != null && !rule.getQuarantinedReason().isBlank()) {
+                continue;
+            }
+            if (!singleRuleApplied && !isRuleTopicallyRelatedToCorrection(rule, question, faultyAnswer, userCorrection)) {
+                log.debug("stage=blame_attribution skipped_innocent_rule id={} category={}", rule.getId(), rule.getCategory());
+                continue;
+            }
+
+            int newFailCount = Math.max(0, rule.getFailCount()) + 1;
+            double currentConf = rule.getConfidenceScore() <= 0.0 ? 0.85 : rule.getConfidenceScore();
+            double newConf = Math.max(0.10, Math.round((currentConf - 0.25) * 100.0) / 100.0);
+            boolean shouldQuarantine = newFailCount >= 2
+                    && newConf < QUARANTINE_CONFIDENCE_THRESHOLD
+                    && newFailCount > rule.getSuccessCount();
+            boolean newActive = shouldQuarantine ? false : rule.isActive();
+            String newQuarantineReason = shouldQuarantine ? AUTO_QUARANTINE_REASON : rule.getQuarantinedReason();
+
+            rule.setFailCount(newFailCount);
+            rule.setConfidenceScore(newConf);
+            rule.setActive(newActive);
+            rule.setQuarantinedReason(newQuarantineReason);
+            rule.setUpdatedAt(Instant.now());
+            penalizedInCurrentFeedback.get().add(rule.getId());
+
+            try {
+                learnedRuleRepository.recordRuleNegativeFeedback(
+                        rule.getId(), newFailCount, newConf, newActive, newQuarantineReason);
+                learnedRuleRepository.save(rule);
+            } catch (Exception e) {
+                log.debug("Fallback save rule negative feedback for id={}: {}", rule.getId(), e.getMessage());
+            }
+
+            log.info("stage=blame_attribution penalized_rule id={} fail_count={} confidence={} quarantined={}",
+                    rule.getId(), newFailCount, newConf, shouldQuarantine);
+        }
+    }
+
+    static boolean isRuleTopicallyRelatedToCorrection(LearnedRuleEntity rule,
+                                                      String question,
+                                                      String faultyAnswer,
+                                                      String userCorrection) {
+        if (rule == null) {
+            return false;
+        }
+        String combinedFeedback = ((question != null ? question : "") + " "
+                + (faultyAnswer != null ? faultyAnswer : "") + " "
+                + (userCorrection != null ? userCorrection : "")).toLowerCase(Locale.ROOT);
+        String correctionAndFaulty = ((faultyAnswer != null ? faultyAnswer : "") + " "
+                + (userCorrection != null ? userCorrection : "")).toLowerCase(Locale.ROOT);
+
+        if (rule.getRetrievalKeywords() != null) {
+            for (String kw : rule.getRetrievalKeywords()) {
+                if (kw != null && kw.strip().length() >= 2) {
+                    String normKw = kw.strip().toLowerCase(Locale.ROOT);
+                    if (correctionAndFaulty.contains(normKw) || combinedFeedback.contains(normKw)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        String ruleText = ((rule.getTriggerCondition() != null ? rule.getTriggerCondition() : "") + " "
+                + (rule.getGeneralizedRule() != null ? rule.getGeneralizedRule() : "")).toLowerCase(Locale.ROOT);
+        String[] tokens = ruleText.split("(?U)[^\\p{L}\\p{Nd}]+");
+        int overlapCount = 0;
+        for (String token : tokens) {
+            String t = token.strip();
+            if (t.length() >= 3 && !STOP_WORDS.contains(t) && correctionAndFaulty.contains(t)) {
+                overlapCount++;
+                if (overlapCount >= 2) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Khôi phục quy tắc về phiên bản trước đó (1-Click Version Rollback).
+     */
+    @Transactional
+    public LearnedRuleDto rollbackRuleVersion(UUID ruleId) {
+        LearnedRuleEntity entity = learnedRuleRepository.findById(ruleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy quy tắc với id: " + ruleId));
+
+        if (entity.getPreviousRuleText() == null || entity.getPreviousRuleText().isBlank()) {
+            throw new IllegalArgumentException("Quy tắc này chưa có phiên bản trước để khôi phục.");
+        }
+
+        String restoredRule = entity.getPreviousRuleText().strip();
+        int currentVersion = entity.getVersion() <= 0 ? 1 : entity.getVersion();
+        int newVersion = Math.max(1, currentVersion - 1);
+        double restoredConfidence = 0.85;
+        String trigger = entity.getTriggerCondition() != null ? entity.getTriggerCondition() : "";
+        float[] embedding = embeddingClient.embed(trigger + " " + restoredRule);
+
+        entity.setGeneralizedRule(restoredRule);
+        entity.setPreviousRuleText(null);
+        entity.setVersion(newVersion);
+        entity.setActive(true);
+        entity.setConfidenceScore(restoredConfidence);
+        entity.setFailCount(0);
+        entity.setQuarantinedReason(null);
+        entity.setUpdatedAt(Instant.now());
+
+        try {
+            if (entity.getPageId() != null) {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(),
+                        entity.getCategory(),
+                        trigger,
+                        entity.getRootCause(),
+                        restoredRule,
+                        entity.getRetrievalKeywords(),
+                        true,
+                        embedding,
+                        entity.getPageId()
+                );
+            } else {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(),
+                        entity.getCategory(),
+                        trigger,
+                        entity.getRootCause(),
+                        restoredRule,
+                        entity.getRetrievalKeywords(),
+                        true,
+                        embedding
+                );
+            }
+            learnedRuleRepository.updateRuleEvolutionMetadata(entity.getId(), newVersion, null, restoredConfidence, null);
+            learnedRuleRepository.recordRuleNegativeFeedback(entity.getId(), 0, restoredConfidence, true, null);
+            learnedRuleRepository.save(entity);
+        } catch (Exception e) {
+            learnedRuleRepository.save(entity);
+        }
+
+        log.info("stage=rule_rollback rule_id={} restored_version={}", entity.getId(), newVersion);
+        return LearnedRuleDto.fromEntity(entity);
+    }
+
+    /**
+     * Củng cố ngầm (Implicit Conversion Reinforcement) khi cuộc hội thoại thu thập được SĐT / đặt lịch thành công.
+     */
+    @Transactional
+    public void recordConversionSuccess(UUID pageId,
+                                        List<FanpageBotRequest.ConversationTurn> history,
+                                        String latestMessage) {
+        StringBuilder sb = new StringBuilder();
+        if (history != null) {
+            for (FanpageBotRequest.ConversationTurn turn : history) {
+                if (turn != null && turn.content() != null && !turn.content().isBlank()) {
+                    sb.append(turn.content()).append(' ');
+                }
+            }
+        }
+        if (latestMessage != null && !latestMessage.isBlank()) {
+            sb.append(latestMessage);
+        }
+        String conversationText = sb.toString().toLowerCase(Locale.ROOT);
+        if (conversationText.isBlank()) {
+            return;
+        }
+
+        try {
+            List<LearnedRuleEntity> activeRules = pageId != null
+                    ? learnedRuleRepository.findActiveForPage(pageId)
+                    : learnedRuleRepository.findByActiveTrue();
+            if (activeRules != null) {
+                for (LearnedRuleEntity rule : activeRules) {
+                    if (rule == null || !rule.isActive()) {
+                        continue;
+                    }
+                    boolean matched = false;
+                    if (rule.getRetrievalKeywords() != null) {
+                        for (String kw : rule.getRetrievalKeywords()) {
+                            if (kw != null && kw.strip().length() >= 3
+                                    && conversationText.contains(kw.strip().toLowerCase(Locale.ROOT))) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (matched) {
+                        double currentConf = rule.getConfidenceScore() <= 0.0 ? 0.85 : rule.getConfidenceScore();
+                        double boostedConf = Math.min(0.99, Math.round((currentConf + 0.03) * 100.0) / 100.0);
+                        rule.setSuccessCount(Math.max(0, rule.getSuccessCount()) + 1);
+                        rule.setConfidenceScore(boostedConf);
+                        rule.setUpdatedAt(Instant.now());
+                        learnedRuleRepository.recordRuleConversionSuccess(rule.getId(), 0.03);
+                        learnedRuleRepository.save(rule);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Không thể ghi nhận conversion reinforcement cho learned_rules: {}", e.getMessage());
+        }
+
+        if (agentSkillService != null) {
+            try {
+                agentSkillService.recordConversionSuccess(pageId, conversationText);
+            } catch (Exception e) {
+                log.debug("Không thể ghi nhận conversion reinforcement cho agent_skills: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Tìm quy tắc tương đồng theo vector similarity; nếu >= 0.85 và cùng phạm vi pageId thì tiến hóa quy tắc
+     * (lưu previous_rule_text, tăng version, cập nhật generalized_rule mới, giới hạn tối đa 8 từ khóa), ngược lại tạo mới.
+     */
+    private LearnedRuleEntity deduplicateOrSaveRule(ExtractedRule extracted,
+                                                    float[] embedding,
+                                                    UUID pageId,
+                                                    String question,
+                                                    Set<UUID> penalizedRuleIds) {
         if (embedding != null) {
             try {
                 List<LearnedRuleEntity> similar = pageId != null
-                        ? learnedRuleRepository.searchSimilarActiveRules(embedding, SIMILARITY_THRESHOLD, 1, pageId)
-                        : learnedRuleRepository.searchSimilarActiveRules(embedding, SIMILARITY_THRESHOLD, 1);
-                if (!similar.isEmpty()) {
-                    LearnedRuleEntity existing = similar.get(0);
-                    // Hợp nhất từ khóa truy vấn
-                    Set<String> mergedKeywords = new LinkedHashSet<>();
-                    if (existing.getRetrievalKeywords() != null) {
-                        for (String k : existing.getRetrievalKeywords()) {
-                            if (k != null && !k.isBlank()) mergedKeywords.add(k.strip());
-                        }
+                        ? learnedRuleRepository.searchSimilarActiveRules(embedding, SIMILARITY_THRESHOLD, 5, pageId)
+                        : learnedRuleRepository.searchSimilarActiveRules(embedding, SIMILARITY_THRESHOLD, 5);
+                LearnedRuleEntity existing = similar == null ? null : similar.stream()
+                        .filter(r -> r != null && Objects.equals(r.getPageId(), pageId))
+                        .findFirst()
+                        .orElse(null);
+
+                if (existing == null) {
+                    List<LearnedRuleEntity> evoSimilar =
+                            learnedRuleRepository.searchSimilarRulesForEvolution(embedding, SIMILARITY_THRESHOLD, 5, pageId);
+                    if (evoSimilar != null) {
+                        existing = evoSimilar.stream()
+                                .filter(r -> r != null && Objects.equals(r.getPageId(), pageId))
+                                .findFirst()
+                                .orElse(null);
                     }
-                    if (extracted.retrievalKeywords() != null) {
-                        for (String k : extracted.retrievalKeywords()) {
-                            if (k != null && !k.isBlank()) mergedKeywords.add(k.strip());
-                        }
+                }
+
+                if (existing == null) {
+                    existing = findCandidateRuleByTriggerSimilarity(extracted, question, pageId);
+                }
+
+                if (existing != null) {
+                    boolean penalizedInThisTurn = penalizedRuleIds != null && penalizedRuleIds.contains(existing.getId());
+                    // Nếu quy tắc vừa bị cầu chì Auto-Quarantine ngắt ngay trong lượt báo sai này, giữ nguyên trạng thái cách ly
+                    if (penalizedInThisTurn && !existing.isActive()) {
+                        return existing;
                     }
 
+                    // Hợp nhất từ khóa truy vấn nhưng giới hạn tối đa MAX_KEYWORDS_PER_RULE (8) để chống phình từ khóa (Keyword Bloat)
+                    Set<String> mergedKeywords = mergeKeywordsWithCap(
+                            existing.getRetrievalKeywords(),
+                            extracted.retrievalKeywords(),
+                            MAX_KEYWORDS_PER_RULE
+                    );
                     String[] kwArray = mergedKeywords.toArray(new String[0]);
+
+                    String oldRuleText = existing.getGeneralizedRule();
+                    String evolvedRuleText = (extracted.generalizedRule() != null && !extracted.generalizedRule().isBlank())
+                            ? extracted.generalizedRule()
+                            : existing.getGeneralizedRule();
+                    String evolvedTrigger = (extracted.triggerCondition() != null && !extracted.triggerCondition().isBlank())
+                            ? extracted.triggerCondition()
+                            : existing.getTriggerCondition();
+                    String evolvedRootCause = (extracted.rootCause() != null && !extracted.rootCause().isBlank())
+                            ? extracted.rootCause()
+                            : existing.getRootCause();
+                    String evolvedCategory = (extracted.category() != null && !extracted.category().isBlank())
+                            ? extracted.category()
+                            : existing.getCategory();
+                    int currentVersion = existing.getVersion() <= 0 ? 1 : existing.getVersion();
+                    int nextVersion = currentVersion + 1;
+                    double targetConfidence = penalizedInThisTurn ? existing.getConfidenceScore() : 0.90;
+                    int targetFailCount = penalizedInThisTurn ? existing.getFailCount() : 0;
+
                     if (pageId != null) {
                         learnedRuleRepository.updateRuleWithEmbedding(
                                 existing.getId(),
-                                existing.getCategory(),
-                                existing.getTriggerCondition(),
-                                existing.getRootCause(),
-                                existing.getGeneralizedRule(),
+                                evolvedCategory,
+                                evolvedTrigger,
+                                evolvedRootCause,
+                                evolvedRuleText,
                                 kwArray,
                                 true,
                                 embedding,
@@ -476,18 +841,61 @@ public class MetaLearningService {
                     } else {
                         learnedRuleRepository.updateRuleWithEmbedding(
                                 existing.getId(),
-                                existing.getCategory(),
-                                existing.getTriggerCondition(),
-                                existing.getRootCause(),
-                                existing.getGeneralizedRule(),
+                                evolvedCategory,
+                                evolvedTrigger,
+                                evolvedRootCause,
+                                evolvedRuleText,
                                 kwArray,
                                 true,
                                 embedding
                         );
                     }
+                    learnedRuleRepository.updateRuleEvolutionMetadata(
+                            existing.getId(),
+                            nextVersion,
+                            oldRuleText,
+                            targetConfidence,
+                            null
+                    );
+                    if (penalizedInThisTurn) {
+                        learnedRuleRepository.recordRuleNegativeFeedback(
+                                existing.getId(),
+                                targetFailCount,
+                                targetConfidence,
+                                true,
+                                null
+                        );
+                    }
 
+                    existing.setCategory(evolvedCategory);
+                    existing.setTriggerCondition(evolvedTrigger);
+                    existing.setRootCause(evolvedRootCause);
+                    existing.setGeneralizedRule(evolvedRuleText);
                     existing.setRetrievalKeywords(kwArray);
-                    existing.setUpdatedAt(Instant.now());
+                    existing.setActive(true);
+                    existing.setVersion(nextVersion);
+                    existing.setPreviousRuleText(oldRuleText);
+                    existing.setConfidenceScore(targetConfidence);
+                    existing.setFailCount(targetFailCount);
+                    existing.setQuarantinedReason(null);
+                    Instant updatedAt = Instant.now();
+                    existing.setUpdatedAt(updatedAt);
+
+                    learnedRuleRepository.findById(existing.getId()).ifPresent(managed -> {
+                        managed.setCategory(evolvedCategory);
+                        managed.setTriggerCondition(evolvedTrigger);
+                        managed.setRootCause(evolvedRootCause);
+                        managed.setGeneralizedRule(evolvedRuleText);
+                        managed.setRetrievalKeywords(kwArray);
+                        managed.setActive(true);
+                        managed.setVersion(nextVersion);
+                        managed.setPreviousRuleText(oldRuleText);
+                        managed.setConfidenceScore(targetConfidence);
+                        managed.setFailCount(targetFailCount);
+                        managed.setQuarantinedReason(null);
+                        managed.setUpdatedAt(updatedAt);
+                        learnedRuleRepository.save(managed);
+                    });
                     return existing;
                 }
             } catch (Exception e) {
@@ -495,11 +903,10 @@ public class MetaLearningService {
             }
         }
 
-        // Tạo mới quy tắc
+        // Tạo mới quy tắc (giới hạn tối đa 8 từ khóa sạch)
         UUID newId = UUID.randomUUID();
-        String[] kwArray = extracted.retrievalKeywords() != null
-                ? extracted.retrievalKeywords().toArray(new String[0])
-                : new String[0];
+        Set<String> cappedInitialKeywords = mergeKeywordsWithCap(null, extracted.retrievalKeywords(), MAX_KEYWORDS_PER_RULE);
+        String[] kwArray = cappedInitialKeywords.toArray(new String[0]);
 
         try {
             if (pageId != null) {
@@ -537,6 +944,8 @@ public class MetaLearningService {
                     .retrievalKeywords(kwArray)
                     .active(true)
                     .pageId(pageId)
+                    .confidenceScore(0.85)
+                    .version(1)
                     .createdAt(Instant.now())
                     .updatedAt(Instant.now())
                     .build();
@@ -552,9 +961,132 @@ public class MetaLearningService {
                 .retrievalKeywords(kwArray)
                 .active(true)
                 .pageId(pageId)
+                .confidenceScore(0.85)
+                .version(1)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
+    }
+
+    private LearnedRuleEntity findCandidateRuleByTriggerSimilarity(ExtractedRule extracted,
+                                                                   String question,
+                                                                   UUID pageId) {
+        try {
+            List<LearnedRuleEntity> candidates = learnedRuleRepository.searchRulesByPage(
+                    null, "", "", pageId, false, pageId == null);
+            if (candidates == null || candidates.isEmpty()) {
+                candidates = pageId != null
+                        ? learnedRuleRepository.findActiveForPage(pageId)
+                        : learnedRuleRepository.findByActiveTrue();
+            }
+            if (candidates == null || candidates.isEmpty()) {
+                return null;
+            }
+            LearnedRuleEntity best = null;
+            double bestScore = 0.0;
+            for (LearnedRuleEntity candidate : candidates) {
+                if (candidate == null || !Objects.equals(candidate.getPageId(), pageId)) {
+                    continue;
+                }
+                if (!candidate.isActive() && (candidate.getQuarantinedReason() == null || candidate.getQuarantinedReason().isBlank())) {
+                    continue;
+                }
+                double sim = computeTriggerSimilarity(
+                        extracted != null ? extracted.triggerCondition() : null,
+                        question,
+                        candidate.getTriggerCondition()
+                );
+                if (sim >= SIMILARITY_THRESHOLD && sim > bestScore) {
+                    bestScore = sim;
+                    best = candidate;
+                }
+            }
+            return best;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static double computeTriggerSimilarity(String newTrigger, String question, String existingTrigger) {
+        if (existingTrigger == null || existingTrigger.isBlank()) {
+            return 0.0;
+        }
+        double scoreWithDigits = Math.max(
+                diceSimilarity(extractCoreTriggerTokens(newTrigger, true), extractCoreTriggerTokens(existingTrigger, true)),
+                diceSimilarity(extractCoreTriggerTokens(question, true), extractCoreTriggerTokens(existingTrigger, true))
+        );
+        double scoreWithoutDigits = Math.max(
+                diceSimilarity(extractCoreTriggerTokens(newTrigger, false), extractCoreTriggerTokens(existingTrigger, false)),
+                diceSimilarity(extractCoreTriggerTokens(question, false), extractCoreTriggerTokens(existingTrigger, false))
+        );
+        return Math.max(scoreWithDigits, scoreWithoutDigits);
+    }
+
+    private static Set<String> extractCoreTriggerTokens(String text, boolean includeDigits) {
+        if (text == null || text.isBlank()) {
+            return Set.of();
+        }
+        String[] rawTokens = text.toLowerCase(Locale.ROOT).split("(?U)[^\\p{L}\\p{Nd}]+");
+        Set<String> tokens = new LinkedHashSet<>();
+        for (String raw : rawTokens) {
+            String t = raw.strip();
+            if (t.length() < 2 || TRIGGER_STOP_WORDS.contains(t) || STOP_WORDS.contains(t)) {
+                continue;
+            }
+            if (!includeDigits && t.matches("\\d+")) {
+                continue;
+            }
+            tokens.add(t);
+        }
+        return tokens;
+    }
+
+    private static double diceSimilarity(Set<String> a, Set<String> b) {
+        if (a == null || b == null || a.isEmpty() || b.isEmpty()) {
+            return 0.0;
+        }
+        int intersection = 0;
+        for (String token : a) {
+            if (b.contains(token)) {
+                intersection++;
+            }
+        }
+        return (2.0 * intersection) / (a.size() + b.size());
+    }
+
+    private static Set<String> mergeKeywordsWithCap(String[] existingKeywords, List<String> newKeywords, int maxCap) {
+        Set<String> merged = new LinkedHashSet<>();
+        if (existingKeywords != null) {
+            for (String k : existingKeywords) {
+                if (k != null && !k.isBlank()) {
+                    merged.add(k.strip());
+                    if (merged.size() >= 3) {
+                        break;
+                    }
+                }
+            }
+        }
+        if (newKeywords != null) {
+            for (String k : newKeywords) {
+                if (merged.size() >= maxCap) {
+                    break;
+                }
+                if (k != null && !k.isBlank()) {
+                    merged.add(k.strip());
+                }
+            }
+        }
+        if (existingKeywords != null && merged.size() < maxCap) {
+            for (String k : existingKeywords) {
+                if (merged.size() >= maxCap) {
+                    break;
+                }
+                if (k != null && !k.isBlank()) {
+                    merged.add(k.strip());
+                }
+            }
+        }
+        return merged;
     }
 
     private static UUID parsePageId(String pageIdRaw) {

@@ -19,343 +19,720 @@
           </div>
           <div>
             <div class="title-with-badge">
-              <h3 class="modal-title">Bộ nhớ Kinh nghiệm AI (AI Playbook)</h3>
+              <h3 class="modal-title">Bộ nhớ Kinh nghiệm & Tiến hóa AI (Harness² Studio)</h3>
               <span class="badge badge-accent">{{ rules.length }} quy tắc</span>
+              <span v-if="harnessRuns.length > 0" class="badge badge-harness">
+                🧬 {{ harnessRuns.length }} đợt tự tiến hóa
+              </span>
             </div>
-            <p class="modal-subtitle">Kho quy tắc suy luận meta-learning tự động đúc kết từ phản hồi & hiệu chỉnh hội thoại</p>
+            <p class="modal-subtitle">
+              Thư viện kinh nghiệm Cue – Lesson – Evidence & Lịch sử tối ưu hóa tương phản Propose–Probe–Select
+            </p>
           </div>
         </div>
         <button class="btn-close" @click="handleClose">×</button>
       </div>
 
-      <!-- Action & Filter Bar -->
-      <div class="toolbar-section">
-        <!-- Search & Add Button Row -->
-        <div class="search-action-row">
-          <div class="search-input-wrapper">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input 
-              v-model="searchQuery" 
-              type="text" 
-              class="search-input" 
-              placeholder="Tìm kiếm theo quy tắc, nguyên nhân lỗi, từ khóa..."
-              @input="handleSearch"
-            />
-            <button v-if="searchQuery" class="btn-clear-search" @click="searchQuery = ''; handleSearch()">×</button>
-          </div>
-
-          <button class="btn btn-primary btn-sm" @click="openCreateForm">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>Thêm quy tắc mới</span>
-          </button>
-        </div>
-
-        <!-- Page / Channel Filter Row -->
-        <div v-if="pages && pages.length > 0" class="filter-chips-row page-filter-row">
-          <div class="filter-group">
-            <span class="filter-group-label">Phạm vi Page / Kênh:</span>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedPageFilter === 'ALL' }" 
-              @click="selectedPageFilter = 'ALL'"
-            >
-              Tất cả ({{ rules.length }})
-            </button>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedPageFilter === 'GLOBAL' }" 
-              @click="selectedPageFilter = 'GLOBAL'"
-            >
-              🌐 Toàn hệ thống ({{ globalRulesCount }})
-            </button>
-            <button 
-              v-for="p in pages" 
-              :key="p.id"
-              class="pill-filter" 
-              :class="{ active: selectedPageFilter === p.id }" 
-              @click="selectedPageFilter = p.id"
-            >
-              📂 {{ p.name }} ({{ getPageRulesCount(p.id) }})
-            </button>
-          </div>
-        </div>
-
-        <!-- Filter Chips Row -->
-        <div class="filter-chips-row">
-          <!-- Category Filters -->
-          <div class="filter-group">
-            <span class="filter-group-label">Danh mục:</span>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedCategory === '' }" 
-              @click="setCategory('')"
-            >
-              Tất cả ({{ categoryCounts.all }})
-            </button>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedCategory === 'PRICING' }" 
-              @click="setCategory('PRICING')"
-            >
-              Bảng giá ({{ categoryCounts.pricing }})
-            </button>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedCategory === 'DISCOUNT' }" 
-              @click="setCategory('DISCOUNT')"
-            >
-              Chiết khấu ({{ categoryCounts.discount }})
-            </button>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedCategory === 'POLICY' }" 
-              @click="setCategory('POLICY')"
-            >
-              Chính sách ({{ categoryCounts.policy }})
-            </button>
-            <button 
-              class="pill-filter" 
-              :class="{ active: selectedCategory === 'GENERAL' }" 
-              @click="setCategory('GENERAL')"
-            >
-              Chung ({{ categoryCounts.general }})
-            </button>
-          </div>
-
-          <!-- Status Filters -->
-          <div class="filter-group">
-            <span class="filter-group-label">Trạng thái:</span>
-            <button 
-              class="pill-filter" 
-              :class="{ active: statusFilter === 'all' }" 
-              @click="setStatusFilter('all')"
-            >
-              Tất cả
-            </button>
-            <button 
-              class="pill-filter pill-emerald" 
-              :class="{ active: statusFilter === 'active' }" 
-              @click="setStatusFilter('active')"
-            >
-              Đang bật ({{ activeCount }})
-            </button>
-            <button 
-              class="pill-filter pill-dim" 
-              :class="{ active: statusFilter === 'inactive' }" 
-              @click="setStatusFilter('inactive')"
-            >
-              Tắt ({{ inactiveCount }})
-            </button>
-          </div>
-        </div>
+      <!-- Main Navigation Tabs: Rules Library vs Evolution History -->
+      <div class="modal-tab-nav">
+        <button 
+          class="tab-nav-btn" 
+          :class="{ active: activeMainTab === 'rules' }"
+          @click="activeMainTab = 'rules'"
+        >
+          <span class="tab-icon">📚</span>
+          <span>Kho Thư viện Kinh nghiệm (Playbook)</span>
+          <span class="tab-counter">{{ rules.length }}</span>
+        </button>
+        <button 
+          class="tab-nav-btn" 
+          :class="{ active: activeMainTab === 'evolution' }"
+          @click="switchTabToEvolution"
+        >
+          <span class="tab-icon">🧬</span>
+          <span>Lịch sử Tự tiến hóa Harness²</span>
+          <span class="tab-counter counter-emerald">{{ harnessRuns.length }}</span>
+        </button>
       </div>
 
-      <!-- Create / Edit Form Overlay -->
-      <div v-if="editingRule || isCreating" class="rule-form-container">
-        <div class="form-header">
-          <h4 class="form-title">
-            {{ isCreating ? '✨ Thêm quy tắc kinh nghiệm mới' : '✏️ Chỉnh sửa quy tắc suy luận' }}
-          </h4>
-          <button class="btn-text-sm" @click="cancelEdit">Hủy</button>
+      <!-- ================================================================= -->
+      <!-- TAB 1: RULES & EXPERIENCE LIBRARY VIEW                            -->
+      <!-- ================================================================= -->
+      <template v-if="activeMainTab === 'rules'">
+        <!-- Always-On Token Budget Cap Meter -->
+        <div class="budget-meter-panel">
+          <div class="budget-header-row">
+            <div class="budget-label-group">
+              <span class="budget-icon">⚡</span>
+              <strong class="budget-title">Ngân sách Token Always-On (Prompt Budget Cap):</strong>
+              <span class="budget-utilization-tag" :class="budgetHealthClass">
+                {{ alwaysOnChars }} / {{ maxBudgetChars }} ký tự (~{{ Math.round(alwaysOnChars / 4) }} / 300 tokens) · {{ budgetUtilizationPercent }}%
+              </span>
+            </div>
+            <div class="budget-breakdown-pills">
+              <span class="breakdown-pill pill-inv">🛡️ {{ alwaysOnInvCount }} INV</span>
+              <span class="breakdown-pill pill-dom">🏢 {{ alwaysOnDomCount }} DOM</span>
+              <span class="breakdown-pill pill-ondemand">🔍 {{ onDemandCount }} On-Demand</span>
+            </div>
+          </div>
+
+          <div class="budget-progress-track">
+            <div 
+              class="budget-progress-fill" 
+              :class="budgetHealthClass" 
+              :style="{ width: `${Math.min(100, budgetUtilizationPercent)}%` }"
+            ></div>
+          </div>
+
+          <p class="budget-note-text" :class="budgetHealthClass">
+            <span v-if="alwaysOnChars <= 840">
+              ✅ <strong>Trạng thái tối ưu:</strong> Độ trễ prompt cực thấp (&lt;50ms), đầy đủ khoảng trống cho hội thoại.
+            </span>
+            <span v-else-if="alwaysOnChars <= maxBudgetChars">
+              ⚠️ <strong>Cảnh báo dung lượng:</strong> Sắp chạm ngưỡng trần 1200 ký tự ({{ alwaysOnChars }}/1200). Nên chuyển bớt quy tắc DOM ít dùng sang On-Demand.
+            </span>
+            <span v-else>
+              🚨 <strong>Cảnh báo Cắt tỉa:</strong> Vượt trần 1200 ký tự ({{ alwaysOnChars }}/1200). Backend sẽ tự động loại bỏ các quy tắc DOM có điểm tín nhiệm thấp nhất sang On-Demand để bảo vệ prompt.
+            </span>
+          </p>
         </div>
 
-        <div class="form-grid">
-          <div class="form-field full-width">
-            <label class="field-label required">Quy tắc tổng quát (Generalized Rule / Meta-Rule):</label>
-            <textarea 
-              v-model="formRule.generalized_rule" 
-              class="form-textarea" 
-              rows="3"
-              placeholder="Quy tắc chuẩn hóa suy luận không phụ thuộc vào số liệu hay giá tạm thời..."
-            ></textarea>
+        <!-- Action & Filter Bar -->
+        <div class="toolbar-section">
+          <!-- Search & Add Button Row -->
+          <div class="search-action-row">
+            <div class="search-input-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input 
+                v-model="searchQuery" 
+                type="text" 
+                class="search-input" 
+                placeholder="Tìm kiếm theo cue signal, quy tắc, bằng chứng, nguyên nhân lỗi..."
+                @input="handleSearch"
+              />
+              <button v-if="searchQuery" class="btn-clear-search" @click="searchQuery = ''; handleSearch()">×</button>
+            </div>
+
+            <button class="btn btn-primary btn-sm" @click="openCreateForm">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>Thêm quy tắc mới</span>
+            </button>
           </div>
 
-          <div class="form-field full-width">
-            <label class="field-label">Nguyên nhân lỗi trước đây (Root Cause):</label>
-            <input 
-              v-model="formRule.root_cause" 
-              type="text" 
-              class="form-input" 
-              placeholder="Ví dụ: AI áp dụng sai mức chiết khấu do nhầm lẫn giá Gross và Net..."
-            />
+          <!-- Dimension (INV vs DOM) & Always-On Filter Row -->
+          <div class="filter-chips-row dimension-filter-row">
+            <div class="filter-group">
+              <span class="filter-group-label">Chiều Harness²:</span>
+              <button 
+                class="pill-filter" 
+                :class="{ active: selectedDimension === '' }" 
+                @click="selectedDimension = ''"
+              >
+                Tất cả ({{ rules.length }})
+              </button>
+              <button 
+                class="pill-filter pill-inv-filter" 
+                :class="{ active: selectedDimension === 'INV' }" 
+                @click="selectedDimension = 'INV'"
+                title="Quy trình Bán hàng, Tâm lý & An toàn Bất biến (Xưng hô, khống chế bóng, chống xả giá, giữ chân khách)"
+              >
+                🛡️ INV — Quy trình Bất biến ({{ dimensionCounts.inv }})
+              </button>
+              <button 
+                class="pill-filter pill-dom-filter" 
+                :class="{ active: selectedDimension === 'DOM' }" 
+                @click="selectedDimension = 'DOM'"
+                title="Sự thật Nghiệp vụ, Bảng giá & Chính sách cụ thể của Page"
+              >
+                🏢 DOM — Nghiệp vụ Page ({{ dimensionCounts.dom }})
+              </button>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Cơ chế nạp:</span>
+              <button 
+                class="pill-filter" 
+                :class="{ active: selectedBudgetFilter === 'all' }" 
+                @click="selectedBudgetFilter = 'all'"
+              >
+                Tất cả
+              </button>
+              <button 
+                class="pill-filter pill-amber" 
+                :class="{ active: selectedBudgetFilter === 'always_on' }" 
+                @click="selectedBudgetFilter = 'always_on'"
+              >
+                ⚡ Always-On ({{ alwaysOnTotalCount }})
+              </button>
+              <button 
+                class="pill-filter pill-slate" 
+                :class="{ active: selectedBudgetFilter === 'on_demand' }" 
+                @click="selectedBudgetFilter = 'on_demand'"
+              >
+                🔍 On-Demand ({{ onDemandCount }})
+              </button>
+            </div>
           </div>
 
-          <div class="form-field">
-            <label class="field-label">Điều kiện kích hoạt (Trigger Condition - Tùy chọn):</label>
-            <input 
-              v-model="formRule.trigger_condition" 
-              type="text" 
-              class="form-input" 
-              placeholder="Để trống hệ thống sẽ tự sinh từ nội dung quy tắc..."
-            />
-          </div>
+          <!-- Page / Channel Filter Row -->
+          <div v-if="pages && pages.length > 0" class="filter-chips-row page-filter-row">
+            <div class="filter-group">
+              <span class="filter-group-label">Phạm vi Page / Kênh:</span>
+              <button 
+                class="pill-filter" 
+                :class="{ active: selectedPageFilter === 'ALL' }" 
+                @click="selectedPageFilter = 'ALL'"
+              >
+                Tất cả ({{ rules.length }})
+              </button>
+              <button 
+                class="pill-filter" 
+                :class="{ active: selectedPageFilter === 'GLOBAL' }" 
+                @click="selectedPageFilter = 'GLOBAL'"
+              >
+                🌐 Toàn hệ thống ({{ globalRulesCount }})
+              </button>
+              <button 
+                v-for="p in pages" 
+                :key="p.id"
+                class="pill-filter" 
+                :class="{ active: selectedPageFilter === p.id }" 
+                @click="selectedPageFilter = p.id"
+              >
+                📂 {{ p.name }} ({{ getPageRulesCount(p.id) }})
+              </button>
+            </div>
 
-          <div class="form-field">
-            <label class="field-label">Phân loại (Category):</label>
-            <select v-model="formRule.category" class="form-select">
-              <option value="POLICY">POLICY (Quy định & Kịch bản CSKH)</option>
-              <option value="PRICING">PRICING (Bảng giá)</option>
-              <option value="PRICING_CALCULATION">PRICING_CALCULATION (Tính giá & Combo)</option>
-              <option value="DISCOUNT">DISCOUNT (Chiết khấu)</option>
-              <option value="TABLE_LOOKUP">TABLE_LOOKUP (Tra cứu bảng)</option>
-              <option value="DATA_INTERPRETATION">DATA_INTERPRETATION (Diễn giải dữ liệu)</option>
-              <option value="GENERAL">GENERAL (Chung)</option>
-            </select>
-          </div>
-
-          <div class="form-field">
-            <label class="field-label">Áp dụng cho Page / Kênh:</label>
-            <select v-model="formRule.page_id" class="form-select">
-              <option value="">🌐 Toàn hệ thống (Mọi Page)</option>
-              <option v-for="p in pages" :key="p.id" :value="p.id">
-                📂 Theo Trang: {{ p.name }} ({{ p.industry }})
-              </option>
-            </select>
-          </div>
-
-          <div class="form-field">
-            <label class="field-label">Từ khóa mở rộng truy vấn (cách nhau bằng dấu phẩy):</label>
-            <input 
-              v-model="formKeywordsText" 
-              type="text" 
-              class="form-input" 
-              placeholder="số điện thoại, liên hệ tư vấn, bảng giá..."
-            />
+            <!-- Status Filters -->
+            <div class="filter-group">
+              <span class="filter-group-label">Trạng thái:</span>
+              <button 
+                class="pill-filter pill-emerald" 
+                :class="{ active: statusFilter === 'active' }" 
+                @click="setStatusFilter('active')"
+              >
+                Đang bật ({{ activeCount }})
+              </button>
+              <button 
+                class="pill-filter pill-dim" 
+                :class="{ active: statusFilter === 'inactive' }" 
+                @click="setStatusFilter('inactive')"
+              >
+                Tắt ({{ inactiveCount }})
+              </button>
+            </div>
           </div>
         </div>
 
-        <p v-if="formError" style="color: #f87171; font-size: 0.82rem; margin: 8px 0 0;">
-          ⚠️ {{ formError }}
-        </p>
+        <!-- Create / Edit Form Overlay -->
+        <div v-if="editingRule || isCreating" class="rule-form-container">
+          <div class="form-header">
+            <h4 class="form-title">
+              {{ isCreating ? '✨ Thêm quy tắc kinh nghiệm mới (Harness² Standard)' : '✏️ Chỉnh sửa quy tắc kinh nghiệm' }}
+            </h4>
+            <button class="btn-text-sm" @click="cancelEdit">Hủy</button>
+          </div>
 
-        <div class="form-footer">
-          <button class="btn btn-secondary btn-sm" @click="cancelEdit">Hủy</button>
-          <button 
-            class="btn btn-primary btn-sm" 
-            :disabled="!canSaveForm || isSaving" 
-            @click="saveRule"
-          >
-            <span v-if="!isSaving">{{ isCreating ? 'Lưu quy tắc mới' : 'Cập nhật thay đổi' }}</span>
-            <span v-else>Đang lưu...</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Rules List Body -->
-      <div class="modal-body rules-scroll-list">
-        <!-- Loading State -->
-        <div v-if="isLoading" class="loading-state">
-          <div class="btn-spinner"></div>
-          <span>Đang tải danh sách quy tắc...</span>
-        </div>
-
-        <!-- Empty State -->
-        <div v-else-if="filteredRules.length === 0" class="empty-rules-state">
-          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <p class="empty-title">Không tìm thấy quy tắc nào phù hợp</p>
-          <span class="empty-desc">Thử thay đổi bộ lọc Page / từ khóa hoặc bấm "Thêm quy tắc mới"</span>
-        </div>
-
-        <!-- Rules Cards Stream -->
-        <div v-else class="rules-list-container">
-          <div 
-            v-for="rule in filteredRules" 
-            :key="rule.id" 
-            class="rule-card"
-            :class="{ 'is-inactive': !rule.active }"
-          >
-            <!-- Card Top Bar: Category, Page Badge, Active Toggle & Actions -->
-            <div class="card-header-bar">
-              <div class="header-left-group">
-                <span class="category-badge" :class="getCategoryClass(rule.category)">
-                  {{ rule.category }}
-                </span>
-                <span class="page-scope-badge" :class="{ 'is-global': !rule.page_id }">
-                  {{ getPageLabel(rule.page_id) }}
-                </span>
-                <span class="time-stamp">{{ formatTime(rule.created_at) }}</span>
-              </div>
-
-              <div class="header-right-group">
-                <!-- Toggle Active Switch -->
-                <label class="switch-control" :title="rule.active ? 'Đang kích hoạt trong RAG prompt' : 'Đang tạm dừng'">
-                  <input 
-                    type="checkbox" 
-                    :checked="rule.active" 
-                    @change="handleToggleActive(rule)"
-                  />
-                  <span class="slider"></span>
-                  <span class="switch-label">{{ rule.active ? 'BẬT' : 'TẮT' }}</span>
+          <div class="form-grid">
+            <!-- Dimension Selector -->
+            <div class="form-field full-width">
+              <label class="field-label required">Phân loại Chiều Harness² (Dimension):</label>
+              <div class="dimension-radio-group">
+                <label class="dim-radio-card" :class="{ selected: formRule.dimension === 'INV' }">
+                  <input type="radio" v-model="formRule.dimension" value="INV" />
+                  <div class="dim-card-content">
+                    <strong class="dim-card-title">🛡️ INV (Quy trình & Tâm lý Bất biến)</strong>
+                    <span class="dim-card-desc">Xưng hô chuẩn xác, giới hạn 2 bóng, buông áp lực khi khách thoái thác, câu hỏi A/B. Ưu tiên cao nhất, không bị cắt tỉa.</span>
+                  </div>
                 </label>
-
-                <!-- Edit Button -->
-                <button class="icon-btn" title="Chỉnh sửa quy tắc" @click="startEdit(rule)">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-                    <path d="m15 5 4 4"/>
-                  </svg>
-                </button>
-
-                <!-- Delete Button -->
-                <button class="icon-btn btn-danger-icon" title="Xóa quy tắc" @click="confirmDelete(rule)">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 6h18"/>
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                  </svg>
-                </button>
+                <label class="dim-radio-card" :class="{ selected: formRule.dimension === 'DOM' }">
+                  <input type="radio" v-model="formRule.dimension" value="DOM" />
+                  <div class="dim-card-content">
+                    <strong class="dim-card-title">🏢 DOM (Sự thật Nghiệp vụ Page)</strong>
+                    <span class="dim-card-desc">Bảng giá niêm yết, phác đồ điều trị, combo, điều khoản bảo hành của Page. Tự động chuyển On-Demand nếu đầy ngân sách.</span>
+                  </div>
+                </label>
               </div>
             </div>
 
-            <!-- Generalized Rule (Main Point) -->
-            <div class="rule-content-block">
-              <div class="rule-main-text">
-                <span class="block-label">💡 Quy tắc suy luận (Meta-Rule):</span>
-                <p class="rule-body-text">{{ rule.generalized_rule }}</p>
+            <!-- Cue Signal -->
+            <div class="form-field full-width">
+              <label class="field-label required">Tín hiệu Kích hoạt Nhận diện (Cue Signal):</label>
+              <input 
+                v-model="formRule.cue_signal" 
+                type="text" 
+                class="form-input" 
+                placeholder="Ví dụ: Khách hỏi giá chung chung hoặc viết tắt 'giá sao b' trong giai đoạn DISCOVERY..."
+              />
+            </div>
+
+            <!-- Generalized Rule (Lesson) -->
+            <div class="form-field full-width">
+              <label class="field-label required">Bài học Khái quát & Nguyên tắc Hành vi (Lesson / Meta-Rule):</label>
+              <textarea 
+                v-model="formRule.generalized_rule" 
+                class="form-textarea" 
+                rows="3"
+                placeholder="Chỉ thị hành vi cụ thể cho bot, chuẩn hóa suy luận không phụ thuộc vào giá tạm thời..."
+              ></textarea>
+            </div>
+
+            <!-- Contrastive Evidence: Before & After -->
+            <div class="form-field full-width">
+              <label class="field-label">Bằng chứng Đối chiếu Tương phản (Contrastive Evidence):</label>
+              <div class="contrastive-inputs-grid">
+                <div class="contrast-col contrast-before-col">
+                  <span class="contrast-col-label text-danger">❌ Phản hồi Lỗi / Trước tối ưu (Before):</span>
+                  <textarea
+                    v-model="formEvidenceBefore"
+                    class="form-textarea contrast-ta-before"
+                    rows="3"
+                    placeholder="Ví dụ: Dạ em chào Chị Lan Anh! Bên em có gói mụn 1.5tr, nám 4.5tr, căng bóng 2.8tr..."
+                  ></textarea>
+                </div>
+                <div class="contrast-col contrast-after-col">
+                  <span class="contrast-col-label text-success">✅ Phản hồi Chuẩn mực / Sau tối ưu (After):</span>
+                  <textarea
+                    v-model="formEvidenceAfter"
+                    class="form-textarea contrast-ta-after"
+                    rows="3"
+                    placeholder="Ví dụ: Dạ em chào Anh ạ! Chi phí trị mụn bên em rất linh hoạt chỉ từ 650k/buổi đã kèm soi da AI 3D..."
+                  ></textarea>
+                </div>
               </div>
             </div>
 
-            <!-- Root Cause / Reason -->
-            <div v-if="rule.root_cause" class="meta-info-row">
-              <span class="meta-label">⚠️ Nguyên nhân lỗi:</span>
-              <span class="meta-val">{{ rule.root_cause }}</span>
+            <!-- Category & Page Scoping -->
+            <div class="form-field">
+              <label class="field-label">Danh mục nghiệp vụ (Category):</label>
+              <select v-model="formRule.category" class="form-select">
+                <option value="POLICY">POLICY (Quy định & Kịch bản CSKH)</option>
+                <option value="PRICING">PRICING (Bảng giá)</option>
+                <option value="PRICING_CALCULATION">PRICING_CALCULATION (Tính giá & Combo)</option>
+                <option value="DISCOUNT">DISCOUNT (Chiết khấu)</option>
+                <option value="TABLE_LOOKUP">TABLE_LOOKUP (Tra cứu bảng)</option>
+                <option value="COMMUNICATION">COMMUNICATION (Giao tiếp & Tâm lý)</option>
+                <option value="GENERAL">GENERAL (Chung)</option>
+              </select>
             </div>
 
-            <!-- Trigger Condition -->
-            <div v-if="rule.trigger_condition" class="meta-info-row">
-              <span class="meta-label">🎯 Kích hoạt khi:</span>
-              <span class="meta-val">{{ rule.trigger_condition }}</span>
+            <div class="form-field">
+              <label class="field-label">Áp dụng cho Page / Kênh:</label>
+              <select v-model="formRule.page_id" class="form-select">
+                <option value="">🌐 Toàn hệ thống (Mọi Page)</option>
+                <option v-for="p in pages" :key="p.id" :value="p.id">
+                  📂 Theo Trang: {{ p.name }} ({{ p.industry }})
+                </option>
+              </select>
             </div>
 
-            <!-- Retrieval Keywords Tags -->
-            <div v-if="rule.retrieval_keywords && rule.retrieval_keywords.length > 0" class="keywords-bar">
-              <span class="meta-label">🏷️ Từ khóa:</span>
-              <div class="kw-chips">
-                <span v-for="(kw, kidx) in rule.retrieval_keywords" :key="kidx" class="kw-chip">
-                  {{ kw }}
+            <!-- Always-On Flag Toggle -->
+            <div class="form-field full-width">
+              <div class="always-on-toggle-box">
+                <label class="checkbox-control">
+                  <input type="checkbox" v-model="formRule.always_on" />
+                  <span class="checkbox-custom"></span>
+                  <div class="checkbox-text">
+                    <strong>⚡ Nạp thường trực vào System Prompt (Always-On)</strong>
+                    <span>BẬT để quy tắc luôn có mặt trong prompt bot. TẮT để lưu trữ dạng On-Demand (chỉ nạp khi bắt gặp Cue Signal).</span>
+                  </div>
+                </label>
+                <span class="form-token-footprint">
+                  Dung lượng ước tính: <strong>{{ formEstimatedChars }} ký tự</strong> (~{{ Math.round(formEstimatedChars / 4) }} tokens)
                 </span>
+              </div>
+            </div>
+
+            <!-- Retrieval Keywords -->
+            <div class="form-field full-width">
+              <label class="field-label">Từ khóa mở rộng truy vấn (cách nhau bằng dấu phẩy):</label>
+              <input 
+                v-model="formKeywordsText" 
+                type="text" 
+                class="form-input" 
+                placeholder="số điện thoại, liên hệ tư vấn, bảng giá, trị mụn..."
+              />
+            </div>
+          </div>
+
+          <p v-if="formError" class="form-error-banner">
+            ⚠️ {{ formError }}
+          </p>
+
+          <div class="form-footer">
+            <button class="btn btn-secondary btn-sm" @click="cancelEdit">Hủy</button>
+            <button 
+              class="btn btn-primary btn-sm" 
+              :disabled="!canSaveForm || isSaving" 
+              @click="saveRule"
+            >
+              <span v-if="!isSaving">{{ isCreating ? 'Lưu quy tắc vào Thư viện' : 'Cập nhật thay đổi' }}</span>
+              <span v-else>Đang lưu...</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Rules List Body -->
+        <div class="modal-body rules-scroll-list">
+          <!-- Loading State -->
+          <div v-if="isLoading" class="loading-state">
+            <div class="btn-spinner"></div>
+            <span>Đang tải danh sách quy tắc kinh nghiệm...</span>
+          </div>
+
+          <!-- Empty State -->
+          <div v-else-if="filteredRules.length === 0" class="empty-rules-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p class="empty-title">Không tìm thấy quy tắc nào phù hợp</p>
+            <span class="empty-desc">Thử thay đổi bộ lọc Chiều INV/DOM, Page hoặc bấm "Thêm quy tắc mới"</span>
+          </div>
+
+          <!-- Rules Cards Stream (3-Part Experience Library Cards) -->
+          <div v-else class="rules-list-container">
+            <div 
+              v-for="rule in filteredRules" 
+              :key="rule.id" 
+              class="rule-card experience-library-card"
+              :class="{ 
+                'is-inactive': !rule.active,
+                'card-inv-border': (rule.dimension || '').toUpperCase() === 'INV',
+                'card-dom-border': (rule.dimension || 'DOM').toUpperCase() === 'DOM'
+              }"
+            >
+              <!-- Card Top Header Bar -->
+              <div class="card-header-bar">
+                <div class="header-left-group">
+                  <!-- Dimension Badge -->
+                  <span 
+                    class="harness-dim-badge" 
+                    :class="(rule.dimension || '').toUpperCase() === 'INV' ? 'dim-inv' : 'dim-dom'"
+                    :title="(rule.dimension || '').toUpperCase() === 'INV' ? 'Invariant: Quy trình & Tâm lý Bất biến' : 'Domain: Dữ kiện Nghiệp vụ Page'"
+                  >
+                    {{ (rule.dimension || '').toUpperCase() === 'INV' ? '🛡️ INV' : '🏢 DOM' }}
+                  </span>
+
+                  <!-- Always-On vs On-Demand Pill -->
+                  <span 
+                    class="always-on-pill" 
+                    :class="rule.always_on ? 'pill-is-always-on' : 'pill-is-on-demand'"
+                    :title="rule.always_on ? 'Quy tắc luôn nạp sẵn trong System Prompt' : 'Quy tắc chỉ nạp khi bắt gặp Cue Signal'"
+                  >
+                    {{ rule.always_on ? '⚡ Always-On' : '🔍 On-Demand' }}
+                  </span>
+
+                  <!-- Category Badge -->
+                  <span class="category-badge" :class="getCategoryClass(rule.category)">
+                    {{ rule.category }}
+                  </span>
+
+                  <!-- Page Scope Badge -->
+                  <span class="page-scope-badge" :class="{ 'is-global': !rule.page_id }">
+                    {{ getPageLabel(rule.page_id) }}
+                  </span>
+
+                  <!-- Version Badge -->
+                  <span class="version-badge" title="Phiên bản tiến hóa của quy tắc">
+                    v{{ rule.version || 1 }}
+                  </span>
+
+                  <!-- Confidence Badge -->
+                  <span 
+                    class="confidence-badge" 
+                    :class="getConfidenceClass(rule.confidence_score)"
+                    title="Điểm tín nhiệm thực chiến (Confidence Score)"
+                  >
+                    🛡️ {{ Math.round((rule.confidence_score ?? 0.85) * 100) }}%
+                  </span>
+
+                  <!-- Telemetry Stats -->
+                  <span class="telemetry-pill" title="Số lần quy tắc được áp dụng vào RAG / Bot">
+                    ⚡ Đã dùng: {{ rule.applied_count || 0 }}
+                  </span>
+                  <span class="telemetry-pill telemetry-success" title="Số ca tư vấn chốt thành công khi áp dụng">
+                    ✅ Chốt: {{ rule.success_count || 0 }}
+                  </span>
+                  <span v-if="rule.fail_count > 0" class="telemetry-pill telemetry-fail" title="Số lần bị báo sai">
+                    ⚠️ Báo sai: {{ rule.fail_count }}
+                  </span>
+
+                  <span class="time-stamp">{{ formatTime(rule.created_at) }}</span>
+                </div>
+
+                <div class="header-right-group">
+                  <!-- 1-Click Rollback Button -->
+                  <button
+                    v-if="rule.previous_rule_text"
+                    class="btn-rollback"
+                    :disabled="rollingBackId === rule.id"
+                    :title="`Khôi phục về bản trước: ${rule.previous_rule_text}`"
+                    @click="handleRollbackRule(rule)"
+                  >
+                    ⏪ {{ rollingBackId === rule.id ? 'Đang khôi phục...' : 'Khôi phục bản trước' }}
+                  </button>
+
+                  <!-- Toggle Active Switch -->
+                  <label class="switch-control" :title="rule.active ? 'Đang kích hoạt trong RAG prompt' : 'Đang tạm dừng'">
+                    <input 
+                      type="checkbox" 
+                      :checked="rule.active" 
+                      @change="handleToggleActive(rule)"
+                    />
+                    <span class="slider"></span>
+                    <span class="switch-label">{{ rule.active ? 'BẬT' : 'TẮT' }}</span>
+                  </label>
+
+                  <!-- Edit Button -->
+                  <button class="icon-btn" title="Chỉnh sửa quy tắc" @click="startEdit(rule)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                      <path d="m15 5 4 4"/>
+                    </svg>
+                  </button>
+
+                  <!-- Delete Button -->
+                  <button class="icon-btn btn-danger-icon" title="Xóa quy tắc" @click="confirmDelete(rule)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 6h18"/>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quarantine Alert Banner -->
+              <div v-if="rule.quarantined_reason" class="quarantine-banner">
+                <span class="quarantine-icon">🛡️</span>
+                <div class="quarantine-body">
+                  <strong>Cầu chì Tự bảo vệ (Auto-Quarantine):</strong> {{ rule.quarantined_reason }}
+                </div>
+              </div>
+
+              <!-- PART 1: 🎯 Cue Signal (Tình huống kích hoạt) -->
+              <div class="cue-signal-box">
+                <div class="cue-signal-header">
+                  <span class="cue-icon">🎯</span>
+                  <span class="cue-label">Tình huống & Tín hiệu kích hoạt (Cue Signal):</span>
+                </div>
+                <p class="cue-text">
+                  {{ rule.cue_signal || rule.trigger_condition || 'Kích hoạt khi gặp ngữ cảnh tư vấn liên quan' }}
+                </p>
+              </div>
+
+              <!-- PART 2: 💡 Lesson / Generalized Rule (Bài học & Quy tắc suy luận) -->
+              <div class="lesson-content-block">
+                <span class="block-label">💡 Bài học & Nguyên tắc Hành vi (Lesson / Meta-Rule):</span>
+                <p class="lesson-body-text">{{ rule.generalized_rule }}</p>
+              </div>
+
+              <!-- PART 3: ⚖️ Contrastive Evidence (Bằng chứng đối chiếu Trước vs Sau) -->
+              <div v-if="rule.contrastive_evidence" class="contrastive-evidence-panel">
+                <div class="contrastive-evidence-title">
+                  <span class="contrast-icon">⚖️</span>
+                  <span>Bằng chứng Đối chiếu Thực nghiệm (Contrastive Evidence):</span>
+                </div>
+                <div class="contrastive-evidence-grid">
+                  <div class="contrast-bubble-card contrast-col before-card">
+                    <span class="contrast-badge badge-before">❌ Trước tối ưu (Lỗi vi phạm / Before)</span>
+                    <p class="contrast-text">{{ parseEvidence(rule.contrastive_evidence).before }}</p>
+                  </div>
+                  <div class="contrast-bubble-card contrast-col after-card">
+                    <span class="contrast-badge badge-after">✅ Sau tối ưu (Phản hồi chuẩn / After)</span>
+                    <p class="contrast-text">{{ parseEvidence(rule.contrastive_evidence).after }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card Footer: Token Footprint & Keywords -->
+              <div class="card-footer-meta">
+                <div class="footprint-pill" title="Kích thước tiêu thụ prompt của quy tắc này">
+                  📏 {{ computeRuleChars(rule) }} ký tự (~{{ Math.round(computeRuleChars(rule) / 4) }} tokens)
+                </div>
+
+                <div v-if="rule.root_cause" class="root-cause-pill" :title="rule.root_cause">
+                  ⚠️ Lỗi gốc: {{ rule.root_cause }}
+                </div>
+
+                <div v-if="rule.retrieval_keywords && rule.retrieval_keywords.length > 0" class="keywords-bar">
+                  <span class="meta-label">🏷️ Từ khóa:</span>
+                  <div class="kw-chips">
+                    <span v-for="(kw, kidx) in rule.retrieval_keywords" :key="kidx" class="kw-chip">
+                      {{ kw }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
+
+      <!-- ================================================================= -->
+      <!-- TAB 2: HARNESS² SELF-EVOLUTION RUN HISTORY VIEW                   -->
+      <!-- ================================================================= -->
+      <template v-else-if="activeMainTab === 'evolution'">
+        <!-- Evolution Runs Header Summary & Filters -->
+        <div class="evolution-toolbar">
+          <div class="evolution-stats-row">
+            <div class="stat-box">
+              <span class="stat-value">{{ harnessRuns.length }}</span>
+              <span class="stat-title">Tổng đợt tự tối ưu</span>
+            </div>
+            <div class="stat-box stat-emerald">
+              <span class="stat-value">{{ adoptedRunsCount }}</span>
+              <span class="stat-title">Đã tiếp thu (ADOPTED)</span>
+            </div>
+            <div class="stat-box stat-slate">
+              <span class="stat-value">{{ keepBaseRunsCount }}</span>
+              <span class="stat-title">Giữ bản gốc (KEEP_BASE)</span>
+            </div>
+            <div class="stat-box stat-blue">
+              <span class="stat-value">{{ adoptionRatePercent }}%</span>
+              <span class="stat-title">Tỷ lệ tiến hóa thành công</span>
+            </div>
+          </div>
+
+          <div class="filter-chips-row">
+            <div class="filter-group">
+              <span class="filter-group-label">Lọc theo phán quyết:</span>
+              <button 
+                class="pill-filter" 
+                :class="{ active: runVerdictFilter === 'ALL' }" 
+                @click="runVerdictFilter = 'ALL'"
+              >
+                Tất cả ({{ harnessRuns.length }})
+              </button>
+              <button 
+                class="pill-filter pill-emerald" 
+                :class="{ active: runVerdictFilter === 'ADOPTED' }" 
+                @click="runVerdictFilter = 'ADOPTED'"
+              >
+                ✅ ADOPTED ({{ adoptedRunsCount }})
+              </button>
+              <button 
+                class="pill-filter pill-dim" 
+                :class="{ active: runVerdictFilter === 'KEEP_BASE' }" 
+                @click="runVerdictFilter = 'KEEP_BASE'"
+              >
+                ⏸️ KEEP_BASE ({{ keepBaseRunsCount }})
+              </button>
+            </div>
+
+            <button class="btn btn-secondary btn-sm" @click="fetchHarnessRuns">
+              🔄 Tải lại lịch sử
+            </button>
+          </div>
+        </div>
+
+        <!-- Runs Stream Body -->
+        <div class="modal-body rules-scroll-list">
+          <div v-if="isLoadingRuns" class="loading-state">
+            <div class="btn-spinner"></div>
+            <span>Đang tải lịch sử tự tiến hóa Harness²...</span>
+          </div>
+
+          <div v-else-if="filteredHarnessRuns.length === 0" class="empty-rules-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <p class="empty-title">Chưa ghi nhận đợt tự tiến hóa Harness² nào</p>
+            <span class="empty-desc">
+              Các đợt tối ưu được tự động ghi nhận khi bạn bấm nút "🧬 Tự tối ưu Harness²" trong Giả lập Bot hoặc khi khách hạ nhiệt đột ngột (ΔTemp &le; -15%).
+            </span>
+          </div>
+
+          <div v-else class="runs-list-container">
+            <div 
+              v-for="run in filteredHarnessRuns" 
+              :key="run.id" 
+              class="harness-run-card"
+              :class="run.verdict === 'ADOPTED' ? 'run-adopted-card' : 'run-keep-base-card'"
+            >
+              <!-- Run Header -->
+              <div class="run-header-row">
+                <div class="run-header-left">
+                  <span 
+                    class="verdict-badge" 
+                    :class="run.verdict === 'ADOPTED' ? 'verdict-adopted' : 'verdict-keep'"
+                  >
+                    {{ run.verdict === 'ADOPTED' ? '✅ TIẾP THU (ADOPTED)' : '⏸️ GIỮ NGUYÊN (KEEP_BASE)' }}
+                  </span>
+
+                  <span 
+                    v-if="run.delta_score !== undefined && run.delta_score !== null"
+                    class="delta-score-badge"
+                    :class="run.delta_score > 0 ? 'score-positive' : 'score-neutral'"
+                  >
+                    ΔScore: {{ run.delta_score > 0 ? '+' : '' }}{{ Math.round(run.delta_score * 100) }}%
+                  </span>
+
+                  <span class="winner-pill">
+                    🏆 Thắng cuộc: <strong>{{ run.winner_candidate || 'Base' }}</strong>
+                  </span>
+
+                  <span class="page-scope-badge" :class="{ 'is-global': !run.page_id }">
+                    {{ getPageLabel(run.page_id) }}
+                  </span>
+                </div>
+
+                <div class="run-header-right">
+                  <span class="time-stamp">{{ formatTime(run.created_at) }}</span>
+                </div>
+              </div>
+
+              <!-- Customer Query Trigger -->
+              <div class="run-trigger-block">
+                <span class="trigger-label">💬 Tin nhắn khách hàng gây kích hoạt / hạ nhiệt:</span>
+                <p class="trigger-message">"{{ run.customer_message || 'N/A' }}"</p>
+              </div>
+
+              <!-- Candidate Duel Arena -->
+              <div class="run-duel-arena">
+                <div class="arena-col candidate-a-col">
+                  <span class="arena-col-title">Ứng viên A (Candidate A)</span>
+                  <div class="arena-bubble">{{ run.candidate_a || run.base_response }}</div>
+                </div>
+                <div class="arena-col candidate-b-col">
+                  <span class="arena-col-title">Ứng viên B (Candidate B)</span>
+                  <div class="arena-bubble">{{ run.candidate_b || 'N/A' }}</div>
+                </div>
+              </div>
+
+              <!-- Rationale Callout -->
+              <div v-if="run.rationale" class="run-rationale-box">
+                <span class="rationale-label">🧠 Phán quyết Trọng tài Đánh giá Vô danh (Anonymized Rationale):</span>
+                <p class="rationale-text">{{ run.rationale }}</p>
+              </div>
+
+              <!-- Adopted Rule Link -->
+              <div v-if="run.verdict === 'ADOPTED'" class="run-adopted-action">
+                <button class="btn-view-adopted-rule" @click="viewAdoptedInPlaybook(run)">
+                  ✨ Đã đúc kết thành quy tắc kinh nghiệm trong Playbook → Xem ngay
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <!-- Delete Confirmation Modal Dialog -->
       <div v-if="deletingTargetRule" class="confirm-overlay" @click.self="deletingTargetRule = null">
         <div class="confirm-box">
           <h4 class="confirm-title text-danger">Xác nhận xóa quy tắc</h4>
           <p class="confirm-msg">
-            Bạn có chắc chắn muốn xóa quy tắc này khỏi AI Playbook? Hành động này không thể hoàn tác.
+            Bạn có chắc chắn muốn xóa quy tắc này khỏi Thư viện Kinh nghiệm? Hành động này không thể hoàn tác.
           </p>
           <div class="confirm-quote">
             "{{ deletingTargetRule.generalized_rule }}"
@@ -375,8 +752,9 @@
         <div class="stats-summary">
           <span class="dot-active"></span>
           <span>
-            Tổng cộng: <strong>{{ rules.length }} quy tắc</strong> · 
-            <strong>{{ activeCount }}</strong> đang kích hoạt áp dụng vào RAG prompt
+            Thư viện: <strong>{{ rules.length }} quy tắc</strong> · 
+            <strong>{{ activeCount }}</strong> đang kích hoạt · 
+            Ngân sách Always-On: <strong>{{ alwaysOnChars }}/1200 ký tự ({{ budgetUtilizationPercent }}%)</strong>
           </span>
         </div>
         <button class="btn btn-secondary" @click="handleClose">Đóng</button>
@@ -392,7 +770,9 @@ import {
   getMockRules, 
   createMockRule, 
   updateMockRule, 
-  deleteMockRule 
+  rollbackMockRule,
+  deleteMockRule,
+  getMockHarnessRuns
 } from '../mockData'
 
 const props = defineProps({
@@ -412,69 +792,114 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'rules-changed'])
 
+// Tab Navigation: 'rules' | 'evolution'
+const activeMainTab = ref('rules')
+
+// Rules State
 const rules = ref([])
 const isLoading = ref(false)
 const searchQuery = ref('')
+const selectedDimension = ref('') // '' | 'INV' | 'DOM'
+const selectedBudgetFilter = ref('all') // 'all' | 'always_on' | 'on_demand'
 const selectedCategory = ref('')
 const selectedPageFilter = ref(props.activePageId || 'ALL')
-const statusFilter = ref('all') // 'all' | 'active' | 'inactive'
+const statusFilter = ref('active') // 'all' | 'active' | 'inactive'
 
+// Harness Evolution Runs State
+const harnessRuns = ref([])
+const isLoadingRuns = ref(false)
+const runVerdictFilter = ref('ALL') // 'ALL' | 'ADOPTED' | 'KEEP_BASE'
+
+// Create / Edit Form State
 const isCreating = ref(false)
 const editingRule = ref(null)
 const isSaving = ref(false)
 const formError = ref('')
-const formRule = ref({
-  generalized_rule: '',
-  root_cause: '',
-  trigger_condition: '',
-  category: 'POLICY',
-  page_id: props.activePageId || ''
-})
+const formEvidenceBefore = ref('')
+const formEvidenceAfter = ref('')
 const formKeywordsText = ref('')
 
+const formRule = ref({
+  dimension: 'INV',
+  cue_signal: '',
+  generalized_rule: '',
+  root_cause: '',
+  category: 'POLICY',
+  page_id: props.activePageId || '',
+  always_on: true
+})
+
+// Deletion State
 const deletingTargetRule = ref(null)
 const isDeleting = ref(false)
+const rollingBackId = ref(null)
+
+// Budget constants
+const maxBudgetChars = 1200
+
+// =========================================================================
+// COMPUTED PROPERTIES FOR RULES & BUDGET
+// =========================================================================
+
+const computeRuleChars = (r) => {
+  if (!r) return 0
+  let count = 0
+  if (r.cue_signal) count += String(r.cue_signal).length
+  if (r.generalized_rule) count += String(r.generalized_rule).length
+  if (r.contrastive_evidence) {
+    if (typeof r.contrastive_evidence === 'string') {
+      count += r.contrastive_evidence.length
+    } else if (typeof r.contrastive_evidence === 'object') {
+      count += (r.contrastive_evidence.before || '').length + (r.contrastive_evidence.after || '').length
+    }
+  }
+  if (!r.cue_signal && r.trigger_condition) count += String(r.trigger_condition).length
+  return count
+}
 
 const activeCount = computed(() => rules.value.filter(r => r.active).length)
 const inactiveCount = computed(() => rules.value.filter(r => !r.active).length)
 const globalRulesCount = computed(() => rules.value.filter(r => !r.page_id).length)
 
-const getPageRulesCount = (pageId) => {
-  return rules.value.filter(r => r.page_id === pageId).length
-}
+const alwaysOnRules = computed(() => rules.value.filter(r => r.active && r.always_on))
+const alwaysOnChars = computed(() => {
+  return alwaysOnRules.value.reduce((acc, r) => acc + computeRuleChars(r), 0)
+})
 
-const getPageLabel = (pageId) => {
-  if (!pageId) return '🌐 Toàn hệ thống'
-  const found = (props.pages || []).find(p => p.id === pageId)
-  return found ? `📂 Theo Trang: ${found.name}` : '📂 Theo Trang'
-}
+const budgetUtilizationPercent = computed(() => {
+  const pct = (alwaysOnChars.value / maxBudgetChars) * 100
+  return Math.round(pct * 10) / 10
+})
 
-const matchesCategoryGroup = (ruleCat, filterGroup) => {
-  if (!filterGroup) return true
-  const cat = (ruleCat || '').toUpperCase()
-  if (filterGroup === 'PRICING') {
-    return cat === 'PRICING' || cat === 'PRICING_CALCULATION' || cat === 'TABLE_LOOKUP'
-  }
-  if (filterGroup === 'DISCOUNT') {
-    return cat === 'DISCOUNT'
-  }
-  if (filterGroup === 'POLICY') {
-    return cat === 'POLICY' || cat === 'TEMPORAL_VALIDITY'
-  }
-  if (filterGroup === 'GENERAL') {
-    return cat === 'GENERAL' || cat === 'DATA_INTERPRETATION' || !cat
-  }
-  return cat === filterGroup
-}
+const budgetHealthClass = computed(() => {
+  if (alwaysOnChars.value <= 840) return 'budget-safe'
+  if (alwaysOnChars.value <= maxBudgetChars) return 'budget-warning'
+  return 'budget-danger'
+})
 
-const categoryCounts = computed(() => {
+const alwaysOnInvCount = computed(() => {
+  return alwaysOnRules.value.filter(r => (r.dimension || '').toUpperCase() === 'INV').length
+})
+
+const alwaysOnDomCount = computed(() => {
+  return alwaysOnRules.value.filter(r => (r.dimension || 'DOM').toUpperCase() === 'DOM').length
+})
+
+const alwaysOnTotalCount = computed(() => rules.value.filter(r => r.always_on).length)
+const onDemandCount = computed(() => rules.value.filter(r => !r.always_on).length)
+
+const dimensionCounts = computed(() => {
   return {
-    all: rules.value.length,
-    pricing: rules.value.filter(r => matchesCategoryGroup(r.category, 'PRICING')).length,
-    discount: rules.value.filter(r => matchesCategoryGroup(r.category, 'DISCOUNT')).length,
-    policy: rules.value.filter(r => matchesCategoryGroup(r.category, 'POLICY')).length,
-    general: rules.value.filter(r => matchesCategoryGroup(r.category, 'GENERAL')).length
+    inv: rules.value.filter(r => (r.dimension || '').toUpperCase() === 'INV').length,
+    dom: rules.value.filter(r => (r.dimension || 'DOM').toUpperCase() === 'DOM').length
   }
+})
+
+const formEstimatedChars = computed(() => {
+  const cue = (formRule.value.cue_signal || '').length
+  const lesson = (formRule.value.generalized_rule || '').length
+  const ev = (formEvidenceBefore.value + formEvidenceAfter.value).length
+  return cue + lesson + ev
 })
 
 const filteredRules = computed(() => {
@@ -486,20 +911,27 @@ const filteredRules = computed(() => {
       if (r.page_id !== selectedPageFilter.value && r.page_id != null) return false
     }
 
-    // 1. Category filter
-    if (selectedCategory.value && !matchesCategoryGroup(r.category, selectedCategory.value)) {
-      return false
+    // 1. Dimension filter (INV vs DOM)
+    if (selectedDimension.value) {
+      const dim = (r.dimension || 'DOM').toUpperCase()
+      if (dim !== selectedDimension.value) return false
     }
 
-    // 2. Status filter
+    // 2. Budget filter (Always-on vs On-demand)
+    if (selectedBudgetFilter.value === 'always_on' && !r.always_on) return false
+    if (selectedBudgetFilter.value === 'on_demand' && r.always_on) return false
+
+    // 3. Status filter
     if (statusFilter.value === 'active' && !r.active) return false
     if (statusFilter.value === 'inactive' && r.active) return false
 
-    // 3. Search query
+    // 4. Search query
     if (searchQuery.value.trim()) {
       const q = searchQuery.value.trim().toLowerCase()
       const matchText = (
+        (r.cue_signal || '') + ' ' +
         (r.generalized_rule || '') + ' ' +
+        (r.contrastive_evidence || '') + ' ' +
         (r.root_cause || '') + ' ' +
         (r.trigger_condition || '') + ' ' +
         (r.retrieval_keywords ? r.retrieval_keywords.join(' ') : '')
@@ -512,8 +944,159 @@ const filteredRules = computed(() => {
 })
 
 const canSaveForm = computed(() => {
-  return formRule.value.generalized_rule && formRule.value.generalized_rule.trim().length >= 5
+  const ruleText = formRule.value.generalized_rule || ''
+  const cueText = formRule.value.cue_signal || ''
+  return ruleText.trim().length >= 5 && cueText.trim().length >= 3
 })
+
+// =========================================================================
+// COMPUTED PROPERTIES FOR HARNESS EVOLUTION RUNS
+// =========================================================================
+
+const adoptedRunsCount = computed(() => {
+  return harnessRuns.value.filter(r => r.verdict === 'ADOPTED').length
+})
+
+const keepBaseRunsCount = computed(() => {
+  return harnessRuns.value.filter(r => r.verdict === 'KEEP_BASE').length
+})
+
+const adoptionRatePercent = computed(() => {
+  if (harnessRuns.value.length === 0) return 0
+  const rate = (adoptedRunsCount.value / harnessRuns.value.length) * 100
+  return Math.round(rate * 10) / 10
+})
+
+const filteredHarnessRuns = computed(() => {
+  return harnessRuns.value.filter(r => {
+    if (runVerdictFilter.value !== 'ALL') {
+      if (r.verdict !== runVerdictFilter.value) return false
+    }
+    return true
+  })
+})
+
+// =========================================================================
+// HELPER METHODS
+// =========================================================================
+
+const parseEvidence = (evidence) => {
+  if (!evidence) return { before: 'N/A', after: 'N/A' }
+
+  // Type-guard: Nếu đã là object thì trả về trực tiếp
+  if (typeof evidence === 'object') {
+    return {
+      before: evidence.before || evidence.faulty || 'N/A',
+      after: evidence.after || evidence.refined || 'N/A'
+    }
+  }
+
+  if (typeof evidence !== 'string') {
+    return { before: String(evidence), after: 'N/A' }
+  }
+
+  const evidenceStr = evidence.trim()
+
+  // Phân tích nếu là chuỗi JSON hợp lệ
+  if (evidenceStr.startsWith('{') && evidenceStr.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(evidenceStr)
+      if (parsed && typeof parsed === 'object') {
+        return {
+          before: parsed.before || parsed.faulty || 'N/A',
+          after: parsed.after || parsed.refined || 'N/A'
+        }
+      }
+    } catch (_) {
+      // bỏ qua lỗi parse JSON, tiếp tục đối chiếu chuỗi
+    }
+  }
+
+  let before = ''
+  let after = ''
+
+  if (evidenceStr.includes('❌ Before:') || evidenceStr.includes('✅ After:')) {
+    const afterIdx = evidenceStr.indexOf('✅ After:')
+    if (afterIdx !== -1) {
+      before = evidenceStr.substring(0, afterIdx).replace('❌ Before:', '').trim()
+      after = evidenceStr.substring(afterIdx + '✅ After:'.length).trim()
+    } else {
+      before = evidenceStr.replace('❌ Before:', '').trim()
+      after = 'Đã áp dụng tối ưu hóa chuẩn mực'
+    }
+  } else if (evidenceStr.includes('❌ Trước:') || evidenceStr.includes('✅ Sau:')) {
+    const sauIdx = evidenceStr.indexOf('✅ Sau:')
+    if (sauIdx !== -1) {
+      before = evidenceStr.substring(0, sauIdx).replace('❌ Trước:', '').trim()
+      after = evidenceStr.substring(sauIdx + '✅ Sau:'.length).trim()
+    } else {
+      before = evidenceStr.replace('❌ Trước:', '').trim()
+      after = 'Đã áp dụng tối ưu hóa chuẩn mực'
+    }
+  } else {
+    before = evidenceStr
+    after = 'Đã áp dụng tối ưu hóa chuẩn mực'
+  }
+
+  return {
+    before: before || 'N/A',
+    after: after || 'N/A'
+  }
+}
+
+const getPageRulesCount = (pageId) => {
+  return rules.value.filter(r => r.page_id === pageId).length
+}
+
+const getPageLabel = (pageId) => {
+  if (!pageId) return '🌐 Toàn hệ thống'
+  const found = (props.pages || []).find(p => p.id === pageId)
+  return found ? `📂 Theo Trang: ${found.name}` : '📂 Theo Trang'
+}
+
+const getConfidenceClass = (score) => {
+  const val = score ?? 0.85
+  if (val >= 0.80) return 'conf-high'
+  if (val >= 0.50) return 'conf-medium'
+  return 'conf-low'
+}
+
+const getCategoryClass = (cat) => {
+  switch ((cat || '').toUpperCase()) {
+    case 'PRICING':
+    case 'PRICING_CALCULATION':
+    case 'TABLE_LOOKUP':
+      return 'cat-pricing'
+    case 'DISCOUNT':
+      return 'cat-discount'
+    case 'POLICY':
+    case 'COMMUNICATION':
+    case 'TEMPORAL_VALIDITY':
+      return 'cat-policy'
+    default:
+      return 'cat-general'
+  }
+}
+
+const formatTime = (iso) => {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return d.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return ''
+  }
+}
+
+// =========================================================================
+// API ACTIONS
+// =========================================================================
 
 const fetchRules = async () => {
   isLoading.value = true
@@ -532,12 +1115,32 @@ const fetchRules = async () => {
   }
 }
 
-const handleSearch = () => {
-  // Realtime computed filtering handles this
+const fetchHarnessRuns = async () => {
+  isLoadingRuns.value = true
+  try {
+    if (props.isConnected && api.getHarnessRuns) {
+      const runs = await api.getHarnessRuns({ page_id: props.activePageId, limit: 40 })
+      harnessRuns.value = runs || []
+    } else {
+      harnessRuns.value = getMockHarnessRuns(props.activePageId) || []
+    }
+  } catch (err) {
+    console.warn('Fetch harness runs fallback to mock:', err)
+    harnessRuns.value = getMockHarnessRuns(props.activePageId) || []
+  } finally {
+    isLoadingRuns.value = false
+  }
 }
 
-const setCategory = (cat) => {
-  selectedCategory.value = cat
+const switchTabToEvolution = () => {
+  activeMainTab.value = 'evolution'
+  if (harnessRuns.value.length === 0) {
+    fetchHarnessRuns()
+  }
+}
+
+const handleSearch = () => {
+  // Realtime computed filtering handles this
 }
 
 const setStatusFilter = (st) => {
@@ -551,12 +1154,7 @@ const handleToggleActive = async (rule) => {
   try {
     if (props.isConnected) {
       await api.updateRule(rule.id, {
-        category: rule.category,
-        page_id: rule.page_id,
-        trigger_condition: rule.trigger_condition,
-        root_cause: rule.root_cause,
-        generalized_rule: rule.generalized_rule,
-        retrieval_keywords: rule.retrieval_keywords,
+        ...rule,
         active: newActive
       })
     } else {
@@ -565,7 +1163,6 @@ const handleToggleActive = async (rule) => {
     emit('rules-changed', { rules: rules.value })
   } catch (err) {
     console.error('Toggle active error:', err)
-    // Revert on error
     rule.active = !newActive
   }
 }
@@ -574,28 +1171,38 @@ const openCreateForm = () => {
   editingRule.value = null
   isCreating.value = true
   formError.value = ''
+  formEvidenceBefore.value = ''
+  formEvidenceAfter.value = ''
+  formKeywordsText.value = ''
   formRule.value = {
+    dimension: 'INV',
+    cue_signal: '',
     generalized_rule: '',
     root_cause: '',
-    trigger_condition: '',
     category: 'POLICY',
-    page_id: props.activePageId || ''
+    page_id: props.activePageId || '',
+    always_on: true
   }
-  formKeywordsText.value = ''
 }
 
 const startEdit = (rule) => {
   isCreating.value = false
   editingRule.value = rule
   formError.value = ''
+  const parsed = parseEvidence(rule.contrastive_evidence)
+  formEvidenceBefore.value = parsed.before !== 'N/A' ? parsed.before : ''
+  formEvidenceAfter.value = parsed.after !== 'N/A' ? parsed.after : ''
+  formKeywordsText.value = rule.retrieval_keywords ? rule.retrieval_keywords.join(', ') : ''
+
   formRule.value = {
+    dimension: (rule.dimension || 'DOM').toUpperCase(),
+    cue_signal: rule.cue_signal || rule.trigger_condition || '',
     generalized_rule: rule.generalized_rule || '',
     root_cause: rule.root_cause || '',
-    trigger_condition: rule.trigger_condition || '',
     category: rule.category || 'POLICY',
-    page_id: rule.page_id || ''
+    page_id: rule.page_id || '',
+    always_on: rule.always_on !== undefined ? rule.always_on : true
   }
-  formKeywordsText.value = rule.retrieval_keywords ? rule.retrieval_keywords.join(', ') : ''
 }
 
 const cancelEdit = () => {
@@ -609,23 +1216,27 @@ const saveRule = async () => {
 
   isSaving.value = true
   formError.value = ''
+
   const keywords = formKeywordsText.value
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
 
-  const trimmedRule = (formRule.value.generalized_rule || '').trim()
-  const autoTrigger = (formRule.value.trigger_condition || '').trim()
-    || ('Khi xử lý tình huống: ' + (trimmedRule.length > 80 ? trimmedRule.slice(0, 80) + '...' : trimmedRule))
+  let formattedEvidence = ''
+  if (formEvidenceBefore.value || formEvidenceAfter.value) {
+    formattedEvidence = `❌ Before: ${formEvidenceBefore.value.trim()}\n✅ After: ${formEvidenceAfter.value.trim()}`
+  }
 
   const payload = {
     ...formRule.value,
-    generalized_rule: trimmedRule,
-    trigger_condition: autoTrigger,
-    category: formRule.value.category || 'POLICY',
-    page_id: formRule.value.page_id || null,
+    dimension: (formRule.value.dimension || 'DOM').toUpperCase(),
+    cue_signal: formRule.value.cue_signal.trim(),
+    trigger_condition: formRule.value.cue_signal.trim(),
+    generalized_rule: formRule.value.generalized_rule.trim(),
+    contrastive_evidence: formattedEvidence,
     retrieval_keywords: keywords,
-    active: editingRule.value ? editingRule.value.active : true
+    active: editingRule.value ? editingRule.value.active : true,
+    always_on: formRule.value.always_on !== undefined ? formRule.value.always_on : true
   }
 
   try {
@@ -637,7 +1248,6 @@ const saveRule = async () => {
         const created = createMockRule(payload)
         rules.value.unshift(created)
       }
-      selectedCategory.value = ''
     } else if (editingRule.value) {
       if (props.isConnected) {
         const updated = await api.updateRule(editingRule.value.id, payload)
@@ -657,6 +1267,30 @@ const saveRule = async () => {
     formError.value = err?.message || 'Không thể lưu quy tắc. Vui lòng kiểm tra lại thông tin.'
   } finally {
     isSaving.value = false
+  }
+}
+
+const handleRollbackRule = async (rule) => {
+  if (!rule?.id || !rule.previous_rule_text || rollingBackId.value) return
+  rollingBackId.value = rule.id
+  try {
+    let rolledBack = null
+    if (props.isConnected) {
+      rolledBack = await api.rollbackRule(rule.id)
+    } else {
+      rolledBack = rollbackMockRule(rule.id)
+    }
+    if (rolledBack) {
+      const idx = rules.value.findIndex(r => r.id === rule.id)
+      if (idx !== -1) {
+        rules.value[idx] = { ...rules.value[idx], ...rolledBack }
+      }
+      emit('rules-changed', { rules: rules.value })
+    }
+  } catch (err) {
+    console.error('Rollback rule error:', err)
+  } finally {
+    rollingBackId.value = null
   }
 }
 
@@ -687,33 +1321,10 @@ const executeDelete = async () => {
   }
 }
 
-const getCategoryClass = (cat) => {
-  switch ((cat || '').toUpperCase()) {
-    case 'PRICING':
-    case 'PRICING_CALCULATION':
-    case 'TABLE_LOOKUP':
-      return 'cat-pricing'
-    case 'DISCOUNT':
-      return 'cat-discount'
-    case 'POLICY':
-    case 'TEMPORAL_VALIDITY':
-      return 'cat-policy'
-    default:
-      return 'cat-general'
-  }
-}
-
-const formatTime = (iso) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
-  } catch {
-    return ''
+const viewAdoptedInPlaybook = (run) => {
+  activeMainTab.value = 'rules'
+  if (run.customer_message) {
+    searchQuery.value = run.customer_message.slice(0, 20)
   }
 }
 
@@ -723,6 +1334,7 @@ const handleClose = () => {
 
 onMounted(() => {
   fetchRules()
+  fetchHarnessRuns()
 })
 </script>
 
@@ -730,7 +1342,7 @@ onMounted(() => {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(5, 8, 15, 0.75);
+  background-color: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -746,15 +1358,15 @@ onMounted(() => {
 }
 
 .playbook-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-active);
-  border-radius: var(--radius-lg);
+  background: #FFFFFF;
+  border: 1px solid #DDE3EA;
+  border-radius: 24px;
   width: 100%;
-  max-width: 860px;
+  max-width: 880px;
   height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(15, 23, 42, 0.06);
   overflow: hidden;
   position: relative;
 }
@@ -762,11 +1374,11 @@ onMounted(() => {
 /* Header */
 .modal-header {
   padding: 18px 24px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #DDE3EA;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.02);
+  background: #F8FAFD;
 }
 
 .modal-title-group {
@@ -776,15 +1388,15 @@ onMounted(() => {
 }
 
 .icon-brain-box {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #E8F0FE;
+  color: #0B57D0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  border: 1px solid #D3E3FD;
 }
 
 .title-with-badge {
@@ -794,49 +1406,51 @@ onMounted(() => {
 }
 
 .modal-title {
+  font-family: var(--font-display);
   font-size: 1.15rem;
-  font-weight: 600;
-  color: var(--text-main);
+  font-weight: 700;
+  color: #1F1F1F;
   letter-spacing: -0.01em;
 }
 
 .badge-accent {
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: #D3E3FD;
+  color: #041E49;
+  border: 1px solid #A8C7FA;
   font-size: 0.72rem;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
 }
 
 .modal-subtitle {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: #444746;
   margin-top: 2px;
 }
 
 .btn-close {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: #747775;
   font-size: 1.5rem;
   cursor: pointer;
   line-height: 1;
   padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   transition: all 0.15s ease;
 }
 
 .btn-close:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.1);
+  color: #1F1F1F;
+  background: #EDF2FA;
 }
 
 /* Toolbar */
 .toolbar-section {
   padding: 14px 24px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.01);
+  border-bottom: 1px solid #DDE3EA;
+  background: #FFFFFF;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -858,25 +1472,27 @@ onMounted(() => {
 .search-icon {
   position: absolute;
   left: 12px;
-  color: var(--text-dim);
+  color: #747775;
   pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  background: #F8FAFD;
+  border: 1px solid #DDE3EA;
+  border-radius: 999px;
   padding: 8px 36px 8px 36px;
-  color: var(--text-main);
+  color: #1F1F1F;
   font-family: var(--font-sans);
   font-size: 0.86rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
 
 .search-input:focus {
-  border-color: var(--accent-primary);
+  background: #FFFFFF;
+  border-color: #0B57D0;
+  box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.12);
 }
 
 .btn-clear-search {
@@ -884,13 +1500,13 @@ onMounted(() => {
   right: 10px;
   background: transparent;
   border: none;
-  color: var(--text-dim);
+  color: #747775;
   font-size: 1rem;
   cursor: pointer;
 }
 
 .btn-sm {
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 0.82rem;
   white-space: nowrap;
 }
@@ -913,51 +1529,52 @@ onMounted(() => {
 
 .filter-group-label {
   font-size: 0.75rem;
-  color: var(--text-dim);
-  font-weight: 500;
+  color: #747775;
+  font-weight: 600;
   margin-right: 2px;
 }
 
 .pill-filter {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  border-radius: var(--radius-full);
-  padding: 3px 10px;
+  background: #F8FAFD;
+  border: 1px solid #DDE3EA;
+  color: #444746;
+  border-radius: 999px;
+  padding: 4px 12px;
   font-size: 0.76rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .pill-filter:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-main);
+  background: #EDF2FA;
+  color: #1F1F1F;
 }
 
 .pill-filter.active {
-  background: rgba(99, 102, 241, 0.2);
-  border-color: var(--accent-primary);
-  color: #ffffff;
+  background: #D3E3FD;
+  border-color: #A8C7FA;
+  color: #041E49;
   font-weight: 600;
 }
 
 .pill-emerald.active {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: #34d399;
-  color: #34d399;
+  background: #E6F4EA;
+  border-color: #A8DAB5;
+  color: #137333;
 }
 
 .pill-dim.active {
-  background: rgba(100, 116, 139, 0.25);
-  border-color: #64748b;
-  color: #cbd5e1;
+  background: #E1E6EC;
+  border-color: #C4CDD5;
+  color: #444746;
 }
 
 /* Form Container */
 .rule-form-container {
   padding: 16px 24px;
-  background: rgba(99, 102, 241, 0.06);
-  border-bottom: 1px solid var(--border-active);
+  background: #F8FAFD;
+  border-bottom: 1px solid #A8C7FA;
   animation: slideDown 0.2s ease-out;
 }
 
@@ -975,20 +1592,21 @@ onMounted(() => {
 
 .form-title {
   font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-main);
+  font-weight: 700;
+  color: #1F1F1F;
 }
 
 .btn-text-sm {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: #444746;
   font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .btn-text-sm:hover {
-  color: var(--text-main);
+  color: #1F1F1F;
 }
 
 .form-grid {
@@ -1010,20 +1628,20 @@ onMounted(() => {
 .field-label {
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #444746;
 }
 
 .required::after {
   content: ' *';
-  color: var(--status-failed-text);
+  color: #C5221F;
 }
 
 .form-input, .form-textarea, .form-select {
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  color: var(--text-main);
+  background: #FFFFFF;
+  border: 1px solid #DDE3EA;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #1F1F1F;
   font-family: var(--font-sans);
   font-size: 0.85rem;
   outline: none;
@@ -1034,7 +1652,8 @@ onMounted(() => {
 }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus {
-  border-color: var(--accent-primary);
+  border-color: #0B57D0;
+  box-shadow: 0 0 0 3px rgba(11, 87, 208, 0.12);
 }
 
 .form-footer {
@@ -1049,6 +1668,7 @@ onMounted(() => {
   flex: 1;
   padding: 16px 24px;
   overflow-y: auto;
+  background: #F0F4F9;
 }
 
 .loading-state {
@@ -1058,7 +1678,7 @@ onMounted(() => {
   justify-content: center;
   height: 240px;
   gap: 12px;
-  color: var(--text-muted);
+  color: #444746;
   font-size: 0.88rem;
 }
 
@@ -1069,22 +1689,23 @@ onMounted(() => {
   justify-content: center;
   height: 260px;
   gap: 8px;
-  color: var(--text-dim);
+  color: #747775;
 }
 
 .empty-icon {
-  opacity: 0.4;
+  opacity: 0.5;
   margin-bottom: 4px;
 }
 
 .empty-title {
   font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: #1F1F1F;
 }
 
 .empty-desc {
   font-size: 0.8rem;
+  color: #444746;
 }
 
 .rules-list-container {
@@ -1095,24 +1716,25 @@ onMounted(() => {
 
 /* Rule Card */
 .rule-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  background: #FFFFFF;
+  border: 1px solid #DDE3EA;
+  border-radius: 16px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .rule-card:hover {
-  background: var(--bg-card-hover);
-  border-color: rgba(99, 102, 241, 0.3);
+  border-color: #A8C7FA;
+  box-shadow: 0 4px 12px rgba(11, 87, 208, 0.08);
 }
 
 .rule-card.is-inactive {
-  opacity: 0.6;
-  border-color: rgba(255, 255, 255, 0.04);
+  opacity: 0.65;
+  background: #F8FAFD;
 }
 
 .card-header-bar {
@@ -1124,59 +1746,60 @@ onMounted(() => {
 .header-left-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .category-badge {
   font-size: 0.72rem;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  border-radius: 999px;
 }
 
 .page-scope-badge {
   font-size: 0.72rem;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  background: rgba(99, 102, 241, 0.14);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #E8F0FE;
+  color: #0B57D0;
+  border: 1px solid #D3E3FD;
 }
 
 .page-scope-badge.is-global {
-  background: rgba(16, 185, 129, 0.12);
-  color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #E6F4EA;
+  color: #137333;
+  border: 1px solid #A8DAB5;
 }
 
 .cat-pricing {
-  background: rgba(234, 179, 8, 0.15);
-  color: #fde047;
-  border: 1px solid rgba(234, 179, 8, 0.35);
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid #FDE293;
 }
 
 .cat-discount {
-  background: rgba(168, 85, 247, 0.15);
-  color: #d8b4fe;
-  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: #E8DDF8;
+  color: #4A148C;
+  border: 1px solid #D0BCFF;
 }
 
 .cat-policy {
-  background: rgba(59, 130, 246, 0.15);
-  color: #93c5fd;
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: #E8F0FE;
+  color: #0B57D0;
+  border: 1px solid #A8C7FA;
 }
 
 .cat-general {
-  background: rgba(148, 163, 184, 0.15);
-  color: #cbd5e1;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #F0F4F9;
+  color: #444746;
+  border: 1px solid #DDE3EA;
 }
 
 .time-stamp {
   font-size: 0.74rem;
-  color: var(--text-dim);
+  color: #747775;
 }
 
 .header-right-group {
@@ -1201,7 +1824,7 @@ onMounted(() => {
 .slider {
   width: 32px;
   height: 18px;
-  background-color: #334155;
+  background-color: #C4CDD5;
   border-radius: 20px;
   position: relative;
   transition: background-color 0.2s;
@@ -1217,10 +1840,11 @@ onMounted(() => {
   top: 2px;
   left: 2px;
   transition: transform 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .switch-control input:checked + .slider {
-  background-color: #10b981;
+  background-color: #0B57D0;
 }
 
 .switch-control input:checked + .slider::after {
@@ -1230,20 +1854,20 @@ onMounted(() => {
 .switch-label {
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: #747775;
 }
 
 .switch-control input:checked ~ .switch-label {
-  color: #34d399;
+  color: #0B57D0;
 }
 
 .icon-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: #747775;
   cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm);
+  padding: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1251,33 +1875,34 @@ onMounted(() => {
 }
 
 .icon-btn:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  color: #1F1F1F;
+  background: #EDF2FA;
 }
 
 .btn-danger-icon:hover {
-  color: #fb7185;
-  background: rgba(244, 63, 94, 0.15);
+  color: #C5221F;
+  background: #FCE8E6;
 }
 
 /* Rule Text */
 .rule-content-block {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  background: #F8FAFD;
+  border: 1px solid #E1E6EC;
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 
 .block-label {
   font-size: 0.75rem;
-  font-weight: 600;
-  color: #a5b4fc;
+  font-weight: 700;
+  color: #0B57D0;
 }
 
 .rule-body-text {
   font-size: 0.88rem;
   font-weight: 500;
-  color: var(--text-main);
-  margin-top: 2px;
+  color: #1F1F1F;
+  margin-top: 3px;
   line-height: 1.5;
 }
 
@@ -1292,12 +1917,12 @@ onMounted(() => {
 .meta-label {
   font-size: 0.74rem;
   font-weight: 600;
-  color: var(--text-dim);
+  color: #747775;
   white-space: nowrap;
 }
 
 .meta-val {
-  color: var(--text-muted);
+  color: #444746;
 }
 
 .keywords-bar {
@@ -1315,18 +1940,18 @@ onMounted(() => {
 
 .kw-chip {
   font-size: 0.7rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #cbd5e1;
+  background: #F0F4F9;
+  border: 1px solid #DDE3EA;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #444746;
 }
 
 /* Confirm Dialog */
 .confirm-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -1336,13 +1961,13 @@ onMounted(() => {
 }
 
 .confirm-box {
-  background: var(--bg-secondary);
-  border: 1px solid var(--status-failed-border);
-  border-radius: var(--radius-md);
-  padding: 20px;
+  background: #FFFFFF;
+  border: 1px solid #F6AEA9;
+  border-radius: 20px;
+  padding: 22px;
   max-width: 480px;
   width: 100%;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1350,16 +1975,16 @@ onMounted(() => {
 
 .confirm-title {
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .text-danger {
-  color: #fb7185;
+  color: #C5221F;
 }
 
 .confirm-msg {
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: #444746;
   line-height: 1.4;
 }
 
@@ -1367,10 +1992,10 @@ onMounted(() => {
   font-size: 0.82rem;
   font-style: italic;
   padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: rgba(244, 63, 94, 0.08);
-  border-left: 3px solid #fb7185;
-  color: #fecdd3;
+  border-radius: 8px;
+  background: #FCE8E6;
+  border-left: 3px solid #C5221F;
+  color: #8C1D18;
 }
 
 .confirm-actions {
@@ -1383,11 +2008,11 @@ onMounted(() => {
 /* Footer */
 .modal-footer {
   padding: 14px 24px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid #DDE3EA;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.02);
+  background: #F8FAFD;
 }
 
 .stats-summary {
@@ -1395,27 +2020,835 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: #444746;
 }
 
 .dot-active {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  background: #137333;
 }
 
 .btn-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-top-color: var(--accent-primary);
+  border: 2px solid #DDE3EA;
+  border-top-color: #0B57D0;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #E8F0FE;
+  color: #0B57D0;
+  border: 1px solid #A8C7FA;
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.conf-high {
+  background: #E6F4EA;
+  color: #137333;
+  border: 1px solid #A8DAB5;
+}
+
+.conf-medium {
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid #FDE293;
+}
+
+.conf-low {
+  background: #FCE8E6;
+  color: #C5221F;
+  border: 1px solid #F6AEA9;
+}
+
+.telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.69rem;
+  font-weight: 500;
+  background: #F0F4F9;
+  color: #444746;
+  border: 1px solid #DDE3EA;
+}
+
+.telemetry-success {
+  background: #E6F4EA;
+  color: #137333;
+  border-color: #A8DAB5;
+}
+
+.telemetry-fail {
+  background: #FCE8E6;
+  color: #C5221F;
+  border-color: #F6AEA9;
+}
+
+.btn-rollback {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid #FDE293;
+  transition: all 0.15s ease;
+}
+
+.btn-rollback:hover:not(:disabled) {
+  background: #FDE293;
+  color: #7A4100;
+}
+
+.btn-rollback:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.quarantine-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: #FCE8E6;
+  border: 1px solid #F6AEA9;
+  color: #C5221F;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.quarantine-icon {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+/* =========================================================================
+   HARNESS² STUDIO & EXPERIENCE LIBRARY STYLING (Google NotebookLM Daylight)
+   ========================================================================= */
+
+.badge-harness {
+  background: #E8DDF8;
+  color: #3F1D74;
+  border: 1px solid #D1C2E9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+/* Modal Nav Tabs */
+.modal-tab-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: #F8FAFD;
+  border-bottom: 1px solid #DDE3EA;
+}
+
+.tab-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #444746;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-nav-btn:hover {
+  background: #EDF2FA;
+  color: #1F1F1F;
+}
+
+.tab-nav-btn.active {
+  background: #FFFFFF;
+  border-color: #DDE3EA;
+  color: #0B57D0;
+  box-shadow: 0 2px 6px rgba(11, 87, 208, 0.08);
+}
+
+.tab-counter {
+  font-size: 0.72rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #E8F0FE;
+  color: #0B57D0;
+}
+
+.counter-emerald {
+  background: #CEEAD6;
+  color: #0D652D;
+}
+
+/* Always-On Budget Meter Panel */
+.budget-meter-panel {
+  padding: 12px 24px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #DDE3EA;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.budget-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.budget-label-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.budget-title {
+  font-size: 0.82rem;
+  color: #1F1F1F;
+}
+
+.budget-utilization-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.budget-utilization-tag.budget-safe {
+  background: #E6F4EA;
+  color: #137333;
+}
+
+.budget-utilization-tag.budget-warn {
+  background: #FEF7E0;
+  color: #B06000;
+}
+
+.budget-utilization-tag.budget-danger {
+  background: #FCE8E6;
+  color: #C5221F;
+}
+
+.budget-breakdown-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.breakdown-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pill-inv {
+  background: #EEF2FF;
+  color: #3730A3;
+  border: 1px solid #C7D2FE;
+}
+
+.pill-dom {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+
+.pill-ondemand {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.budget-progress-track {
+  width: 100%;
+  height: 7px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.budget-progress-fill.budget-safe { background: #10B981; }
+.budget-progress-fill.budget-warn,
+.budget-progress-fill.budget-warning { background: #F59E0B; }
+.budget-progress-fill.budget-danger { background: #EF4444; }
+
+.budget-note-text {
+  font-size: 0.74rem;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.budget-note-text.budget-safe { color: #137333; }
+.budget-note-text.budget-warn,
+.budget-note-text.budget-warning { color: #B06000; }
+.budget-note-text.budget-danger { color: #C5221F; font-weight: 600; }
+
+/* Filter Chips Additional */
+.pill-inv-filter.active {
+  background: #EEF2FF !important;
+  color: #3730A3 !important;
+  border-color: #C7D2FE !important;
+}
+
+.pill-dom-filter.active {
+  background: #ECFDF5 !important;
+  color: #065F46 !important;
+  border-color: #A7F3D0 !important;
+}
+
+.pill-amber.active {
+  background: #FEF3C7 !important;
+  color: #92400E !important;
+  border-color: #FCD34D !important;
+}
+
+.pill-slate.active {
+  background: #F1F5F9 !important;
+  color: #475569 !important;
+  border-color: #CBD5E1 !important;
+}
+
+/* Harness Dimension Badges */
+.harness-dim-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.dim-inv {
+  background: #EEF2FF;
+  color: #3730A3;
+  border: 1px solid #C7D2FE;
+}
+
+.dim-dom {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+
+.always-on-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pill-is-always-on {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FCD34D;
+}
+
+.pill-is-on-demand {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.card-inv-border {
+  border-left: 4px solid #6366F1 !important;
+}
+
+.card-dom-border {
+  border-left: 4px solid #10B981 !important;
+}
+
+/* Part 1: Cue Signal Box */
+.cue-signal-box {
+  background: #F8FAFD;
+  border: 1px solid #D3E3FD;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.cue-signal-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.cue-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #0B57D0;
+}
+
+.cue-text {
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: #1F1F1F;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+/* Part 2: Lesson Content */
+.lesson-content-block {
+  background: #FFFFFF;
+  border: 1px solid #E1E6EC;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.lesson-body-text {
+  font-size: 0.90rem;
+  font-weight: 600;
+  color: #1F1F1F;
+  margin-top: 3px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* Part 3: Contrastive Evidence Panel */
+.contrastive-evidence-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.contrastive-evidence-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #444746;
+}
+
+.contrastive-evidence-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .contrastive-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.contrast-col,
+.contrast-bubble-card {
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.before-card {
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+}
+
+.after-card {
+  background: #ECFDF5;
+  border: 1px solid #6EE7B7;
+}
+
+.contrast-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.badge-before { color: #991B1B; }
+.badge-after { color: #065F46; }
+
+.contrast-text {
+  font-size: 0.82rem;
+  color: #1F1F1F;
+  margin: 0;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Card Footer Meta */
+.card-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px dashed #E1E6EC;
+}
+
+.footprint-pill {
+  font-size: 0.69rem;
+  font-weight: 600;
+  color: #444746;
+  background: #F0F4F9;
+  border: 1px solid #DDE3EA;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.root-cause-pill {
+  font-size: 0.71rem;
+  color: #747775;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Form Styles */
+.dimension-radio-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dim-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #FFFFFF;
+  border: 1px solid #DDE3EA;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dim-radio-card.selected {
+  border-color: #0B57D0;
+  background: #F8FAFD;
+  box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.12);
+}
+
+.dim-card-title {
+  font-size: 0.82rem;
+  color: #1F1F1F;
+  display: block;
+}
+
+.dim-card-desc {
+  font-size: 0.74rem;
+  color: #444746;
+  line-height: 1.3;
+}
+
+.contrastive-inputs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.contrast-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.contrast-col-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.always-on-toggle-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #FEF7E0;
+  border: 1px solid #FDE293;
+  border-radius: 12px;
+}
+
+.checkbox-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-text strong {
+  display: block;
+  font-size: 0.82rem;
+  color: #7A4100;
+}
+
+.checkbox-text span {
+  font-size: 0.74rem;
+  color: #594300;
+}
+
+.form-token-footprint {
+  font-size: 0.74rem;
+  color: #7A4100;
+}
+
+.form-error-banner {
+  color: #C5221F;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin: 8px 0 0;
+  padding: 6px 12px;
+  background: #FCE8E6;
+  border-radius: 8px;
+}
+
+/* =========================================================================
+   TAB 2: EVOLUTION RUNS STYLING
+   ========================================================================= */
+
+.evolution-toolbar {
+  padding: 14px 24px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #DDE3EA;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evolution-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.stat-box {
+  background: #F8FAFD;
+  border: 1px solid #DDE3EA;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1F1F1F;
+}
+
+.stat-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #444746;
+}
+
+.stat-box.stat-emerald .stat-value { color: #137333; }
+.stat-box.stat-slate .stat-value { color: #475569; }
+.stat-box.stat-blue .stat-value { color: #0B57D0; }
+
+.runs-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.harness-run-card {
+  background: #FFFFFF;
+  border: 1px solid #DDE3EA;
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.run-adopted-card {
+  border-left: 4px solid #10B981;
+}
+
+.run-keep-base-card {
+  border-left: 4px solid #94A3B8;
+}
+
+.run-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.run-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.verdict-badge {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.verdict-adopted {
+  background: #D1FAE5;
+  color: #065F46;
+  border: 1px solid #6EE7B7;
+}
+
+.verdict-keep {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.delta-score-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.score-positive {
+  background: #E6F4EA;
+  color: #137333;
+}
+
+.score-neutral {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.winner-pill {
+  font-size: 0.72rem;
+  color: #444746;
+  background: #F8FAFD;
+  border: 1px solid #DDE3EA;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.run-trigger-block {
+  background: #F8FAFD;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.trigger-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #444746;
+}
+
+.trigger-message {
+  font-size: 0.84rem;
+  font-style: italic;
+  color: #1F1F1F;
+  margin: 2px 0 0;
+}
+
+.run-duel-arena {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.arena-col {
+  background: #F8FAFD;
+  border: 1px solid #DDE3EA;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.arena-col-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #747775;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.arena-bubble {
+  font-size: 0.82rem;
+  color: #1F1F1F;
+  line-height: 1.4;
+}
+
+.run-rationale-box {
+  background: #EEF2FF;
+  border: 1px solid #C7D2FE;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.rationale-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #3730A3;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.rationale-text {
+  font-size: 0.82rem;
+  color: #1F1F1F;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.btn-view-adopted-rule {
+  background: transparent;
+  border: none;
+  color: #0B57D0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.btn-view-adopted-rule:hover {
+  color: #0842A0;
 }
 </style>

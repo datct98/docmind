@@ -175,25 +175,24 @@ const validateAndEmit = (file) => {
 
 <style scoped>
 .upload-container {
-  border: 1.5px dashed var(--border-subtle);
+  border: 1.5px dashed #A8C7FA;
   border-radius: var(--radius-md);
-  padding: 14px 14px 12px;
-  background: rgba(15, 23, 42, 0.4);
+  padding: 12px 12px 10px;
+  background: #F8FAFD;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
   position: relative;
   overflow: hidden;
 }
 
 .upload-container:hover {
-  border-color: var(--border-active);
-  background: rgba(99, 102, 241, 0.05);
-  box-shadow: inset 0 0 16px rgba(99, 102, 241, 0.06);
+  border-color: var(--accent-primary);
+  background: #E8F0FE;
 }
 
 .upload-container.is-dragging {
   border-color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.12);
+  background: #D3E3FD;
   transform: scale(1.01);
 }
 
@@ -213,26 +212,26 @@ const validateAndEmit = (file) => {
 }
 
 .upload-icon-wrapper {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
   border-radius: var(--radius-md);
-  background: rgba(99, 102, 241, 0.12);
+  background: #D3E3FD;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #a5b4fc;
+  color: var(--accent-primary);
 }
 
 .upload-icon {
-  stroke: #818cf8;
+  stroke: var(--accent-primary);
 }
 
 .upload-spinner {
-  width: 22px;
-  height: 22px;
-  border: 2.5px solid rgba(99, 102, 241, 0.2);
-  border-top-color: #818cf8;
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid #D3E3FD;
+  border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -247,64 +246,64 @@ const validateAndEmit = (file) => {
 }
 
 .upload-title {
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--text-main);
   margin-bottom: 2px;
 }
 
 .upload-title .highlight {
-  color: #818cf8;
-  font-weight: 600;
+  color: var(--accent-primary);
+  font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .upload-subtitle {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-dim);
 }
 
 .text-indigo {
-  color: #818cf8;
+  color: var(--accent-primary);
 }
 
 .template-actions-bar {
-  margin-top: 10px;
+  margin-top: 9px;
   padding-top: 8px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  border-top: 1px dashed #DDE3EA;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn-template {
   flex: 1;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  padding: 5px 8px;
+  padding: 5px 7px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.05);
+  background: #FFFFFF;
   border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .btn-template:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: #F0F4F9;
   color: var(--text-main);
 }
 
 .btn-template-accent {
-  background: rgba(99, 102, 241, 0.14);
-  border-color: rgba(99, 102, 241, 0.35);
-  color: #a5b4fc;
+  background: #D3E3FD;
+  border-color: #A8C7FA;
+  color: #041E49;
 }
 
 .btn-template-accent:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.25);
+  background: var(--accent-primary);
   color: #ffffff;
 }
 

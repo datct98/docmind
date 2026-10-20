@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Request payload cho POST /api/feedback.
@@ -37,7 +38,10 @@ public record FeedbackRequest(
         String source,
 
         @JsonProperty("history")
-        List<FanpageBotRequest.ConversationTurn> history
+        List<FanpageBotRequest.ConversationTurn> history,
+
+        @JsonProperty("applied_rule_ids")
+        List<UUID> appliedRuleIds
 ) {
     public FeedbackRequest(String question,
                            String faultyAnswer,
@@ -45,7 +49,7 @@ public record FeedbackRequest(
                            List<String> documentIds,
                            String conversationId,
                            String retrievedContext) {
-        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, null, null, null);
+        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, null, null, null, null);
     }
 
     public FeedbackRequest(String question,
@@ -55,7 +59,7 @@ public record FeedbackRequest(
                            String conversationId,
                            String retrievedContext,
                            String pageId) {
-        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, pageId, null, null);
+        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, pageId, null, null, null);
     }
 
     public FeedbackRequest(String question,
@@ -66,6 +70,18 @@ public record FeedbackRequest(
                            String retrievedContext,
                            String pageId,
                            String source) {
-        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, pageId, source, null);
+        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, pageId, source, null, null);
+    }
+
+    public FeedbackRequest(String question,
+                           String faultyAnswer,
+                           String userCorrection,
+                           List<String> documentIds,
+                           String conversationId,
+                           String retrievedContext,
+                           String pageId,
+                           String source,
+                           List<FanpageBotRequest.ConversationTurn> history) {
+        this(question, faultyAnswer, userCorrection, documentIds, conversationId, retrievedContext, pageId, source, history, null);
     }
 }

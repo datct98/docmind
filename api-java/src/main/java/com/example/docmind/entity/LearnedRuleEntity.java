@@ -2,6 +2,8 @@ package com.example.docmind.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -55,6 +57,50 @@ public class LearnedRuleEntity {
 
     @Column(name = "page_id")
     private UUID pageId;
+
+    @Builder.Default
+    @Column(name = "confidence_score", nullable = false)
+    private double confidenceScore = 0.85;
+
+    @Builder.Default
+    @Column(name = "applied_count", nullable = false)
+    private int appliedCount = 0;
+
+    @Builder.Default
+    @Column(name = "success_count", nullable = false)
+    private int successCount = 0;
+
+    @Builder.Default
+    @Column(name = "fail_count", nullable = false)
+    private int failCount = 0;
+
+    @Builder.Default
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
+    @Column(name = "previous_rule_text", columnDefinition = "TEXT")
+    private String previousRuleText;
+
+    @Column(name = "quarantined_reason", columnDefinition = "TEXT")
+    private String quarantinedReason;
+
+    @Column(name = "last_applied_at")
+    private Instant lastAppliedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(name = "dimension", nullable = false, length = 10)
+    private HarnessDimension dimension = HarnessDimension.DOM;
+
+    @Column(name = "cue_signal", columnDefinition = "TEXT")
+    private String cueSignal;
+
+    @Column(name = "contrastive_evidence", columnDefinition = "TEXT")
+    private String contrastiveEvidence;
+
+    @Builder.Default
+    @Column(name = "always_on", nullable = false)
+    private boolean alwaysOn = false;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

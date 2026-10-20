@@ -1,5 +1,7 @@
 package com.example.docmind.dto;
 
+import com.example.docmind.entity.HarnessDimension;
+import com.example.docmind.entity.LearnedRule;
 import com.example.docmind.entity.LearnedRuleEntity;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -10,6 +12,8 @@ import java.util.UUID;
 
 /**
  * DTO đại diện cho một quy tắc rút kinh nghiệm (AI Playbook rule).
+ * Cập nhật cấu trúc Experience Library theo Google Research Harness²:
+ * dimension (INV | DOM), cue_signal, contrastive_evidence, always_on.
  */
 public record LearnedRuleDto(
         UUID id,
@@ -20,9 +24,33 @@ public record LearnedRuleDto(
         @JsonProperty("retrieval_keywords") List<String> retrievalKeywords,
         boolean active,
         @JsonProperty("page_id") String pageId,
+        @JsonProperty("confidence_score") double confidenceScore,
+        @JsonProperty("applied_count") int appliedCount,
+        @JsonProperty("success_count") int successCount,
+        @JsonProperty("fail_count") int failCount,
+        @JsonProperty("version") int version,
+        @JsonProperty("previous_rule_text") String previousRuleText,
+        @JsonProperty("quarantined_reason") String quarantinedReason,
+        @JsonProperty("last_applied_at") Instant lastAppliedAt,
         @JsonProperty("created_at") Instant createdAt,
-        @JsonProperty("updated_at") Instant updatedAt
+        @JsonProperty("updated_at") Instant updatedAt,
+        @JsonProperty("dimension") String dimension,
+        @JsonProperty("cue_signal") String cueSignal,
+        @JsonProperty("contrastive_evidence") String contrastiveEvidence,
+        @JsonProperty("always_on") boolean alwaysOn
 ) {
+    public LearnedRuleDto {
+        if (confidenceScore <= 0.0) {
+            confidenceScore = 0.85;
+        }
+        if (version <= 0) {
+            version = 1;
+        }
+        if (dimension == null || dimension.isBlank()) {
+            dimension = "DOM";
+        }
+    }
+
     public LearnedRuleDto(UUID id,
                           String category,
                           String triggerCondition,
@@ -32,7 +60,74 @@ public record LearnedRuleDto(
                           boolean active,
                           Instant createdAt,
                           Instant updatedAt) {
-        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, null, createdAt, updatedAt);
+        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, null,
+                0.85, 0, 0, 0, 1, null, null, null, createdAt, updatedAt, "DOM", "", null, false);
+    }
+
+    public LearnedRuleDto(UUID id,
+                          String category,
+                          String triggerCondition,
+                          String rootCause,
+                          String generalizedRule,
+                          List<String> retrievalKeywords,
+                          boolean active,
+                          String pageId,
+                          Instant createdAt,
+                          Instant updatedAt) {
+        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, pageId,
+                0.85, 0, 0, 0, 1, null, null, null, createdAt, updatedAt, "DOM", "", null, false);
+    }
+
+    public LearnedRuleDto(UUID id,
+                          String category,
+                          String triggerCondition,
+                          String rootCause,
+                          String generalizedRule,
+                          List<String> retrievalKeywords,
+                          boolean active,
+                          String pageId,
+                          double confidenceScore,
+                          int appliedCount,
+                          int successCount,
+                          int failCount,
+                          int version,
+                          String previousRuleText,
+                          String quarantinedReason,
+                          Instant lastAppliedAt,
+                          Instant createdAt,
+                          Instant updatedAt) {
+        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, pageId,
+                confidenceScore, appliedCount, successCount, failCount, version, previousRuleText,
+                quarantinedReason, lastAppliedAt, createdAt, updatedAt, "DOM", "", null, false);
+    }
+
+    public boolean hasExperience() {
+        return cueSignal != null && !cueSignal.isBlank()
+                && generalizedRule != null && !generalizedRule.isBlank()
+                && contrastiveEvidence != null && !contrastiveEvidence.isBlank();
+    }
+
+    public int characterCount() {
+        int count = 0;
+        if (cueSignal != null) count += cueSignal.length();
+        if (generalizedRule != null) count += generalizedRule.length();
+        if (contrastiveEvidence != null) count += contrastiveEvidence.length();
+        if ((cueSignal == null || cueSignal.isBlank()) && triggerCondition != null) {
+            count += triggerCondition.length();
+        }
+        return count;
+    }
+
+    public String toPromptBlock() {
+        return String.format(
+                "[%s] Cue: %s | Lesson: %s | Evidence: %s",
+                dimension != null ? dimension : "DOM",
+                cueSignal != null && !cueSignal.isBlank() ? cueSignal : (triggerCondition != null ? triggerCondition : ""),
+                generalizedRule != null ? generalizedRule : "",
+                contrastiveEvidence != null && !contrastiveEvidence.isBlank()
+                        ? contrastiveEvidence.replace("\n", " ")
+                        : "N/A"
+        );
     }
 
     public static LearnedRuleDto fromEntity(LearnedRuleEntity entity) {
@@ -42,6 +137,9 @@ public record LearnedRuleDto(
         List<String> keywords = entity.getRetrievalKeywords() == null
                 ? List.of()
                 : Arrays.asList(entity.getRetrievalKeywords());
+        double conf = entity.getConfidenceScore() <= 0.0 ? 0.85 : entity.getConfidenceScore();
+        int ver = entity.getVersion() <= 0 ? 1 : entity.getVersion();
+        String dim = entity.getDimension() != null ? entity.getDimension().name() : "DOM";
         return new LearnedRuleDto(
                 entity.getId(),
                 entity.getCategory(),
@@ -51,8 +149,64 @@ public record LearnedRuleDto(
                 keywords,
                 entity.isActive(),
                 entity.getPageId() != null ? entity.getPageId().toString() : null,
+                conf,
+                entity.getAppliedCount(),
+                entity.getSuccessCount(),
+                entity.getFailCount(),
+                ver,
+                entity.getPreviousRuleText(),
+                entity.getQuarantinedReason(),
+                entity.getLastAppliedAt(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                dim,
+                entity.getCueSignal(),
+                entity.getContrastiveEvidence(),
+                entity.isAlwaysOn()
         );
+    }
+
+    public static LearnedRuleDto fromLearnedRule(LearnedRule rule) {
+        if (rule == null) {
+            return null;
+        }
+        return rule.toDto();
+    }
+
+    public LearnedRuleEntity toEntity() {
+        UUID pid = null;
+        if (pageId != null && !pageId.isBlank()) {
+            try {
+                pid = UUID.fromString(pageId);
+            } catch (IllegalArgumentException ignored) {}
+        }
+        return LearnedRuleEntity.builder()
+                .id(id != null ? id : UUID.randomUUID())
+                .category(category != null ? category : "GENERAL")
+                .triggerCondition(triggerCondition != null ? triggerCondition : "")
+                .rootCause(rootCause != null ? rootCause : "")
+                .generalizedRule(generalizedRule != null ? generalizedRule : "")
+                .retrievalKeywords(retrievalKeywords != null ? retrievalKeywords.toArray(new String[0]) : new String[0])
+                .active(active)
+                .pageId(pid)
+                .confidenceScore(confidenceScore > 0 ? confidenceScore : 0.85)
+                .appliedCount(appliedCount)
+                .successCount(successCount)
+                .failCount(failCount)
+                .version(version > 0 ? version : 1)
+                .previousRuleText(previousRuleText)
+                .quarantinedReason(quarantinedReason)
+                .lastAppliedAt(lastAppliedAt)
+                .createdAt(createdAt != null ? createdAt : Instant.now())
+                .updatedAt(updatedAt != null ? updatedAt : Instant.now())
+                .dimension(HarnessDimension.fromString(dimension))
+                .cueSignal(cueSignal)
+                .contrastiveEvidence(contrastiveEvidence)
+                .alwaysOn(alwaysOn)
+                .build();
+    }
+
+    public LearnedRule toLearnedRule() {
+        return LearnedRule.fromDto(this);
     }
 }

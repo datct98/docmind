@@ -93,17 +93,17 @@ const copySnippet = async () => {
 
 <style scoped>
 .citation-card {
-  background: rgba(15, 23, 42, 0.6);
+  background: #FFFFFF;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   margin-top: 6px;
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition: all 0.16s ease;
 }
 
 .citation-card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  background: rgba(15, 23, 42, 0.8);
+  border-color: #A8C7FA;
+  background: #F8FAFD;
 }
 
 .citation-header {
@@ -128,24 +128,24 @@ const copySnippet = async () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: var(--accent-pill-bg);
+  color: var(--accent-pill-text);
+  border: 1px solid #A8C7FA;
   font-size: 0.68rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
   white-space: nowrap;
 }
 
 .doc-title {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: #e2e8f0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 170px;
 }
 
 .heading-path {
@@ -177,7 +177,7 @@ const copySnippet = async () => {
 
 .action-btn:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  background: #E9EEF6;
 }
 
 .chevron-icon {
@@ -189,17 +189,17 @@ const copySnippet = async () => {
 
 .citation-body {
   padding: 0 12px 10px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+  border-top: 1px dashed var(--border-subtle);
 }
 
 .snippet-quote {
   font-size: 0.82rem;
   line-height: 1.5;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-style: italic;
   margin: 8px 0 6px;
-  padding-left: 8px;
-  border-left: 2px solid var(--accent-primary);
+  padding-left: 10px;
+  border-left: 2.5px solid var(--accent-primary);
 }
 
 .citation-footer {
@@ -213,8 +213,9 @@ const copySnippet = async () => {
 }
 
 .chunk-tag, .bbox-tag {
-  background: rgba(255, 255, 255, 0.04);
-  padding: 1px 5px;
-  border-radius: 3px;
+  background: #F0F4F9;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 </style>

@@ -43,6 +43,16 @@ public class FeedbackController {
 
     @PostMapping
     public ResponseEntity<FeedbackResponse> submitFeedback(@Valid @RequestBody FeedbackRequest request) {
+        // 0. Selective Blame Attribution & Auto-Quarantine Circuit Breaker nếu có danh sách rule đã áp dụng ở câu trả lời sai
+        if (request.appliedRuleIds() != null && !request.appliedRuleIds().isEmpty()) {
+            metaLearningService.recordNegativeFeedbackAndAutoQuarantine(
+                    request.appliedRuleIds(),
+                    request.question(),
+                    request.faultyAnswer(),
+                    request.userCorrection()
+            );
+        }
+
         // 1. Trích xuất và lưu trữ quy tắc rút kinh nghiệm
         LearnedRuleDto learnedRule;
         if (request.pageId() != null && !request.pageId().isBlank()) {

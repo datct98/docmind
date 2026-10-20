@@ -155,7 +155,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         if (pageId == null) {
             String sql = """
                     SELECT id, category, trigger_condition, root_cause, generalized_rule,
-                           retrieval_keywords, active, page_id, created_at, updated_at,
+                           retrieval_keywords, active, page_id,
+                           confidence_score, applied_count, success_count, fail_count,
+                           version, previous_rule_text, quarantined_reason, last_applied_at,
+                           created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
                     WHERE active = true AND embedding IS NOT NULL
@@ -176,7 +179,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         } else {
             String sql = """
                     SELECT id, category, trigger_condition, root_cause, generalized_rule,
-                           retrieval_keywords, active, page_id, created_at, updated_at,
+                           retrieval_keywords, active, page_id,
+                           confidence_score, applied_count, success_count, fail_count,
+                           version, previous_rule_text, quarantined_reason, last_applied_at,
+                           created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
                     WHERE active = true AND embedding IS NOT NULL
@@ -198,6 +204,144 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         }
     }
 
+    @Override
+    public List<LearnedRuleEntity> searchSimilarRulesForEvolution(float[] queryEmbedding, double minScore, int limit, UUID pageId) {
+        if (queryEmbedding == null) {
+            return List.of();
+        }
+        String vectorLiteral = toVectorLiteral(queryEmbedding);
+        if (pageId == null) {
+            String sql = """
+                    SELECT id, category, trigger_condition, root_cause, generalized_rule,
+                           retrieval_keywords, active, page_id,
+                           confidence_score, applied_count, success_count, fail_count,
+                           version, previous_rule_text, quarantined_reason, last_applied_at,
+                           created_at, updated_at,
+                           (1 - (embedding <=> CAST(? AS vector))) AS score
+                    FROM learned_rules
+                    WHERE (active = true OR quarantined_reason IS NOT NULL)
+                      AND page_id IS NULL
+                      AND embedding IS NOT NULL
+                    ORDER BY embedding <=> CAST(? AS vector)
+                    LIMIT ?
+                    """;
+
+            return jdbc.query(sql, (rs, rowNum) -> {
+                double score = rs.getDouble("score");
+                if (score < minScore) {
+                    return null;
+                }
+                return mapRow(rs);
+            }, vectorLiteral, vectorLiteral, limit)
+            .stream()
+            .filter(java.util.Objects::nonNull)
+            .toList();
+        } else {
+            String sql = """
+                    SELECT id, category, trigger_condition, root_cause, generalized_rule,
+                           retrieval_keywords, active, page_id,
+                           confidence_score, applied_count, success_count, fail_count,
+                           version, previous_rule_text, quarantined_reason, last_applied_at,
+                           created_at, updated_at,
+                           (1 - (embedding <=> CAST(? AS vector))) AS score
+                    FROM learned_rules
+                    WHERE (active = true OR quarantined_reason IS NOT NULL)
+                      AND page_id = ?
+                      AND embedding IS NOT NULL
+                    ORDER BY embedding <=> CAST(? AS vector)
+                    LIMIT ?
+                    """;
+
+            return jdbc.query(sql, (rs, rowNum) -> {
+                double score = rs.getDouble("score");
+                if (score < minScore) {
+                    return null;
+                }
+                return mapRow(rs);
+            }, vectorLiteral, pageId, vectorLiteral, limit)
+            .stream()
+            .filter(java.util.Objects::nonNull)
+            .toList();
+        }
+    }
+
+    @Override
+    public void updateRuleEvolutionMetadata(UUID id,
+                                            int version,
+                                            String previousRuleText,
+                                            double confidenceScore,
+                                            String quarantinedReason) {
+        if (id == null) {
+            return;
+        }
+        String sql = """
+                UPDATE learned_rules
+                SET version = ?,
+                    previous_rule_text = ?,
+                    confidence_score = ?,
+                    quarantined_reason = ?,
+                    fail_count = 0,
+                    active = true,
+                    updated_at = now()
+                WHERE id = ?
+                """;
+        jdbc.update(sql, version, previousRuleText, confidenceScore, quarantinedReason, id);
+    }
+
+    @Override
+    public void recordRulesApplied(List<UUID> ruleIds) {
+        if (ruleIds == null || ruleIds.isEmpty()) {
+            return;
+        }
+        String sql = """
+                UPDATE learned_rules
+                SET applied_count = applied_count + 1,
+                    last_applied_at = now()
+                WHERE id = ?
+                """;
+        for (UUID ruleId : ruleIds) {
+            if (ruleId != null) {
+                jdbc.update(sql, ruleId);
+            }
+        }
+    }
+
+    @Override
+    public void recordRuleConversionSuccess(UUID id, double confidenceBoost) {
+        if (id == null) {
+            return;
+        }
+        String sql = """
+                UPDATE learned_rules
+                SET success_count = success_count + 1,
+                    confidence_score = LEAST(0.99, confidence_score + ?),
+                    updated_at = now()
+                WHERE id = ?
+                """;
+        jdbc.update(sql, confidenceBoost, id);
+    }
+
+    @Override
+    public void recordRuleNegativeFeedback(UUID id,
+                                           int failCount,
+                                           double confidenceScore,
+                                           boolean active,
+                                           String quarantinedReason) {
+        if (id == null) {
+            return;
+        }
+        String sql = """
+                UPDATE learned_rules
+                SET fail_count = ?,
+                    confidence_score = ?,
+                    active = ?,
+                    quarantined_reason = ?,
+                    updated_at = now()
+                WHERE id = ?
+                """;
+        jdbc.update(sql, failCount, confidenceScore, active, quarantinedReason, id);
+    }
+
     private LearnedRuleEntity mapRow(ResultSet rs) throws SQLException {
         UUID id = rs.getObject("id", UUID.class);
         String category = rs.getString("category");
@@ -209,6 +353,52 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         UUID pageId = null;
         try {
             pageId = rs.getObject("page_id", UUID.class);
+        } catch (SQLException ignored) {
+        }
+        double confidenceScore = 0.85;
+        try {
+            double rawConf = rs.getDouble("confidence_score");
+            if (!rs.wasNull() && rawConf > 0.0) {
+                confidenceScore = rawConf;
+            }
+        } catch (SQLException ignored) {
+        }
+        int appliedCount = 0;
+        try {
+            appliedCount = rs.getInt("applied_count");
+        } catch (SQLException ignored) {
+        }
+        int successCount = 0;
+        try {
+            successCount = rs.getInt("success_count");
+        } catch (SQLException ignored) {
+        }
+        int failCount = 0;
+        try {
+            failCount = rs.getInt("fail_count");
+        } catch (SQLException ignored) {
+        }
+        int version = 1;
+        try {
+            int rawVer = rs.getInt("version");
+            if (!rs.wasNull() && rawVer > 0) {
+                version = rawVer;
+            }
+        } catch (SQLException ignored) {
+        }
+        String previousRuleText = null;
+        try {
+            previousRuleText = rs.getString("previous_rule_text");
+        } catch (SQLException ignored) {
+        }
+        String quarantinedReason = null;
+        try {
+            quarantinedReason = rs.getString("quarantined_reason");
+        } catch (SQLException ignored) {
+        }
+        Timestamp lastAppliedAt = null;
+        try {
+            lastAppliedAt = rs.getTimestamp("last_applied_at");
         } catch (SQLException ignored) {
         }
         Timestamp createdAt = rs.getTimestamp("created_at");
@@ -223,6 +413,14 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                 .retrievalKeywords(keywords)
                 .active(active)
                 .pageId(pageId)
+                .confidenceScore(confidenceScore)
+                .appliedCount(appliedCount)
+                .successCount(successCount)
+                .failCount(failCount)
+                .version(version)
+                .previousRuleText(previousRuleText)
+                .quarantinedReason(quarantinedReason)
+                .lastAppliedAt(lastAppliedAt != null ? lastAppliedAt.toInstant() : null)
                 .createdAt(createdAt != null ? createdAt.toInstant() : Instant.now())
                 .updatedAt(updatedAt != null ? updatedAt.toInstant() : Instant.now())
                 .build();

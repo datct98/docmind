@@ -132,4 +132,87 @@ class RetrievalServiceTest {
                 retrievalService.retrieveWithRules(List.of(docId), "SĐT chị là 0912345678, báo giá giúp chị gói trị mụn nhé", 5, List.of());
         assertThat(resPhoneAndPrice.appliedRules()).isEmpty();
     }
+
+    @Test
+    void filtersOutLowConfidenceRulesRanksByEffectiveScoreAndCapsAtTop3WhileIncrementingAppliedCount() {
+        UUID docId = UUID.randomUUID();
+        RetrievedChunk rc = new RetrievedChunk(
+                UUID.randomUUID(), docId, List.of("Bảng giá"), List.of(UUID.randomUUID()),
+                1, new double[]{0, 0, 10, 10}, "Nội dung dịch vụ trị nám", 0.95
+        );
+        when(chunkRepository.searchByVector(any(), any(), anyInt())).thenReturn(List.of(rc));
+        when(chunkRepository.searchByFullText(any(), anyString(), anyInt())).thenReturn(List.of(rc));
+
+        LearnedRuleEntity quarantinedLowConf = LearnedRuleEntity.builder()
+                .id(UUID.randomUUID())
+                .category("PRICING")
+                .triggerCondition("Khi báo giá trị nám")
+                .generalizedRule("Quy tắc độ tin cậy thấp dưới ngưỡng 0.45")
+                .retrievalKeywords(new String[]{"trị nám", "báo giá"})
+                .active(true)
+                .confidenceScore(0.35)
+                .build();
+
+        LearnedRuleEntity ruleHighConf = LearnedRuleEntity.builder()
+                .id(UUID.randomUUID())
+                .category("PRICING")
+                .triggerCondition("Khi báo giá trị nám")
+                .generalizedRule("Quy tắc 1 độ tin cậy rất cao 0.98")
+                .retrievalKeywords(new String[]{"trị nám", "báo giá"})
+                .active(true)
+                .confidenceScore(0.98)
+                .appliedCount(4)
+                .build();
+
+        LearnedRuleEntity ruleMedConf1 = LearnedRuleEntity.builder()
+                .id(UUID.randomUUID())
+                .category("POLICY")
+                .triggerCondition("Khi báo giá trị nám")
+                .generalizedRule("Quy tắc 2 độ tin cậy 0.88")
+                .retrievalKeywords(new String[]{"trị nám"})
+                .active(true)
+                .confidenceScore(0.88)
+                .build();
+
+        LearnedRuleEntity ruleMedConf2 = LearnedRuleEntity.builder()
+                .id(UUID.randomUUID())
+                .category("DISCOUNT")
+                .triggerCondition("Khi báo giá trị nám")
+                .generalizedRule("Quy tắc 3 độ tin cậy 0.78")
+                .retrievalKeywords(new String[]{"trị nám"})
+                .active(true)
+                .confidenceScore(0.78)
+                .build();
+
+        LearnedRuleEntity ruleLowerConf4th = LearnedRuleEntity.builder()
+                .id(UUID.randomUUID())
+                .category("GENERAL")
+                .triggerCondition("Khi báo giá trị nám")
+                .generalizedRule("Quy tắc 4 độ tin cậy 0.52 bị cắt bởi Top-3 budget")
+                .retrievalKeywords(new String[]{"trị nám"})
+                .active(true)
+                .confidenceScore(0.52)
+                .build();
+
+        List<LearnedRuleEntity> pool = List.of(
+                quarantinedLowConf, ruleLowerConf4th, ruleMedConf2, ruleHighConf, ruleMedConf1
+        );
+        when(learnedRuleRepository.searchSimilarActiveRules(any(), anyDouble(), anyInt()))
+                .thenReturn(pool);
+        when(learnedRuleRepository.findByActiveTrue())
+                .thenReturn(pool);
+
+        RetrievalService.RetrievalResult result =
+                retrievalService.retrieveWithRules(List.of(docId), "Báo giá trị nám bên mình", 5, List.of());
+
+        assertThat(result.appliedRules()).hasSize(3);
+        assertThat(result.appliedRules())
+                .extracting(LearnedRuleDto::id)
+                .containsExactly(ruleHighConf.getId(), ruleMedConf1.getId(), ruleMedConf2.getId())
+                .doesNotContain(quarantinedLowConf.getId(), ruleLowerConf4th.getId());
+
+        verify(learnedRuleRepository).recordRulesApplied(
+                List.of(ruleHighConf.getId(), ruleMedConf1.getId(), ruleMedConf2.getId())
+        );
+    }
 }

@@ -157,35 +157,34 @@ const fileTypeClass = computed(() => {
 .doc-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--bg-card);
+  gap: 10px;
+  padding: 10px 12px;
+  background: #F8FAFD;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.16s cubic-bezier(0.2, 0, 0, 1);
   cursor: pointer;
   position: relative;
 }
 
 .doc-card:hover {
-  background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.16);
-  transform: translateY(-1px);
+  background: #F0F4F9;
+  border-color: #C4C7C5;
 }
 
 .doc-card.is-selected {
-  border-color: var(--border-active);
-  background: rgba(99, 102, 241, 0.08);
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.12);
+  border-color: #A8C7FA;
+  background: #E8F0FE;
 }
 
 .doc-card.is-parsing {
-  border-left: 3px solid var(--status-parsing-text);
+  border-color: var(--status-parsing-border);
+  background: #FFFDF5;
 }
 
 .doc-card.is-failed {
-  border-left: 3px solid var(--status-failed-text);
-  opacity: 0.8;
+  border-color: var(--status-failed-border);
+  background: #FFF8F7;
 }
 
 .card-left {
@@ -212,9 +211,9 @@ const fileTypeClass = computed(() => {
 .custom-checkbox {
   width: 18px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
-  border-radius: 4px;
+  background: #FFFFFF;
+  border: 1.5px solid #8E918F;
+  border-radius: 5px;
   display: inline-block;
   transition: all 0.15s ease;
 }
@@ -241,7 +240,7 @@ const fileTypeClass = computed(() => {
 }
 
 .custom-checkbox.disabled {
-  opacity: 0.3;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -251,46 +250,46 @@ const fileTypeClass = computed(() => {
   font-size: 0.65rem;
   font-weight: 700;
   padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  letter-spacing: 0.05em;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
   min-width: 38px;
   text-align: center;
 }
 
 .type-pdf {
-  background: rgba(239, 68, 68, 0.16);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #FCE8E6;
+  color: #C5221F;
+  border: 1px solid #FAD2CF;
 }
 
 .type-doc {
-  background: rgba(59, 130, 246, 0.16);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: #D3E3FD;
+  color: #0B57D0;
+  border: 1px solid #A8C7FA;
 }
 
 .type-xls {
-  background: rgba(16, 185, 129, 0.16);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #CEEAD6;
+  color: #137333;
+  border: 1px solid #A8DAB5;
 }
 
 .type-ppt {
-  background: rgba(249, 115, 22, 0.16);
-  color: #fb923c;
-  border: 1px solid rgba(249, 115, 22, 0.3);
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid #FDE293;
 }
 
 .type-txt {
-  background: rgba(168, 85, 247, 0.16);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: #E8DDF8;
+  color: #3F1D74;
+  border: 1px solid #D7C2F5;
 }
 
 .type-other {
-  background: rgba(148, 163, 184, 0.16);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: #E9EEF6;
+  color: #444746;
+  border: 1px solid #DDE3EA;
 }
 
 .card-center {
@@ -299,8 +298,8 @@ const fileTypeClass = computed(() => {
 }
 
 .doc-name {
-  font-size: 0.86rem;
-  font-weight: 500;
+  font-size: 0.83rem;
+  font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
@@ -312,7 +311,7 @@ const fileTypeClass = computed(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .engine-tags {
@@ -326,13 +325,13 @@ const fileTypeClass = computed(() => {
 }
 
 .page-assign-select {
-  background: rgba(99, 102, 241, 0.14);
-  border: 1px solid rgba(99, 102, 241, 0.35);
-  color: #c7d2fe;
+  background: #FFFFFF;
+  border: 1px solid #C4C7C5;
+  color: var(--text-secondary);
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 600;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   max-width: 155px;
   outline: none;
   cursor: pointer;
@@ -340,25 +339,25 @@ const fileTypeClass = computed(() => {
 }
 
 .page-assign-select:hover {
-  background: rgba(99, 102, 241, 0.24);
-  border-color: rgba(99, 102, 241, 0.55);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .page-assign-select.is-unassigned {
-  background: rgba(148, 163, 184, 0.1);
-  border-color: rgba(148, 163, 184, 0.25);
+  background: #F0F4F9;
+  border-color: #DDE3EA;
   color: var(--text-dim);
 }
 
 .page-assign-select option {
-  background: #0f172a;
-  color: #f8fafc;
+  background: #FFFFFF;
+  color: var(--text-main);
 }
 
 .engine-pill {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-family: var(--font-mono);
-  background: rgba(255, 255, 255, 0.05);
+  background: #FFFFFF;
   color: var(--text-dim);
   padding: 1px 6px;
   border-radius: 4px;
@@ -374,7 +373,7 @@ const fileTypeClass = computed(() => {
   background: none;
   border: none;
   color: var(--text-dim);
-  padding: 6px;
+  padding: 5px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -385,11 +384,11 @@ const fileTypeClass = computed(() => {
 
 .btn-icon:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  background: #E9EEF6;
 }
 
 .btn-delete:hover {
-  color: #fb7185;
-  background: rgba(244, 63, 94, 0.16);
+  color: #C5221F;
+  background: #FCE8E6;
 }
 </style>

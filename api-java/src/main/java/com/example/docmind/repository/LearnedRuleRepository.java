@@ -1,5 +1,6 @@
 package com.example.docmind.repository;
 
+import com.example.docmind.entity.HarnessDimension;
 import com.example.docmind.entity.LearnedRuleEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +20,18 @@ public interface LearnedRuleRepository extends JpaRepository<LearnedRuleEntity, 
     List<LearnedRuleEntity> findByCategoryAndActive(String category, boolean active);
 
     long countByPageId(UUID pageId);
+
+    // Harness² Experience Library Always-On & Dimension finders (Requirement R2)
+    List<LearnedRuleEntity> findByPageIdAndAlwaysOnTrueOrderByConfidenceScoreDesc(UUID pageId);
+
+    List<LearnedRuleEntity> findByAlwaysOnTrueOrderByConfidenceScoreDesc();
+
+    List<LearnedRuleEntity> findByDimensionAndActiveTrue(HarnessDimension dimension);
+
+    List<LearnedRuleEntity> findByPageIdAndDimensionAndActiveTrue(UUID pageId, HarnessDimension dimension);
+
+    @Query("SELECT r FROM LearnedRuleEntity r WHERE r.active = true AND r.alwaysOn = true AND (r.pageId IS NULL OR r.pageId = :pageId) ORDER BY r.confidenceScore DESC")
+    List<LearnedRuleEntity> findActiveAlwaysOnForPage(@Param("pageId") UUID pageId);
 
     @Query("SELECT r FROM LearnedRuleEntity r WHERE r.active = true AND (r.pageId IS NULL OR r.pageId = :pageId)")
     List<LearnedRuleEntity> findActiveForPage(@Param("pageId") UUID pageId);

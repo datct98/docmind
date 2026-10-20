@@ -59,7 +59,19 @@ public class FanpageBotController {
 
     @PostMapping("/message")
     public ResponseEntity<FanpageBotResponse> handleMessage(@RequestBody FanpageBotRequest request) {
+        if (request != null && "REENGAGE".equalsIgnoreCase(request.action())) {
+            return ResponseEntity.ok(fanpageBotService.handleReengage(request));
+        }
         return ResponseEntity.ok(fanpageBotService.handleCustomerMessage(request));
+    }
+
+    /**
+     * Endpoint chủ động kích hoạt tin nhắn giữ nhiệt / kéo lại tương tác (Proactive Re-engagement)
+     * khi khách hàng im lặng (ví dụ: nút "Giả lập khách im lặng 5p/30p" trên Simulator).
+     */
+    @PostMapping("/reengage")
+    public ResponseEntity<FanpageBotResponse> handleReengage(@RequestBody(required = false) FanpageBotRequest request) {
+        return ResponseEntity.ok(fanpageBotService.handleReengage(request));
     }
 
     /**

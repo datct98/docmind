@@ -41,9 +41,15 @@ class AgentSkillControllerTest {
         ResponseEntity<List<AgentSkillDto>> resp = controller.getSkills(null, null, null, null, null, true);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(resp.getBody()).hasSize(10);
+        assertThat(resp.getBody()).hasSize(12);
         assertThat(resp.getBody()).extracting(AgentSkillDto::code)
-                .contains("PSYCH_CHRONIC_EMPATHY", "SALES_SPIN_DIAGNOSIS", "COMM_MIRROR_AND_PACE");
+                .contains(
+                        "PSYCH_CHRONIC_EMPATHY",
+                        "SALES_SPIN_DIAGNOSIS",
+                        "COMM_MIRROR_AND_PACE",
+                        "SALES_ANTI_INFO_DUMPING_PACING",
+                        "SALES_APPOINTMENT_HOOK_CLOSE"
+                );
     }
 
     @Test
@@ -203,4 +209,54 @@ class AgentSkillControllerTest {
         assertThat(globalized.getBody().pageId()).isNull();
         assertThat(globalized.getBody().name()).isEqualTo("Kỹ năng Đã Chuyển Thành Global");
     }
+
+    @Test
+    void smartParseSkillAndOneStepCreateFromRawInstructionWorkWithoutManualFields() {
+        when(repository.save(any(AgentSkillEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AgentSkillRequest rawOnlyReq = new AgentSkillRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                null,
+                "Khi khách mới hỏi \"giá\" chung chung mà chưa nói rõ tình trạng da: Tuyệt đối không xả sạch bảng giá 4 dịch vụ hay chiết khấu Combo. Chỉ báo giá từ 650.000đ/buổi kèm miễn phí Bác sĩ soi da AI 3D rồi đặt 1 câu hỏi khống chế A/B hỏi khách muốn ưu tiên trị mụn hay nám."
+        );
+
+        ResponseEntity<AgentSkillDto> parsedResp = controller.smartParseSkill(rawOnlyReq);
+        assertThat(parsedResp.getStatusCode().is2xxSuccessful()).isTrue();
+        AgentSkillDto parsed = parsedResp.getBody();
+        assertThat(parsed).isNotNull();
+        assertThat(parsed.name()).contains("Chống Xả Sạch Thông Tin");
+        assertThat(parsed.category()).isEqualTo("SALES_STRATEGY");
+        assertThat(parsed.triggerSignals()).contains("giá");
+        assertThat(parsed.tacticalInstructions()).contains("650.000đ/buổi");
+        assertThat(parsed.goodExample()).isNotBlank().doesNotContain("||MSG||");
+        assertThat(parsed.antiPattern()).isNotBlank();
+
+        ResponseEntity<AgentSkillDto> createdResp = controller.createSkill(rawOnlyReq);
+        assertThat(createdResp.getStatusCode().value()).isEqualTo(201);
+        AgentSkillDto created = createdResp.getBody();
+        assertThat(created).isNotNull();
+        assertThat(created.id()).isNotNull();
+        assertThat(created.name()).contains("Chống Xả Sạch Thông Tin");
+        assertThat(created.tacticalInstructions()).contains("650.000đ/buổi");
+
+        // Auto-detect PSYCHOLOGY when category is AUTO or blank
+        AgentSkillRequest psychReq = new AgentSkillRequest(
+                null, null, "AUTO", null, null, null, null, null, null, true, null,
+                "Khi khách hàng lo lắng sợ đau hoặc sợ biến chứng sưng đỏ, hãy đồng cảm trấn an tâm lý và cam kết phác đồ êm dịu."
+        );
+        AgentSkillDto parsedPsych = controller.smartParseSkill(psychReq).getBody();
+        assertThat(parsedPsych).isNotNull();
+        assertThat(parsedPsych.category()).isEqualTo("PSYCHOLOGY");
+        assertThat(parsedPsych.name()).startsWith("[Tâm lý]");
+    }
 }
+

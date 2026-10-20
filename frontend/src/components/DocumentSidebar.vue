@@ -1,47 +1,50 @@
 <template>
   <aside class="sidebar-container">
-    <!-- Header / Branding -->
+    <!-- Sources Panel Header (NotebookLM Left Bento Header) -->
     <div class="sidebar-header">
-      <div class="brand">
-        <div class="brand-logo">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
-            <path d="M6 6h10"/>
-            <path d="M6 10h10"/>
-            <path d="M6 14h6"/>
+      <div class="sources-title-group">
+        <div class="sources-icon-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
         </div>
         <div>
-          <h2 class="brand-title">DocMind</h2>
-          <span class="brand-tag">Grounded RAG AI</span>
+          <h2 class="sources-panel-title">Nguồn tài liệu</h2>
+          <span class="sources-panel-sub">
+            {{ activePageObj ? activePageObj.name : 'Kho tài liệu chung' }}
+          </span>
         </div>
       </div>
 
-      <!-- Live / Demo Indicator -->
-      <div class="connection-badge" :class="{ 'is-live': isConnected, 'is-demo': !isConnected }" :title="connectionTooltip">
-        <span class="status-dot"></span>
-        <span>{{ isConnected ? 'API Live (8090)' : 'Chế độ Demo' }}</span>
-        <button class="toggle-mode-btn" @click="$emit('toggle-demo')" :title="isConnected ? 'Chuyển sang Demo' : 'Thử kết nối lại API thật'">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-            <path d="M16 21h5v-5"/>
-          </svg>
-        </button>
-      </div>
+      <button
+        class="btn-TogglePages"
+        :class="{ active: showPagesList }"
+        title="Đổi nhanh Fanpage hoặc thêm Page mới"
+        @click="showPagesList = !showPagesList"
+      >
+        <span>📂 Đổi Page ({{ pages.length }})</span>
+        <span class="chevron-mini">{{ showPagesList ? '▲' : '▼' }}</span>
+      </button>
     </div>
 
-    <!-- 1-Level Knowledge Pages / Folders Section -->
-    <div class="pages-section">
+    <!-- Collapsible 1-Level Knowledge Pages / Folders Switcher -->
+    <div v-if="showPagesList" class="pages-section">
       <div class="pages-header-row">
         <h3 class="section-title">
-          📂 Phân loại Page / Ngành hàng
+          📂 Chuyển nhanh Fanpage
           <span class="count-badge">{{ pages.length }}</span>
         </h3>
-        <button class="btn-add-page" @click="openCreatePageForm" title="Tạo Page / Thư mục tri thức mới">
-          + Tạo Page
-        </button>
+        <div class="pages-header-actions">
+          <button class="btn-hub-link" @click="$emit('back-to-hub')" title="Mở màn hình lưới tất cả Fanpage">
+            Xem dạng lưới ⊞
+          </button>
+          <button class="btn-add-page" @click="openCreatePageForm" title="Tạo Page / Thư mục tri thức mới">
+            + Tạo Page
+          </button>
+        </div>
       </div>
 
       <!-- Inline Create / Edit Page Form -->
@@ -50,37 +53,37 @@
           <span class="page-form-title">{{ editingPageId ? '✏️ Sửa thông tin Page' : '✨ Tạo Page tri thức mới' }}</span>
           <button class="btn-close-mini" @click="closePageForm">×</button>
         </div>
-        <input 
-          v-model="pageForm.name" 
-          type="text" 
-          class="page-input" 
+        <input
+          v-model="pageForm.name"
+          type="text"
+          class="page-input"
           placeholder="Tên Page / Kênh (VD: Page Mỹ Phẩm Spa) *"
         />
         <div class="page-form-row">
-          <input 
-            v-model="pageForm.industry" 
-            type="text" 
-            class="page-input" 
+          <input
+            v-model="pageForm.industry"
+            type="text"
+            class="page-input"
             placeholder="Ngành nghề (VD: Làm đẹp)"
           />
-          <input 
-            v-model="pageForm.target_audience" 
-            type="text" 
-            class="page-input" 
+          <input
+            v-model="pageForm.target_audience"
+            type="text"
+            class="page-input"
             placeholder="Đối tượng KH (VD: Nữ 25-45)"
           />
         </div>
-        <textarea 
-          v-model="pageForm.description" 
+        <textarea
+          v-model="pageForm.description"
           rows="2"
-          class="page-input page-textarea" 
-          placeholder="🎭 Page Persona & Phong cách Sale (VD: Xưng Em - Chị dịu dàng, luôn báo giá trọn gói, không chèo kéo)"
+          class="page-input page-textarea"
+          placeholder="🎭 Page Persona & Phong cách Sale (VD: Xưng Em - Chị dịu dàng, luôn báo giá trọn gói)"
         ></textarea>
         <div class="page-form-actions">
           <button class="btn-cancel-mini" @click="closePageForm">Hủy</button>
-          <button 
-            class="btn-save-mini" 
-            :disabled="!pageForm.name.trim()" 
+          <button
+            class="btn-save-mini"
+            :disabled="!pageForm.name.trim()"
             @click="submitPageForm"
           >
             {{ editingPageId ? 'Cập nhật' : 'Tạo Page' }}
@@ -91,8 +94,8 @@
       <!-- 1-Level Flat Folder List -->
       <div class="folder-list">
         <!-- All Documents Option -->
-        <div 
-          class="folder-item" 
+        <div
+          class="folder-item"
           :class="{ active: !activePageId }"
           @click="$emit('select-page', null)"
         >
@@ -104,8 +107,8 @@
         </div>
 
         <!-- Individual Page Folders -->
-        <div 
-          v-for="page in pages" 
+        <div
+          v-for="page in pages"
           :key="page.id"
           class="folder-item"
           :class="{ active: activePageId === page.id }"
@@ -143,9 +146,9 @@
         </div>
 
         <!-- Unassigned Documents Option (if any exist) -->
-        <div 
+        <div
           v-if="unassignedCount > 0"
-          class="folder-item folder-unassigned" 
+          class="folder-item folder-unassigned"
           :class="{ active: activePageId === '__unassigned__' }"
           @click="$emit('select-page', '__unassigned__')"
         >
@@ -158,17 +161,30 @@
       </div>
     </div>
 
+    <!-- Active Page Persona Banner (When a Page is active) -->
+    <div v-if="activePageObj && !showPagesList" class="active-page-summary-card">
+      <div class="ap-top-row">
+        <span class="ap-badge-industry">🏷️ {{ activePageObj.industry || 'Đa ngành' }}</span>
+        <span v-if="activePageObj.target_audience" class="ap-badge-audience">
+          👥 {{ activePageObj.target_audience }}
+        </span>
+      </div>
+      <p v-if="activePageObj.description" class="ap-persona-text">
+        🎭 <strong>Persona:</strong> {{ activePageObj.description }}
+      </p>
+    </div>
+
     <!-- Upload Section -->
     <div class="upload-section">
       <div class="upload-target-banner" :class="{ 'has-page': activePageObj }">
         <span v-if="activePageObj">
-          📥 Upload thẳng vào: <strong>📂 {{ activePageObj.name }}</strong>
+          📥 Nạp nguồn trực tiếp vào: <strong>📂 {{ activePageObj.name }}</strong>
         </span>
         <span v-else>
-          📥 Upload vào: <strong>Kho tài liệu chung</strong> (Chọn Page ở trên để phân loại riêng)
+          📥 Nạp vào: <strong>Kho tài liệu chung</strong>
         </span>
       </div>
-      <DocumentUploadZone 
+      <DocumentUploadZone
         :is-uploading="isUploading"
         @file-selected="$emit('upload-file', $event)"
       />
@@ -178,7 +194,7 @@
     <div class="documents-header">
       <div class="header-title-row">
         <h3 class="section-title">
-          {{ activePageObj ? `Tài liệu: ${activePageObj.name}` : 'Danh sách tài liệu' }}
+          {{ activePageObj ? `Tài liệu của Page` : 'Danh sách tài liệu' }}
           <span class="count-badge">{{ filteredDocuments.length }}</span>
         </h3>
         <button class="btn-refresh" title="Làm mới danh sách" @click="$emit('refresh-documents')">
@@ -193,31 +209,31 @@
 
       <!-- Quick Status Filter Pills -->
       <div class="filter-pills">
-        <button 
-          class="pill-btn" 
+        <button
+          class="pill-btn"
           :class="{ active: currentFilter === 'all' }"
           @click="currentFilter = 'all'"
         >
           Tất cả ({{ pageScopedDocuments.length }})
         </button>
-        <button 
-          class="pill-btn" 
+        <button
+          class="pill-btn"
           :class="{ active: currentFilter === 'READY' }"
           @click="currentFilter = 'READY'"
         >
           Sẵn sàng ({{ readyCount }})
         </button>
-        <button 
+        <button
           v-if="parsingCount > 0"
-          class="pill-btn pill-amber" 
+          class="pill-btn pill-amber"
           :class="{ active: currentFilter === 'PARSING' }"
           @click="currentFilter = 'PARSING'"
         >
           Đang xử lý ({{ parsingCount }})
         </button>
-        <button 
+        <button
           v-if="failedCount > 0"
-          class="pill-btn pill-rose" 
+          class="pill-btn pill-rose"
           :class="{ active: currentFilter === 'FAILED' }"
           @click="currentFilter = 'FAILED'"
         >
@@ -228,10 +244,10 @@
       <!-- Selection Helper -->
       <div class="selection-bar">
         <button class="btn-text" @click="$emit('toggle-select-all')">
-          {{ isAllSelected ? 'Bỏ chọn tất cả trong Page' : 'Chọn tất cả tài liệu sẵn sàng' }}
+          {{ isAllSelected ? 'Bỏ chọn tất cả trong Page' : 'Chọn tất cả nguồn sẵn sàng' }}
         </button>
         <span class="selection-count">
-          Đã chọn: <strong>{{ selectedDocIds.length }}</strong>
+          Đang dùng: <strong>{{ selectedDocIds.length }}</strong> nguồn
         </span>
       </div>
     </div>
@@ -246,10 +262,10 @@
           <line x1="9" y1="15" x2="15" y2="15"/>
         </svg>
         <p>{{ activePageObj ? `Page "${activePageObj.name}" chưa có tài liệu nào.` : 'Chưa có tài liệu nào phù hợp.' }}</p>
-        <span class="empty-hint">Hãy kéo thả tệp DOCX, XLSX, MD, PDF vào ô phía trên để đào tạo cho Page này.</span>
+        <span class="empty-hint">Kéo thả tệp DOCX, XLSX, MD, PDF vào khung trên hoặc bấm "⚡ Nạp thử file mẫu ngay".</span>
       </div>
 
-      <DocumentCard 
+      <DocumentCard
         v-for="doc in filteredDocuments"
         :key="doc.document_id"
         :doc="doc"
@@ -282,14 +298,6 @@
         </div>
         <span class="playbook-arrow">→</span>
       </button>
-    </div>
-
-    <!-- Footer Stats / Notes -->
-    <div class="sidebar-footer">
-      <div class="engine-info">
-        <span class="dot-spring"></span>
-        <span>Spring Boot 4 + FastPARSER + pgvector</span>
-      </div>
     </div>
   </aside>
 </template>
@@ -339,10 +347,12 @@ const emit = defineEmits([
   'create-page',
   'update-page',
   'delete-page',
-  'assign-page'
+  'assign-page',
+  'back-to-hub'
 ])
 
 const currentFilter = ref('all')
+const showPagesList = ref(false)
 
 const showPageForm = ref(false)
 const editingPageId = ref(null)
@@ -383,19 +393,13 @@ const filteredDocuments = computed(() => {
   return pageScopedDocuments.value.filter(d => d.status === currentFilter.value)
 })
 
-const readyDocIds = computed(() => 
+const readyDocIds = computed(() =>
   pageScopedDocuments.value.filter(d => d.status === 'READY').map(d => d.document_id)
 )
 
 const isAllSelected = computed(() => {
   if (readyDocIds.value.length === 0) return false
   return readyDocIds.value.every(id => props.selectedDocIds.includes(id))
-})
-
-const connectionTooltip = computed(() => {
-  return props.isConnected 
-    ? 'Đã kết nối backend Spring Boot localhost:8090' 
-    : 'Chế độ Demo (Không cần bật Docker/backend)'
 })
 
 const openCreatePageForm = () => {
@@ -438,114 +442,147 @@ const submitPageForm = () => {
 </script>
 
 <style scoped>
+/* NotebookLM Floating Left Sources Card */
 .sidebar-container {
-  width: 400px;
-  min-width: 360px;
-  max-width: 440px;
+  width: 390px;
+  min-width: 350px;
+  max-width: 420px;
   height: 100%;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-bento);
   display: flex;
   flex-direction: column;
   user-select: none;
+  overflow: hidden;
 }
 
 .sidebar-header {
-  padding: 14px 18px;
+  padding: 16px 18px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
+  border-bottom: 1px solid #EEF2F6;
   gap: 10px;
 }
 
-.brand-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  background: var(--accent-gradient);
+.sources-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sources-icon-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-pill-bg);
+  color: var(--accent-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  flex-shrink: 0;
 }
 
-.brand-title {
-  font-size: 1.1rem;
+.sources-panel-title {
+  font-size: 0.96rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  background: linear-gradient(to right, #ffffff, #c7d2fe);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-main);
   line-height: 1.2;
 }
 
-.brand-tag {
-  font-size: 0.68rem;
+.sources-panel-sub {
+  font-size: 0.73rem;
   color: var(--text-dim);
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 600;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
 }
 
-.connection-badge {
+.btn-TogglePages {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-TogglePages:hover,
+.btn-TogglePages.active {
+  background: var(--accent-pill-bg);
+  border-color: #A8C7FA;
+  color: var(--accent-pill-text);
+}
+
+.chevron-mini {
+  font-size: 0.6rem;
+}
+
+/* Active Page Summary Card */
+.active-page-summary-card {
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  background: #F8FAFD;
+  border: 1px solid #E1E8F0;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ap-top-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  flex-wrap: wrap;
+}
+
+.ap-badge-industry {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #CEEAD6;
+  color: #0D652D;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  font-size: 0.7rem;
+}
+
+.ap-badge-audience {
+  font-size: 0.68rem;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-subtle);
+  background: #FEF7E0;
+  color: #B06000;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
 }
 
-.connection-badge.is-live {
-  background: var(--status-ready-bg);
-  border-color: var(--status-ready-border);
-  color: var(--status-ready-text);
-}
-
-.connection-badge.is-demo {
-  background: var(--status-parsing-bg);
-  border-color: var(--status-parsing-border);
-  color: var(--status-parsing-text);
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.toggle-mode-btn {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  opacity: 0.7;
-  transition: opacity 0.15s ease;
-}
-
-.toggle-mode-btn:hover {
-  opacity: 1;
+.ap-persona-text {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Pages / Folders Section */
 .pages-section {
-  padding: 12px 18px 10px;
+  padding: 12px 16px 10px;
   border-bottom: 1px solid var(--border-subtle);
-  background: rgba(15, 23, 42, 0.35);
+  background: #F8FAFD;
 }
 
 .pages-header-row {
@@ -555,12 +592,34 @@ const submitPageForm = () => {
   margin-bottom: 8px;
 }
 
-.btn-add-page {
-  background: rgba(99, 102, 241, 0.16);
-  border: 1px solid rgba(99, 102, 241, 0.4);
-  color: #a5b4fc;
-  font-size: 0.72rem;
+.pages-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-hub-link {
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
   font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.btn-hub-link:hover {
+  background: #E9EEF6;
+  color: var(--text-main);
+}
+
+.btn-add-page {
+  background: var(--accent-pill-bg);
+  border: 1px solid #A8C7FA;
+  color: var(--accent-pill-text);
+  font-size: 0.72rem;
+  font-weight: 700;
   padding: 3px 9px;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -568,19 +627,20 @@ const submitPageForm = () => {
 }
 
 .btn-add-page:hover {
-  background: rgba(99, 102, 241, 0.28);
+  background: var(--accent-primary);
   color: #ffffff;
 }
 
 .page-form-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-active);
+  background: #FFFFFF;
+  border: 1px solid #A8C7FA;
   border-radius: var(--radius-md);
   padding: 10px;
   margin-bottom: 10px;
   display: flex;
   flex-direction: column;
   gap: 7px;
+  box-shadow: var(--shadow-sm);
 }
 
 .page-form-top {
@@ -591,8 +651,8 @@ const submitPageForm = () => {
 
 .page-form-title {
   font-size: 0.76rem;
-  font-weight: 600;
-  color: #a5b4fc;
+  font-weight: 700;
+  color: var(--accent-primary);
 }
 
 .btn-close-mini {
@@ -612,7 +672,7 @@ const submitPageForm = () => {
 
 .page-input {
   width: 100%;
-  background: var(--bg-input);
+  background: #F8FAFD;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 6px 8px;
@@ -622,7 +682,15 @@ const submitPageForm = () => {
 }
 
 .page-input:focus {
+  background: #FFFFFF;
   border-color: var(--accent-primary);
+}
+
+.page-textarea {
+  resize: vertical;
+  min-height: 44px;
+  font-family: inherit;
+  line-height: 1.35;
 }
 
 .page-form-actions {
@@ -633,10 +701,11 @@ const submitPageForm = () => {
 }
 
 .btn-cancel-mini {
-  background: rgba(255, 255, 255, 0.06);
+  background: #F0F4F9;
   border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.72rem;
+  font-weight: 600;
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -662,7 +731,7 @@ const submitPageForm = () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 175px;
+  max-height: 180px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -671,24 +740,23 @@ const submitPageForm = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid transparent;
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
   transition: all 0.15s ease;
   gap: 8px;
 }
 
 .folder-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: #F0F4F9;
+  border-color: #C4C7C5;
 }
 
 .folder-item.active {
-  background: rgba(99, 102, 241, 0.14);
-  border-color: var(--border-active);
-  box-shadow: inset 2px 0 0 var(--accent-primary);
+  background: #E8F0FE;
+  border-color: #A8C7FA;
 }
 
 .folder-content {
@@ -731,6 +799,7 @@ const submitPageForm = () => {
 .tag-audience,
 .tag-persona {
   font-size: 0.65rem;
+  font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
   max-width: 145px;
@@ -740,28 +809,18 @@ const submitPageForm = () => {
 }
 
 .tag-industry {
-  background: rgba(16, 185, 129, 0.12);
-  color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: #CEEAD6;
+  color: #0D652D;
 }
 
 .tag-audience {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fcd34d;
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: #FEF7E0;
+  color: #B06000;
 }
 
 .tag-persona {
-  background: rgba(168, 85, 247, 0.14);
-  color: #d8b4fe;
-  border: 1px solid rgba(168, 85, 247, 0.3);
-}
-
-.page-textarea {
-  resize: vertical;
-  min-height: 44px;
-  font-family: inherit;
-  line-height: 1.35;
+  background: #E8DDF8;
+  color: #3F1D74;
 }
 
 .folder-right {
@@ -772,10 +831,10 @@ const submitPageForm = () => {
 
 .folder-count {
   font-size: 0.68rem;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-muted);
-  padding: 1px 6px;
+  font-weight: 700;
+  background: #F0F4F9;
+  color: var(--text-secondary);
+  padding: 1px 7px;
   border-radius: var(--radius-full);
 }
 
@@ -785,48 +844,47 @@ const submitPageForm = () => {
   color: var(--text-dim);
   font-size: 0.78rem;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
-  opacity: 0.65;
+  padding: 2px 5px;
+  border-radius: 4px;
   transition: all 0.15s ease;
 }
 
 .folder-action-btn:hover {
-  opacity: 1;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  background: #E9EEF6;
 }
 
 .folder-action-btn.btn-del:hover {
-  color: #fb7185;
-  background: rgba(244, 63, 94, 0.15);
+  color: #C5221F;
+  background: #FCE8E6;
 }
 
+/* Upload Section */
 .upload-section {
-  padding: 10px 18px 10px;
+  padding: 12px 16px 10px;
 }
 
 .upload-target-banner {
   font-size: 0.72rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  background: #F8FAFD;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 5px 10px;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .upload-target-banner.has-page {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: rgba(99, 102, 241, 0.3);
-  color: #c7d2fe;
+  background: #E8F0FE;
+  border-color: #D3E3FD;
+  color: #041E49;
 }
 
 .documents-header {
-  padding: 0 18px 8px;
+  padding: 0 16px 8px;
 }
 
 .header-title-row {
@@ -837,25 +895,23 @@ const submitPageForm = () => {
 }
 
 .section-title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .count-badge {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-main);
+  background: #E8F0FE;
+  color: var(--accent-primary);
   padding: 1px 7px;
   border-radius: var(--radius-full);
   font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .btn-refresh {
@@ -871,26 +927,26 @@ const submitPageForm = () => {
 }
 
 .btn-refresh:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--accent-primary);
+  background: #F0F4F9;
   transform: rotate(45deg);
 }
 
 .filter-pills {
   display: flex;
   gap: 5px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
 
 .pill-btn {
-  background: rgba(255, 255, 255, 0.04);
+  background: #F8FAFD;
   border: 1px solid var(--border-subtle);
-  color: var(--text-dim);
-  font-size: 0.7rem;
-  font-weight: 500;
-  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-size: 0.71rem;
+  font-weight: 600;
+  padding: 3px 9px;
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -899,13 +955,13 @@ const submitPageForm = () => {
 
 .pill-btn:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  background: #E9EEF6;
 }
 
 .pill-btn.active {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: var(--border-active);
-  color: #a5b4fc;
+  background: var(--accent-pill-bg);
+  border-color: #A8C7FA;
+  color: var(--accent-pill-text);
 }
 
 .pill-btn.pill-amber.active {
@@ -924,34 +980,37 @@ const submitPageForm = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.72rem;
+  font-size: 0.73rem;
   color: var(--text-dim);
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: 6px;
+  border-top: 1px solid #EEF2F6;
 }
 
 .btn-text {
   background: none;
   border: none;
-  color: #818cf8;
+  color: var(--accent-primary);
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: 0.73rem;
   padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .btn-text:hover {
-  color: #a5b4fc;
+  text-decoration: underline;
+}
+
+.selection-count strong {
+  color: var(--text-main);
 }
 
 .documents-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 18px 14px;
+  padding: 4px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .empty-docs {
@@ -960,32 +1019,36 @@ const submitPageForm = () => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 28px 10px;
-  color: var(--text-dim);
+  padding: 28px 12px;
+  background: #F8FAFD;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
 }
 
 .empty-icon {
   stroke: var(--text-dim);
   margin-bottom: 10px;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .empty-docs p {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
 .empty-hint {
-  font-size: 0.72rem;
+  font-size: 0.73rem;
   color: var(--text-dim);
+  line-height: 1.45;
 }
 
 /* Playbook Shortcut */
 .sidebar-playbook-bar {
-  padding: 8px 16px;
-  border-top: 1px solid var(--border-subtle);
-  background: rgba(168, 85, 247, 0.04);
+  padding: 10px 16px 12px;
+  border-top: 1px solid #EEF2F6;
+  background: #F8FAFD;
 }
 
 .btn-playbook-sidebar {
@@ -993,19 +1056,20 @@ const submitPageForm = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(168, 85, 247, 0.1);
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: #FFFFFF;
+  border: 1px solid #D3E3FD;
   border-radius: var(--radius-md);
-  padding: 7px 12px;
+  padding: 8px 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
   color: var(--text-main);
   text-align: left;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-playbook-sidebar:hover {
-  background: rgba(168, 85, 247, 0.18);
-  border-color: rgba(168, 85, 247, 0.45);
+  background: #E8F0FE;
+  border-color: #A8C7FA;
   transform: translateY(-1px);
 }
 
@@ -1017,12 +1081,12 @@ const submitPageForm = () => {
 }
 
 .playbook-icon-badge {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
   border-radius: var(--radius-sm);
-  background: rgba(168, 85, 247, 0.2);
-  color: #c084fc;
+  background: var(--accent-pill-bg);
+  color: var(--accent-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1036,14 +1100,15 @@ const submitPageForm = () => {
 
 .playbook-main-label {
   font-size: 0.78rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-weight: 700;
+  color: var(--text-main);
   line-height: 1.2;
 }
 
 .playbook-sub-label {
-  font-size: 0.67rem;
-  color: #a855f7;
+  font-size: 0.68rem;
+  color: var(--accent-primary);
+  font-weight: 500;
   margin-top: 1px;
   white-space: nowrap;
   overflow: hidden;
@@ -1051,7 +1116,7 @@ const submitPageForm = () => {
 }
 
 .playbook-arrow {
-  color: #a855f7;
+  color: var(--accent-primary);
   font-size: 0.9rem;
   font-weight: 700;
   transition: transform 0.2s ease;
@@ -1059,28 +1124,5 @@ const submitPageForm = () => {
 
 .btn-playbook-sidebar:hover .playbook-arrow {
   transform: translateX(2px);
-  color: #ffffff;
-}
-
-.sidebar-footer {
-  padding: 10px 18px;
-  border-top: 1px solid var(--border-subtle);
-  background: rgba(10, 15, 26, 0.4);
-}
-
-.engine-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.68rem;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-}
-
-.dot-spring {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6366f1;
 }
 </style>

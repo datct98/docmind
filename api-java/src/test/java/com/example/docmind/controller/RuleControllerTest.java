@@ -219,4 +219,55 @@ class RuleControllerTest {
         mockMvc.perform(delete("/api/rules/" + id))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void rollbackRuleRestoresPreviousRuleTextAndVersion() throws Exception {
+        UUID id = UUID.randomUUID();
+        LearnedRuleEntity entity = LearnedRuleEntity.builder()
+                .id(id)
+                .category("POLICY")
+                .triggerCondition("Khi tư vấn giá")
+                .rootCause("Báo thiếu quyền lợi")
+                .generalizedRule("Quy tắc mới v2")
+                .previousRuleText("Quy tắc gốc v1")
+                .retrievalKeywords(new String[]{"bảng giá"})
+                .active(false)
+                .confidenceScore(0.35)
+                .failCount(2)
+                .version(2)
+                .quarantinedReason("Tự động tạm ngắt")
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(learnedRuleRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(embeddingClient.embed(anyString())).thenReturn(new float[384]);
+
+        mockMvc.perform(post("/api/rules/" + id + "/rollback"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.generalized_rule").value("Quy tắc gốc v1"))
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.confidence_score").value(0.85));
+    }
+
+    @Test
+    void rollbackRuleReturnsBadRequestWhenNoPreviousRuleText() throws Exception {
+        UUID id = UUID.randomUUID();
+        LearnedRuleEntity entity = LearnedRuleEntity.builder()
+                .id(id)
+                .category("POLICY")
+                .triggerCondition("Trigger")
+                .generalizedRule("Quy tắc v1 chưa từng tiến hóa")
+                .previousRuleText(null)
+                .version(1)
+                .active(true)
+                .build();
+
+        when(learnedRuleRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        mockMvc.perform(post("/api/rules/" + id + "/rollback"))
+                .andExpect(status().isBadRequest());
+    }
 }

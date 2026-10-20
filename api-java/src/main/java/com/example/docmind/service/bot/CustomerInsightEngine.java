@@ -29,7 +29,8 @@ public class CustomerInsightEngine {
     private static final Pattern CHRONIC_PAIN_PATTERN = Pattern.compile(
             "(?iU)(\\b\\d+\\s*năm\\b|lâu\\s+năm|nhiều\\s+năm|dậy\\s+thì|mãn\\s+tính|"
             + "chữa\\s+nhiều\\s+nơi|điều\\s+trị\\s+nhiều\\s+nơi|không\\s+khỏi|tái\\s+đi\\s+tái\\s+lại|"
-            + "sẹo\\s+rỗ|sẹo\\s+lõm|rỗ\\s+lâu\\s+năm|nám\\s+chân\\s+sâu|nám\\s+lâu\\s+năm)"
+            + "sẹo\\s+rỗ|sẹo\\s+lõm|rỗ\\s+lâu\\s+năm|nám\\s+chân\\s+sâu|nám\\s+lâu\\s+năm|"
+            + "thâm\\s+mụn\\s+lâu|thâm\\s+lâu|dưới\\s+cằm.*lưng|lưng.*cằm)"
     );
 
     private static final Pattern PRICE_OBJECTION_PATTERN = Pattern.compile(
@@ -45,8 +46,9 @@ public class CustomerInsightEngine {
     );
 
     private static final Pattern FEAR_OR_RISK_PATTERN = Pattern.compile(
-            "(?iU)\\b(sợ\\s+đau|có\\s+đau\\s+không|sưng|đỏ|nghỉ\\s+dưỡng|bảo\\s+hành|cam\\s+kết|"
-            + "tái\\s+phát|an\\s+toàn|chèo\\s+kéo|ép\\s+mua|phụ\\s+phí|tiền\\s+tip|khám\\s+thử|mất\\s+phí)\\b"
+            "(?iU)\\b(sợ\\s+đau|có\\s+đau\\s+không|đau\\s+không|sưng|đỏ|nghỉ\\s+dưỡng|bảo\\s+hành|cam\\s+kết|"
+            + "sợ\\s+không\\s+hiệu\\s+quả|sợ\\s+ko\\s+hiệu\\s+quả|không\\s+hiệu\\s+quả|sợ\\s+không\\s+khỏi|"
+            + "ràng\\s+buộc|rằng\\s+buộc|tái\\s+phát|an\\s+toàn|chèo\\s+kéo|ép\\s+mua|phụ\\s+phí|tiền\\s+tip|khám\\s+thử|mất\\s+phí)\\b"
     );
 
     private static final Pattern TIME_TO_RESULT_PATTERN = Pattern.compile(
@@ -58,7 +60,21 @@ public class CustomerInsightEngine {
             + "sđt|số\\s+điện\\s+thoại|chiều\\s+thứ|sáng\\s+thứ|cuối\\s+tuần\\s+này)\\b"
     );
 
-    private static final List<AgentSkillDto> BUILT_IN_SKILLS = createBuiltInSkills();
+    private static final Pattern HALF_HEARTED_OR_COOLING_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(ừ|uk|uh|uhm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)\\s*[.!,~?]*$"
+            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|uh|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác|hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|gia\\s+cao|chát\\s+quá)\\b"
+    );
+
+    private static final Pattern PRICE_HESITATION_PATTERN = Pattern.compile(
+            "(?iU)\\b(hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|giá\\s+cao|chát\\s+quá|cao\\s+hơn|đắt|vượt\\s+ngân\\s+sách)\\b"
+    );
+
+    private static final List<AgentSkillDto> DEFAULT_BUILT_IN_SKILLS = createDefaultBuiltInSkills();
+    private static final List<AgentSkillDto> COOLING_PERSUASION_SKILLS = createCoolingPersuasionSkills();
+    private static final List<AgentSkillDto> BUILT_IN_SKILLS = java.util.stream.Stream.concat(
+            DEFAULT_BUILT_IN_SKILLS.stream(),
+            COOLING_PERSUASION_SKILLS.stream()
+    ).toList();
     private static final Set<String> BUILT_IN_CODES = Set.of(
             "PSYCH_CHRONIC_EMPATHY",
             "PSYCH_ZERO_RISK_REVERSAL",
@@ -69,13 +85,27 @@ public class CustomerInsightEngine {
             "SALES_MICRO_COMMITMENT_CLOSE",
             "COMM_MIRROR_AND_PACE",
             "COMM_NO_REPEAT_MEMORY",
-            "SALES_CROSS_INDUSTRY_CONSULT"
+            "SALES_CROSS_INDUSTRY_CONSULT",
+            "SALES_ANTI_INFO_DUMPING_PACING",
+            "SALES_APPOINTMENT_HOOK_CLOSE",
+            "PSYCH_ZERO_PRESSURE_TAKEAWAY",
+            "PSYCH_TAKEAWAY_REVERSE",
+            "PSYCH_PATTERN_INTERRUPT_CURIOSITY",
+            "PSYCH_PATTERN_INTERRUPT",
+            "SALES_LOSS_AVERSION_RESERVATION"
     );
 
     public static List<AgentSkillDto> builtInDefaultSkills() {
-        return BUILT_IN_SKILLS;
+        return DEFAULT_BUILT_IN_SKILLS;
     }
 
+    public static List<AgentSkillDto> coolingPersuasionSkills() {
+        return COOLING_PERSUASION_SKILLS;
+    }
+
+    /**
+     * Phân tích toàn diện tâm lý khách hàng, nỗi đau tích lũy qua lịch sử chat, rào cản ngầm và nhiệt độ mua hàng.
+     */
     /**
      * Phân tích toàn diện tâm lý khách hàng, nỗi đau tích lũy qua lịch sử chat, rào cản ngầm và nhiệt độ mua hàng.
      */
@@ -85,6 +115,22 @@ public class CustomerInsightEngine {
             String resolvedHonorific,
             FanpageBotPromptBuilder.SalesStage salesStage,
             FanpageBotResponse.ExtractedLead extractedLead) {
+        return analyzeInsight(currentMessage, history, resolvedHonorific, salesStage, extractedLead, null, null, null);
+    }
+
+    /**
+     * Phân tích tâm lý khách hàng nâng cao với bộ đo Nhiệt độ Mua hàng trạng thái (Stateful Buying Temperature),
+     * tự động tính toán độ suy giảm nhiệt khi khách im lặng (idle decay) hoặc nhắn đối phó / ngập ngừng (half-hearted cooling).
+     */
+    public CustomerInsightDto analyzeInsight(
+            String currentMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String resolvedHonorific,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            FanpageBotResponse.ExtractedLead extractedLead,
+            Integer previousTemperature,
+            Integer replyDelaySeconds,
+            Integer idleSeconds) {
 
         String honorific = (resolvedHonorific != null && !resolvedHonorific.isBlank())
                 ? resolvedHonorific.strip()
@@ -189,8 +235,9 @@ public class CustomerInsightEngine {
 
         // 3. Phân loại Chân dung Tâm lý Khách hàng (BuyerArchetype) ở lượt hiện tại
         boolean hasBookingLead = extractedLead != null && extractedLead.hasBuyingOrBookingSignal();
-        boolean currentIsChronic = CHRONIC_PAIN_PATTERN.matcher(msg).find();
-        boolean historyIsChronic = CHRONIC_PAIN_PATTERN.matcher(combinedUserText).find();
+        boolean currentIsComplexSymptom = FanpageBotPromptBuilder.isComplexOrSevereSymptomMessage(msg);
+        boolean currentIsChronic = CHRONIC_PAIN_PATTERN.matcher(msg).find() || currentIsComplexSymptom;
+        boolean historyIsChronic = CHRONIC_PAIN_PATTERN.matcher(combinedUserText).find() || currentIsComplexSymptom;
         boolean currentIsMaleOrDiscreet = MALE_OR_DISCREetCheck(msg, honorific, allUserMessages.size());
         boolean currentIsPrice = PRICE_OBJECTION_PATTERN.matcher(msg).find() && !hasBookingLead;
         boolean currentIsFearOrTime = FEAR_OR_RISK_PATTERN.matcher(msg).find() || TIME_TO_RESULT_PATTERN.matcher(msg).find();
@@ -226,29 +273,74 @@ public class CustomerInsightEngine {
             archetypeLabel = "Đang tìm hiểu Giải pháp — Cần Chẩn đoán Chuyên gia (SPIN)";
         }
 
-        // 4. Tính điểm Nhiệt độ Mua hàng (Buying Temperature 0 - 100)
-        int temp = 36;
-        int userTurns = allUserMessages.size();
-        temp += Math.min(24, (userTurns - 1) * 10);
-        if (historyIsChronic || pains.size() >= 2) {
-            temp += 12;
+        // 4. Tính điểm Nhiệt độ Mua hàng (Buying Temperature 0 - 100) & Trạng thái Động lượng (Momentum)
+        int effectivePrevTemp = (previousTemperature != null)
+                ? previousTemperature
+                : derivePreviousTemperature(allUserMessages, history, pains, historyIsChronic, hasBookingLead);
+
+        int temp;
+        String momentum;
+        String decayReason = null;
+
+        boolean isIdleDecay = (idleSeconds != null && idleSeconds >= 300)
+                || (replyDelaySeconds != null && replyDelaySeconds >= 300);
+        boolean isHalfHearted = HALF_HEARTED_OR_COOLING_PATTERN.matcher(msg).find();
+        boolean isPriceHesitation = PRICE_HESITATION_PATTERN.matcher(msg).find();
+        boolean isCoolingBrushOff = (isHalfHearted || isPriceHesitation) && !hasBookingLead;
+
+        if (isIdleDecay) {
+            int elapsed = (idleSeconds != null && idleSeconds > 0)
+                    ? idleSeconds
+                    : (replyDelaySeconds != null ? replyDelaySeconds : 300);
+            int idleDecay = (elapsed >= 1800) ? 35 : 18;
+            temp = Math.max(0, effectivePrevTemp - idleDecay);
+            momentum = "COOLING_IDLE";
+            decayReason = "COOLING_IDLE";
+        } else if (isCoolingBrushOff) {
+            int sentimentDecay = isPriceHesitation ? 22 : 20;
+            temp = Math.max(0, effectivePrevTemp - sentimentDecay);
+            momentum = "COOLING_HALF_HEARTED";
+            decayReason = isPriceHesitation ? "PRICE_HESITATION" : "COOLING_HALF_HEARTED";
+        } else {
+            int calculatedTemp = 36;
+            int userTurns = allUserMessages.size();
+            calculatedTemp += Math.min(24, (userTurns - 1) * 10);
+            if (historyIsChronic || pains.size() >= 2) {
+                calculatedTemp += 12;
+            }
+            if (PRICE_OBJECTION_PATTERN.matcher(combinedUserText).find()) {
+                calculatedTemp += 10;
+            }
+            if (TIME_TO_RESULT_PATTERN.matcher(combinedUserText).find()) {
+                calculatedTemp += 10;
+            }
+            if (lowerMsg.contains("đắt") || lowerMsg.contains("cao hơn")) {
+                calculatedTemp -= 6;
+            }
+            if (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE) {
+                calculatedTemp = Math.max(calculatedTemp, 72);
+            }
+            if (hasBookingLead) {
+                int leadTemp = (extractedLead.phoneNumber() != null && !extractedLead.phoneNumber().isBlank()) ? 95 : 85;
+                if (BOOKING_INTENT_PATTERN.matcher(msg).find() || lowerMsg.contains("chốt")) {
+                    leadTemp = Math.min(100, leadTemp + 5);
+                }
+                calculatedTemp = Math.max(calculatedTemp, Math.max(leadTemp, effectivePrevTemp));
+            }
+            temp = Math.max(0, Math.min(100, calculatedTemp));
+
+            int diff = temp - effectivePrevTemp;
+            if (diff > 3) {
+                momentum = (effectivePrevTemp < 50 && diff >= 10) ? "RECOVERING" : "RISING";
+            } else if (diff < -3) {
+                momentum = "COOLING_HALF_HEARTED";
+                decayReason = "COOLING_HALF_HEARTED";
+            } else {
+                momentum = "STABLE";
+            }
         }
-        if (PRICE_OBJECTION_PATTERN.matcher(combinedUserText).find()) {
-            temp += 10;
-        }
-        if (TIME_TO_RESULT_PATTERN.matcher(combinedUserText).find()) {
-            temp += 10;
-        }
-        if (lowerMsg.contains("đắt") || lowerMsg.contains("cao hơn")) {
-            temp -= 6;
-        }
-        if (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE) {
-            temp = Math.max(temp, 72);
-        }
-        if (hasBookingLead) {
-            temp = (extractedLead.phoneNumber() != null && !extractedLead.phoneNumber().isBlank()) ? 95 : 85;
-        }
-        temp = Math.max(20, Math.min(98, temp));
+
+        int temperatureDelta = temp - effectivePrevTemp;
 
         String tempLabel;
         if (temp >= 75) {
@@ -261,32 +353,101 @@ public class CustomerInsightEngine {
 
         // 5. Khuyến nghị Chiến thuật Tư vấn Tức thời (Recommended Strategy)
         boolean asksPriceInCurrentTurn = PRICE_OBJECTION_PATTERN.matcher(msg).find();
-        String recommendedStrategy = switch (archetype) {
-            case "READY_TO_BOOK" -> asksPriceInCurrentTurn
-                    ? "Báo giá ngắn gọn, chuẩn xác gói dịch vụ " + honorific + " vừa hỏi theo đúng dữ liệu tài liệu, đồng thời xác nhận đã ghi nhận thông tin SĐT / lịch hẹn để chuyên viên liên hệ hỗ trợ " + honorific + " ngay."
-                    : "Xác nhận ngay thông tin SĐT / lịch hẹn của " + honorific + " thật ngắn gọn, ấm áp; báo chuyên viên liên hệ qua điện thoại/Zalo ngay và TUYỆT ĐỐI KHÔNG liệt kê lại bảng giá hay hỏi lại tình trạng.";
-            case "SKEPTICAL_CHRONIC" ->
-                    "Đồng cảm sâu sắc với hành trình lâu năm của " + honorific + "; phân tách trung thực phạm vi cải thiện của gói tiêu chuẩn và phần cần Bác sĩ soi da AI 3D 0đ đánh giá riêng (tuyệt đối không hứa lố).";
-            case "DISCREET_DECISIVE" ->
-                    "Khẳng định rõ dịch vụ hoàn toàn phù hợp và hiệu quả cao cho khách hàng Nam giới / Trung niên; giữ giọng văn điềm đạm, tôn trọng, nhấn mạnh không gian kín đáo và trả lời thẳng trọng tâm cho " + honorific + ".";
-            case "PRICE_CONSCIOUS" ->
-                    "Áp dụng Value Stacking: Nêu rõ quyền lợi Bác sĩ chuyên khoa + Bảo hành văn bản + Cam kết trọn gói 0 phụ phí/0 Tip trước khi báo giá; gợi mở bài toán tiết kiệm 10-15% với gói Combo.";
-            case "HESITANT_FIRST_TIMER" ->
-                    "Đưa rủi ro của " + honorific + " về 0% (Zero-Risk Reversal) bằng cam kết bảo hành, quy trình êm dịu và đề xuất buổi soi da AI 3D miễn phí 100% cùng Bác sĩ trước khi quyết định.";
-            default ->
-                    "Giải đáp ngắn gọn đúng trọng tâm câu hỏi của " + honorific + " và đặt đúng 1 câu hỏi phân loại chuyên môn nhẹ nhàng (SPIN) để dẫn dắt mạch tư vấn tự nhiên.";
-        };
+        boolean isBroadUnspecifiedPrice = FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(msg, history);
+        FanpageBotPromptBuilder.ConversationBookingState bookingState =
+                FanpageBotPromptBuilder.analyzeConversationBookingState(msg, history);
+        String recommendedStrategy;
+        if (bookingState.isRedundantQuestionComplaint()) {
+            recommendedStrategy = "Khách hàng phản ánh Bot hỏi lặp lại khung giờ khi đã chốt lịch ("
+                    + (bookingState.confirmedTimeSlot() != null ? bookingState.confirmedTimeSlot() : "12h30")
+                    + "): Xin lỗi chân thành, xác nhận đã khóa chuẩn xác lịch hẹn cho " + honorific
+                    + " và hẹn đón tiếp tại cơ sở (TUYỆT ĐỐI KHÔNG đặt thêm câu hỏi ở cuối!).";
+        } else if (bookingState.isPostBookingWrapUp()) {
+            recommendedStrategy = "Khách hàng đã hoàn tất chốt lịch hẹn ("
+                    + (bookingState.confirmedTimeSlot() != null ? bookingState.confirmedTimeSlot() : "đã chốt giờ")
+                    + "): Xác nhận ấm áp theo đúng yêu cầu của " + honorific
+                    + " và kết thúc gọn gàng, lịch sự (TUYỆT ĐỐI KHÔNG hỏi lặp lại Sáng/Chiều hay ngày thường/cuối tuần!).";
+        } else if (bookingState.isPriceComparisonObjection()) {
+            recommendedStrategy = "Khách hàng đang so sánh chi phí với nặn mụn thủ công giá rẻ (Value Framing & Clinical Risk Contrast): "
+                    + "Phân tích rõ sự khác biệt Y khoa (nặn mụn 200k bằng lực cơ học dễ làm vỡ nang lông, lây lan ổ khuẩn và để lại thâm/sẹo rỗ trên nền da yếu; "
+                    + "trong khi phác đồ Chuẩn Y Khoa có Bác sĩ soi da AI 3D 0đ, lấy nhân vô khuẩn êm dịu + phục hồi chuyên sâu) và mời "
+                    + honorific + " qua trải nghiệm suất Bác sĩ soi da AI 3D miễn phí 100% trước khi quyết định.";
+        } else if ("COOLING_HALF_HEARTED".equals(momentum)) {
+            recommendedStrategy = "Khách hàng có dấu hiệu do dự / hạ nhiệt tương tác (Takeaway & Pattern Interrupt): "
+                    + "Lùi lại 1 bước, buông bỏ áp lực bán hàng, tôn trọng thời gian cân nhắc của " + honorific
+                    + " và đặt 1 câu hỏi vi mô gợi mở sự tò mò hoặc tháo gỡ rào cản ẩn (tuyệt đối không tiếp tục chốt lịch hay nhắc lại giá).";
+        } else if ("COOLING_IDLE".equals(momentum)) {
+            recommendedStrategy = "Khách hàng đang im lặng / mất tương tác (Loss-Aversion Reservation): "
+                    + "Kéo lại tương tác nhẹ nhàng bằng cách đề xuất giữ trước suất ưu đãi hoặc suất soi da AI 3D 0đ không ràng buộc cho " + honorific
+                    + " mà không thúc ép chốt đơn.";
+        } else {
+            recommendedStrategy = switch (archetype) {
+                case "READY_TO_BOOK" -> asksPriceInCurrentTurn
+                        ? "Báo giá ngắn gọn, chuẩn xác gói dịch vụ " + honorific + " vừa hỏi theo đúng dữ liệu tài liệu, đồng thời xác nhận đã ghi nhận thông tin SĐT / lịch hẹn để chuyên viên liên hệ hỗ trợ " + honorific + " ngay."
+                        : (bookingState.hasConfirmedTimeSlot() && !bookingState.hasCapturedPhone()
+                            ? "Xác nhận giữ suất lúc " + bookingState.confirmedTimeSlot() + " cho " + honorific + " và chỉ xin Số điện thoại để khóa lịch (cấm hỏi lại Sáng hay Chiều!)."
+                            : "Xác nhận ngay thông tin SĐT / lịch hẹn của " + honorific + " thật ngắn gọn, ấm áp; báo chuyên viên liên hệ qua điện thoại/Zalo ngay và TUYỆT ĐỐI KHÔNG liệt kê lại bảng giá hay hỏi lại tình trạng.");
+                case "SKEPTICAL_CHRONIC" -> currentIsComplexSymptom
+                        ? "Đồng cảm sâu sắc và áp dụng chiến thuật tâm lý PAS (Problem - Risk - Appointment Hook): Chạm vào tâm lý lo lắng biến chứng của " + honorific
+                          + " (nếu để ổ viêm kéo dài hoặc tự xử lý bề mặt sẽ dễ lan sang nang lông lành, làm thâm bám sâu chai sần hoặc biến chứng thành sẹo rỗ khó phục hồi); khẳng định cần Bác sĩ Da liễu soi da AI 3D trực tiếp miễn phí 100% để đo độ sâu từng vùng và dẫn dắt "
+                          + honorific + " đặt lịch kiểm tra theo khung giờ Sáng/Chiều (TUYỆT ĐỐI CẤM hỏi 'đang tò mò hơn về...')."
+                        : "Đồng cảm sâu sắc với hành trình lâu năm của " + honorific + "; phân tách trung thực phạm vi cải thiện của gói tiêu chuẩn và phần cần Bác sĩ soi da AI 3D 0đ đánh giá riêng (tuyệt đối không hứa lố).";
+                case "DISCREET_DECISIVE" ->
+                        "Khẳng định rõ dịch vụ hoàn toàn phù hợp và hiệu quả cao cho khách hàng Nam giới / Trung niên; giữ giọng văn điềm đạm, tôn trọng, nhấn mạnh không gian kín đáo và trả lời thẳng trọng tâm cho " + honorific + ".";
+                case "PRICE_CONSCIOUS" -> isBroadUnspecifiedPrice
+                        ? "Áp dụng Value Stacking & Chống xả sạch thông tin (Nấc 1): TUYỆT ĐỐI KHÔNG liệt kê toàn bộ bảng giá 3-4 dịch vụ hay các gói Combo ngay! Chỉ nêu 1 cam kết giá trị (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí/0 Tip) + đưa khoảng giá khởi điểm nhẹ nhàng (chỉ từ 650.000đ/buổi tùy phác đồ) + đặt 1 câu hỏi lựa chọn A/B ngắn gọn hỏi nhu cầu ưu tiên của " + honorific + "."
+                        : "Áp dụng Value Stacking & Phân bổ thông tin (Nấc 2): Chỉ báo giá ĐÚNG 1 gói dịch vụ " + honorific + " đang quan tâm (cấm liệt kê sang các dịch vụ khác không được hỏi), nêu 1 quyền lợi cốt lõi (Bác sĩ chuyên khoa, bảo hành văn bản, 0 phụ phí/0 Tip) và đặt 1 câu hỏi điều hướng đặt lịch soi da AI 3D miễn phí cho " + honorific + ".";
+                case "HESITANT_FIRST_TIMER" ->
+                        "Đưa rủi ro của " + honorific + " về 0% (Zero-Risk Reversal) bằng cam kết bảo hành, quy trình êm dịu không đau/không ràng buộc và dẫn dắt " + honorific + " đặt lịch buổi soi da AI 3D miễn phí 100% cùng Bác sĩ theo khung giờ Sáng/Chiều trước khi quyết định.";
+                default ->
+                        "Giải đáp ngắn gọn đúng trọng tâm câu hỏi của " + honorific + " theo quy tắc '1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B' (SPIN) để dẫn dắt mạch tư vấn tự nhiên.";
+            };
+        }
 
         return new CustomerInsightDto(
                 archetype,
                 archetypeLabel,
                 temp,
+                previousTemperature != null ? previousTemperature : (history != null && !history.isEmpty() ? effectivePrevTemp : null),
+                temperatureDelta,
+                momentum,
                 tempLabel,
+                decayReason,
                 honorific,
                 new ArrayList<>(pains),
                 new ArrayList<>(concerns),
                 recommendedStrategy
         );
+    }
+
+    private static int derivePreviousTemperature(
+            List<String> allUserMessages,
+            List<FanpageBotRequest.ConversationTurn> history,
+            Set<String> pains,
+            boolean historyIsChronic,
+            boolean hasBookingLead) {
+        if (history == null || history.isEmpty()) {
+            return 36;
+        }
+        int priorUserTurns = 0;
+        StringBuilder priorUserText = new StringBuilder();
+        for (FanpageBotRequest.ConversationTurn turn : history) {
+            if (turn != null && !"assistant".equalsIgnoreCase(turn.role())
+                    && turn.content() != null && !turn.content().isBlank()) {
+                priorUserTurns++;
+                priorUserText.append(" ").append(turn.content().strip());
+            }
+        }
+        if (priorUserTurns == 0) {
+            return 36;
+        }
+        String priorText = priorUserText.toString();
+        int base = 36 + Math.min(24, (priorUserTurns - 1) * 10);
+        if (historyIsChronic || pains.size() >= 2) base += 12;
+        if (PRICE_OBJECTION_PATTERN.matcher(priorText).find()) base += 10;
+        if (TIME_TO_RESULT_PATTERN.matcher(priorText).find()) base += 10;
+        if (BOOKING_INTENT_PATTERN.matcher(priorText).find() || hasBookingLead) base = Math.max(base, 75);
+        return Math.max(0, Math.min(100, base));
     }
 
     private static boolean MALE_OR_DISCREetCheck(String currentMsg, String honorific, int turnCount) {
@@ -307,12 +468,20 @@ public class CustomerInsightEngine {
             FanpageBotPromptBuilder.SalesStage salesStage,
             List<AgentSkillDto> availableSkills) {
 
-        List<AgentSkillDto> pool = (availableSkills != null && !availableSkills.isEmpty())
-                ? availableSkills.stream().filter(AgentSkillDto::active).toList()
+        List<AgentSkillDto> base = (availableSkills != null && !availableSkills.isEmpty())
+                ? availableSkills.stream()
+                        .filter(s -> s != null && s.active() && (s.confidenceScore() <= 0.0 || s.confidenceScore() >= 0.45))
+                        .toList()
                 : BUILT_IN_SKILLS;
 
-        if (pool.isEmpty()) {
+        if (base.isEmpty()) {
             return List.of();
+        }
+
+        List<AgentSkillDto> pool = new ArrayList<>(base);
+        boolean hasPersuasion = pool.stream().anyMatch(s -> "PSYCH_ZERO_PRESSURE_TAKEAWAY".equalsIgnoreCase(s.code()));
+        if (!hasPersuasion) {
+            pool.addAll(COOLING_PERSUASION_SKILLS);
         }
 
         String msg = currentMessage != null ? currentMessage.toLowerCase(Locale.ROOT) : "";
@@ -326,6 +495,7 @@ public class CustomerInsightEngine {
         }
         String fullConvo = histBuilder.toString();
         boolean isMultiTurn = history != null && !history.isEmpty();
+        boolean isBroadUnspecifiedPrice = FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(currentMessage, history);
         String archetype = insight != null && insight.buyerArchetype() != null ? insight.buyerArchetype() : "EXPLORING_CONSULTATION";
         String honorific = insight != null && insight.honorific() != null ? insight.honorific() : "Chị";
 
@@ -372,7 +542,8 @@ public class CustomerInsightEngine {
             // 3. Điểm thưởng theo Chân dung Tâm lý (BuyerArchetype) & Giai đoạn Tư vấn
             switch (archetype) {
                 case "SKEPTICAL_CHRONIC" -> {
-                    if ("PSYCH_CHRONIC_EMPATHY".equals(code)) score += 120;
+                    if ("PSYCH_CHRONIC_EMPATHY".equals(code)) score += 125;
+                    if ("SALES_APPOINTMENT_HOOK_CLOSE".equals(code)) score += 110;
                     if ("PSYCH_ZERO_RISK_REVERSAL".equals(code)) score += 95;
                     if ("SALES_SOCIAL_PROOF_REASSURANCE".equals(code)) score += 80;
                 }
@@ -382,22 +553,47 @@ public class CustomerInsightEngine {
                     if ("SALES_SOCIAL_PROOF_REASSURANCE".equals(code)) score += 75;
                 }
                 case "PRICE_CONSCIOUS" -> {
+                    if ("SALES_ANTI_INFO_DUMPING_PACING".equals(code)) score += isBroadUnspecifiedPrice ? 145 : 120;
                     if ("SALES_VALUE_FRAMING_PRICE".equals(code)) score += 130;
                     if ("PSYCH_ZERO_RISK_REVERSAL".equals(code)) score += 95;
+                    if ("SALES_APPOINTMENT_HOOK_CLOSE".equals(code)) score += 85;
                     if ("SALES_MICRO_COMMITMENT_CLOSE".equals(code)) score += 70;
                 }
                 case "HESITANT_FIRST_TIMER" -> {
-                    if ("PSYCH_ZERO_RISK_REVERSAL".equals(code)) score += 120;
+                    if ("PSYCH_ZERO_RISK_REVERSAL".equals(code)) score += 125;
+                    if ("SALES_APPOINTMENT_HOOK_CLOSE".equals(code)) score += 105;
                     if ("SALES_SOCIAL_PROOF_REASSURANCE".equals(code)) score += 95;
                 }
                 case "READY_TO_BOOK" -> {
                     if ("SALES_MICRO_COMMITMENT_CLOSE".equals(code)) score += 125;
+                    if ("SALES_APPOINTMENT_HOOK_CLOSE".equals(code)) score += 115;
                     if ("COMM_NO_REPEAT_MEMORY".equals(code)) score += 95;
                 }
                 default -> {
                     if ("SALES_SPIN_DIAGNOSIS".equals(code)) score += 105;
+                    if ("SALES_ANTI_INFO_DUMPING_PACING".equals(code)) score += 95;
                     if ("COMM_MIRROR_AND_PACE".equals(code)) score += 80;
                     if ("SALES_CROSS_INDUSTRY_CONSULT".equals(code)) score += 70;
+                }
+            }
+
+            boolean isCooling = (insight != null) && (
+                    (insight.temperatureDelta() != null && insight.temperatureDelta() < 0)
+                    || (insight.momentum() != null && insight.momentum().startsWith("COOLING"))
+            );
+
+            if (isCooling) {
+                if ("PSYCH_ZERO_PRESSURE_TAKEAWAY".equals(code) || "PSYCH_TAKEAWAY_REVERSE".equals(code)) {
+                    score += 140;
+                }
+                if ("PSYCH_PATTERN_INTERRUPT_CURIOSITY".equals(code) || "PSYCH_PATTERN_INTERRUPT".equals(code)) {
+                    score += 130;
+                }
+                if ("SALES_LOSS_AVERSION_RESERVATION".equals(code)) {
+                    score += 125;
+                }
+                if ("SALES_MICRO_COMMITMENT_CLOSE".equals(code) || "SALES_APPOINTMENT_HOOK_CLOSE".equals(code)) {
+                    score -= 60;
                 }
             }
 
@@ -407,9 +603,16 @@ public class CustomerInsightEngine {
             if (isMultiTurn && "COMM_NO_REPEAT_MEMORY".equals(code)) {
                 score += 60;
             }
-            if (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE && "SALES_MICRO_COMMITMENT_CLOSE".equals(code)) {
+            if (!isCooling && salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE
+                    && ("SALES_MICRO_COMMITMENT_CLOSE".equals(code) || "SALES_APPOINTMENT_HOOK_CLOSE".equals(code))) {
                 score += 55;
             }
+
+            // 4. Điểm thưởng củng cố từ lịch sử chuyển đổi thực tế (conversion_count tối đa +20) & độ tín nhiệm (confidence_score)
+            int conversionBoost = Math.min(20, Math.max(0, skill.conversionCount()) * 4);
+            double conf = skill.confidenceScore() <= 0.0 ? 0.90 : skill.confidenceScore();
+            int confidenceAdjustment = (int) Math.round((conf - 0.85) * 40.0);
+            score += conversionBoost + confidenceAdjustment;
 
             scored.add(new ScoredSkill(skill, score));
         }
@@ -445,7 +648,7 @@ public class CustomerInsightEngine {
         return selected;
     }
 
-    private static List<AgentSkillDto> createBuiltInSkills() {
+    private static List<AgentSkillDto> createDefaultBuiltInSkills() {
         Instant now = Instant.parse("2026-01-01T00:00:00Z");
         return List.of(
                 new AgentSkillDto(
@@ -499,14 +702,14 @@ public class CustomerInsightEngine {
                 new AgentSkillDto(
                         UUID.fromString("70000000-0000-0000-0000-000000000004"),
                         "SALES_SPIN_DIAGNOSIS",
-                        "[Sale] Chẩn đoán Chuyên gia SPIN & Khơi gợi Nhu cầu ẩn",
+                        "[Sale] Chẩn đoán Chuyên gia SPIN & Quy tắc 1 Lợi ích + 1 Câu hỏi A/B",
                         "SALES_STRATEGY",
-                        "Áp dụng ở giai đoạn Mở đầu (DISCOVERY) khi khách mới hỏi thăm chung chung trong mọi ngành hàng (Spa, Khóa học, Mỹ phẩm, Nội thất, B2B).",
+                        "Áp dụng ở giai đoạn Mở đầu (DISCOVERY) khi khách mới hỏi thăm chung chung để giữ nhịp tương tác tự nhiên.",
                         "tư vấn, có gói nào, dịch vụ gì, sản phẩm nào, bên mình có, muốn tìm hiểu, mới bị, bắt đầu, giới thiệu giúp",
-                        "1. Trả lời thẳng vào câu hỏi của khách trong 2-3 câu ngắn gọn, súc tích. 2. Đặt ĐÚNG 1 câu hỏi phân loại chuyên môn nhẹ nhàng (về tình trạng hiện tại, mục tiêu ưu tiên hoặc thời gian mong muốn) để khách cảm nhận đang được Chuyên gia thực thụ chẩn đoán chứ không phải nhân viên đọc kịch bản.",
-                        "Dạ bên em hiện có các phác đồ chuyên sâu được cá nhân hóa theo từng nền da ạ. Hiện tại mình đang muốn ưu tiên xử lý dứt điểm tình trạng mụn/nám hay muốn phục hồi trẻ hóa da để em gợi ý giải pháp sát nhất cho mình ạ?",
-                        "Không đổ nguyên bảng giá dài dòng ngay câu đầu tiên; không đặt 2-3 câu hỏi dồn dập như tra khảo khách.",
-                        86,
+                        "1. Áp dụng quy tắc '1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế': Trả lời cực gọn trong 2-3 câu (tối đa 2 bong bóng chat), nêu đúng 1 lợi ích chuyên môn đắt giá nhất. 2. Luôn kết thúc bằng 1 câu hỏi lựa chọn A/B ngắn gọn về tình trạng/mục tiêu ưu tiên để khách dễ dàng gõ phím phản hồi.",
+                        "Dạ bên em hiện có các phác đồ chuẩn Y khoa được Bác sĩ Da liễu cá nhân hóa theo từng nền da và miễn phí 100% buổi soi da AI 3D ạ. Hiện tại mình đang muốn ưu tiên xử lý mụn, mờ nám hay phục hồi căng bóng để em gợi ý phác đồ sát nhất ạ?",
+                        "Không đổ nguyên bảng giá dài dòng ngay câu đầu tiên; không đặt 2-3 câu hỏi dồn dập; không kết thúc bằng câu khẳng định cụt lủn.",
+                        90,
                         true,
                         null,
                         now,
@@ -515,14 +718,14 @@ public class CustomerInsightEngine {
                 new AgentSkillDto(
                         UUID.fromString("70000000-0000-0000-0000-000000000005"),
                         "SALES_VALUE_FRAMING_PRICE",
-                        "[Sale] Neo Giá trị & Chia nhỏ Lợi ích khi Khách băn khoăn về Giá (Value Stacking)",
+                        "[Sale] Báo Giá Khéo Léo, Chống Xả Sạch Thông Tin & Neo Giá Trị (Value Framing)",
                         "SALES_STRATEGY",
-                        "Áp dụng khi khách hỏi giá, so sánh giá với đối thủ giá rẻ, chê đắt hoặc phân vân giữa mua lẻ và mua theo gói/Combo.",
-                        "giá sao, bao nhiêu tiền, chi phí, đắt thế, giá cao, chỗ khác rẻ hơn, giảm giá, chiết khấu, combo, ưu đãi, mua lẻ, 1 buổi",
-                        "1. Áp dụng công thức Value Stacking: Nêu rõ giá trị chuyên môn, công nghệ chính hãng, thời lượng, quà tặng và chế độ bảo hành TRƯỚC hoặc CÙNG LÚC với con số giá niêm yết. 2. Đặt bài toán so sánh thông minh giữa mua lẻ và ưu đãi theo lộ trình Combo (10% - 15% - 20%) giúp khách thấy rõ lợi ích kinh tế lâu dài mà không cảm thấy bị ép buộc.",
-                        "Dạ mức chi phí bên em đi kèm 100% Bác sĩ chuyên khoa trực tiếp thăm khám, dược mỹ phẩm chính hãng và cam kết bảo hành bằng văn bản ạ. Nếu mình đi theo lộ trình Combo Tiết Kiệm (3-4 buổi) sẽ được giảm ngay 10%, hoặc Combo Toàn Diện (5-9 buổi) giảm 15% kèm quà tặng chăm sóc tại nhà nên tối ưu chi phí hơn rất nhiều so với đi lẻ từng buổi ạ.",
-                        "Không chỉ cộc lốc quăng một con số giá tiền; không chê bai đối thủ cạnh tranh; không tự ý tính nhẩm sai tổng tiền.",
-                        92,
+                        "Áp dụng khi khách hỏi giá chung chung ('giá', 'bảng giá') hoặc hỏi giá dịch vụ cụ thể, chê đắt, phân vân ngân sách.",
+                        "giá, giá sao, báo giá, bảng giá, bao nhiêu tiền, chi phí, đắt thế, giá cao, chỗ khác rẻ hơn, giảm giá, chiết khấu, combo, ưu đãi, mua lẻ, 1 buổi",
+                        "1. Nấc 1 - Khi khách chỉ hỏi 'giá', 'báo giá' chung chung mà chưa rõ tình trạng/nhu cầu: TUYỆT ĐỐI KHÔNG xả sạch toàn bộ bảng giá nhiều dịch vụ hay báo ngay các gói Combo 10-15%! Chỉ đưa mức giá khởi điểm dễ tiếp cận (ví dụ: chỉ từ 650.000đ/buổi tùy phác đồ da) kèm 1 quyền lợi 0đ rủi ro (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí) và đặt 1 câu hỏi lựa chọn A/B ngắn gọn để phân loại nhu cầu. 2. Nấc 2 - Khi khách hỏi giá 1 dịch vụ cụ thể: Chỉ báo đúng đơn giá niêm yết của ĐÚNG 1 dịch vụ đó (cấm liệt kê sang các dịch vụ khác không liên quan), nêu 1 quyền lợi cốt lõi đi kèm và kết thúc bằng 1 câu hỏi điều hướng đặt lịch thăm khám/soi da miễn phí.",
+                        "Dạ chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ 650.000đ/buổi tùy tình trạng nền da, đã bao gồm Bác sĩ soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ. Hiện tại Chị đang muốn ưu tiên xử lý mụn, mờ nám hay dưỡng căng bóng để em báo đúng gói hợp nhất cho mình ạ?",
+                        "CẤM xả sạch 3-4 dịch vụ kèm toàn bộ Combo giảm 10-15% ngay trong 1 tin nhắn khiến khách bị ngợp thông tin, tự tính nhẩm rồi im lặng rút lui.",
+                        94,
                         true,
                         null,
                         now,
@@ -547,13 +750,13 @@ public class CustomerInsightEngine {
                 new AgentSkillDto(
                         UUID.fromString("70000000-0000-0000-0000-000000000007"),
                         "SALES_MICRO_COMMITMENT_CLOSE",
-                        "[Sale] Chốt Mềm bằng Cam kết Nhỏ & Câu hỏi Lựa chọn Kép (Alternative Choice Close)",
+                        "[Sale] Bán Lịch Hẹn & Chốt Mềm bằng Câu hỏi Lựa chọn Kép (Appointment Hook Close)",
                         "SALES_STRATEGY",
                         "Kích hoạt khi khách đã nắm rõ thông tin, có tín hiệu quan tâm sâu (WARM/HOT) hoặc ở giai đoạn SOFT_BOOKING_CLOSE.",
                         "đặt lịch, giữ lịch, qua xem, đăng ký, làm thử, trải nghiệm, cuối tuần, rảnh, khung giờ, sáng hay chiều, tư vấn kỹ hơn, địa chỉ",
-                        "1. Chuyển từ câu hỏi đóng (Có/Không) sang câu hỏi Lựa chọn Kép nhẹ nhàng (Sáng hay Chiều, Trong tuần hay Cuối tuần, Trải nghiệm 1 buổi trước hay giữ ưu đãi Combo). 2. Đề xuất một bước tiến nhỏ không rủi ro (như giữ lịch khám/soi da AI 3D miễn phí hoặc giữ suất quà tặng) để khách dễ dàng gật đầu.",
+                        "1. Bán Lịch Hẹn - Không Bán Đứt Qua Chat: Tạo lý do hợp lý vì quyền lợi của khách (như Bác sĩ soi da AI 3D miễn phí 100% trước 10 phút hoặc giữ mã ưu đãi/quà tặng tại cơ sở) để mời khách ghé trực tiếp. 2. Luôn đặt câu hỏi cuối cùng theo dạng Lựa chọn Kép (Sáng hay Chiều, Trong tuần hay Cuối tuần) để giữ thế chủ động điều hướng.",
                         "Dạ để bên em sắp xếp Bác sĩ tiếp đón chu đáo nhất mà mình không phải chờ đợi lâu, mình tiện ghé vào khung giờ Sáng hay Chiều để em giữ suất soi da AI 3D miễn phí trước cho mình ạ?",
-                        "Không dùng các câu giục giã thô thiển (Chốt luôn không chị, Mua ngay đi kẻo hết).",
+                        "Không dùng các câu giục giã thô thiển (Chốt luôn không chị, Mua ngay đi kẻo hết); không giải thích dài dòng làm khách mất động lực ghé cơ sở.",
                         89,
                         true,
                         null,
@@ -603,6 +806,92 @@ public class CustomerInsightEngine {
                         "Dạ tùy theo mục tiêu hiện tại của mình, bên em sẽ gợi ý phương án tối ưu nhất cả về hiệu quả lẫn ngân sách, kèm đầy đủ chính sách bảo hành chính hãng để mình yên tâm sử dụng lâu dài ạ.",
                         "Không tư vấn chung chung một kiểu cho mọi phân khúc khách hàng; không gán ghép tính năng của sản phẩm này sang sản phẩm khác.",
                         80,
+                        true,
+                        null,
+                        now,
+                        now
+                ),
+                new AgentSkillDto(
+                        UUID.fromString("70000000-0000-0000-0000-000000000011"),
+                        "SALES_ANTI_INFO_DUMPING_PACING",
+                        "[Sale] Chống Xả Sạch Bảng Giá & Giữ Nhịp 3 Nấc (Anti-Info-Dumping Pacing)",
+                        "SALES_STRATEGY",
+                        "Ngăn chặn tuyệt đối lỗi bot biến thành máy trả lời tự động xả hết 100% bảng giá và chính sách ngay tin nhắn đầu tiên làm khách ngợp và im lặng (seen không rep).",
+                        "giá, báo giá, bảng giá, giá sao, chi phí, nhiêu tiền, bao nhiêu, xin giá, giá cả, cho xin bảng giá, tư vấn giá",
+                        "1. NGUYÊN TẮC CỐT TỬ: Tuyệt đối KHÔNG làm Thợ Trả Lời Tin Nhắn xả hết toàn bộ danh mục 3-4 dịch vụ kèm chiết khấu Combo trong 1 lượt nhắn! 2. Khi khách chỉ gõ 'giá', 'báo giá', 'chi phí sao' mà chưa nói rõ tình trạng/dịch vụ: Chỉ báo mức giá khởi điểm dễ tiếp cận nhất (ví dụ: chỉ từ 650.000đ/buổi tùy phác đồ da) + 1 quyền lợi 0đ rủi ro (Bác sĩ Da liễu soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí) + 1 câu hỏi lựa chọn A/B ngắn gọn để phân loại nhu cầu (mụn, nám hay trẻ hóa). 3. Khi khách hỏi giá 1 dịch vụ cụ thể: Chỉ báo đúng giá của ĐÚNG 1 dịch vụ đó, cấm liệt kê lan man sang các dịch vụ khác không liên quan.",
+                        "Dạ chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ 650.000đ/buổi tùy phác đồ da, đã bao gồm Bác sĩ soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ. Hiện tại Chị đang muốn ưu tiên xử lý mụn, mờ nám hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?",
+                        "CẤM liệt kê một lèo 4 dịch vụ (Trị Mụn 1.500k, Meso 3.200k, Laser 4.500k, Detox 650k) kèm Combo 10-15% ngay khi khách mới hỏi chữ 'giá'; CẤM viết tin nhắn dài quá 2 bong bóng chat.",
+                        96,
+                        true,
+                        null,
+                        now,
+                        now
+                ),
+                new AgentSkillDto(
+                        UUID.fromString("70000000-0000-0000-0000-000000000012"),
+                        "SALES_APPOINTMENT_HOOK_CLOSE",
+                        "[Sale] Bán Lịch Hẹn Thăm Khám 0đ Rủi Ro & Khống Chế Khung Giờ A/B",
+                        "SALES_STRATEGY",
+                        "Chuyển hóa các cuộc hỏi giá hoặc đắn đo chi phí thành lịch hẹn trực tiếp tại cơ sở bằng mỏ neo quyền lợi miễn phí và câu hỏi lựa chọn khung giờ Sáng/Chiều.",
+                        "đắt, giá cao, suy nghĩ thêm, để xem đã, tham khảo, đặt lịch, qua khám, soi da, mấy buổi, hiệu quả không, giữ ưu đãi",
+                        "1. BÁN LỊCH HẸN, KHÔNG BÁN ĐỨT QUA CHAT: Luôn neo quyền lợi đặc biệt chỉ có khi khách ghé trực tiếp (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% trong 10 phút đầu để biết chính xác độ sâu nền da trước khi quyết định, hoàn toàn không bắt buộc mua gói). 2. KẾT THÚC BẰNG CÂU HỎI KHỐNG CHẾ A/B: Thay vì hỏi câu đóng Yes/No ('Chị có muốn đặt lịch không?'), bắt buộc hỏi câu lựa chọn khung giờ ('Chị tiện ghé bên em vào khung giờ Sáng hay Chiều để em giữ suất soi da AI 3D miễn phí cùng Bác sĩ cho mình ạ?').",
+                        "Dạ để biết chính xác nền da mình hợp phác đồ nào và tiết kiệm chi phí nhất, bên em đang tặng 100% suất Bác sĩ Da liễu soi da AI 3D chuyên sâu trước 10 phút ạ. Chị tiện ghé vào khung giờ Sáng hay Chiều để em giữ lịch ưu tiên cho mình ạ?",
+                        "Không dùng câu hỏi đóng Yes/No dễ bị khách từ chối ('Chị có muốn tư vấn thêm không?'); không ép khách mua gói lớn khi chưa thăm khám.",
+                        91,
+                        true,
+                        null,
+                        now,
+                        now
+                )
+        );
+    }
+
+    private static List<AgentSkillDto> createCoolingPersuasionSkills() {
+        Instant now = Instant.parse("2026-01-01T00:00:00Z");
+        return List.of(
+                new AgentSkillDto(
+                        UUID.fromString("70000000-0000-0000-0000-000000000013"),
+                        "PSYCH_ZERO_PRESSURE_TAKEAWAY",
+                        "[Tâm lý] Lùi Một Bước - Buông Bỏ Áp Lực Bán (Zero-Pressure Takeaway)",
+                        "PSYCHOLOGY",
+                        "Xóa bỏ áp lực bán hàng ngay lập tức khi khách hàng có dấu hiệu do dự, từ chối nhẹ (\"ừ\", \"để xem\", \"để chị nghĩ thêm\", \"thôi\"), giúp hạ rào cản phòng vệ tâm lý trước khi gợi mở lý do thật sự.",
+                        "ừ, uk, ok, vâng, để xem, để chị xem, để xem thêm, để nghĩ đã, suy nghĩ thêm, để chị nghĩ, thôi, hơi đắt, đắt quá, chưa cần",
+                        "1. Hạ hoàn toàn áp lực: Đồng ý ngay với quyền tự do suy nghĩ của khách, tuyệt đối không giục giã hay nhắc lại bảng giá/chốt lịch. 2. Buông bỏ giả định mua hàng (Takeaway): Khẳng định việc tìm hiểu kỹ là hoàn toàn đúng đắn. 3. Đặt 1 câu hỏi tháo gỡ nhẹ nhàng (Uncover hidden blocker) để khách tự nhiên chia sẻ mà không cảm thấy bị làm phiền.",
+                        "Dạ không sao đâu Chị ạ, việc chăm sóc da mình cứ cân nhắc thật kỹ để hoàn toàn yên tâm trước nhé ạ. Cho em hỏi nhỏ để hỗ trợ Chị tốt hơn, hiện tại điều làm Chị băn khoăn nhất là về chi phí hay chưa chắc chắn liệu trình có hợp với nền da của mình ạ?",
+                        "CẤM tiếp tục thúc ép đặt lịch; CẤM lặp lại bảng giá hay ép khách quyết định ngay khi khách vừa nói để xem.",
+                        95,
+                        true,
+                        null,
+                        now,
+                        now
+                ),
+                new AgentSkillDto(
+                        UUID.fromString("70000000-0000-0000-0000-000000000014"),
+                        "PSYCH_PATTERN_INTERRUPT_CURIOSITY",
+                        "[Tâm lý] Phá Vỡ Khuôn Mẫu & Gợi Mở Tò Mò (Pattern Interrupt & Curiosity Hook)",
+                        "PSYCHOLOGY",
+                        "Cắt đứt phản xạ trả lời đối phó hoặc thờ ơ của khách bằng một góc nhìn chuyên môn bất ngờ hoặc một câu hỏi kích thích tò mò về tình trạng da/sản phẩm.",
+                        "ừ, ok, thế à, vậy à, để xem, im lặng, không biết, chưa rõ",
+                        "1. Phá vỡ kịch bản tư vấn thông thường: Không lặp lại câu hỏi bán hàng cũ. 2. Đưa ra một dữ kiện hoặc câu hỏi vi mô (micro-question) bất ngờ liên quan trực tiếp đến tình trạng/thói quen của khách. 3. Kích thích sự tò mò để khách muốn tìm hiểu thêm về nguyên nhân gốc rễ thay vì chỉ nhìn vào giá.",
+                        "Dạ Chị ơi, thông thường khi điều trị mụn ẩn lâu năm, 80% khách bên em đều bất ngờ khi biết nguyên nhân gốc không nằm ở sữa rửa mặt mà do bước làm dịu nền da bị thiếu ẩm. Hiện tại ở nhà Chị có đang dùng thêm sản phẩm bôi thoa nào không để em xem có đang bị xung đột hoạt chất không ạ?",
+                        "Không spam câu hỏi triết lý xa vời; không hỏi những câu đòi hỏi khách phải gõ văn bản dài phức tạp.",
+                        93,
+                        true,
+                        null,
+                        now,
+                        now
+                ),
+                new AgentSkillDto(
+                        UUID.fromString("70000000-0000-0000-0000-000000000015"),
+                        "SALES_LOSS_AVERSION_RESERVATION",
+                        "[Sale] Giữ Suất Ưu Đãi 0đ Ràng Buộc (Loss Aversion Privilege Reservation)",
+                        "SALES_STRATEGY",
+                        "Kích hoạt tâm lý sợ mất quyền lợi (Loss Aversion) một cách tinh tế khi khách hàng nguội lạnh hoặc im lặng: Đề xuất giữ lại suất ưu đãi hoặc suất thăm khám miễn phí mà không ép mua bất kỳ gói nào.",
+                        "để xem, giữ suất, ưu đãi, hết hạn, khuyến mãi, giữ chỗ, im lặng, suy nghĩ thêm, giá cao",
+                        "1. Tận dụng tâm lý sợ bỏ lỡ nhưng không gây phản cảm: Báo cho khách biết suất ưu đãi/suất soi da AI 3D miễn phí cùng Bác sĩ sắp hết hoặc chỉ giữ được trong 24-48h. 2. Cam kết 0 đồng ràng buộc: Khẳng định giữ mã ưu đãi hoàn toàn miễn phí, nếu bận không qua được mã sẽ tự hủy mà không mất phí. 3. Đặt câu hỏi xác nhận giữ suất nhẹ nhàng.",
+                        "Dạ Chị ơi, chương trình tặng 100% suất soi da AI 3D cùng Bác sĩ tuần này bên em chỉ còn đúng 2 suất ưu tiên thôi ạ. Hay là em cứ tạm giữ mã ưu đãi này cho Chị trước đến hết ngày mai nhé, hoàn toàn 0đ và không bắt buộc làm liệu trình, nếu mai Chị bận thì mã tự hủy không sao hết ạ!",
+                        "CẤM đe dọa thô thiển kiểu \"mua ngay kẻo tăng giá gấp đôi\"; CẤM tạo cảm giác ép buộc cọc tiền trước.",
+                        94,
                         true,
                         null,
                         now,

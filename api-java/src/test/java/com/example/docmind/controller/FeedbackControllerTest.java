@@ -192,4 +192,52 @@ class FeedbackControllerTest {
                         .content(invalidBody))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void submitFeedbackWithAppliedRuleIdsTriggersSelectiveBlameAttribution() throws Exception {
+        UUID ruleId = UUID.randomUUID();
+        UUID appliedRuleId = UUID.randomUUID();
+        LearnedRuleDto learnedRule = new LearnedRuleDto(
+                ruleId,
+                "PRICING_CALCULATION",
+                "Khi tính chiết khấu",
+                "Đọc sai mức ngưỡng",
+                "Luôn kiểm tra bậc thang số lượng.",
+                List.of("chiết khấu"),
+                true,
+                Instant.now(),
+                Instant.now()
+        );
+
+        when(metaLearningService.learnFromFeedback(any(), any(), any(), any(), any()))
+                .thenReturn(learnedRule);
+        when(chatService.chat(any()))
+                .thenReturn(new ChatResponse("Câu trả lời đúng.", List.of(), List.of(learnedRule), null));
+
+        FeedbackRequest req = new FeedbackRequest(
+                "Câu hỏi giá?",
+                "Trả lời sai",
+                "Chỉ dẫn sửa sai chuẩn",
+                List.of("doc-uuid"),
+                "conv-1",
+                "context",
+                null,
+                null,
+                List.of(),
+                List.of(appliedRuleId)
+        );
+
+        mockMvc.perform(post("/api/feedback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.learned_rule.id").value(ruleId.toString()));
+
+        org.mockito.Mockito.verify(metaLearningService).recordNegativeFeedbackAndAutoQuarantine(
+                org.mockito.ArgumentMatchers.eq(List.of(appliedRuleId)),
+                org.mockito.ArgumentMatchers.eq("Câu hỏi giá?"),
+                org.mockito.ArgumentMatchers.eq("Trả lời sai"),
+                org.mockito.ArgumentMatchers.eq("Chỉ dẫn sửa sai chuẩn")
+        );
+    }
 }

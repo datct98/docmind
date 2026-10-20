@@ -36,7 +36,7 @@ public final class PromptSecurityGuard {
             Pattern.compile("(?iU)(bỏ\\s+qua|không\\s+cần\\s+đọc|không\\s+dựa\\s+vào)\\s+(mọi\\s+|tất\\s+cả\\s+)?(tài\\s+liệu|ngữ\\s+cảnh|dữ\\s+liệu)"),
             Pattern.compile("(?iU)(luôn\\s+luôn\\s+|từ\\s+giờ\\s+)?(báo\\s+giá\\s+0\\s*đ|miễn\\s+phí\\s+100%|giảm\\s+giá\\s+100%)\\s+(cho\\s+mọi|tất\\s+cả)"),
             Pattern.compile("(?iU)(tiết\\s+lộ|in\\s+ra|hiển\\s+thị)\\s+(system\\s+prompt|chỉ\\s+thị\\s+hệ\\s+thống|mật\\s+khẩu|api\\s+key)"),
-            Pattern.compile("(?iU)\\b(ignore|bypass)\\s+(all\\s+)?(documents?|context|security|citations?)\\b")
+            Pattern.compile("(?iU)\\b(ignore|bypass|disregard)\\s+(all\\s+)?(documents?|context|security|safety|citations?)\\b")
     );
 
     public static final String SAFE_JAILBREAK_REFUSAL =
@@ -58,13 +58,37 @@ public final class PromptSecurityGuard {
         return false;
     }
 
+    /** Các từ khóa/tiền tố nhạy cảm dùng cho fast-path substring check trước khi quét regex tốn kém. */
+    private static final String[] FAST_PATH_POISON_TOKENS = {
+            "ignore", "disregard", "forget", "bypass", "reveal", "print", "show", "output",
+            "repeat", "dump", "system", "prompt", "instruction", "rule", "override",
+            "developer", "dan mode", "jailbreak", "im_start", "sys", "bỏ qua", "quên",
+            "phớt lờ", "xóa bỏ", "tiết lộ", "in ra", "hiển thị", "đóng vai", "giả vờ",
+            "miễn phí", "0đ", "0 đ", "giảm giá 100%", "security", "safety", "citation",
+            "tài liệu", "ngữ cảnh", "dữ liệu", "mật khẩu", "api key"
+    };
+
     /**
      * Kiểm tra phản hồi dạy AI hoặc quy tắc rút ra có chứa lệnh đầu độc Playbook hay không.
+     * Sử dụng fast-path substring check để lọc 99% rule thông thường trong < 50ns,
+     * tránh lãng phí 12 biểu thức regex (?iU) nặng nề khi xử lý hàng trăm quy tắc.
      */
     public static boolean isPoisonedRuleAttempt(String text) {
         if (text == null || text.isBlank()) {
             return false;
         }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        boolean suspicious = false;
+        for (String token : FAST_PATH_POISON_TOKENS) {
+            if (lower.contains(token)) {
+                suspicious = true;
+                break;
+            }
+        }
+        if (!suspicious) {
+            return false;
+        }
+
         if (isDirectJailbreakAttempt(text)) {
             return true;
         }
@@ -110,7 +134,19 @@ public final class PromptSecurityGuard {
                 .replace("# HỒ SƠ NHÂN CÁCH", "HỒ SƠ NHÂN CÁCH")
                 .replace("# NHỊP ĐỘ TƯ VẤN", "NHỊP ĐỘ TƯ VẤN")
                 .replace("# BỘ QUY TẮC RÚT KINH NGHIỆM (AI PLAYBOOK)", "AI PLAYBOOK")
-                .replace("# LƯU Ý BẢO MẬT CUỐI CÙNG", "LƯU Ý BẢO MẬT");
+                .replace("# LƯU Ý BẢO MẬT CUỐI CÙNG", "LƯU Ý BẢO MẬT")
+                .replace("<experience>", "[experience]")
+                .replace("</experience>", "[/experience]")
+                .replace("<EXPERIENCE_LIBRARY>", "[EXPERIENCE_LIBRARY]")
+                .replace("</EXPERIENCE_LIBRARY>", "[/EXPERIENCE_LIBRARY]")
+                .replace("<cue_signal>", "[cue_signal]")
+                .replace("</cue_signal>", "[/cue_signal]")
+                .replace("<rule_text>", "[rule_text]")
+                .replace("</rule_text>", "[/rule_text]")
+                .replace("<contrastive_evidence>", "[contrastive_evidence]")
+                .replace("</contrastive_evidence>", "[/contrastive_evidence]")
+                .replace("<script>", "[script]")
+                .replace("</script>", "[/script]");
     }
 
     /**

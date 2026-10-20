@@ -46,16 +46,52 @@ public record AgentSkillDto(
         @JsonProperty("page_id")
         String pageId,
 
+        @JsonProperty("applied_count")
+        int appliedCount,
+
+        @JsonProperty("conversion_count")
+        int conversionCount,
+
+        @JsonProperty("confidence_score")
+        double confidenceScore,
+
         @JsonProperty("created_at")
         Instant createdAt,
 
         @JsonProperty("updated_at")
         Instant updatedAt
 ) {
+    public AgentSkillDto {
+        if (confidenceScore <= 0.0) {
+            confidenceScore = 0.90;
+        }
+    }
+
+    public AgentSkillDto(
+            UUID id,
+            String code,
+            String name,
+            String category,
+            String description,
+            String triggerSignals,
+            String tacticalInstructions,
+            String goodExample,
+            String antiPattern,
+            int priority,
+            boolean active,
+            String pageId,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+        this(id, code, name, category, description, triggerSignals, tacticalInstructions,
+                goodExample, antiPattern, priority, active, pageId, 0, 0, 0.90, createdAt, updatedAt);
+    }
+
     public static AgentSkillDto fromEntity(AgentSkillEntity e) {
         if (e == null) {
             return null;
         }
+        double conf = e.getConfidenceScore() <= 0.0 ? 0.90 : e.getConfidenceScore();
         return new AgentSkillDto(
                 e.getId(),
                 e.getCode(),
@@ -69,6 +105,9 @@ public record AgentSkillDto(
                 e.getPriority(),
                 e.isActive(),
                 e.getPageId() != null ? e.getPageId().toString() : null,
+                e.getAppliedCount(),
+                e.getConversionCount(),
+                conf,
                 e.getCreatedAt(),
                 e.getUpdatedAt()
         );

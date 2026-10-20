@@ -47,6 +47,9 @@ public class RetrievalService {
         this.learnedRuleRepository = learnedRuleRepository;
     }
 
+    private static final double MIN_RULE_CONFIDENCE = 0.45;
+    private static final int MAX_APPLIED_RULES = 3;
+
     /** Kết quả retrieval kèm danh sách quy tắc playbook đã áp dụng. */
     public record RetrievalResult(
             List<ReciprocalRankFusion.FusedChunk> chunks,
@@ -57,7 +60,7 @@ public class RetrievalService {
     /**
      * Tương thích ngược: retrieve chỉ trả về danh sách FusedChunk.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ReciprocalRankFusion.FusedChunk> retrieve(List<UUID> documentIds, String question, Integer topK) {
         return retrieveWithRules(documentIds, question, topK, List.of()).chunks();
     }
@@ -65,7 +68,7 @@ public class RetrievalService {
     /**
      * Truy xuất tài liệu kèm theo tìm kiếm và áp dụng các quy tắc liên quan từ AI Playbook.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public RetrievalResult retrieveWithRules(List<UUID> documentIds,
                                              String question,
                                              Integer topK,
@@ -73,7 +76,7 @@ public class RetrievalService {
         return retrieveWithRules(documentIds, question, topK, extraRules, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public RetrievalResult retrieveWithRules(List<UUID> documentIds,
                                              String question,
                                              Integer topK,
@@ -84,14 +87,16 @@ public class RetrievalService {
 
         float[] queryEmbedding = embeddingClient.embed(question);
 
-        // 1. Tìm các quy tắc AI Playbook đang kích hoạt phù hợp với câu hỏi
+        // 1. Tìm các quy tắc AI Playbook đang kích hoạt phù hợp với câu hỏi (lọc confidence >= 0.45)
         Map<UUID, LearnedRuleDto> matchedRulesMap = new LinkedHashMap<>();
+        Map<UUID, Double> ruleMatchScores = new LinkedHashMap<>();
 
         // Thêm extraRules trước (nếu có, ví dụ rule vừa trích xuất từ conversational correction)
         if (extraRules != null) {
             for (LearnedRuleDto er : extraRules) {
-                if (er != null && er.id() != null) {
+                if (er != null && er.id() != null && er.active() && er.confidenceScore() >= MIN_RULE_CONFIDENCE) {
                     matchedRulesMap.put(er.id(), er);
+                    ruleMatchScores.put(er.id(), 2.0);
                 }
             }
         }
@@ -107,16 +112,32 @@ public class RetrievalService {
                     || rawQuestionLower.contains("số điện thoại")
                     || rawQuestionLower.contains("sđt")) && !asksExplicitPrice;
 
+            boolean isCoolingMsg = isCoolingOrHesitationQuery(rawQuestionLower);
+
             // Vector search trên learned_rules (nếu có pageId thì chỉ lấy rule của page đó + global rules)
             if (queryEmbedding != null) {
                 List<LearnedRuleEntity> similarRules = pageId != null
                         ? learnedRuleRepository.searchSimilarActiveRules(queryEmbedding, 0.60, 5, pageId)
                         : learnedRuleRepository.searchSimilarActiveRules(queryEmbedding, 0.60, 5);
+                int rankIdx = 0;
                 for (LearnedRuleEntity r : similarRules) {
+                    rankIdx++;
+                    if (r == null || !r.isActive() || !isRuleConfidenceEligible(r)) {
+                        continue;
+                    }
                     if (isPhoneLeadSpecificRule(r) && !mentionsPhoneTopicWithoutPrice) {
                         continue;
                     }
-                    matchedRulesMap.putIfAbsent(r.getId(), LearnedRuleDto.fromEntity(r));
+                    if (isCoolingSpecificRule(r) && !isCoolingMsg) {
+                        continue;
+                    }
+                    LearnedRuleDto dto = LearnedRuleDto.fromEntity(r);
+                    matchedRulesMap.putIfAbsent(r.getId(), dto);
+                    double baseVectorScore = Math.max(0.75, 1.20 - (rankIdx - 1) * 0.08);
+                    if (pageId != null && pageId.equals(r.getPageId())) {
+                        baseVectorScore += 0.12;
+                    }
+                    ruleMatchScores.merge(r.getId(), baseVectorScore, Math::max);
                 }
             }
 
@@ -127,10 +148,16 @@ public class RetrievalService {
                     ? learnedRuleRepository.findActiveForPage(pageId)
                     : learnedRuleRepository.findByActiveTrue();
             for (LearnedRuleEntity r : activeRules) {
+                if (r == null || !r.isActive() || !isRuleConfidenceEligible(r)) {
+                    continue;
+                }
                 if (isPhoneLeadSpecificRule(r) && !mentionsPhoneTopicWithoutPrice) {
                     continue;
                 }
-                boolean matched = false;
+                if (isCoolingSpecificRule(r) && !isCoolingMsg) {
+                    continue;
+                }
+                int matchedKwCount = 0;
                 if (r.getRetrievalKeywords() != null) {
                     for (String kw : r.getRetrievalKeywords()) {
                         if (kw != null && !kw.isBlank()) {
@@ -139,24 +166,52 @@ public class RetrievalService {
                                 continue;
                             }
                             if (lowerQuestion.contains(normKw)) {
-                                matched = true;
-                                break;
+                                matchedKwCount++;
                             }
                         }
                     }
                 }
-                if (!matched && hasPhoneNumber && !asksExplicitPrice && isPhoneLeadSpecificRule(r)) {
-                    matched = true;
+                if (matchedKwCount == 0 && hasPhoneNumber && !asksExplicitPrice && isPhoneLeadSpecificRule(r)) {
+                    matchedKwCount = 1;
                 }
-                if (matched) {
+                if (matchedKwCount > 0) {
                     matchedRulesMap.putIfAbsent(r.getId(), LearnedRuleDto.fromEntity(r));
+                    double kwScore = 1.0 + Math.min(0.25, matchedKwCount * 0.06);
+                    if (pageId != null && pageId.equals(r.getPageId())) {
+                        kwScore += 0.12;
+                    }
+                    ruleMatchScores.merge(r.getId(), kwScore, (oldVal, newVal) -> Math.max(oldVal, newVal) + 0.10);
                 }
             }
         } catch (Exception e) {
             log.warn("Không thể tìm kiếm quy tắc Playbook: {}", e.getMessage());
         }
 
-        List<LearnedRuleDto> appliedRules = deduplicateRulesByText(matchedRulesMap.values());
+        // Xếp hạng theo EffectiveScore = MatchScore * ConfidenceScore và giới hạn tối đa Top-3 quy tắc (MAX_APPLIED_RULES = 3)
+        List<LearnedRuleDto> sortedRules = matchedRulesMap.values().stream()
+                .sorted((a, b) -> {
+                    double effA = computeEffectiveRuleScore(a, ruleMatchScores.getOrDefault(a.id(), 1.0));
+                    double effB = computeEffectiveRuleScore(b, ruleMatchScores.getOrDefault(b.id(), 1.0));
+                    return Double.compare(effB, effA);
+                })
+                .toList();
+
+        List<LearnedRuleDto> deduplicatedRules = deduplicateRulesByText(sortedRules);
+        List<LearnedRuleDto> appliedRules = deduplicatedRules.size() > MAX_APPLIED_RULES
+                ? deduplicatedRules.subList(0, MAX_APPLIED_RULES)
+                : deduplicatedRules;
+
+        if (!appliedRules.isEmpty()) {
+            try {
+                List<UUID> appliedIds = appliedRules.stream()
+                        .map(LearnedRuleDto::id)
+                        .filter(java.util.Objects::nonNull)
+                        .toList();
+                learnedRuleRepository.recordRulesApplied(appliedIds);
+            } catch (Exception e) {
+                log.debug("Bỏ qua cập nhật applied_count cho learned_rules: {}", e.getMessage());
+            }
+        }
 
         // 2. Thu thập keywords để mở rộng truy vấn full-text (bỏ qua từ khóa nhiễu chung chung)
         Set<String> keywordsToExpand = new LinkedHashSet<>();
@@ -353,6 +408,23 @@ public class RetrievalService {
         return selected;
     }
 
+    private static boolean isRuleConfidenceEligible(LearnedRuleEntity r) {
+        if (r == null) {
+            return false;
+        }
+        double conf = r.getConfidenceScore() <= 0.0 ? 0.85 : r.getConfidenceScore();
+        return conf >= MIN_RULE_CONFIDENCE;
+    }
+
+    private static double computeEffectiveRuleScore(LearnedRuleDto rule, double matchScore) {
+        if (rule == null) {
+            return 0.0;
+        }
+        double conf = rule.confidenceScore() <= 0.0 ? 0.85 : rule.confidenceScore();
+        double conversionBonus = Math.min(0.10, Math.max(0, rule.successCount()) * 0.01);
+        return (matchScore * conf) + conversionBonus;
+    }
+
     private static boolean isPhoneLeadSpecificRule(LearnedRuleEntity r) {
         if (r == null) {
             return false;
@@ -362,12 +434,49 @@ public class RetrievalService {
         return combined.contains("số điện thoại") || combined.contains("sđt");
     }
 
+    private static boolean isCoolingSpecificRule(LearnedRuleEntity r) {
+        if (r == null) {
+            return false;
+        }
+        String combined = ((r.getTriggerCondition() != null ? r.getTriggerCondition() : "") + " "
+                + (r.getCueSignal() != null ? r.getCueSignal() : "") + " "
+                + (r.getGeneralizedRule() != null ? r.getGeneralizedRule() : "")).toLowerCase(java.util.Locale.ROOT);
+        return combined.contains("hạ nhiệt")
+                || combined.contains("temperature_delta")
+                || combined.contains("do dự")
+                || combined.contains("ngập ngừng")
+                || combined.contains("áp lực chốt bán hàng")
+                || combined.contains("công nhận quyền cân nhắc")
+                || combined.contains("phản hồi ngắn đối phó");
+    }
+
+    private static boolean isCoolingOrHesitationQuery(String lowerQuestion) {
+        if (lowerQuestion == null || lowerQuestion.isBlank()) {
+            return false;
+        }
+        return lowerQuestion.matches("(?isU)^\\s*(?:ừ|uk|uh|uhm|ok|oke|vâng|dạ|thôi)\\s*[.!,~?]*$")
+                || lowerQuestion.contains("để xem")
+                || lowerQuestion.contains("nghĩ thêm")
+                || lowerQuestion.contains("suy nghĩ")
+                || lowerQuestion.contains("chưa cần")
+                || lowerQuestion.contains("khi khác")
+                || lowerQuestion.contains("im lặng")
+                || lowerQuestion.contains("re-engage")
+                || lowerQuestion.contains("reengage");
+    }
+
     private static boolean isGenericNoiseKeyword(String normKw) {
         if (normKw == null || normKw.length() <= 2) {
             return true;
         }
         return switch (normKw) {
-            case "tư vấn", "liên hệ", "liên hệ tư vấn", "gói", "liệu", "trị", "quy", "tắc", "global", "rule" -> true;
+            case "tư vấn", "liên hệ", "liên hệ tư vấn", "gói", "liệu", "trị", "quy", "tắc", "global", "rule",
+                 "của", "với", "bằng", "ngắn", "câu", "hỏi", "khách", "hàng", "thật", "cho", "các", "khi",
+                 "cần", "như", "này", "được", "không", "trong", "hoặc", "nhưng", "phải", "luôn", "trước",
+                 "sau", "đang", "rất", "hơn", "nhất", "tốt", "mức", "báo", "đặt", "tìm", "quyền", "cân",
+                 "nhắc", "hoàn", "toàn", "tuyệt", "đối", "chốt", "bán", "lực", "phản", "hồi", "dấu", "hiệu",
+                 "giai", "đoạn", "discovery", "temperature_delta", "harness", "chuẩn", "mực", "đồng", "duy",
+                 "trì", "tối", "bong", "bóng", "kết", "thúc", "xưng", "gọn", "chẩn", "đoán", "rào", "cản" -> true;
             default -> false;
         };
     }

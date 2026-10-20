@@ -1,6 +1,8 @@
 package com.example.docmind.service.bot;
 
 import com.example.docmind.config.ChatProperties;
+import com.example.docmind.dto.bot.AgentSkillDto;
+import com.example.docmind.dto.bot.CustomerInsightDto;
 import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import com.example.docmind.dto.LearnedRuleDto;
@@ -722,4 +724,351 @@ class FanpageBotServiceTest {
                 .contains("0912345678")
                 .containsIgnoringCase("liên hệ");
     }
+
+    @Test
+    void recordsImplicitConversionReinforcementOnFastPathPhoneLeadWhenHistoryIsPresent() {
+        UUID pageId = UUID.randomUUID();
+        com.example.docmind.service.MetaLearningService metaLearningService =
+                mock(com.example.docmind.service.MetaLearningService.class);
+        AgentSkillService agentSkillService = mock(AgentSkillService.class);
+        when(agentSkillService.getActiveSkillsForPage(any())).thenReturn(CustomerInsightEngine.builtInDefaultSkills());
+
+        FanpageBotService serviceWithLearning = new FanpageBotService(
+                retrievalService,
+                llmClient,
+                new ChatProperties(),
+                null,
+                null,
+                new CustomerInsightEngine(),
+                agentSkillService,
+                metaLearningService
+        );
+
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Bên em có trị nám Laser Pico không?"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em có Phác đồ Trị Nám Laser Pico chuẩn Y khoa ạ.")
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-conv-01",
+                "Chị Mai",
+                "0982663255 tư vấn chị nhé",
+                null,
+                history,
+                List.of(UUID.randomUUID()),
+                5
+        );
+
+        FanpageBotResponse resp = serviceWithLearning.handleCustomerMessage(req);
+
+        assertThat(resp.needsHumanHandoff()).isTrue();
+        assertThat(resp.handoffCategory()).isEqualTo("BOOKING_LEAD_CAPTURED");
+        assertThat(resp.extractedLead()).isNotNull();
+        assertThat(resp.extractedLead().phoneNumber()).isEqualTo("0982663255");
+
+        verify(metaLearningService).recordConversionSuccess(
+                org.mockito.ArgumentMatchers.eq(pageId),
+                org.mockito.ArgumentMatchers.eq(history),
+                org.mockito.ArgumentMatchers.eq("0982663255 tư vấn chị nhé")
+        );
+    }
+
+    @Test
+    void broadPriceInquiryPreventsInformationDumpingAndUsesThreeStepPacing() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk(
+                "SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | "
+                + "SPA-02 | Căng bóng Meso Collagen | 3.200.000 VNĐ/buổi | "
+                + "SPA-03 | Trị Nám & Tàn Nhang Laser Pico | 4.500.000 VNĐ/buổi | "
+                + "SPA-04 | Thải độc da mặt Detox Oxy | 650.000 VNĐ/buổi | "
+                + "Combo Tiết Kiệm 3-4 buổi giảm 10%, Combo Toàn Diện 5-9 buổi giảm 15%"
+        );
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        // Giả lập LLM mắc lỗi "xả sạch thông tin" khi khách mới nhắn đúng chữ "giá"
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ em chào Chị ạ! Hiện tại bên em có bảng giá niêm yết cho các dịch vụ chính như sau: "
+                + "Liệu trình Trị Mụn Chuẩn Y Khoa là 1.500.000 VNĐ/buổi, Căng bóng Meso Collagen là 3.200.000 VNĐ/buổi, "
+                + "Trị Nám & Tàn Nhang Laser Pico là 4.500.000 VNĐ/buổi và Thải độc da mặt Detox Oxy là 650.000 VNĐ/buổi ạ. ||MSG|| "
+                + "Ngoài ra, bên em đang có ưu đãi khi đăng ký theo Combo 3-4 buổi giảm 10% và 5-9 buổi giảm 15% tổng chi phí. "
+                + "Hiện tại Chị đang quan tâm đến vấn đề da nào nhất để em tư vấn gói phù hợp và tiết kiệm nhất cho mình ạ?"
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-broad-price-01",
+                "Khách hàng",
+                "giá",
+                null,
+                List.of(),
+                List.of(docId),
+                5
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).complete(promptCaptor.capture());
+        assertThat(promptCaptor.getValue())
+                .contains("CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN")
+                .contains("1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B");
+
+        assertThat(resp.salesStage()).isEqualTo("DISCOVERY");
+        assertThat(resp.replyBubbles()).hasSize(2);
+        assertThat(resp.replyText())
+                .contains("650.000")
+                .contains("soi da AI 3D miễn phí 100%")
+                .containsAnyOf("mụn", "nám", "căng bóng")
+                .doesNotContain("3.200.000")
+                .doesNotContain("4.500.000")
+                .doesNotContain("giảm 15%");
+    }
+
+    @Test
+    void standaloneFirstTurnGreetingMergesIntoTwoBubblesAndClosedYesNoQuestionUpgradesToAbChoice() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk("SPA-03 | Phác đồ Trị Nám & Tàn Nhang Laser Pico | 4.500.000 VNĐ/buổi | Bảo hành tái phát 12 tháng");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ em chào Chị ạ!\n\n"
+                + "Đối với tình trạng nám và tàn nhang của mình, bên em có Phác đồ Trị Nám & Tàn Nhang Laser Pico với mức giá niêm yết là 4.500.000 VNĐ/buổi (đã bao gồm Bác sĩ soi da AI 3D miễn phí 100%, cam kết bảo hành tái phát 12 tháng bằng văn bản và không phát sinh phụ phí ạ).\n\n"
+                + "Chị muốn em hỗ trợ đặt lịch qua soi da AI 3D miễn phí cùng Bác sĩ không ạ?"
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-greeting-merge-01",
+                "Khách hàng",
+                "chị muốn trị nám thì giá sao em",
+                null,
+                List.of(),
+                List.of(docId),
+                5
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        assertThat(resp.replyBubbles()).hasSize(2);
+        assertThat(resp.replyBubbles().get(0).text()).startsWith("Dạ em chào Chị ạ! Đối với tình trạng nám");
+        assertThat(resp.replyBubbles().get(1).text())
+                .contains("hay")
+                .doesNotContain("không ạ?");
+
+        // Kiểm tra khách hỏi giá chung chung ở lượt thứ 2 (sau câu chào) vẫn giữ giai đoạn DISCOVERY
+        List<FanpageBotRequest.ConversationTurn> genericHistory = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Em ơi cho chị hỏi chút"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ em chào Chị ạ! Em nghe đây ạ.")
+        );
+        assertThat(FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry("báo giá giảm giá đi em", genericHistory)).isTrue();
+        assertThat(FanpageBotService.determineSalesStage("báo giá giảm giá đi em", genericHistory, null))
+                .isEqualTo(FanpageBotPromptBuilder.SalesStage.DISCOVERY);
+    }
+
+    @Test
+    void bubblePacingMetadataCalculatesConsecutiveTypingDelaysAndExposesRootList() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk("SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ em chào Chị ạ! Liệu trình Trị Mụn Chuẩn Y Khoa bên em có giá niêm yết là 1.500.000 VNĐ/buổi (60 phút) ạ.\n\n"
+                + "Hiện tại da của Chị đang gặp tình trạng mụn ẩn hay mụn viêm sưng để em tư vấn phác đồ phù hợp nhất cho mình ạ?"
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-pacing-01",
+                "Chị Hoa",
+                "Liệu trình mụn giá bao nhiêu em",
+                null,
+                List.of(),
+                List.of(docId),
+                5
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        assertThat(resp.replyBubbles()).hasSize(2);
+        // Bong bóng đầu tiên: mở đầu nhanh ~800–1200ms
+        assertThat(resp.replyBubbles().get(0).typingDelayMs())
+                .isGreaterThanOrEqualTo(800)
+                .isLessThanOrEqualTo(1200);
+
+        // Bong bóng thứ 2 trở đi: khoảng nghỉ gõ phím tự nhiên của người thật ~2500–3000ms
+        assertThat(resp.replyBubbles().get(1).typingDelayMs())
+                .isGreaterThanOrEqualTo(2500)
+                .isLessThanOrEqualTo(3000);
+
+        // Trường bubble_delays_ms ở root response đồng bộ tuyệt đối với danh sách bong bóng
+        assertThat(resp.bubbleDelaysMs()).isNotNull().hasSize(resp.replyBubbles().size());
+        assertThat(resp.bubbleDelaysMs().get(0)).isEqualTo(resp.replyBubbles().get(0).typingDelayMs());
+        assertThat(resp.bubbleDelaysMs().get(1)).isEqualTo(resp.replyBubbles().get(1).typingDelayMs());
+    }
+
+    @Test
+    void multiMessageBurstCoalescesQuestionsAndAnswersComprehensively() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk("SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | Không sưng đỏ, làm xong đi làm ngay được");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ em chào Chị ạ! Liệu trình Trị Mụn Chuẩn Y Khoa bên em có giá 1.500.000 VNĐ/buổi, hoàn toàn êm dịu không sưng đỏ nên Chị đi làm bình thường được ngay ạ.\n\n"
+                + "Hiện tại mụn ẩn của mình tập trung nhiều ở vùng trán hay hai má để em hướng dẫn phác đồ phù hợp nhất cho Chị ạ?"
+        );
+
+        List<String> burstMessages = List.of(
+                "giá sao shop",
+                "mình bị mụn ẩn lâu năm",
+                "làm có bị sưng đỏ không"
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-burst-01",
+                "Chị Mai",
+                null,
+                burstMessages,
+                List.of(),
+                List.of(docId),
+                5
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        // Kiểm tra truy vấn tìm kiếm tri thức gộp đủ cả 3 câu hỏi
+        ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);
+        verify(retrievalService).retrieveWithRules(anyList(), queryCaptor.capture(), anyInt(), anyList(), any());
+        assertThat(queryCaptor.getValue())
+                .contains("giá")
+                .contains("mụn ẩn")
+                .contains("sưng đỏ");
+
+        // Kiểm tra prompt gửi tới LLM chứa nội dung gộp mạch lạc
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).complete(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).contains("mụn ẩn lâu năm").contains("sưng đỏ");
+
+        // Kiểm tra phản hồi trả lời thấu hiểu mà không bị ngắt quãng hay lặp lời chào
+        assertThat(resp.replyText())
+                .contains("1.500.000")
+                .contains("không sưng đỏ");
+        assertThat(resp.customerInsight().extractedPains()).isNotEmpty();
+    }
+
+    @Test
+    void proactiveReengageHandlesIdleCustomerWithTemperatureDecayAndLossAversionOrCuriosity() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk("SPA-03 | Phác đồ Trị Nám Laser Pico | 4.500.000 VNĐ/buổi | Ưu đãi giữ suất soi da AI 3D");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ Chị ơi, phác đồ Trị Nám Laser Pico bên em hôm nay đang có suất soi da AI 3D miễn phí cùng Bác sĩ. "
+                + "Em xin phép tạm giữ suất ưu đãi này cho Chị đến hết chiều nay nhé ạ!"
+        );
+
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Chị quan tâm gói Laser Pico trị nám"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Trị Nám Laser Pico bên em có giá 4.500.000 VNĐ/buổi ạ.")
+        );
+
+        // Khách im lặng 300 giây (5 phút), nhiệt độ trước đó là 70 (WARM/HOT)
+        FanpageBotRequest reengageReq = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-reengage-01",
+                "Chị Linh",
+                null,
+                null,
+                history,
+                List.of(docId),
+                5,
+                70,
+                null,
+                300,
+                "REENGAGE"
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleReengage(reengageReq);
+
+        assertThat(resp.customerInsight()).isNotNull();
+        assertThat(resp.customerInsight().previousTemperature()).isEqualTo(70);
+        // Decay 5 phút phải giảm ít nhất 18 điểm: 70 - 18 = 52
+        assertThat(resp.customerInsight().buyingTemperature()).isEqualTo(52);
+        assertThat(resp.customerInsight().temperatureDelta()).isEqualTo(-18);
+        assertThat(resp.customerInsight().momentum()).isEqualTo("COOLING_IDLE");
+        assertThat(resp.customerInsight().decayReason()).isEqualTo("COOLING_IDLE");
+
+        // Bộ kỹ năng kích hoạt phải được boost các kỹ năng giữ suất / kích thích tò mò / takeaway
+        assertThat(resp.activeSkills()).extracting(AgentSkillDto::code)
+                .containsAnyOf(
+                        "SALES_LOSS_AVERSION_RESERVATION",
+                        "PSYCH_PATTERN_INTERRUPT_CURIOSITY",
+                        "PSYCH_ZERO_PRESSURE_TAKEAWAY"
+                );
+
+        // Prompt hướng dẫn LLM re-engage tự nhiên không thúc ép
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).complete(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).contains("RE-ENGAGEMENT");
+    }
+
+    @Test
+    void coolingHalfHeartedSignalTriggersZeroPressureTakeawaySkillAndAvoidsHardClose() {
+        UUID docId = UUID.randomUUID();
+        UUID pageId = UUID.randomUUID();
+        var chunk = sampleChunk("SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ không sao đâu Chị nè! Chị cứ tham khảo và cân nhắc kỹ nhé ạ, khi nào tiện thì nhắn em bất cứ lúc nào em luôn sẵn sàng hỗ trợ Chị nha."
+        );
+
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Liệu trình mụn bên em bao nhiêu tiền?"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Trị Mụn Chuẩn Y Khoa bên em giá 1.500.000 VNĐ/buổi ạ.")
+        );
+
+        FanpageBotRequest req = new FanpageBotRequest(
+                pageId.toString(),
+                "psid-cooling-01",
+                "Chị Thảo",
+                "ừ để chị xem thêm",
+                null,
+                history,
+                List.of(docId),
+                5,
+                68,
+                null,
+                null,
+                null
+        );
+
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        assertThat(resp.customerInsight()).isNotNull();
+        assertThat(resp.customerInsight().previousTemperature()).isEqualTo(68);
+        assertThat(resp.customerInsight().temperatureDelta()).isLessThan(0);
+        assertThat(resp.customerInsight().momentum()).isEqualTo("COOLING_HALF_HEARTED");
+        assertThat(resp.customerInsight().decayReason()).isEqualTo("COOLING_HALF_HEARTED");
+
+        // Bắt buộc kích hoạt kỹ năng Zero-Pressure Takeaway tâm lý đảo ngược
+        assertThat(resp.activeSkills()).extracting(AgentSkillDto::code)
+                .containsAnyOf("PSYCH_ZERO_PRESSURE_TAKEAWAY", "PSYCH_TAKEAWAY_REVERSE");
+
+        // Tránh chốt hẹn dồn dập (SOFT_BOOKING_CLOSE) khi khách đang hạ nhiệt
+        assertThat(resp.salesStage()).isNotEqualTo("SOFT_BOOKING_CLOSE");
+    }
 }
+
