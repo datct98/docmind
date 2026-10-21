@@ -99,8 +99,15 @@ public class ClosingQuestionHook implements GuardrailHook {
         boolean isFirstTurn = context.isFirstTurn();
         List<String> history = context.getConversationHistory();
         String customerMessage = context.getCustomerMessage();
+        String combinedChunksLower = context.getKnowledgeChunks() != null
+                ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
+                : "";
+        boolean isDermatologyDoc = combinedChunksLower.isEmpty()
+                || combinedChunksLower.contains("soi da")
+                || combinedChunksLower.contains("nám")
+                || combinedChunksLower.contains("mụn");
 
-        String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage);
+        String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc);
 
         if (!polished.equals(draft.getText())) {
             draft.setText(polished);
@@ -118,11 +125,13 @@ public class ClosingQuestionHook implements GuardrailHook {
             String salesStage,
             boolean isFirstTurn,
             List<String> history,
-            String customerMessage
+            String customerMessage,
+            boolean isDermatologyDoc
     ) {
+        String lowerText = text != null ? text.toLowerCase(Locale.ROOT) : "";
         if ("HUMAN_HANDOFF".equalsIgnoreCase(salesStage)
                 || "BOOKING_LEAD_CAPTURED".equalsIgnoreCase(salesStage)
-                || (text != null && text.toLowerCase(Locale.ROOT).contains("chuyên viên") && text.toLowerCase(Locale.ROOT).contains("liên hệ"))) {
+                || (lowerText.contains("chuyên viên") && (lowerText.contains("liên hệ") || lowerText.contains("kết nối") || lowerText.contains("hỗ trợ chi tiết")))) {
             return text;
         }
 
@@ -158,9 +167,13 @@ public class ClosingQuestionHook implements GuardrailHook {
             if (working.isBlank()) {
                 String slotLabel = bookingState.hasConfirmedTimeSlot() ? bookingState.confirmedTimeSlot() : "12h30 trưa";
                 String dateLabel = bookingState.confirmedDate() != null ? " " + bookingState.confirmedDate() : "";
-                working = "Dạ em đã khóa cố định lịch hẹn lúc " + slotLabel + dateLabel
-                        + " cùng Bác sĩ Da liễu và phòng riêng kín đáo cho " + honorific
-                        + " rồi ạ, tới giờ " + honorific + " cứ ghé thẳng quầy lễ tân nhé ạ.";
+                working = isDermatologyDoc
+                        ? "Dạ em đã khóa cố định lịch hẹn lúc " + slotLabel + dateLabel
+                          + " cùng Bác sĩ Da liễu và phòng riêng kín đáo cho " + honorific
+                          + " rồi ạ, tới giờ " + honorific + " cứ ghé thẳng quầy lễ tân nhé ạ."
+                        : "Dạ em đã khóa cố định lịch hẹn lúc " + slotLabel + dateLabel
+                          + " kèm phòng riêng cho " + honorific
+                          + " rồi ạ, tới giờ " + honorific + " cứ ghé thẳng quầy lễ tân nhé ạ.";
                 changed = true;
             }
             return changed ? working : text;
@@ -178,14 +191,17 @@ public class ClosingQuestionHook implements GuardrailHook {
             String slotLabel = bookingState.confirmedTimeSlot();
             String dateSuffix = bookingState.confirmedDate() != null ? " (" + bookingState.confirmedDate() + ")" : "";
             if (!bookingState.hasCapturedPhone()) {
-                naturalClosing = honorific + " cho em xin Số điện thoại để bên em khóa lịch hẹn lúc "
-                        + slotLabel + dateSuffix + " và giữ phòng riêng kín đáo cùng Bác sĩ cho mình nhé ạ?";
+                naturalClosing = isDermatologyDoc
+                        ? honorific + " cho em xin Số điện thoại để bên em khóa lịch hẹn lúc "
+                          + slotLabel + dateSuffix + " và giữ phòng riêng kín đáo cùng Bác sĩ cho mình nhé ạ?"
+                        : honorific + " cho em xin Số điện thoại và cơ sở muốn ghé để bên em khóa lịch hẹn lúc "
+                          + slotLabel + dateSuffix + " kèm phòng riêng cho mình nhé ạ?";
             } else {
                 // Đã có cả giờ hẹn và SĐT -> không hỏi thêm câu hỏi chọn giờ nữa
                 return changed ? working : text;
             }
         } else {
-            naturalClosing = selectNaturalClosingQuestion(honorific, salesStage, isFirstTurn, history);
+            naturalClosing = selectNaturalClosingQuestion(honorific, salesStage, isFirstTurn, history, isDermatologyDoc);
         }
 
         // 0. Nếu câu hỏi cuối dùng cụm từ yếu/lạc ngữ cảnh 'đang tò mò hơn về...' khi khách đang nêu triệu chứng -> thay bằng câu chốt lịch khám
@@ -279,7 +295,7 @@ public class ClosingQuestionHook implements GuardrailHook {
         }
 
         // 4. Nếu kết bài hoàn toàn không có câu hỏi nào (thiếu closing question), bổ sung câu hỏi mở phù hợp
-        if (!working.endsWith("?") && !working.endsWith("ạ?") && !working.endsWith("nhé!") && !working.endsWith("nha!")) {
+        if (!working.endsWith("?") && !working.endsWith("ạ?")) {
             working = working.strip() + "\n\n" + naturalClosing;
             changed = true;
         }
@@ -311,14 +327,34 @@ public class ClosingQuestionHook implements GuardrailHook {
             String honorific,
             String salesStage,
             boolean isFirstTurn,
-            List<String> history
+            List<String> history,
+            boolean isDermatologyDoc
     ) {
         List<String> pool;
-        if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
+        if (!isDermatologyDoc) {
+            if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
+                pool = List.of(
+                        honorific + " muốn đặt lịch ghé cơ sở bên em vào khung giờ Sáng hay Chiều để em giữ phòng riêng trước cho mình ạ?",
+                        honorific + " tiện ghé cơ sở nào gần mình nhất và vào khung giờ nào để bên em sắp xếp kỹ thuật viên chu đáo nhất ạ?",
+                        honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi và chuẩn bị phòng trước cho mình ạ?"
+                );
+            } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
+                pool = List.of(
+                        "Không biết " + honorific + " muốn đặt lịch trải nghiệm trước vào khung giờ Sáng hay Chiều, hay cần em tư vấn chi tiết hơn về các bước trong gói ạ?",
+                        honorific + " đang tiện ghé cơ sở nào gần mình hơn để em kiểm tra khung giờ trống và ưu đãi tại cơ sở đó cho mình ạ?",
+                        honorific + " muốn bên em giữ lịch hẹn vào hôm nay hay cuối tuần để em sắp xếp phòng cho mình ạ?"
+                );
+            } else {
+                pool = List.of(
+                        "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em gửi chi tiết gói hợp nhất cho mình ạ?",
+                        "Không biết hôm nay " + honorific + " đang muốn thư giãn giảm nhức mỏi vùng nào nhất hay muốn tham khảo gói dịch vụ nào để em tư vấn kỹ hơn cho mình ạ?"
+                );
+            }
+        } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
             pool = List.of(
                     honorific + " muốn đặt lịch qua soi da AI 3D miễn phí cùng Bác sĩ vào khung giờ Sáng hay Chiều để bên em giữ lịch trước cho mình ạ?",
                     honorific + " tiện ghé cơ sở bên em vào ngày thường hay cuối tuần để bên em sắp xếp Bác sĩ tiếp đón chu đáo nhất ạ?",
-                    honorific + " cho em xin khung giờ tiện nhất để bên em giữ suất ưu đãi và sắp xếp phòng riêng cho mình nha " + honorific + "!"
+                    honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi và sắp xếp phòng riêng trước cho mình ạ?"
             );
         } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
             pool = List.of(

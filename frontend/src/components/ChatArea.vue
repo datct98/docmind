@@ -35,16 +35,6 @@
       </div>
 
       <div class="header-right">
-        <!-- Fanpage FB Bot Simulator Button -->
-        <button 
-          class="btn btn-secondary btn-sm fb-bot-header-btn" 
-          title="Mở Trình Giả Lập Bot Trực Tin Nhắn Fanpage FB (API riêng: POST /api/bot/fanpage/message)"
-          @click="showFanpageSimulator = true"
-        >
-          <span>💬 Bot Trực Fanpage FB</span>
-          <span class="badge-fb-live">API Riêng</span>
-        </button>
-
         <!-- Q&A Test Suite Toggle Button -->
         <button 
           class="btn btn-secondary btn-sm qa-test-header-btn" 
@@ -404,15 +394,17 @@
       </div>
     </footer>
 
-    <!-- Fanpage FB Messenger Bot Simulator Modal -->
-    <FanpageBotSimulatorModal
-      :is-open="showFanpageSimulator"
-      :active-page="activePage"
-      :pages="pages"
-      :selected-docs="selectedDocs"
-      :is-connected="isConnected"
-      @close="showFanpageSimulator = false"
-    />
+    <!-- Fanpage FB Messenger Bot Simulator Modal (Teleported to body so it works even when Q&A is minimized to a floating bubble) -->
+    <Teleport to="body">
+      <FanpageBotSimulatorModal
+        :is-open="showFanpageSimulator"
+        :active-page="activePage"
+        :pages="pages"
+        :selected-docs="selectedDocs"
+        :is-connected="isConnected"
+        @close="showFanpageSimulator = false; $emit('simulator-closed')"
+      />
+    </Teleport>
   </main>
 </template>
 
@@ -457,7 +449,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['ask-question', 'clear-chat', 'teach-ai', 'open-playbook', 'open-skills'])
+const emit = defineEmits(['ask-question', 'clear-chat', 'teach-ai', 'open-playbook', 'open-skills', 'simulator-closed'])
 
 const topK = ref(5)
 const questionInput = ref('')

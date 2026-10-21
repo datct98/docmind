@@ -23,4 +23,21 @@ public class DocServiceProperties {
 
     /** Số lần poll tối đa trước khi coi là timeout. */
     private int pollMaxAttempts = 40;
+
+    /** Shared HMAC secret token cho giao tiếp nội bộ với FastAPI LangGraph Engine. */
+    private String internalToken = resolveToken();
+
+    private static String resolveToken() {
+        String token = System.getenv("DOCMIND_INTERNAL_TOKEN");
+        if (token == null || token.isBlank()) {
+            token = System.getenv("INTERNAL_API_TOKEN");
+        }
+        if (token == null || token.isBlank()) {
+            token = System.getenv("DOC_SERVICE_INTERNAL_TOKEN");
+        }
+        if (token == null || token.isBlank()) {
+            token = "docmind-internal-secret-token-2026";
+        }
+        return token;
+    }
 }

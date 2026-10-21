@@ -2,9 +2,11 @@ package com.example.docmind.controller;
 
 import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
+import com.example.docmind.service.bot.ConversationInboxService;
 import com.example.docmind.service.bot.FanpageBotService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -45,6 +47,7 @@ import java.util.Map;
 public class FanpageBotController {
 
     private final FanpageBotService fanpageBotService;
+    private final ConversationInboxService conversationInboxService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${docmind.fanpage.verify-token:docmind-fb-verify-token}")
@@ -54,7 +57,13 @@ public class FanpageBotController {
     private String appSecret = "";
 
     public FanpageBotController(FanpageBotService fanpageBotService) {
+        this(fanpageBotService, null);
+    }
+
+    @Autowired
+    public FanpageBotController(FanpageBotService fanpageBotService, ConversationInboxService conversationInboxService) {
         this.fanpageBotService = fanpageBotService;
+        this.conversationInboxService = conversationInboxService;
     }
 
     @PostMapping("/message")
@@ -62,7 +71,15 @@ public class FanpageBotController {
         if (request != null && "REENGAGE".equalsIgnoreCase(request.action())) {
             return ResponseEntity.ok(fanpageBotService.handleReengage(request));
         }
-        return ResponseEntity.ok(fanpageBotService.handleCustomerMessage(request));
+        FanpageBotResponse response = fanpageBotService.handleCustomerMessage(request);
+        if (conversationInboxService != null && request != null) {
+            try {
+                conversationInboxService.recordCustomerAndBotTurn(request, response);
+            } catch (Exception ignored) {
+                // Non-blocking sync to inbox
+            }
+        }
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -133,7 +150,7 @@ public class FanpageBotController {
                     if (senderId == null || text == null || text.isBlank()) {
                         continue;
                     }
-                    lastBotResponse = fanpageBotService.handleCustomerMessage(new FanpageBotRequest(
+                    FanpageBotRequest webhookReq = new FanpageBotRequest(
                             queryPageId,
                             senderId,
                             null,
@@ -142,7 +159,15 @@ public class FanpageBotController {
                             List.of(),
                             List.of(),
                             5
-                    ));
+                    );
+                    lastBotResponse = fanpageBotService.handleCustomerMessage(webhookReq);
+                    if (conversationInboxService != null) {
+                        try {
+                            conversationInboxService.recordCustomerAndBotTurn(webhookReq, lastBotResponse);
+                        } catch (Exception ignored) {
+                            // Non-blocking sync to inbox
+                        }
+                    }
                     processedCount++;
                 }
             }

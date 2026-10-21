@@ -82,7 +82,7 @@ public class RetrievalService {
                                              Integer topK,
                                              List<LearnedRuleDto> extraRules,
                                              UUID pageId) {
-        int candidateK = chatProps.getCandidateK();
+        int candidateK = pageId != null ? Math.max(chatProps.getCandidateK(), 80) : chatProps.getCandidateK();
         int finalK = topK != null ? topK : chatProps.getTopK();
 
         float[] queryEmbedding = embeddingClient.embed(question);
@@ -213,8 +213,8 @@ public class RetrievalService {
             }
         }
 
-        // 2. Thu thập keywords để mở rộng truy vấn full-text (bỏ qua từ khóa nhiễu chung chung)
-        Set<String> keywordsToExpand = new LinkedHashSet<>();
+        // 2. Thu thập keywords để mở rộng truy vấn full-text (bỏ qua từ khóa nhiễu chung chung + mở rộng viết tắt giá 580k -> 580.000VNĐ)
+        Set<String> keywordsToExpand = new LinkedHashSet<>(extractExpandedPriceTokens(question));
         for (LearnedRuleDto rule : appliedRules) {
             if (rule.retrievalKeywords() != null) {
                 for (String kw : rule.retrievalKeywords()) {
@@ -250,8 +250,8 @@ public class RetrievalService {
         log.info("stage=retrieve vector_candidates={} fulltext_candidates={} candidate_k={} applied_rules={} page_id={}",
                 vectorHits.size(), textHits.size(), candidateK, appliedRules.size(), pageId);
 
-        // Fuse bằng RRF.
-        List<ReciprocalRankFusion.FusedChunk> fused = new ArrayList<>(
+        // Fuse bằng RRF và gộp các chunk có nội dung bảng trùng lặp 100% giữa các cơ sở/chi nhánh.
+        List<ReciprocalRankFusion.FusedChunk> fused = deduplicateIdenticalBodyChunks(
                 ReciprocalRankFusion.fuse(List.of(vectorHits, textHits), chatProps.getRrfK())
         );
 
@@ -302,26 +302,121 @@ public class RetrievalService {
         return false;
     }
 
+    private static List<String> extractExpandedPriceTokens(String question) {
+        if (question == null || question.isBlank()) {
+            return List.of();
+        }
+        Set<String> expanded = new LinkedHashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\b(\\d{2,4})\\s*k\\b")
+                .matcher(question);
+        while (m.find()) {
+            String digits = m.group(1);
+            String formatted = digits.length() == 4
+                    ? digits.charAt(0) + "." + digits.substring(1) + ".000"
+                    : digits + ".000";
+            expanded.add(formatted);
+            expanded.add(formatted + "vnđ");
+            expanded.add(digits);
+        }
+        return new ArrayList<>(expanded);
+    }
+
+    private static List<ReciprocalRankFusion.FusedChunk> deduplicateIdenticalBodyChunks(
+            List<ReciprocalRankFusion.FusedChunk> rawFused) {
+        if (rawFused == null || rawFused.size() <= 1) {
+            return rawFused == null ? new ArrayList<>() : new ArrayList<>(rawFused);
+        }
+        Map<String, ReciprocalRankFusion.FusedChunk> uniqueByBody = new LinkedHashMap<>();
+        Map<String, Set<String>> mergedHeadingsByBody = new LinkedHashMap<>();
+        for (ReciprocalRankFusion.FusedChunk fc : rawFused) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) {
+                continue;
+            }
+            String sig = fc.chunk().text().replaceAll("\\s+", " ").strip();
+            String hpJoined = fc.chunk().headingPath() != null ? String.join(" > ", fc.chunk().headingPath()).strip() : "";
+            if (!uniqueByBody.containsKey(sig)) {
+                uniqueByBody.put(sig, fc);
+                Set<String> hs = new LinkedHashSet<>();
+                if (!hpJoined.isBlank()) {
+                    hs.add(hpJoined);
+                }
+                mergedHeadingsByBody.put(sig, hs);
+            } else if (!hpJoined.isBlank()) {
+                mergedHeadingsByBody.get(sig).add(hpJoined);
+            }
+        }
+        List<ReciprocalRankFusion.FusedChunk> result = new ArrayList<>(uniqueByBody.size());
+        for (Map.Entry<String, ReciprocalRankFusion.FusedChunk> entry : uniqueByBody.entrySet()) {
+            String sig = entry.getKey();
+            ReciprocalRankFusion.FusedChunk best = entry.getValue();
+            Set<String> hs = mergedHeadingsByBody.get(sig);
+            if (hs != null && hs.size() > 1) {
+                RetrievedChunk orig = best.chunk();
+                RetrievedChunk mergedChunk = new RetrievedChunk(
+                        orig.chunkId(),
+                        orig.documentId(),
+                        List.of(String.join(" ; ", hs)),
+                        orig.sourceBlockIds(),
+                        orig.page(),
+                        orig.bbox(),
+                        orig.text(),
+                        orig.score()
+                );
+                result.add(new ReciprocalRankFusion.FusedChunk(mergedChunk, best.score()));
+            } else {
+                result.add(best);
+            }
+        }
+        return result;
+    }
+
     private static void prioritizeCatalogAndPriceTableChunks(List<ReciprocalRankFusion.FusedChunk> fused, String question) {
         if (fused == null || fused.size() <= 1 || question == null) {
             return;
         }
-        String q = question.toLowerCase();
-        boolean isCatalogOrSuitabilityQuery = q.contains("dịch vụ") || q.contains("sản phẩm") || q.contains("chi phí")
-                || q.contains("giá") || q.contains("bao nhiêu") || q.contains("gói") || q.contains("liệu trình")
-                || q.contains("phù hợp") || q.contains("tuổi") || q.contains("trung niên") || q.contains("nam")
-                || q.contains("dùng được");
+        boolean hasSpecificPriceQuery = !extractExpandedPriceTokens(question).isEmpty();
         fused.sort((a, b) -> {
-            int priorityA = catalogChunkPriority(a.chunk(), isCatalogOrSuitabilityQuery);
-            int priorityB = catalogChunkPriority(b.chunk(), isCatalogOrSuitabilityQuery);
+            int priorityA = catalogChunkPriority(a.chunk(), question);
+            int priorityB = catalogChunkPriority(b.chunk(), question);
             if (priorityA != priorityB) {
                 return Integer.compare(priorityB, priorityA);
+            }
+            if (!hasSpecificPriceQuery && priorityA >= 2) {
+                boolean entryA = isEntryLevelPriceChunk(a.chunk());
+                boolean entryB = isEntryLevelPriceChunk(b.chunk());
+                if (entryA != entryB) {
+                    return entryA ? -1 : 1;
+                }
             }
             return Double.compare(b.score(), a.score());
         });
     }
 
-    private static int catalogChunkPriority(RetrievedChunk c, boolean boostCatalogTables) {
+    private static boolean isEntryLevelPriceChunk(RetrievedChunk c) {
+        if (c == null || c.text() == null) {
+            return false;
+        }
+        String t = c.text().toLowerCase();
+        return t.contains("| ns01 |") || t.contains("| ds01 |") || t.contains("| ds02 |")
+                || t.contains("| gds01 |") || t.contains("| gói 1 |")
+                || t.contains("129.000") || t.contains("199.000") || t.contains("239.000")
+                || t.contains("260.000") || t.contains("299.000") || t.contains("380.000") || t.contains("399.000");
+    }
+
+    private static boolean isPriceCatalogTable(RetrievedChunk c) {
+        if (c == null || c.text() == null) {
+            return false;
+        }
+        String text = c.text().toLowerCase();
+        String headings = c.headingPath() != null ? String.join(" ", c.headingPath()).toLowerCase() : "";
+        boolean hasTable = text.contains("|") && text.contains("---");
+        return hasTable && (headings.contains("bảng giá") || headings.contains("danh mục")
+                || text.contains("đơn giá") || text.contains("| mã gói |") || text.contains("| giá |")
+                || text.contains("vnđ |"));
+    }
+
+    private static int catalogChunkPriority(RetrievedChunk c, String question) {
         if (c == null || c.text() == null) {
             return 0;
         }
@@ -331,14 +426,52 @@ public class RetrievalService {
         if (headings.contains("tệp khách hàng") || headings.contains("thông tin chung về page")) {
             return -1;
         }
-        if (!boostCatalogTables) {
+        String q = question != null ? question.toLowerCase() : "";
+        boolean isPromoQuery = q.contains("ưu đãi") || q.contains("khuyến mãi") || q.contains("voucher")
+                || q.contains("chiết khấu") || q.contains("giảm giá") || q.contains("combo");
+        boolean isProcessQuery = q.contains("quy trình") || q.contains("các bước")
+                || q.contains("gồm những gì") || q.contains("làm những gì");
+        boolean isEntryOrDownsellQuery = q.contains("thử") || q.contains("trải nghiệm") || q.contains("cơ bản")
+                || q.contains("khởi điểm") || q.contains("rẻ") || q.contains("mềm") || q.contains("thấp")
+                || q.contains("tiết kiệm") || q.contains("nhỏ") || q.contains("cao thế") || q.contains("cao quá")
+                || q.contains("cao vậy") || q.contains("hơi cao") || q.contains("giá cao") || q.contains("đắt")
+                || q.contains("mắc") || q.contains("chát");
+        boolean isHighTierSpecificQuery = q.contains("vip") || q.contains("tinh hoa") || q.contains("chuyên sâu")
+                || q.contains("đá muối") || q.contains("nhiệt cứu") || q.contains("xông hơi") || q.contains("120 phút")
+                || q.contains("105 phút");
+        boolean isCatalogOrSuitabilityQuery = isEntryOrDownsellQuery
+                || q.contains("dịch vụ") || q.contains("sản phẩm") || q.contains("chi phí")
+                || q.contains("giá") || q.contains("bao nhiêu") || q.contains("gói") || q.contains("liệu trình")
+                || q.contains("phù hợp") || q.contains("tuổi") || q.contains("trung niên") || q.contains("nam")
+                || q.contains("dùng được") || q.contains("gội đầu") || q.contains("massage") || q.contains("cổ vai gáy");
+
+        boolean hasTable = text.contains("|") && text.contains("---");
+        boolean isPromoChunk = hasTable && (headings.contains("chiết khấu") || headings.contains("combo")
+                || headings.contains("ưu đãi") || text.contains("tên ưu đãi") || text.contains("mức ưu đãi")
+                || text.contains("voucher"));
+        boolean isProcessChunk = hasTable && (headings.contains("quy trình") || headings.contains("lưu_ý")
+                || text.contains("| bước |") || text.contains("mục đích / lợi ích") || text.contains("quy trình chi tiết"));
+
+        if (isPromoQuery && isPromoChunk) {
+            return 3;
+        }
+        if (isProcessQuery && isProcessChunk) {
+            return 3;
+        }
+        if (!isCatalogOrSuitabilityQuery && !isPromoQuery && !isProcessQuery) {
             return 0;
         }
-        boolean hasTable = text.contains("|") && text.contains("---");
-        if (hasTable && (headings.contains("bảng giá") || headings.contains("danh mục") || text.contains("đơn giá"))) {
+        if (isPriceCatalogTable(c)) {
+            boolean hasSpecificPriceTokens = !extractExpandedPriceTokens(q).isEmpty();
+            if (isEntryLevelPriceChunk(c) && (isEntryOrDownsellQuery || (!hasSpecificPriceTokens && !isHighTierSpecificQuery))) {
+                return 3;
+            }
             return 2;
         }
-        if (hasTable && (headings.contains("chiết khấu") || headings.contains("combo"))) {
+        if (isPromoChunk && isEntryOrDownsellQuery) {
+            return 2;
+        }
+        if (isPromoChunk || isProcessChunk) {
             return 1;
         }
         return 0;
@@ -363,6 +496,16 @@ public class RetrievalService {
                 queryTokens.add(t);
             }
         }
+        List<String> expandedPriceTokens = extractExpandedPriceTokens(question).stream()
+                .filter(s -> s.contains("."))
+                .map(String::toLowerCase)
+                .toList();
+        for (String exp : extractExpandedPriceTokens(question)) {
+            String lowExp = exp.toLowerCase();
+            if (!queryTokens.contains(lowExp)) {
+                queryTokens.add(lowExp);
+            }
+        }
         if (queryTokens.isEmpty()) {
             return fused.subList(0, finalK);
         }
@@ -370,6 +513,8 @@ public class RetrievalService {
         List<ReciprocalRankFusion.FusedChunk> remaining = new ArrayList<>(fused);
         List<ReciprocalRankFusion.FusedChunk> selected = new ArrayList<>(finalK);
         Set<String> coveredTokens = new LinkedHashSet<>();
+        int selectedPriceTables = 0;
+        int selectedPriority3Chunks = 0;
 
         while (selected.size() < finalK && !remaining.isEmpty()) {
             int bestIdx = 0;
@@ -386,9 +531,22 @@ public class RetrievalService {
                         uncoveredHits++;
                     }
                 }
-                int priorityBonus = catalogChunkPriority(cand.chunk(), true) * 10;
-                // Giữ trật tự ưu tiên bảng giá ở đầu và thưởng nhẹ cho các chunk mở rộng độ phủ từ khóa câu hỏi
-                double mmrScore = priorityBonus + (cand.score() * 100.0) + (uncoveredHits * 0.45) - (i * 0.05);
+                int exactPriceHits = 0;
+                for (String pt : expandedPriceTokens) {
+                    if (!coveredTokens.contains(pt) && candText.contains(pt)) {
+                        exactPriceHits++;
+                    }
+                }
+                int rawPriority = catalogChunkPriority(cand.chunk(), question);
+                if (rawPriority == 3 && selectedPriority3Chunks >= 4) {
+                    rawPriority = 1;
+                }
+                if (rawPriority == 2 && selectedPriceTables >= 4 && isPriceCatalogTable(cand.chunk()) && uncoveredHits == 0) {
+                    // Sau khi đã lấy 4 bảng giá chủ lực và không có từ khóa mới, nhường slot cho bảng ưu đãi/quy trình/FAQ
+                    rawPriority = 0;
+                }
+                int priorityBonus = rawPriority * 10;
+                double mmrScore = priorityBonus + (cand.score() * 100.0) + (uncoveredHits * 2.5) + (exactPriceHits * 18.0) - (i * 0.05);
                 if (mmrScore > bestScore) {
                     bestScore = mmrScore;
                     bestIdx = i;
@@ -397,6 +555,12 @@ public class RetrievalService {
 
             ReciprocalRankFusion.FusedChunk chosen = remaining.remove(bestIdx);
             selected.add(chosen);
+            if (isPriceCatalogTable(chosen.chunk())) {
+                selectedPriceTables++;
+            }
+            if (catalogChunkPriority(chosen.chunk(), question) == 3) {
+                selectedPriority3Chunks++;
+            }
             String chosenText = ((chosen.chunk().headingPath() != null ? String.join(" ", chosen.chunk().headingPath()) : "")
                     + " " + (chosen.chunk().text() != null ? chosen.chunk().text() : "")).toLowerCase();
             for (String qt : queryTokens) {
@@ -410,6 +574,10 @@ public class RetrievalService {
 
     private static boolean isRuleConfidenceEligible(LearnedRuleEntity r) {
         if (r == null) {
+            return false;
+        }
+        String status = r.getReviewStatus();
+        if (status != null && !status.isBlank() && !"APPROVED".equalsIgnoreCase(status)) {
             return false;
         }
         double conf = r.getConfidenceScore() <= 0.0 ? 0.85 : r.getConfidenceScore();

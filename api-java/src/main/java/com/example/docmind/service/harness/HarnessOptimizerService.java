@@ -278,9 +278,19 @@ public class HarnessOptimizerService {
         if (runRepository == null) {
             return List.of();
         }
+        String cleanPageId = (pageId != null && !pageId.isBlank()
+                && !"null".equalsIgnoreCase(pageId.strip())
+                && !"undefined".equalsIgnoreCase(pageId.strip())
+                && !"__global__".equalsIgnoreCase(pageId.strip()))
+                ? pageId.strip()
+                : null;
+        String cleanVerdict = (verdict != null && !verdict.isBlank()
+                && !"ALL".equalsIgnoreCase(verdict.strip()))
+                ? verdict.strip()
+                : null;
         int boundedLimit = Math.max(1, Math.min(100, limit));
         PageRequest pageRequest = PageRequest.of(0, boundedLimit, Sort.by(Sort.Direction.DESC, "createdAt"));
-        List<HarnessRunEntity> entities = runRepository.findRunsWithFilter(pageId, verdict, pageRequest);
+        List<HarnessRunEntity> entities = runRepository.findRunsWithFilter(cleanPageId, cleanVerdict, pageRequest);
         return entities.stream().map(HarnessRunDto::fromEntity).toList();
     }
 

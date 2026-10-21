@@ -294,12 +294,16 @@ class OfficeEngine(_BaseEngine):
         "text/x-markdown",
         "text/plain",
     }
+    _HTML_MIMES = {
+        "text/html",
+        "application/xhtml+xml",
+    }
 
     def supports(self, page_kind: PageKind) -> bool:
         return page_kind in (PageKind.OFFICE, PageKind.WEB)
 
     def _format(self, ctx: ParseContext) -> str:
-        """Return 'docx' | 'xlsx' | 'md' | 'stub' from the detected mime (+ filename).
+        """Return 'docx' | 'xlsx' | 'md' | 'html' | 'stub' from the detected mime (+ filename).
 
         Magic-byte mime is authoritative (see validation.detect_mime); the
         filename extension is a secondary tiebreak when the mime is a generic
@@ -311,6 +315,8 @@ class OfficeEngine(_BaseEngine):
             return "docx"
         if mime == self._XLSX_MIME:
             return "xlsx"
+        if mime in self._HTML_MIMES or name.endswith((".html", ".htm")):
+            return "html"
         if mime in self._MD_MIMES:
             return "md"
         if mime in ("application/zip", "application/octet-stream"):
@@ -374,6 +380,31 @@ class OfficeEngine(_BaseEngine):
                     page=ctx.page,
                     mime=ctx.mime,
                 )
+                return self._emit(self._sample_blocks(ctx), ctx, started)
+
+            if fmt == "html":
+                try:
+                    mk = self._make_block_factory(ctx)
+                    blocks = office_parser.parse_html(payload, mk)
+                    if blocks:
+                        parse_version = blocks[0].parse_version
+                        log.info(
+                            "office parsed html",
+                            stage="parse",
+                            engine=self.name,
+                            page=ctx.page,
+                            library=parse_version,
+                            block_count=len(blocks),
+                        )
+                        return self._emit(blocks, ctx, started)
+                except Exception as exc:
+                    log.warning(
+                        "office html parse failed; using stub",
+                        stage="parse",
+                        engine=self.name,
+                        page=ctx.page,
+                        error=str(exc),
+                    )
                 return self._emit(self._sample_blocks(ctx), ctx, started)
 
             if fmt == "md":

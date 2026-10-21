@@ -102,6 +102,13 @@ public class LearnedRuleEntity {
     @Column(name = "always_on", nullable = false)
     private boolean alwaysOn = false;
 
+    @Builder.Default
+    @Column(name = "review_status", nullable = false, length = 32)
+    private String reviewStatus = "APPROVED";
+
+    @Column(name = "security_audit_notes", columnDefinition = "TEXT")
+    private String securityAuditNotes;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

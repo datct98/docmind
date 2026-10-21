@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.jobs import get_job_store
 from app.main import create_app
 
@@ -21,7 +22,8 @@ def client() -> TestClient:
     store._jobs.clear()  # noqa: SLF001 - test-only reset
     store._cache.clear()  # noqa: SLF001 - test-only reset
     app = create_app()
-    with TestClient(app) as c:
+    token = get_settings().docmind_internal_token
+    with TestClient(app, headers={"X-Internal-Token": token}) as c:
         yield c
 
 

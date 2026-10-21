@@ -62,7 +62,10 @@ public class MetaLearningService {
             Pattern.compile("(?iU)[$€£¥%]|(?<!\\p{L})đ(?!\\p{L})");
 
     private static final Pattern PHONE_IN_TEXT_PATTERN =
-            Pattern.compile("(?:\\+84|84|0)(?:3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-46-9])(?:[.\\-\\s]?\\d){7}\\b");
+            Pattern.compile("(?i)(?:\\+84|84|0)(?:3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])(?:[.\\-\\s]?\\d){7,8}\\b");
+
+    private static final Pattern EMAIL_IN_TEXT_PATTERN =
+            Pattern.compile("(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}");
 
     private static final Pattern QUOTED_TEMPLATE_PATTERN =
             Pattern.compile("['\"“”‘’]([^'\"“”‘’]{12,260})['\"“”‘’]");
@@ -809,18 +812,22 @@ public class MetaLearningService {
                     String[] kwArray = mergedKeywords.toArray(new String[0]);
 
                     String oldRuleText = existing.getGeneralizedRule();
-                    String evolvedRuleText = (extracted.generalizedRule() != null && !extracted.generalizedRule().isBlank())
+                    String rawRuleText = (extracted.generalizedRule() != null && !extracted.generalizedRule().isBlank())
                             ? extracted.generalizedRule()
                             : existing.getGeneralizedRule();
-                    String evolvedTrigger = (extracted.triggerCondition() != null && !extracted.triggerCondition().isBlank())
+                    String rawTrigger = (extracted.triggerCondition() != null && !extracted.triggerCondition().isBlank())
                             ? extracted.triggerCondition()
                             : existing.getTriggerCondition();
-                    String evolvedRootCause = (extracted.rootCause() != null && !extracted.rootCause().isBlank())
+                    String rawRootCause = (extracted.rootCause() != null && !extracted.rootCause().isBlank())
                             ? extracted.rootCause()
                             : existing.getRootCause();
                     String evolvedCategory = (extracted.category() != null && !extracted.category().isBlank())
                             ? extracted.category()
                             : existing.getCategory();
+
+                    String evolvedRuleText = stripVolatileFactsPreservingVietnamese(rawRuleText);
+                    String evolvedTrigger = sanitizeRuleTextPreservingVietnamese(rawTrigger);
+                    String evolvedRootCause = sanitizeRuleTextPreservingVietnamese(rawRootCause);
                     int currentVersion = existing.getVersion() <= 0 ? 1 : existing.getVersion();
                     int nextVersion = currentVersion + 1;
                     double targetConfidence = penalizedInThisTurn ? existing.getConfidenceScore() : 0.90;
@@ -907,15 +914,19 @@ public class MetaLearningService {
         UUID newId = UUID.randomUUID();
         Set<String> cappedInitialKeywords = mergeKeywordsWithCap(null, extracted.retrievalKeywords(), MAX_KEYWORDS_PER_RULE);
         String[] kwArray = cappedInitialKeywords.toArray(new String[0]);
+        String cleanCategory = extracted.category();
+        String cleanTrigger = sanitizeRuleTextPreservingVietnamese(extracted.triggerCondition());
+        String cleanRootCause = sanitizeRuleTextPreservingVietnamese(extracted.rootCause());
+        String cleanGenRule = stripVolatileFactsPreservingVietnamese(extracted.generalizedRule());
 
         try {
             if (pageId != null) {
                 learnedRuleRepository.insertRule(
                         newId,
-                        extracted.category(),
-                        extracted.triggerCondition(),
-                        extracted.rootCause(),
-                        extracted.generalizedRule(),
+                        cleanCategory,
+                        cleanTrigger,
+                        cleanRootCause,
+                        cleanGenRule,
                         kwArray,
                         true,
                         embedding,
@@ -924,10 +935,10 @@ public class MetaLearningService {
             } else {
                 learnedRuleRepository.insertRule(
                         newId,
-                        extracted.category(),
-                        extracted.triggerCondition(),
-                        extracted.rootCause(),
-                        extracted.generalizedRule(),
+                        cleanCategory,
+                        cleanTrigger,
+                        cleanRootCause,
+                        cleanGenRule,
                         kwArray,
                         true,
                         embedding
@@ -937,10 +948,10 @@ public class MetaLearningService {
             // Fallback sang save entity nếu native insert thất bại (ví dụ trong slice test)
             LearnedRuleEntity fallbackEntity = LearnedRuleEntity.builder()
                     .id(newId)
-                    .category(extracted.category())
-                    .triggerCondition(extracted.triggerCondition())
-                    .rootCause(extracted.rootCause())
-                    .generalizedRule(extracted.generalizedRule())
+                    .category(cleanCategory)
+                    .triggerCondition(cleanTrigger)
+                    .rootCause(cleanRootCause)
+                    .generalizedRule(cleanGenRule)
                     .retrievalKeywords(kwArray)
                     .active(true)
                     .pageId(pageId)
@@ -1135,22 +1146,25 @@ public class MetaLearningService {
         }
         // 1. Loại bỏ các ký tự điều khiển ẩn
         String stripped = text.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
-        // 2. Loại bỏ ngày tháng (ISO YYYY-MM-DD, DD/MM/YYYY, v.v.)
+        // 2. Loại bỏ PII (số điện thoại và email)
+        stripped = PHONE_IN_TEXT_PATTERN.matcher(stripped).replaceAll("");
+        stripped = EMAIL_IN_TEXT_PATTERN.matcher(stripped).replaceAll("");
+        // 3. Loại bỏ ngày tháng (ISO YYYY-MM-DD, DD/MM/YYYY, v.v.)
         stripped = DATE_PATTERN.matcher(stripped).replaceAll("");
-        // 3. Loại bỏ số kèm ký hiệu tiền tệ, phần trăm, đơn vị và số biến động
-        stripped = VOLATILE_NUMBERS_PATTERN.matcher(stripped).replaceAll("");
-        // 4. Loại bỏ các chữ số còn sót
-        stripped = RESIDUAL_DIGITS_PATTERN.matcher(stripped).replaceAll("");
-        // 5. Dọn dẹp ký hiệu tiền tệ/phần trăm mồ côi (bảo toàn 100% chữ đ/Đ trong tiếng Việt)
-        stripped = RESIDUAL_CURRENCY_SYMBOLS_SAFE_VI_PATTERN.matcher(stripped).replaceAll("");
-        // 6. Dọn dẹp dấu câu mồ côi và ký hiệu treo (-- , // , orphan punctuation)
+        // 4. Loại bỏ giá tiền biến động cụ thể (ví dụ 1.500.000 VNĐ, 500.000đ, $50)
+        stripped = VOLATILE_PRICE_PATTERN.matcher(stripped).replaceAll("");
+        // 5. Loại bỏ con số dữ liệu cụ thể nhưng BẢO TOÀN phần trăm (ví dụ 15%, 20%) và số lượng kèm đơn vị
+        stripped = stripped.replaceAll("(?<![%\\w/\\-])\\b\\d+(?:[.,]\\d+)*(?!\\s*(?:%|buổi|cái|lần|ngày|tháng|năm|h|giờ))\\b", "");
+        // 6. Dọn dẹp ký hiệu tiền tệ mồ côi (giữ nguyên 'đ'/'Đ' trong từ tiếng Việt)
+        stripped = stripped.replaceAll("(?iU)[$€£¥]|(?<!\\p{L})đ(?!\\p{L})", "");
+        // 7. Dọn dẹp dấu câu mồ côi và ký hiệu treo (-- , // , orphan punctuation)
         stripped = DANGLING_PUNCTUATION_PATTERN.matcher(stripped).replaceAll(" ");
         stripped = stripped.replaceAll("\\s+([.,;:!?])", "$1");
         return stripped.replaceAll("\\s+", " ").strip();
     }
 
     /**
-     * Loại bỏ các số liệu, giá tiền, ngày tháng cụ thể khỏi chuỗi quy tắc nhưng BẢO TOÀN 100% chữ 'đ'/'Đ' trong từ tiếng Việt
+     * Loại bỏ các số liệu, giá tiền, ngày tháng cụ thể và PII (SĐT, Email) khỏi chuỗi quy tắc nhưng BẢO TOÀN 100% chữ 'đ'/'Đ' trong từ tiếng Việt
      * (tránh lỗi 'được' -> 'ược', 'đến' -> 'ến', 'đã' -> 'ã', 'đề xuất' -> 'ề xuất').
      */
     public static String sanitizeRuleTextPreservingVietnamese(String text) {
@@ -1159,13 +1173,16 @@ public class MetaLearningService {
         }
         // 1. Loại bỏ các ký tự điều khiển ẩn
         String stripped = text.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
-        // 2. Loại bỏ ngày tháng cụ thể
+        // 2. Loại bỏ PII (số điện thoại và email)
+        stripped = PHONE_IN_TEXT_PATTERN.matcher(stripped).replaceAll("");
+        stripped = EMAIL_IN_TEXT_PATTERN.matcher(stripped).replaceAll("");
+        // 3. Loại bỏ ngày tháng cụ thể
         stripped = DATE_PATTERN.matcher(stripped).replaceAll("");
-        // 3. Loại bỏ giá tiền biến động cụ thể (ví dụ 1.500.000 VNĐ, 500.000đ, $50)
+        // 4. Loại bỏ giá tiền biến động cụ thể (ví dụ 1.500.000 VNĐ, 500.000đ, $50)
         stripped = VOLATILE_PRICE_PATTERN.matcher(stripped).replaceAll("");
-        // 4. Dọn dẹp ký hiệu tiền tệ mồ côi (giữ nguyên 'đ'/'Đ' trong từ tiếng Việt)
+        // 5. Dọn dẹp ký hiệu tiền tệ mồ côi (giữ nguyên 'đ'/'Đ' trong từ tiếng Việt)
         stripped = stripped.replaceAll("(?iU)[$€£¥]|(?<!\\p{L})đ(?!\\p{L})", "");
-        // 5. Dọn dẹp ký hiệu gạch ngang/chéo treo
+        // 6. Dọn dẹp ký hiệu gạch ngang/chéo treo
         stripped = DANGLING_PUNCTUATION_PATTERN.matcher(stripped).replaceAll(" ");
         stripped = stripped.replaceAll("\\s+([.,;:!?])", "$1");
         return stripped.replaceAll("\\s+", " ").strip();

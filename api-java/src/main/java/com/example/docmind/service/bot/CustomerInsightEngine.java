@@ -34,8 +34,9 @@ public class CustomerInsightEngine {
     );
 
     private static final Pattern PRICE_OBJECTION_PATTERN = Pattern.compile(
-            "(?iU)\\b(giá|bao\\s+nhiêu|chi\\s+phí|đắt|cao\\s+thế|cao\\s+hơn|rẻ\\s+hơn|"
-            + "chiết\\s+khấu|khuyến\\s+mãi|combo|ưu\\s+đãi|phụ\\s+phí|phát\\s+sinh|tiền\\s+tip|tip)\\b"
+            "(?iU)\\b(giá|bao\\s+nhiêu|chi\\s+phí|đắt|hơi\\s+đắt|đắt\\s+thế|đắt\\s+quá|đắt\\s+vậy|mắc|hơi\\s+mắc|chát|"
+            + "cao\\s+thế|cao\\s+quá|cao\\s+vậy|hơi\\s+cao|giá\\s+cao|cao\\s+hơn|rẻ|rẻ\\s+hơn|rẻ\\s+nhất|mềm\\s+hơn|"
+            + "thấp\\s+hơn|thấp\\s+nhất|tiết\\s+kiệm|gói\\s+nhỏ|chiết\\s+khấu|khuyến\\s+mãi|combo|ưu\\s+đãi|phụ\\s+phí|phát\\s+sinh|tiền\\s+tip|tip)\\b"
     );
 
     private static final Pattern MALE_OR_DISCREET_PATTERN = Pattern.compile(
@@ -56,17 +57,19 @@ public class CustomerInsightEngine {
     );
 
     private static final Pattern BOOKING_INTENT_PATTERN = Pattern.compile(
-            "(?iU)\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|đăng\\s+ký|chốt|qua\\s+soi\\s+da|qua\\s+khám|"
+            "(?iU)\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|giữ\\s+suất|đăng\\s+ký|chốt|qua\\s+soi\\s+da|qua\\s+khám|"
+            + "thử\\s+xem|sẽ\\s+thử|mình\\s+thử|t\\s+thử|trải\\s+nghiệm\\s+thử|làm\\s+thử|khám\\s+thử|soi\\s+da\\s+thử|"
             + "sđt|số\\s+điện\\s+thoại|chiều\\s+thứ|sáng\\s+thứ|cuối\\s+tuần\\s+này)\\b"
     );
 
     private static final Pattern HALF_HEARTED_OR_COOLING_PATTERN = Pattern.compile(
-            "(?iU)^\\s*(ừ|uk|uh|uhm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)\\s*[.!,~?]*$"
-            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|uh|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác|hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|gia\\s+cao|chát\\s+quá)\\b"
+            "(?iU)^\\s*(ừ|uk|uh|uhm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)(?:\\s+(?:em|shop|ad|bạn|nhé|nha|ạ))?\\s*[.!,~?]*$"
+            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|uh|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác)\\b"
     );
 
     private static final Pattern PRICE_HESITATION_PATTERN = Pattern.compile(
-            "(?iU)\\b(hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|giá\\s+cao|chát\\s+quá|cao\\s+hơn|đắt|vượt\\s+ngân\\s+sách)\\b"
+            "(?iU)\\b(hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|đắt\\s+vậy|giá\\s+cao|cao\\s+thế|cao\\s+quá|cao\\s+vậy|hơi\\s+cao|"
+            + "chát\\s+quá|cao\\s+hơn|đắt|mắc|hơi\\s+mắc|vượt\\s+ngân\\s+sách|rẻ\\s+hơn|rẻ\\s+nhất|mềm\\s+hơn|thấp\\s+hơn|thấp\\s+nhất|gói\\s+nào\\s+rẻ|gói\\s+nhỏ)\\b"
     );
 
     private static final List<AgentSkillDto> DEFAULT_BUILT_IN_SKILLS = createDefaultBuiltInSkills();
@@ -286,7 +289,12 @@ public class CustomerInsightEngine {
                 || (replyDelaySeconds != null && replyDelaySeconds >= 300);
         boolean isHalfHearted = HALF_HEARTED_OR_COOLING_PATTERN.matcher(msg).find();
         boolean isPriceHesitation = PRICE_HESITATION_PATTERN.matcher(msg).find();
-        boolean isCoolingBrushOff = (isHalfHearted || isPriceHesitation) && !hasBookingLead;
+        boolean isCoolingBrushOff = isHalfHearted && !isPriceHesitation && !hasBookingLead;
+
+        if (isPriceHesitation && !hasBookingLead) {
+            archetype = "PRICE_CONSCIOUS";
+            archetypeLabel = "Cân nhắc Ngân sách & Giá trị — Cần Gợi ý Gói Mềm Hơn (Down-sell) & Ưu đãi";
+        }
 
         if (isIdleDecay) {
             int elapsed = (idleSeconds != null && idleSeconds > 0)
@@ -297,10 +305,13 @@ public class CustomerInsightEngine {
             momentum = "COOLING_IDLE";
             decayReason = "COOLING_IDLE";
         } else if (isCoolingBrushOff) {
-            int sentimentDecay = isPriceHesitation ? 22 : 20;
-            temp = Math.max(0, effectivePrevTemp - sentimentDecay);
+            temp = Math.max(0, effectivePrevTemp - 20);
             momentum = "COOLING_HALF_HEARTED";
-            decayReason = isPriceHesitation ? "PRICE_HESITATION" : "COOLING_HALF_HEARTED";
+            decayReason = "COOLING_HALF_HEARTED";
+        } else if (isPriceHesitation && !hasBookingLead) {
+            temp = Math.max(38, effectivePrevTemp - 8);
+            momentum = "PRICE_HESITATION";
+            decayReason = "PRICE_HESITATION";
         } else {
             int calculatedTemp = 36;
             int userTurns = allUserMessages.size();
@@ -368,17 +379,21 @@ public class CustomerInsightEngine {
                     + "): Xác nhận ấm áp theo đúng yêu cầu của " + honorific
                     + " và kết thúc gọn gàng, lịch sự (TUYỆT ĐỐI KHÔNG hỏi lặp lại Sáng/Chiều hay ngày thường/cuối tuần!).";
         } else if (bookingState.isPriceComparisonObjection()) {
-            recommendedStrategy = "Khách hàng đang so sánh chi phí với nặn mụn thủ công giá rẻ (Value Framing & Clinical Risk Contrast): "
-                    + "Phân tích rõ sự khác biệt Y khoa (nặn mụn 200k bằng lực cơ học dễ làm vỡ nang lông, lây lan ổ khuẩn và để lại thâm/sẹo rỗ trên nền da yếu; "
-                    + "trong khi phác đồ Chuẩn Y Khoa có Bác sĩ soi da AI 3D 0đ, lấy nhân vô khuẩn êm dịu + phục hồi chuyên sâu) và mời "
-                    + honorific + " qua trải nghiệm suất Bác sĩ soi da AI 3D miễn phí 100% trước khi quyết định.";
+            recommendedStrategy = "Khách hàng đang so sánh chi phí với dịch vụ giá rẻ bên ngoài (Value Framing): "
+                    + "Phân tích ngắn gọn sự khác biệt về chất lượng quy trình, sự an toàn và quyền lợi đi kèm trong <DOCUMENT_CONTEXT>, sau đó gợi ý gói trải nghiệm cơ bản hợp ngân sách cho "
+                    + honorific + ".";
+        } else if (isPriceHesitation && !hasBookingLead) {
+            recommendedStrategy = "Khách hàng đang chê giá cao / thấy đắt hoặc tìm gói rẻ hơn (Down-sell & Value Framing): "
+                    + "Đồng cảm ngay với ngân sách của " + honorific + ", TUYỆT ĐỐI KHÔNG nói 'cứ suy nghĩ thêm' và KHÔNG chuyển nhân viên (HANDOFF). "
+                    + "Chủ động giới thiệu ngay 1-2 gói dịch vụ có mức giá thấp hơn/mềm hơn trong <DOCUMENT_CONTEXT> (nêu rõ tên gói, đơn giá niêm yết, thời lượng và cơ sở nếu khác nhau) kèm ưu đãi/voucher hiện có, rồi hỏi "
+                    + honorific + " muốn thử trải nghiệm gói nào trước.";
         } else if ("COOLING_HALF_HEARTED".equals(momentum)) {
-            recommendedStrategy = "Khách hàng có dấu hiệu do dự / hạ nhiệt tương tác (Takeaway & Pattern Interrupt): "
+            recommendedStrategy = "Khách hàng có dấu hiệu do dự / trả lời xã giao ngắn (Takeaway & Pattern Interrupt): "
                     + "Lùi lại 1 bước, buông bỏ áp lực bán hàng, tôn trọng thời gian cân nhắc của " + honorific
-                    + " và đặt 1 câu hỏi vi mô gợi mở sự tò mò hoặc tháo gỡ rào cản ẩn (tuyệt đối không tiếp tục chốt lịch hay nhắc lại giá).";
+                    + " và đặt 1 câu hỏi vi mô gợi mở nhu cầu hoặc tháo gỡ băn khoăn thực tế.";
         } else if ("COOLING_IDLE".equals(momentum)) {
             recommendedStrategy = "Khách hàng đang im lặng / mất tương tác (Loss-Aversion Reservation): "
-                    + "Kéo lại tương tác nhẹ nhàng bằng cách đề xuất giữ trước suất ưu đãi hoặc suất soi da AI 3D 0đ không ràng buộc cho " + honorific
+                    + "Kéo lại tương tác nhẹ nhàng bằng cách đề xuất giữ trước suất ưu đãi trong <DOCUMENT_CONTEXT> cho " + honorific
                     + " mà không thúc ép chốt đơn.";
         } else {
             recommendedStrategy = switch (archetype) {
@@ -388,17 +403,17 @@ public class CustomerInsightEngine {
                             ? "Xác nhận giữ suất lúc " + bookingState.confirmedTimeSlot() + " cho " + honorific + " và chỉ xin Số điện thoại để khóa lịch (cấm hỏi lại Sáng hay Chiều!)."
                             : "Xác nhận ngay thông tin SĐT / lịch hẹn của " + honorific + " thật ngắn gọn, ấm áp; báo chuyên viên liên hệ qua điện thoại/Zalo ngay và TUYỆT ĐỐI KHÔNG liệt kê lại bảng giá hay hỏi lại tình trạng.");
                 case "SKEPTICAL_CHRONIC" -> currentIsComplexSymptom
-                        ? "Đồng cảm sâu sắc và áp dụng chiến thuật tâm lý PAS (Problem - Risk - Appointment Hook): Chạm vào tâm lý lo lắng biến chứng của " + honorific
-                          + " (nếu để ổ viêm kéo dài hoặc tự xử lý bề mặt sẽ dễ lan sang nang lông lành, làm thâm bám sâu chai sần hoặc biến chứng thành sẹo rỗ khó phục hồi); khẳng định cần Bác sĩ Da liễu soi da AI 3D trực tiếp miễn phí 100% để đo độ sâu từng vùng và dẫn dắt "
-                          + honorific + " đặt lịch kiểm tra theo khung giờ Sáng/Chiều (TUYỆT ĐỐI CẤM hỏi 'đang tò mò hơn về...')."
-                        : "Đồng cảm sâu sắc với hành trình lâu năm của " + honorific + "; phân tách trung thực phạm vi cải thiện của gói tiêu chuẩn và phần cần Bác sĩ soi da AI 3D 0đ đánh giá riêng (tuyệt đối không hứa lố).";
+                        ? "Đồng cảm sâu sắc với tình trạng kéo dài của " + honorific
+                          + "; phân tích rõ giải pháp phù hợp trong <DOCUMENT_CONTEXT> và dẫn dắt "
+                          + honorific + " đặt lịch trải nghiệm/kiểm tra trực tiếp theo khung giờ Sáng/Chiều."
+                        : "Đồng cảm sâu sắc với hành trình lâu năm của " + honorific + "; tư vấn trung thực phạm vi cải thiện của gói dịch vụ trong <DOCUMENT_CONTEXT> (tuyệt đối không hứa lố).";
                 case "DISCREET_DECISIVE" ->
                         "Khẳng định rõ dịch vụ hoàn toàn phù hợp và hiệu quả cao cho khách hàng Nam giới / Trung niên; giữ giọng văn điềm đạm, tôn trọng, nhấn mạnh không gian kín đáo và trả lời thẳng trọng tâm cho " + honorific + ".";
                 case "PRICE_CONSCIOUS" -> isBroadUnspecifiedPrice
-                        ? "Áp dụng Value Stacking & Chống xả sạch thông tin (Nấc 1): TUYỆT ĐỐI KHÔNG liệt kê toàn bộ bảng giá 3-4 dịch vụ hay các gói Combo ngay! Chỉ nêu 1 cam kết giá trị (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí/0 Tip) + đưa khoảng giá khởi điểm nhẹ nhàng (chỉ từ 650.000đ/buổi tùy phác đồ) + đặt 1 câu hỏi lựa chọn A/B ngắn gọn hỏi nhu cầu ưu tiên của " + honorific + "."
-                        : "Áp dụng Value Stacking & Phân bổ thông tin (Nấc 2): Chỉ báo giá ĐÚNG 1 gói dịch vụ " + honorific + " đang quan tâm (cấm liệt kê sang các dịch vụ khác không được hỏi), nêu 1 quyền lợi cốt lõi (Bác sĩ chuyên khoa, bảo hành văn bản, 0 phụ phí/0 Tip) và đặt 1 câu hỏi điều hướng đặt lịch soi da AI 3D miễn phí cho " + honorific + ".";
+                        ? "Áp dụng Value Stacking & Chống xả sạch thông tin (Nấc 1): TUYỆT ĐỐI KHÔNG liệt kê toàn bộ bảng giá nhiều dịch vụ ngay! Chỉ nêu mức giá khởi điểm thấp nhất/dễ tiếp cận nhất trong <DOCUMENT_CONTEXT> + 1 quyền lợi đi kèm + đặt 1 câu hỏi lựa chọn A/B ngắn gọn hỏi nhu cầu ưu tiên của " + honorific + "."
+                        : "Áp dụng Value Stacking & Phân bổ thông tin (Nấc 2): Báo giá chuẩn xác gói dịch vụ phù hợp nhất trong <DOCUMENT_CONTEXT>, giữ nhất quán với mức giá đã báo ở lượt trước (hoặc nêu rõ chênh lệch theo cơ sở nếu có), kèm 1 quyền lợi đi kèm và đặt 1 câu hỏi lựa chọn A/B.";
                 case "HESITANT_FIRST_TIMER" ->
-                        "Đưa rủi ro của " + honorific + " về 0% (Zero-Risk Reversal) bằng cam kết bảo hành, quy trình êm dịu không đau/không ràng buộc và dẫn dắt " + honorific + " đặt lịch buổi soi da AI 3D miễn phí 100% cùng Bác sĩ theo khung giờ Sáng/Chiều trước khi quyết định.";
+                        "Đưa rủi ro của " + honorific + " về 0% (Zero-Risk Reversal) bằng cam kết minh bạch, quy trình nhẹ nhàng không chèo kéo từ <DOCUMENT_CONTEXT> và gợi ý gói cơ bản dễ trải nghiệm trước.";
                 default ->
                         "Giải đáp ngắn gọn đúng trọng tâm câu hỏi của " + honorific + " theo quy tắc '1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B' (SPIN) để dẫn dắt mạch tư vấn tự nhiên.";
             };
@@ -578,11 +593,22 @@ public class CustomerInsightEngine {
             }
 
             boolean isCooling = (insight != null) && (
-                    (insight.temperatureDelta() != null && insight.temperatureDelta() < 0)
-                    || (insight.momentum() != null && insight.momentum().startsWith("COOLING"))
+                    insight.momentum() != null && insight.momentum().startsWith("COOLING")
             );
+            boolean isPriceHesitationTurn = (insight != null && "PRICE_HESITATION".equals(insight.momentum()))
+                    || PRICE_HESITATION_PATTERN.matcher(msg).find();
 
-            if (isCooling) {
+            if (isPriceHesitationTurn) {
+                if ("SALES_VALUE_FRAMING_PRICE".equals(code)) {
+                    score += 170;
+                }
+                if ("COMM_NO_REPEAT_MEMORY".equals(code)) {
+                    score += 85;
+                }
+                if ("PSYCH_ZERO_PRESSURE_TAKEAWAY".equals(code) || "PSYCH_TAKEAWAY_REVERSE".equals(code)) {
+                    score -= 150;
+                }
+            } else if (isCooling) {
                 if ("PSYCH_ZERO_PRESSURE_TAKEAWAY".equals(code) || "PSYCH_TAKEAWAY_REVERSE".equals(code)) {
                     score += 140;
                 }
@@ -718,13 +744,13 @@ public class CustomerInsightEngine {
                 new AgentSkillDto(
                         UUID.fromString("70000000-0000-0000-0000-000000000005"),
                         "SALES_VALUE_FRAMING_PRICE",
-                        "[Sale] Báo Giá Khéo Léo, Chống Xả Sạch Thông Tin & Neo Giá Trị (Value Framing)",
+                        "[Sale] Báo Giá Khéo Léo, Neo Giá Trị & Gợi Ý Gói Mềm Hơn (Value Framing & Down-sell)",
                         "SALES_STRATEGY",
-                        "Áp dụng khi khách hỏi giá chung chung ('giá', 'bảng giá') hoặc hỏi giá dịch vụ cụ thể, chê đắt, phân vân ngân sách.",
-                        "giá, giá sao, báo giá, bảng giá, bao nhiêu tiền, chi phí, đắt thế, giá cao, chỗ khác rẻ hơn, giảm giá, chiết khấu, combo, ưu đãi, mua lẻ, 1 buổi",
-                        "1. Nấc 1 - Khi khách chỉ hỏi 'giá', 'báo giá' chung chung mà chưa rõ tình trạng/nhu cầu: TUYỆT ĐỐI KHÔNG xả sạch toàn bộ bảng giá nhiều dịch vụ hay báo ngay các gói Combo 10-15%! Chỉ đưa mức giá khởi điểm dễ tiếp cận (ví dụ: chỉ từ 650.000đ/buổi tùy phác đồ da) kèm 1 quyền lợi 0đ rủi ro (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí) và đặt 1 câu hỏi lựa chọn A/B ngắn gọn để phân loại nhu cầu. 2. Nấc 2 - Khi khách hỏi giá 1 dịch vụ cụ thể: Chỉ báo đúng đơn giá niêm yết của ĐÚNG 1 dịch vụ đó (cấm liệt kê sang các dịch vụ khác không liên quan), nêu 1 quyền lợi cốt lõi đi kèm và kết thúc bằng 1 câu hỏi điều hướng đặt lịch thăm khám/soi da miễn phí.",
-                        "Dạ chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ 650.000đ/buổi tùy tình trạng nền da, đã bao gồm Bác sĩ soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ. Hiện tại Chị đang muốn ưu tiên xử lý mụn, mờ nám hay dưỡng căng bóng để em báo đúng gói hợp nhất cho mình ạ?",
-                        "CẤM xả sạch 3-4 dịch vụ kèm toàn bộ Combo giảm 10-15% ngay trong 1 tin nhắn khiến khách bị ngợp thông tin, tự tính nhẩm rồi im lặng rút lui.",
+                        "Áp dụng khi khách hỏi giá, chê đắt ('cao thế', 'hơi đắt') hoặc tìm gói rẻ hơn ('có gói nào rẻ hơn không').",
+                        "giá, giá sao, báo giá, bảng giá, bao nhiêu tiền, chi phí, đắt, hơi đắt, đắt thế, đắt quá, cao thế, cao quá, giá cao, rẻ hơn, mềm hơn, thấp hơn, tiết kiệm, giảm giá, chiết khấu, combo, ưu đãi",
+                        "1. Hỏi giá chung: Chỉ đưa mức giá khởi điểm thấp nhất/dễ tiếp cận nhất trong <DOCUMENT_CONTEXT> kèm quyền lợi đi kèm và đặt 1 câu hỏi A/B ngắn gọn. 2. Khi khách chê giá cao ('cao thế', 'hơi đắt') hoặc hỏi 'có gói nào rẻ hơn không': TUYỆT ĐỐI KHÔNG chuyển nhân viên (HANDOFF) và KHÔNG nói 'cứ suy nghĩ thêm'! Phải chủ động giới thiệu ngay các gói có mức giá thấp hơn/mềm hơn trong <DOCUMENT_CONTEXT> (ví dụ gói cơ bản, gói thời lượng ngắn hơn hoặc dịch vụ nhẹ nhàng hơn trong bảng giá) kèm chương trình ưu đãi/voucher hiện có để khách dễ dàng trải nghiệm.",
+                        "Dạ nếu mình muốn trải nghiệm nhẹ nhàng tiết kiệm hơn trước thì bên em có gói cơ bản với chi phí rất mềm trong bảng giá, vẫn đầy đủ quyền lợi thư giãn đi kèm ạ. Chị muốn thử gói cơ bản này trước hay cần em báo thêm ưu đãi giảm giá hiện có ạ?",
+                        "CẤM chuyển nhân viên (HANDOFF) hoặc bảo khách 'cứ suy nghĩ thêm' khi khách chê đắt/hỏi gói rẻ hơn mà trong <DOCUMENT_CONTEXT> vẫn có các gói giá thấp hơn.",
                         94,
                         true,
                         null,
@@ -818,9 +844,9 @@ public class CustomerInsightEngine {
                         "SALES_STRATEGY",
                         "Ngăn chặn tuyệt đối lỗi bot biến thành máy trả lời tự động xả hết 100% bảng giá và chính sách ngay tin nhắn đầu tiên làm khách ngợp và im lặng (seen không rep).",
                         "giá, báo giá, bảng giá, giá sao, chi phí, nhiêu tiền, bao nhiêu, xin giá, giá cả, cho xin bảng giá, tư vấn giá",
-                        "1. NGUYÊN TẮC CỐT TỬ: Tuyệt đối KHÔNG làm Thợ Trả Lời Tin Nhắn xả hết toàn bộ danh mục 3-4 dịch vụ kèm chiết khấu Combo trong 1 lượt nhắn! 2. Khi khách chỉ gõ 'giá', 'báo giá', 'chi phí sao' mà chưa nói rõ tình trạng/dịch vụ: Chỉ báo mức giá khởi điểm dễ tiếp cận nhất (ví dụ: chỉ từ 650.000đ/buổi tùy phác đồ da) + 1 quyền lợi 0đ rủi ro (Bác sĩ Da liễu soi da AI 3D miễn phí 100%, trọn gói 0 phụ phí) + 1 câu hỏi lựa chọn A/B ngắn gọn để phân loại nhu cầu (mụn, nám hay trẻ hóa). 3. Khi khách hỏi giá 1 dịch vụ cụ thể: Chỉ báo đúng giá của ĐÚNG 1 dịch vụ đó, cấm liệt kê lan man sang các dịch vụ khác không liên quan.",
-                        "Dạ chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ 650.000đ/buổi tùy phác đồ da, đã bao gồm Bác sĩ soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ. Hiện tại Chị đang muốn ưu tiên xử lý mụn, mờ nám hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?",
-                        "CẤM liệt kê một lèo 4 dịch vụ (Trị Mụn 1.500k, Meso 3.200k, Laser 4.500k, Detox 650k) kèm Combo 10-15% ngay khi khách mới hỏi chữ 'giá'; CẤM viết tin nhắn dài quá 2 bong bóng chat.",
+                        "1. NGUYÊN TẮC CỐT TỬ: Tuyệt đối KHÔNG xả hết toàn bộ danh mục 5-10 dịch vụ trong 1 lượt nhắn! 2. Khi khách chỉ gõ 'giá', 'báo giá' chung chung: Chỉ báo mức giá khởi điểm thấp nhất/dễ tiếp cận nhất trong <DOCUMENT_CONTEXT> kèm quyền lợi đi kèm + 1 câu hỏi lựa chọn A/B ngắn gọn để phân loại nhu cầu. 3. Khi khách muốn thử trải nghiệm trước: Giữ nhất quán với mức giá gói cơ bản vừa giới thiệu ở lượt trước (hoặc làm rõ cơ sở nếu có sự khác biệt vùng miền), tuyệt đối không tự ý nhảy sang báo gói đắt hơn mà không giải thích.",
+                        "Dạ các gói dịch vụ bên em có mức chi phí khởi điểm rất hợp lý theo đúng bảng giá niêm yết kèm đầy đủ quyền lợi thư giãn đi kèm ạ. Hiện tại Chị đang muốn trải nghiệm gói cơ bản nhẹ nhàng trước hay liệu trình chuyên sâu hơn ạ?",
+                        "CẤM liệt kê một lèo toàn bộ bảng giá ngay khi khách mới hỏi chữ 'giá'; CẤM tự ý nhảy từ giá khởi điểm lượt 1 sang giá cao hơn ở lượt 2 khi khách xin trải nghiệm thử.",
                         96,
                         true,
                         null,
@@ -830,13 +856,13 @@ public class CustomerInsightEngine {
                 new AgentSkillDto(
                         UUID.fromString("70000000-0000-0000-0000-000000000012"),
                         "SALES_APPOINTMENT_HOOK_CLOSE",
-                        "[Sale] Bán Lịch Hẹn Thăm Khám 0đ Rủi Ro & Khống Chế Khung Giờ A/B",
+                        "[Sale] Bán Lịch Hẹn & Khống Chế Khung Giờ A/B",
                         "SALES_STRATEGY",
-                        "Chuyển hóa các cuộc hỏi giá hoặc đắn đo chi phí thành lịch hẹn trực tiếp tại cơ sở bằng mỏ neo quyền lợi miễn phí và câu hỏi lựa chọn khung giờ Sáng/Chiều.",
-                        "đắt, giá cao, suy nghĩ thêm, để xem đã, tham khảo, đặt lịch, qua khám, soi da, mấy buổi, hiệu quả không, giữ ưu đãi",
-                        "1. BÁN LỊCH HẸN, KHÔNG BÁN ĐỨT QUA CHAT: Luôn neo quyền lợi đặc biệt chỉ có khi khách ghé trực tiếp (Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% trong 10 phút đầu để biết chính xác độ sâu nền da trước khi quyết định, hoàn toàn không bắt buộc mua gói). 2. KẾT THÚC BẰNG CÂU HỎI KHỐNG CHẾ A/B: Thay vì hỏi câu đóng Yes/No ('Chị có muốn đặt lịch không?'), bắt buộc hỏi câu lựa chọn khung giờ ('Chị tiện ghé bên em vào khung giờ Sáng hay Chiều để em giữ suất soi da AI 3D miễn phí cùng Bác sĩ cho mình ạ?').",
-                        "Dạ để biết chính xác nền da mình hợp phác đồ nào và tiết kiệm chi phí nhất, bên em đang tặng 100% suất Bác sĩ Da liễu soi da AI 3D chuyên sâu trước 10 phút ạ. Chị tiện ghé vào khung giờ Sáng hay Chiều để em giữ lịch ưu tiên cho mình ạ?",
-                        "Không dùng câu hỏi đóng Yes/No dễ bị khách từ chối ('Chị có muốn tư vấn thêm không?'); không ép khách mua gói lớn khi chưa thăm khám.",
+                        "Chuyển hóa các cuộc tư vấn thành lịch hẹn trực tiếp tại cơ sở bằng câu hỏi lựa chọn khung giờ Sáng/Chiều.",
+                        "đặt lịch, giữ lịch, qua xem, đăng ký, làm thử, trải nghiệm, cuối tuần, rảnh, khung giờ, sáng hay chiều",
+                        "1. BÁN LỊCH HẸN QUA QUYỀN LỢI THỰC TẾ: Nêu quyền lợi thực tế có trong <DOCUMENT_CONTEXT> (như ưu đãi trải nghiệm, quà tặng đi kèm hoặc chuẩn bị phòng chu đáo không phải chờ đợi). 2. KẾT THÚC BẰNG CÂU HỎI KHỐNG CHẾ A/B: Hỏi câu lựa chọn khung giờ ('Chị tiện ghé bên em vào khung giờ Sáng hay Chiều để em giữ lịch trước cho mình ạ?').",
+                        "Dạ để bên em chuẩn bị phòng và kỹ thuật viên chu đáo nhất mà mình không phải chờ đợi, Chị tiện ghé vào khung giờ Sáng hay Chiều để em giữ lịch ưu tiên cho mình ạ?",
+                        "Không bịa ra các dịch vụ miễn phí ngoài <DOCUMENT_CONTEXT>; không ép khách đặt lịch khi khách đang chê đắt mà chưa tư vấn gói rẻ hơn.",
                         91,
                         true,
                         null,
@@ -855,10 +881,10 @@ public class CustomerInsightEngine {
                         "[Tâm lý] Lùi Một Bước - Buông Bỏ Áp Lực Bán (Zero-Pressure Takeaway)",
                         "PSYCHOLOGY",
                         "Xóa bỏ áp lực bán hàng ngay lập tức khi khách hàng có dấu hiệu do dự, từ chối nhẹ (\"ừ\", \"để xem\", \"để chị nghĩ thêm\", \"thôi\"), giúp hạ rào cản phòng vệ tâm lý trước khi gợi mở lý do thật sự.",
-                        "ừ, uk, ok, vâng, để xem, để chị xem, để xem thêm, để nghĩ đã, suy nghĩ thêm, để chị nghĩ, thôi, hơi đắt, đắt quá, chưa cần",
-                        "1. Hạ hoàn toàn áp lực: Đồng ý ngay với quyền tự do suy nghĩ của khách, tuyệt đối không giục giã hay nhắc lại bảng giá/chốt lịch. 2. Buông bỏ giả định mua hàng (Takeaway): Khẳng định việc tìm hiểu kỹ là hoàn toàn đúng đắn. 3. Đặt 1 câu hỏi tháo gỡ nhẹ nhàng (Uncover hidden blocker) để khách tự nhiên chia sẻ mà không cảm thấy bị làm phiền.",
-                        "Dạ không sao đâu Chị ạ, việc chăm sóc da mình cứ cân nhắc thật kỹ để hoàn toàn yên tâm trước nhé ạ. Cho em hỏi nhỏ để hỗ trợ Chị tốt hơn, hiện tại điều làm Chị băn khoăn nhất là về chi phí hay chưa chắc chắn liệu trình có hợp với nền da của mình ạ?",
-                        "CẤM tiếp tục thúc ép đặt lịch; CẤM lặp lại bảng giá hay ép khách quyết định ngay khi khách vừa nói để xem.",
+                        "ừ, uk, ok, vâng, để xem, để chị xem, để xem thêm, để nghĩ đã, suy nghĩ thêm, để chị nghĩ, thôi, chưa cần, khi khác",
+                        "1. Chỉ áp dụng khi khách trả lời cụt lủn ('ừ', 'để xem thêm', 'để chị nghĩ đã'): Đồng ý nhẹ nhàng với quyền cân nhắc của khách. 2. Lưu ý: Nếu khách chê giá cao ('cao thế', 'hơi đắt') hoặc hỏi gói rẻ hơn, KHÔNG được bảo khách 'cứ suy nghĩ thêm' mà phải chủ động giới thiệu ngay gói có mức giá mềm/thấp hơn hoặc ưu đãi trong <DOCUMENT_CONTEXT>!",
+                        "Dạ không sao đâu Chị ạ, mình cứ tham khảo thoải mái nhé ạ. Nếu Chị muốn thử trải nghiệm nhẹ nhàng tiết kiệm trước thì bên em cũng có các gói cơ bản chi phí rất mềm trong bảng giá, Chị có muốn em gửi thông tin gói đó để mình dễ cân nhắc hơn không ạ?",
+                        "CẤM dùng kỹ năng này để trả lời né tránh khi khách đang hỏi gói rẻ hơn; CẤM bịa ra ưu đãi 0đ không có trong <DOCUMENT_CONTEXT>.",
                         95,
                         true,
                         null,

@@ -58,7 +58,7 @@ public class AgentSkillService {
                                 ? (s.getPageId() == null || targetPageId.equals(s.getPageId()))
                                 : targetPageId.equals(s.getPageId());
                     }
-                    return true;
+                    return s.getPageId() == null;
                 })
                 .filter(s -> {
                     if (normSearch.isEmpty()) {

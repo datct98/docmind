@@ -65,16 +65,33 @@ class DocumentControllerTest {
     }
 
     @Test
-    void listReturnsDocumentList() throws Exception {
-        when(documentService.listAll())
+    void listReturnsEmptyListWithoutPageId() throws Exception {
+        mockMvc.perform(get("/api/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void listWithPageIdReturnsScopedDocuments() throws Exception {
+        when(documentService.listAll("page-123"))
                 .thenReturn(java.util.List.of(new DocumentStatusResponse("doc-123", "notes.pdf", "READY", 3,
                         Map.of("pymupdf", 2, "docling", 1))));
 
-        mockMvc.perform(get("/api/documents"))
+        mockMvc.perform(get("/api/documents").param("page_id", "page-123"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].document_id").value("doc-123"))
                 .andExpect(jsonPath("$[0].filename").value("notes.pdf"))
                 .andExpect(jsonPath("$[0].status").value("READY"));
+    }
+
+    @Test
+    void listWithInvalidPageIdReturnsEmptyList() throws Exception {
+        when(documentService.listAll("invalid"))
+                .thenReturn(java.util.List.of());
+
+        mockMvc.perform(get("/api/documents").param("page_id", "invalid"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
     }
 
     @Test

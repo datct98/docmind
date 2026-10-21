@@ -18,8 +18,32 @@
         <button class="btn-close-modal" @click="$emit('close')">×</button>
       </div>
 
+      <!-- Mobile 2-Tab Switcher (Visible on <= 900px) -->
+      <div class="fb-sim-mobile-tabs">
+        <button
+          type="button"
+          class="fb-sim-mobile-tab"
+          :class="{ active: mobileSimTab === 'chat' }"
+          @click="mobileSimTab = 'chat'"
+        >
+          <span>💬 Khung Chat Test</span>
+          <span v-if="chatItems.length > 0" class="sim-m-badge">{{ chatItems.length }}</span>
+        </button>
+        <button
+          type="button"
+          class="fb-sim-mobile-tab"
+          :class="{ active: mobileSimTab === 'telemetry' }"
+          @click="mobileSimTab = 'telemetry'"
+        >
+          <span>📊 Radar Tâm lý &amp; Điều phối</span>
+          <span v-if="currentInsight" class="sim-m-badge">
+            {{ currentInsight.buying_temperature }}%
+          </span>
+        </button>
+      </div>
+
       <!-- Main Split Layout -->
-      <div class="fb-sim-body">
+      <div class="fb-sim-body" :class="'mobile-sim-' + mobileSimTab">
         <!-- Left: Realistic Facebook Messenger Chat View -->
         <div class="messenger-pane">
           <!-- Messenger Header -->
@@ -102,7 +126,7 @@
           <!-- Messenger Messages Stream -->
           <div ref="chatScrollRef" class="messenger-messages">
             <div v-if="chatItems.length === 0" class="messenger-empty">
-              <p>👋 Hãy đóng vai khách hàng nhắn tin vào Fanpage ở bên dưới, hoặc bấm chọn nhanh <strong>6 Kịch bản thực chiến</strong> ở cột bên phải!</p>
+              <p>👋 Hãy đóng vai khách hàng nhắn tin vào Fanpage ở khung bên dưới để kiểm tra trực tiếp phản hồi của Bot AI!</p>
             </div>
 
             <div
@@ -233,7 +257,7 @@
           <div class="messenger-input-bar">
             <div v-if="isDebouncingBurst" class="burst-typing-banner">
               <span class="burst-dot"></span>
-              <span class="burst-text">Đang gom các tin nhắn gửi dồn (~3s)... Bạn có thể nhập thêm tin nhắn tiếp theo</span>
+              <span class="burst-text">Đang xử lý tin nhắn...</span>
             </div>
             <div class="messenger-input-row">
               <input
@@ -425,29 +449,6 @@
               </div>
             </div>
           </div>
-
-          <!-- 6 Real-World Fanpage Test Scenarios -->
-          <div class="scenarios-section">
-            <div class="scenarios-title">
-              ⚡ 6 Tình huống Thực tế trên Fanpage (Bấm theo thứ tự 1 → 6 để test):
-            </div>
-            <div class="scenarios-list">
-              <button
-                v-for="(sc, sIdx) in fanpageScenarios"
-                :key="sIdx"
-                class="sc-btn"
-                :disabled="isDeliveringBubbles || isSending"
-                @click="sendCustomerMessage(sc.message)"
-              >
-                <div class="sc-top">
-                  <span class="sc-badge" :class="sc.type">{{ sc.label }}</span>
-                  <span class="sc-try">Gửi thử →</span>
-                </div>
-                <div class="sc-msg">"{{ sc.message }}"</div>
-                <div class="sc-expect">Kỳ vọng: {{ sc.expected }}</div>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -471,7 +472,7 @@
       <!-- Agent Skill Registry Modal -->
       <AgentSkillModal
         v-if="isSkillModalOpen"
-        :demo-mode="!isConnected"
+        :demo-mode="false"
         :pages="pages"
         :active-page-id="activePage?.id || null"
         @close="isSkillModalOpen = false"
@@ -886,7 +887,6 @@
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { api } from '../api'
-import { mockFanpageBotReply, mockHarnessOptimize, mockHarnessConversationAudit } from '../mockData'
 import TeachAiModal from './TeachAiModal.vue'
 import AgentSkillModal from './AgentSkillModal.vue'
 
@@ -909,13 +909,14 @@ const props = defineProps({
   },
   isConnected: {
     type: Boolean,
-    default: false
+    default: true
   }
 })
 
 defineEmits(['close'])
 
 const customerInput = ref('')
+const mobileSimTab = ref('chat') // 'chat' | 'telemetry'
 const chatItems = ref([])
 const conversationHistory = ref([])
 const isTyping = ref(false)
@@ -997,45 +998,6 @@ const formatDecayReason = (reason) => {
   return map[reason] || reason
 }
 
-const fanpageScenarios = [
-  {
-    label: '1. Nhịp Làm Quen (Không vội vã)',
-    type: 'normal',
-    message: 'Chào shop, da chị dạo này có mấy vết nám hai bên gò má thì bên mình có liệu trình nào cải thiện an toàn không em?',
-    expected: 'Trả lời nhẹ nhàng, giới thiệu Phác đồ Trị Nám Laser Pico và hỏi thăm tình trạng da, chưa vội ép đặt lịch'
-  },
-  {
-    label: '2. Hỏi Câu Cụt Nối Tiếp (Nhớ ngữ cảnh)',
-    type: 'normal',
-    message: 'Giá sao em? Có cam kết bảo hành gì không?',
-    expected: 'Tự hiểu khách đang hỏi tiếp gói Trị Nám ở lượt 1; báo giá 4.500.000đ/buổi kèm BH tái phát 12 tháng bằng văn bản'
-  },
-  {
-    label: '3. Khách Chê Đắt & Sợ Phụ Phí / Tip',
-    type: 'normal',
-    message: 'Sao giá cao hơn mấy spa nhỏ gần nhà chị thế? Làm xong có bắt mua thêm mỹ phẩm hay phải đưa tiền Tip cho nhân viên không em?',
-    expected: 'Đồng cảm khéo léo, cam kết giá trọn gói 100% + không nhận tiền Tip + gợi ý Combo giảm 10-15%'
-  },
-  {
-    label: '4. Khách Chốt Đặt Lịch & Để Lại SĐT',
-    type: 'lead',
-    message: 'Ok em tư vấn dễ thương quá, vậy đặt lịch cho chị chiều thứ 7 tuần này qua bác sĩ soi da trước nhé, sđt chị là 0912.345.678',
-    expected: 'Tự động bắt SĐT 0912345678 & khung giờ "chiều thứ 7", xác nhận lịch hẹn và bật cờ báo Sale gọi xác nhận'
-  },
-  {
-    label: '5. Hỏi Dịch Vụ Ngoài Tài Liệu (Đẩy cho Người)',
-    type: 'handoff',
-    message: 'À bên em có nhận tiêm Filler cằm Hàn Quốc và phẫu thuật cắt mí mắt không? Báo giá giúp chị luôn nhé!',
-    expected: 'Tuyệt đối KHÔNG bịa giá; bật cờ needs_human_handoff = true (UNGROUNDED_OR_UNKNOWN) và hẹn chuyên viên tư vấn'
-  },
-  {
-    label: '6. Ca Khó: Báo Kích Ứng / Đòi Gặp Quản Lý',
-    type: 'handoff',
-    message: 'Em ơi hôm qua bạn chị làm liệu trình về da bị kích ứng đỏ rát quá, cho chị gặp quản lý hoặc bác sĩ xử lý ngay!',
-    expected: 'Dừng AI ngay lập tức (Pre-LLM Handoff), xin lỗi chân thành và chuyển thẳng cho Quản lý / Bác sĩ xử lý'
-  }
-]
-
 const formatStageLabel = (stage) => {
   const map = {
     DISCOVERY: '1. Thấu cảm & Khai thác nhu cầu',
@@ -1071,7 +1033,7 @@ const deliverBubbles = async (response) => {
       if (i > 0) {
         isTyping.value = true
         scrollToBottom()
-        const delay = Math.max(2200, Math.min(3500, bubbles[i].typing_delay_ms || 2700))
+        const delay = Math.max(350, Math.min(600, bubbles[i].typing_delay_ms || 450))
         await sleep(delay)
       }
       isTyping.value = false
@@ -1108,7 +1070,7 @@ const sendCustomerMessage = (rawText) => {
   burstDebounceTimer = setTimeout(() => {
     burstDebounceTimer = null
     flushBurst()
-  }, 3000)
+  }, 350)
 }
 
 const flushBurst = async () => {
@@ -1126,46 +1088,20 @@ const flushBurst = async () => {
 
   try {
     const singleMessage = messagesToSend.join('. ')
-    let response
     const docIds = props.selectedDocs.map(d => d.document_id)
     const prevTemp = currentInsight.value?.buying_temperature ?? null
 
-    if (!api.isMockMode()) {
-      try {
-        response = await api.sendFanpageBotMessage({
-          pageId: props.activePage?.id || null,
-          senderId: 'fb-customer-demo',
-          customerName: null,
-          message: singleMessage,
-          messages: messagesToSend.length > 1 ? messagesToSend : null,
-          history: conversationHistory.value,
-          documentIds: docIds,
-          previousTemperature: prevTemp,
-          topK: 5
-        })
-      } catch (liveErr) {
-        if (props.isConnected) throw liveErr
-        await sleep(400)
-        response = mockFanpageBotReply({
-          message: singleMessage,
-          messages: messagesToSend.length > 1 ? messagesToSend : null,
-          history: conversationHistory.value,
-          customerName: null,
-          pageId: props.activePage?.id || null,
-          previousTemperature: prevTemp
-        })
-      }
-    } else {
-      await sleep(400)
-      response = mockFanpageBotReply({
-        message: singleMessage,
-        messages: messagesToSend.length > 1 ? messagesToSend : null,
-        history: conversationHistory.value,
-        customerName: null,
-        pageId: props.activePage?.id || null,
-        previousTemperature: prevTemp
-      })
-    }
+    const response = await api.sendFanpageBotMessage({
+      pageId: props.activePage?.id || null,
+      senderId: 'fb-customer-demo',
+      customerName: null,
+      message: singleMessage,
+      messages: messagesToSend.length > 1 ? messagesToSend : null,
+      history: conversationHistory.value,
+      documentIds: docIds,
+      previousTemperature: prevTemp,
+      topK: 5
+    })
 
     // Cập nhật lịch sử hội thoại
     for (const msg of messagesToSend) {
@@ -1196,15 +1132,9 @@ const flushBurst = async () => {
     await deliverBubbles(response)
   } catch (err) {
     chatItems.value.push({
-      role: 'assistant',
-      text: 'Dạ hệ thống đang chuyển kết nối tới Chuyên viên tư vấn trực tiếp của Page để hỗ trợ Chị ngay ạ!',
-      isHandoff: true,
-      appliedRules: [],
-      activeSkills: []
+      role: 'timeline',
+      text: `⚠️ Kết nối tạm thời gián đoạn (${err.message || 'Lỗi mạng'}). Bạn có thể gửi lại tin nhắn ngay bên dưới.`
     })
-    isHandedOffToHuman.value = true
-    lastHandoffCategory.value = 'CONNECTION_FALLBACK'
-    lastHandoffReason.value = err.message || 'Lỗi kết nối API'
   } finally {
     isSending.value = false
     isTyping.value = false
@@ -1233,55 +1163,23 @@ const simulateIdle = async (seconds) => {
   isTyping.value = true
 
   try {
-    let response
     const docIds = props.selectedDocs.map(d => d.document_id)
     const prevTemp = currentInsight.value?.buying_temperature ?? 70
 
-    if (!api.isMockMode()) {
-      try {
-        response = await api.sendFanpageBotMessage({
-          pageId: props.activePage?.id || null,
-          senderId: 'fb-customer-demo',
-          customerName: null,
-          message: '',
-          history: conversationHistory.value,
-          documentIds: docIds,
-          idleSeconds: seconds,
-          replyDelaySeconds: seconds,
-          previousTemperature: prevTemp,
-          action: 'REENGAGE',
-          isIdleReengage: true,
-          topK: 5
-        })
-      } catch (liveErr) {
-        if (props.isConnected) throw liveErr
-        await sleep(500)
-        response = mockFanpageBotReply({
-          message: '',
-          history: conversationHistory.value,
-          customerName: null,
-          pageId: props.activePage?.id || null,
-          idleSeconds: seconds,
-          replyDelaySeconds: seconds,
-          previousTemperature: prevTemp,
-          action: 'REENGAGE',
-          isIdleReengage: true
-        })
-      }
-    } else {
-      await sleep(500)
-      response = mockFanpageBotReply({
-        message: '',
-        history: conversationHistory.value,
-        customerName: null,
-        pageId: props.activePage?.id || null,
-        idleSeconds: seconds,
-        replyDelaySeconds: seconds,
-        previousTemperature: prevTemp,
-        action: 'REENGAGE',
-        isIdleReengage: true
-      })
-    }
+    const response = await api.sendFanpageBotMessage({
+      pageId: props.activePage?.id || null,
+      senderId: 'fb-customer-demo',
+      customerName: null,
+      message: '',
+      history: conversationHistory.value,
+      documentIds: docIds,
+      idleSeconds: seconds,
+      replyDelaySeconds: seconds,
+      previousTemperature: prevTemp,
+      action: 'REENGAGE',
+      isIdleReengage: true,
+      topK: 5
+    })
 
     conversationHistory.value.push({ role: 'assistant', content: response.reply_text })
 
@@ -1308,15 +1206,9 @@ const simulateIdle = async (seconds) => {
     await deliverBubbles(response)
   } catch (err) {
     chatItems.value.push({
-      role: 'assistant',
-      text: 'Dạ hệ thống đang chuyển kết nối tới Chuyên viên tư vấn trực tiếp của Page để hỗ trợ Chị ngay ạ!',
-      isHandoff: true,
-      appliedRules: [],
-      activeSkills: []
+      role: 'timeline',
+      text: `⚠️ Kết nối tạm thời gián đoạn (${err.message || 'Lỗi mạng'}). Bạn có thể gửi lại tin nhắn ngay bên dưới.`
     })
-    isHandedOffToHuman.value = true
-    lastHandoffCategory.value = 'CONNECTION_FALLBACK'
-    lastHandoffReason.value = err.message || 'Lỗi kết nối API'
   } finally {
     isSending.value = false
     isTyping.value = false
@@ -1566,40 +1458,14 @@ const runHarnessOptimization = async (assistantIdx) => {
   optimizingAssistantIndex.value = assistantIdx
 
   try {
-    let result
-    if (!api.isMockMode()) {
-      try {
-        result = await api.harness.optimize({
-          pageId: props.activePage?.id || null,
-          customerMessage: customerMsg,
-          baseResponse: baseResp,
-          temperatureDelta: tempDelta,
-          history: priorHistory.map(h => `${h.role}: ${h.content}`),
-          triggeredHooks: currentTriggeredHooks
-        })
-      } catch (liveErr) {
-        if (props.isConnected) throw liveErr
-        await sleep(650)
-        result = mockHarnessOptimize({
-          pageId: props.activePage?.id || null,
-          customerMessage: customerMsg,
-          baseResponse: baseResp,
-          temperatureDelta: tempDelta,
-          history: priorHistory.map(h => `${h.role}: ${h.content}`),
-          triggeredHooks: currentTriggeredHooks
-        })
-      }
-    } else {
-      await sleep(650)
-      result = mockHarnessOptimize({
-        pageId: props.activePage?.id || null,
-        customerMessage: customerMsg,
-        baseResponse: baseResp,
-        temperatureDelta: tempDelta,
-        history: priorHistory.map(h => `${h.role}: ${h.content}`),
-        triggeredHooks: currentTriggeredHooks
-      })
-    }
+    const result = await api.harness.optimize({
+      pageId: props.activePage?.id || null,
+      customerMessage: customerMsg,
+      baseResponse: baseResp,
+      temperatureDelta: tempDelta,
+      history: priorHistory.map(h => `${h.role}: ${h.content}`),
+      triggeredHooks: currentTriggeredHooks
+    })
 
     harnessResult.value = result
     isHarnessModalOpen.value = true
@@ -1733,31 +1599,11 @@ const runWholeConversationAudit = async () => {
 
   isAuditingConversation.value = true
   try {
-    let result
-    if (!api.isMockMode()) {
-      try {
-        result = await api.harness.auditConversation({
-          pageId: props.activePage?.id || null,
-          turns,
-          autoApplyRules: true
-        })
-      } catch (liveErr) {
-        if (props.isConnected) throw liveErr
-        await sleep(700)
-        result = mockHarnessConversationAudit({
-          pageId: props.activePage?.id || null,
-          turns,
-          autoApplyRules: true
-        })
-      }
-    } else {
-      await sleep(700)
-      result = mockHarnessConversationAudit({
-        pageId: props.activePage?.id || null,
-        turns,
-        autoApplyRules: true
-      })
-    }
+    const result = await api.harness.auditConversation({
+      pageId: props.activePage?.id || null,
+      turns,
+      autoApplyRules: true
+    })
 
     conversationAuditResult.value = normalizeConversationAuditResult(result)
     isConversationAuditModalOpen.value = true
@@ -4037,10 +3883,146 @@ onBeforeUnmount(() => {
   margin-top: 4px;
 }
 
+.fb-sim-mobile-tabs {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .modal-backdrop {
+    padding: 0;
+  }
+
+  .fb-sim-modal {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+
+  .fb-sim-header {
+    padding: 10px 14px;
+  }
+
+  .fb-sim-subtitle,
+  .api-pill {
+    display: none;
+  }
+
+  .fb-sim-title {
+    font-size: 0.92rem;
+  }
+
+  .fb-sim-mobile-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #F0F4F9;
+    border-bottom: 1px solid #DDE3EA;
+    flex-shrink: 0;
+  }
+
+  .fb-sim-mobile-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #444746;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .fb-sim-mobile-tab.active {
+    background: #0B57D0;
+    color: #FFFFFF;
+    box-shadow: 0 2px 6px rgba(11, 87, 208, 0.2);
+  }
+
+  .sim-m-badge {
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  .fb-sim-mobile-tab.active .sim-m-badge {
+    background: rgba(255, 255, 255, 0.24);
+    color: #FFFFFF;
+  }
+
+  .fb-sim-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .messenger-pane,
+  .telemetry-pane {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    border-right: none;
+  }
+
+  .fb-sim-body.mobile-sim-chat .telemetry-pane {
+    display: none !important;
+  }
+
+  .fb-sim-body.mobile-sim-telemetry .messenger-pane {
+    display: none !important;
+  }
+
+  .messenger-topbar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .messenger-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .btn-conv-audit-sim,
+  .btn-skill-sim,
+  .btn-reset-sim {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.7rem;
+    padding: 5px 8px;
+  }
+
+  .idle-simulation-bar {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+  }
+
+  .messenger-input {
+    font-size: 16px !important;
+  }
+}
+
 @media (max-width: 768px) {
   .conv-diagnosis-grid,
-  .candidates-comparison-grid {
+  .candidates-comparison-grid,
+  .insight-top-grid {
     grid-template-columns: 1fr;
+  }
+
+  .assistant-bubble-col {
+    max-width: 90%;
   }
 }
 </style>

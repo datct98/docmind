@@ -83,17 +83,6 @@
       </div>
 
       <div class="topbar-right">
-        <!-- Workspace Quick Simulator Trigger -->
-        <button
-          v-if="currentView === 'workspace'"
-          class="btn btn-tonal btn-sm topbar-sim-btn"
-          title="Mở Trình Giả Lập Bot Trực Tin Nhắn Fanpage FB"
-          @click="openWorkspaceSimulator"
-        >
-          <span>💬 Giả lập Chat Fanpage</span>
-          <span class="sim-live-tag">Bot FB</span>
-        </button>
-
         <!-- Agent Skill Registry Button -->
         <button
           class="btn btn-secondary btn-sm topbar-action-btn"
@@ -146,23 +135,6 @@
             {{ llmHealth.api_key_masked }}
           </span>
         </button>
-
-        <!-- Connection Status Indicator -->
-        <div
-          class="connection-pill"
-          :class="isConnected ? 'is-live' : 'is-demo'"
-          :title="isConnected ? 'Đã kết nối Backend Spring Boot (8090)' : 'Đang chạy Chế độ Demo trực quan'"
-        >
-          <span class="conn-dot"></span>
-          <span>{{ isConnected ? 'API Live' : 'Demo Mode' }}</span>
-          <button
-            class="conn-switch-btn"
-            :title="isConnected ? 'Chuyển sang Chế độ Demo' : 'Thử kết nối lại Backend 8090'"
-            @click="toggleDemoMode"
-          >
-            ↻
-          </button>
-        </div>
       </div>
     </header>
 
@@ -386,50 +358,104 @@
     </main>
 
     <!-- ===================================================================== -->
-    <!-- VIEW 2: PAGE WORKSPACE SCREEN (NotebookLM Floating Bento Cards)       -->
+    <!-- VIEW 2: PAGE WORKSPACE SCREEN (Omnichannel Inbox + Floating Bubbles)  -->
     <!-- ===================================================================== -->
     <div v-else class="main-layout">
-      <!-- Left Floating Card: Sources / Documents Sidebar -->
-      <DocumentSidebar
-        :documents="documents"
-        :pages="pages"
-        :active-page-id="activePageId"
-        :selected-doc-ids="selectedDocIds"
-        :is-uploading="isUploading"
-        :is-connected="isConnected"
-        @upload-file="handleUpload"
-        @toggle-select="handleToggleSelect"
-        @toggle-select-all="handleToggleSelectAll"
-        @refresh-documents="fetchDocuments"
-        @view-detail="inspectingDoc = $event"
-        @delete-doc="confirmDeleteDoc"
-        @toggle-demo="toggleDemoMode"
-        @open-playbook="showPlaybookModal = true"
-        @select-page="handleSelectPage"
-        @create-page="handleCreatePage"
-        @update-page="handleUpdatePage"
-        @delete-page="confirmDeletePage"
-        @assign-page="handleAssignDocPage"
-        @back-to-hub="goToHub"
-      />
-
-      <!-- Right Floating Card: Grounded Chat Q&A & Studio -->
-      <ChatArea
-        ref="chatAreaRef"
-        :selected-docs="selectedDocuments"
-        :all-docs="documents"
-        :pages="pages"
+      <!-- Primary 3-Column Omnichannel Conversation Inbox (Left: KH List + Docs Tab | Center: Messenger Thread | Right: Customer Insight) -->
+      <LiveConversationInbox
+        ref="inboxRef"
         :active-page="activePage"
+        :active-page-id="activePage ? activePage.id : null"
+        :scoped-doc-count="selectedDocuments.length"
         :is-connected="isConnected"
-        :messages="messages"
-        :is-asking="isAsking"
-        :active-rules-count="activeRulesCount"
-        @ask-question="handleAskQuestion"
-        @clear-chat="handleClearChat"
-        @open-playbook="showPlaybookModal = true"
-        @open-skills="showSkillModal = true"
         @teach-ai="openTeachAi"
-      />
+        @open-playbook="showPlaybookModal = true"
+        @toast="showToast($event.message, $event.type || 'info')"
+      >
+        <template #document-sidebar>
+          <DocumentSidebar
+            :documents="documents"
+            :pages="pages"
+            :active-page-id="activePageId"
+            :selected-doc-ids="selectedDocIds"
+            :is-uploading="isUploading"
+            :is-connected="isConnected"
+            @upload-file="handleUpload"
+            @toggle-select="handleToggleSelect"
+            @toggle-select-all="handleToggleSelectAll"
+            @refresh-documents="fetchDocuments"
+            @view-detail="inspectingDoc = $event"
+            @delete-doc="confirmDeleteDoc"
+            @open-playbook="showPlaybookModal = true"
+            @select-page="handleSelectPage"
+            @create-page="handleCreatePage"
+            @update-page="handleUpdatePage"
+            @delete-page="confirmDeletePage"
+            @assign-page="handleAssignDocPage"
+            @back-to-hub="goToHub"
+          />
+        </template>
+      </LiveConversationInbox>
+
+      <!-- Floating Internal Q&A Drawer (Minimized into a Side Bubble when not needed) -->
+      <div v-show="showQaBubbleDrawer" class="floating-qa-drawer-window">
+        <div class="floating-qa-topbar">
+          <div class="floating-qa-title">
+            <span>📚 Hỏi đáp Tài liệu Nội bộ (RAG Q&A)</span>
+            <span class="floating-qa-sub">Tra cứu nhanh bảng giá & quy định cho Sale</span>
+          </div>
+          <button
+            class="btn-minimize-qa"
+            title="Thu gọn về bong bóng chat"
+            @click="showQaBubbleDrawer = false"
+          >
+            — Thu gọn
+          </button>
+        </div>
+        <div class="floating-qa-body">
+          <ChatArea
+            ref="chatAreaRef"
+            :selected-docs="selectedDocuments"
+            :all-docs="documents"
+            :pages="pages"
+            :active-page="activePage"
+            :is-connected="isConnected"
+            :messages="messages"
+            :is-asking="isAsking"
+            :active-rules-count="activeRulesCount"
+            @ask-question="handleAskQuestion"
+            @clear-chat="handleClearChat"
+            @open-playbook="showPlaybookModal = true"
+            @open-skills="showSkillModal = true"
+            @teach-ai="openTeachAi"
+            @simulator-closed="inboxRef?.refreshInbox()"
+          />
+        </div>
+      </div>
+
+      <!-- Bottom-Right Floating Chat Bubbles Dock (Test Chat Bot + Hỏi đáp Q&A) -->
+      <div class="floating-bubbles-dock">
+        <button
+          class="floating-bubble-pill bubble-qa"
+          :class="{ active: showQaBubbleDrawer }"
+          title="Bật/Tắt Bong bóng Hỏi đáp Tài liệu Q&A Nội bộ"
+          @click="showQaBubbleDrawer = !showQaBubbleDrawer"
+        >
+          <span class="bubble-icon">📚</span>
+          <span class="bubble-label">Hỏi đáp Q&A</span>
+          <span v-if="messages.length > 0" class="bubble-count-tag">{{ messages.length }}</span>
+        </button>
+
+        <button
+          class="floating-bubble-pill bubble-test-bot"
+          title="Mở Bong bóng Test Chat Bot Fanpage (Giả lập kịch bản độc lập)"
+          @click="openWorkspaceSimulator"
+        >
+          <span class="bubble-icon">💬</span>
+          <span class="bubble-label">Test Chat Bot</span>
+          <span class="bubble-live-dot"></span>
+        </button>
+      </div>
     </div>
 
     <!-- ===================================================================== -->
@@ -563,7 +589,7 @@
     <!-- Agent Skill Registry Modal -->
     <AgentSkillModal
       v-if="showSkillModal"
-      :demo-mode="!isConnected"
+      :demo-mode="false"
       :pages="pages"
       :active-page-id="activePage ? activePage.id : null"
       @close="showSkillModal = false"
@@ -713,7 +739,7 @@
           <button class="btn btn-secondary" @click="showLlmHealthModal = false">
             Đóng
           </button>
-          <button class="btn btn-primary" :disabled="isPingingLlm || !isConnected" @click="runLlmLivePing">
+          <button class="btn btn-primary" :disabled="isPingingLlm" @click="runLlmLivePing">
             <span v-if="!isPingingLlm">⚡ Test Kết Nối & API Key Ngay (Live Ping)</span>
             <span v-else>⏳ Đang gửi gói tin kiểm tra tới {{ llmHealth.model || 'LLM' }}...</span>
           </button>
@@ -726,17 +752,9 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { api } from './api'
-import {
-  initialMockDocuments,
-  mockChatAnswer,
-  getMockRules,
-  getMockPages,
-  createMockPage,
-  updateMockPage,
-  deleteMockPage
-} from './mockData'
 import DocumentSidebar from './components/DocumentSidebar.vue'
 import ChatArea from './components/ChatArea.vue'
+import LiveConversationInbox from './components/LiveConversationInbox.vue'
 import DocumentDetailModal from './components/DocumentDetailModal.vue'
 import PlaybookModal from './components/PlaybookModal.vue'
 import AgentSkillModal from './components/AgentSkillModal.vue'
@@ -754,7 +772,7 @@ const selectedDocIds = ref([])
 const messages = ref([])
 const isUploading = ref(false)
 const isAsking = ref(false)
-const isConnected = ref(false)
+const isConnected = ref(true)
 const inspectingDoc = ref(null)
 const deletingDoc = ref(null)
 const deletingPage = ref(null)
@@ -762,11 +780,13 @@ const isDeleting = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 const chatAreaRef = ref(null)
+const inboxRef = ref(null)
+const showQaBubbleDrawer = ref(false)
 
 const showPlaybookModal = ref(false)
 const showSkillModal = ref(false)
 const teachingFeedback = ref(null)
-const activeRulesCount = ref(3)
+const activeRulesCount = ref(0)
 
 // LLM & API Key Healthcheck state
 const showLlmHealthModal = ref(false)
@@ -824,7 +844,6 @@ const formatCheckedAt = (iso) => {
 }
 
 const fetchLlmHealth = async (ping = false) => {
-  if (!isConnected.value) return
   if (ping) isPingingLlm.value = true
   try {
     const data = await api.getLlmHealth(ping)
@@ -840,18 +859,14 @@ const fetchLlmHealth = async (ping = false) => {
 
 const openLlmHealthModal = () => {
   showLlmHealthModal.value = true
-  if (isConnected.value && llmHealth.value.latency_ms == null && !isPingingLlm.value) {
+  if (llmHealth.value.latency_ms == null && !isPingingLlm.value) {
     runLlmLivePing()
-  } else if (isConnected.value) {
+  } else {
     fetchLlmHealth(false)
   }
 }
 
 const runLlmLivePing = async () => {
-  if (!isConnected.value) {
-    showToast('Đang ở Chế độ Demo. Hãy kết nối Backend 8090 để ping thật tới LLM.', 'info')
-    return
-  }
   isPingingLlm.value = true
   try {
     const data = await api.pingLlm()
@@ -941,7 +956,7 @@ const getPageRuleCount = (pageId) => {
   if (pageObj && pageObj.rule_count !== undefined) {
     return pageObj.rule_count
   }
-  return getMockRules({ active: true, pageId, includeGlobal: false }).length
+  return 0
 }
 
 const getNotebookThemeClass = (index) => {
@@ -1061,36 +1076,14 @@ const executeDeletePage = async () => {
 }
 
 /**
- * Kiểm tra backend và tải dữ liệu ban đầu
+ * Tải dữ liệu ban đầu trực tiếp từ Backend API
  */
 const initApp = async () => {
-  try {
-    const online = await api.checkHealth()
-    if (online) {
-      isConnected.value = true
-      fetchLlmHealth(false).then(() => fetchLlmHealth(true))
-      await fetchPages()
-      await fetchDocuments()
-      await fetchInitialRulesCount()
-      showToast('Đã kết nối thành công tới DocMind Backend (cổng 8090)', 'success')
-    } else {
-      useDemoData()
-      showToast('Backend chưa chạy. Đang hiển thị giao diện ở Chế độ Demo trực quan.', 'info')
-    }
-  } catch {
-    useDemoData()
-  }
-}
-
-const useDemoData = () => {
-  isConnected.value = false
-  pages.value = getMockPages()
-  documents.value = JSON.parse(JSON.stringify(initialMockDocuments))
-  if (!activePageId.value && pages.value.length > 0) {
-    activePageId.value = pages.value[0].id
-  }
-  syncSelectedDocsForActivePage()
-  fetchInitialRulesCount()
+  isConnected.value = true
+  fetchLlmHealth(false).then(() => fetchLlmHealth(true))
+  await fetchPages()
+  await fetchDocuments()
+  await fetchInitialRulesCount()
 }
 
 const syncSelectedDocsForActivePage = () => {
@@ -1119,10 +1112,6 @@ const handleSelectPage = (pageId) => {
 }
 
 const fetchPages = async () => {
-  if (!isConnected.value) {
-    pages.value = getMockPages()
-    return
-  }
   try {
     pages.value = await api.getPages()
     if (!activePageId.value && pages.value.length > 0) {
@@ -1139,19 +1128,14 @@ const fetchPages = async () => {
       }
     }
   } catch (err) {
-    console.warn('Fetch pages error:', err)
-    pages.value = getMockPages()
+    console.error('Fetch pages error:', err)
+    showToast(`Lỗi tải danh sách Fanpage: ${err.message}`, 'error')
   }
 }
 
 const handleCreatePage = async (payload) => {
   try {
-    let created = null
-    if (isConnected.value) {
-      created = await api.createPage(payload)
-    } else {
-      created = createMockPage(payload)
-    }
+    const created = await api.createPage(payload)
     pages.value.unshift(created)
     handleSelectPage(created.id)
     showToast(`📂 Đã tạo Fanpage "${created.name}" thành công!`, 'success')
@@ -1164,12 +1148,7 @@ const handleCreatePage = async (payload) => {
 
 const handleUpdatePage = async ({ id, data }) => {
   try {
-    let updated = null
-    if (isConnected.value) {
-      updated = await api.updatePage(id, data)
-    } else {
-      updated = updateMockPage(id, data)
-    }
+    const updated = await api.updatePage(id, data)
     const idx = pages.value.findIndex(p => p.id === id)
     if (idx !== -1 && updated) {
       pages.value[idx] = { ...pages.value[idx], ...updated }
@@ -1182,11 +1161,7 @@ const handleUpdatePage = async ({ id, data }) => {
 
 const handleDeletePage = async (page) => {
   try {
-    if (isConnected.value) {
-      await api.deletePage(page.id)
-    } else {
-      deleteMockPage(page.id)
-    }
+    await api.deletePage(page.id)
     pages.value = pages.value.filter(p => p.id !== page.id)
     documents.value.forEach(d => {
       if (d.page_id === page.id) d.page_id = null
@@ -1203,9 +1178,7 @@ const handleDeletePage = async (page) => {
 const handleAssignDocPage = async ({ documentId, docId, pageId }) => {
   const targetDocId = documentId || docId
   try {
-    if (isConnected.value) {
-      await api.assignDocumentPage(targetDocId, pageId)
-    }
+    await api.assignDocumentPage(targetDocId, pageId)
     const doc = documents.value.find(d => d.document_id === targetDocId)
     if (doc) {
       doc.page_id = pageId || null
@@ -1224,42 +1197,15 @@ const handleAssignDocPage = async ({ documentId, docId, pageId }) => {
   }
 }
 
-const toggleDemoMode = async () => {
-  if (!isConnected.value) {
-    try {
-      showToast('Đang thử kết nối tới backend localhost:8090...', 'info')
-      const online = await api.checkHealth()
-      if (online) {
-        isConnected.value = true
-        await fetchPages()
-        await fetchDocuments()
-        await fetchInitialRulesCount()
-        showToast('Kết nối backend thành công!', 'success')
-      } else {
-        showToast('Không thể kết nối localhost:8090. Vẫn giữ Chế độ Demo.', 'error')
-      }
-    } catch (e) {
-      showToast(`Kết nối thất bại: ${e.message}`, 'error')
-    }
-  } else {
-    useDemoData()
-    showToast('Đã chuyển sang Chế độ Demo (dữ liệu mẫu)', 'info')
-  }
-}
-
 const fetchInitialRulesCount = async () => {
   const effectivePageId = currentView.value === 'workspace' && activePage.value
     ? activePage.value.id
     : undefined
   try {
-    if (isConnected.value) {
-      const list = await api.getRules({ active: true, pageId: effectivePageId })
-      activeRulesCount.value = list.length
-    } else {
-      activeRulesCount.value = getMockRules({ active: true, pageId: effectivePageId }).length
-    }
-  } catch {
-    activeRulesCount.value = getMockRules({ active: true, pageId: effectivePageId }).length
+    const list = await api.getRules({ active: true, pageId: effectivePageId })
+    activeRulesCount.value = list.length
+  } catch (err) {
+    console.warn('Fetch initial rules count error:', err)
   }
 }
 
@@ -1288,11 +1234,6 @@ const handleRulesChanged = ({ rules }) => {
 }
 
 const fetchDocuments = async () => {
-  if (!isConnected.value) {
-    showToast('Đã làm mới dữ liệu demo', 'info', 2000)
-    return
-  }
-
   try {
     const list = await api.getDocuments()
     documents.value = list
@@ -1311,12 +1252,6 @@ const startPolling = (docId) => {
   if (pollingTimers.has(docId)) return
 
   const timer = setInterval(async () => {
-    if (!isConnected.value) {
-      clearInterval(timer)
-      pollingTimers.delete(docId)
-      return
-    }
-
     try {
       const statusRes = await api.getDocumentStatus(docId)
       const idx = documents.value.findIndex(d => d.document_id === docId)
@@ -1348,40 +1283,6 @@ const startPolling = (docId) => {
 const handleUpload = async (file) => {
   isUploading.value = true
   const uploadPageId = activePage.value ? activePage.value.id : null
-
-  if (!isConnected.value) {
-    setTimeout(() => {
-      const newDocId = `doc-demo-${Date.now()}`
-      const newDoc = {
-        document_id: newDocId,
-        filename: file.name,
-        status: 'PARSING',
-        pages: Math.floor(Math.random() * 15) + 2,
-        page_id: uploadPageId,
-        engine_breakdown: {},
-        created_at: new Date().toISOString()
-      }
-      documents.value.unshift(newDoc)
-      isUploading.value = false
-      showToast(
-        uploadPageId
-          ? `Đã tải lên "${file.name}" vào Page "${activePage.value.name}". Đang bóc tách...`
-          : `Đã tải lên "${file.name}". Đang bóc tách block...`,
-        'info'
-      )
-
-      setTimeout(() => {
-        const target = documents.value.find(d => d.document_id === newDocId)
-        if (target) {
-          target.status = 'READY'
-          target.engine_breakdown = { pymupdf: target.pages }
-          selectedDocIds.value.push(newDocId)
-          showToast(`Tài liệu "${file.name}" đã phân tích sẵn sàng!`, 'success')
-        }
-      }, 4000)
-    }, 1200)
-    return
-  }
 
   try {
     const res = await api.uploadDocument(file, uploadPageId)
@@ -1454,35 +1355,6 @@ const handleAskQuestion = async ({ question, documentIds, topK }) => {
   isAsking.value = true
   chatAreaRef.value?.scrollToBottom()
 
-  if (!isConnected.value) {
-    setTimeout(() => {
-      const res = mockChatAnswer({
-        question,
-        previousQuestion: prevUserMsg?.content,
-        previousAnswer: prevAssistantMsg?.content,
-        pageId: currentPageId
-      })
-
-      messages.value.push({
-        role: 'assistant',
-        question,
-        content: res.answer,
-        citations: res.citations || [],
-        applied_rules: res.applied_rules || [],
-        newly_learned_rule: res.newly_learned_rule || null
-      })
-
-      if (res.newly_learned_rule) {
-        activeRulesCount.value++
-        showToast('✨ AI đã tự học quy tắc mới từ phản hồi hội thoại của bạn!', 'success')
-      }
-
-      isAsking.value = false
-      chatAreaRef.value?.scrollToBottom()
-    }, 1200)
-    return
-  }
-
   try {
     const res = await api.chat({
       documentIds,
@@ -1536,9 +1408,7 @@ const executeDelete = async () => {
   isDeleting.value = true
 
   try {
-    if (isConnected.value) {
-      await api.deleteDocument(doc.document_id)
-    }
+    await api.deleteDocument(doc.document_id)
 
     if (pollingTimers.has(doc.document_id)) {
       clearInterval(pollingTimers.get(doc.document_id))
@@ -1557,33 +1427,11 @@ const executeDelete = async () => {
   }
 }
 
-let healthRecoveryTimer = null
-
 onMounted(() => {
   initApp()
-  healthRecoveryTimer = setInterval(async () => {
-    if (!isConnected.value && !api.isMockMode()) {
-      try {
-        const online = await api.checkHealth()
-        if (online) {
-          isConnected.value = true
-          await fetchPages()
-          await fetchDocuments()
-          await fetchInitialRulesCount()
-          showToast('Đã tự động kết nối lại tới DocMind Backend (cổng 8090)!', 'success')
-        }
-      } catch {
-        // ignore while offline
-      }
-    }
-  }, 5000)
 })
 
 onUnmounted(() => {
-  if (healthRecoveryTimer) {
-    clearInterval(healthRecoveryTimer)
-    healthRecoveryTimer = null
-  }
   pollingTimers.forEach(timer => clearInterval(timer))
   pollingTimers.clear()
 })
@@ -1593,6 +1441,7 @@ onUnmounted(() => {
 .app-shell {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1813,52 +1662,6 @@ onUnmounted(() => {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: var(--radius-full);
-}
-
-.connection-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.73rem;
-  font-weight: 600;
-  border: 1px solid var(--border-subtle);
-  background: #FFFFFF;
-}
-
-.connection-pill.is-live {
-  background: var(--status-ready-bg);
-  border-color: var(--status-ready-border);
-  color: var(--status-ready-text);
-}
-
-.connection-pill.is-demo {
-  background: var(--status-parsing-bg);
-  border-color: var(--status-parsing-border);
-  color: var(--status-parsing-text);
-}
-
-.conn-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.conn-switch-btn {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
-  padding: 0 2px;
-  opacity: 0.75;
-}
-
-.conn-switch-btn:hover {
-  opacity: 1;
 }
 
 /* ========================================================================= */
@@ -2851,5 +2654,317 @@ onUnmounted(() => {
   border-radius: 10px;
   padding: 9px 12px;
   line-height: 1.45;
+}
+
+/* ========================================================================= */
+/* FLOATING BUBBLES DOCK & INTERNAL Q&A DRAWER WINDOW                        */
+/* ========================================================================= */
+.floating-bubbles-dock {
+  position: fixed;
+  right: 22px;
+  bottom: 18px;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.floating-bubble-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floating-bubble-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+}
+
+.bubble-qa {
+  background: #ffffff;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+
+.bubble-qa.active {
+  background: #1e293b;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.bubble-test-bot {
+  background: linear-gradient(135deg, #0b57d0, #1a73e8);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.bubble-icon {
+  font-size: 16px;
+}
+
+.bubble-count-tag {
+  background: #e2e8f0;
+  color: #0f172a;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.bubble-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.3);
+}
+
+.floating-qa-drawer-window {
+  position: fixed;
+  right: 22px;
+  bottom: 70px;
+  width: min(640px, calc(100vw - 44px));
+  height: min(680px, calc(100vh - 140px));
+  z-index: 940;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 22px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.floating-qa-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.floating-qa-title {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.floating-qa-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.btn-minimize-qa {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-minimize-qa:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.floating-qa-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.floating-qa-body :deep(.chat-container) {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  height: 100% !important;
+}
+
+/* ========================================================================= */
+/* MOBILE & TABLET RESPONSIVENESS (<= 960px & <= 640px)                      */
+/* ========================================================================= */
+@media (max-width: 960px) {
+  .notebook-topbar {
+    height: auto;
+    min-height: 52px;
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topbar-left {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .topbar-right {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+
+  .brand-badge-sub,
+  .topbar-divider,
+  .topbar-industry-pill,
+  .topbar-audience-pill {
+    display: none;
+  }
+
+  .topbar-page-select {
+    max-width: 185px;
+    font-size: 0.8rem;
+  }
+
+  .main-layout {
+    padding: 0 8px 54px;
+    gap: 8px;
+  }
+
+  .floating-bubbles-dock {
+    right: 10px;
+    left: 10px;
+    bottom: 8px;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .floating-bubble-pill {
+    padding: 8px 13px;
+    font-size: 12px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+  }
+
+  .floating-qa-drawer-window {
+    right: 8px;
+    left: 8px;
+    bottom: 52px;
+    width: auto;
+    height: calc(100dvh - 116px);
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .btn-back-hub span {
+    display: none;
+  }
+
+  .btn-back-hub {
+    padding: 6px 9px;
+  }
+
+  .brand-logo-notebook {
+    width: 28px;
+    height: 28px;
+  }
+
+  .brand-name {
+    font-size: 0.96rem;
+  }
+
+  .btn-config-page {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .llm-health-badge {
+    display: none;
+  }
+
+  .hub-view-container {
+    padding: 10px 12px 72px;
+  }
+
+  .hub-hero {
+    padding: 18px 16px;
+    gap: 14px;
+    border-radius: 18px;
+  }
+
+  .hub-title {
+    font-size: clamp(1.25rem, 1rem + 2vw, 1.5rem);
+  }
+
+  .hub-subtitle {
+    font-size: 0.84rem;
+  }
+
+  .hub-summary-pills {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .summary-stat-pill {
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .stat-num {
+    font-size: 1.15rem;
+  }
+
+  .stat-label {
+    font-size: 0.68rem;
+  }
+
+  .hub-search-box {
+    min-width: 100%;
+  }
+
+  .notebooks-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .notebook-card {
+    padding: 16px;
+    min-height: 200px;
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-body {
+    padding: 14px 16px;
+  }
+
+  .modal-footer {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+
+  .form-row-2col,
+  .llm-info-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

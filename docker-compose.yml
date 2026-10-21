@@ -43,6 +43,8 @@ services:
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
       # false = không ghi artifact debug (ảnh render, JSON trung gian) ra đĩa.
       - DOCMIND_PERSIST_ARTIFACTS=${DOCMIND_PERSIST_ARTIFACTS:-false}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
+      - DOCMIND_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"]
       interval: 15s
@@ -64,12 +66,16 @@ services:
     env_file:
       - path: ./.env
         required: false
+      - path: ./api-java/.env
+        required: false
     environment:
       # Trong mạng compose dùng hostname service + cổng nội bộ 5432.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/docmind
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-docmind}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:-docmind}}
       - DOC_SERVICE_BASE_URL=http://doc-service-py:8091
+      - DOC_SERVICE_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
+      - DOCMIND_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
       # Unified Multi-Provider LLM Configuration (R4)
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LLM_MODEL=${LLM_MODEL:-}
@@ -86,9 +92,9 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
     volumes:
-      # Mount trực tiếp .env để khi sửa .env và bấm Restart container (docker restart docmind-api),
-      # DocmindApiApplication.loadDotenv() sẽ nạp ngay cấu hình / API key mới nhất mà không cần recreate container.
-      - ./.env:/app/.env:ro
+      # Mount trực tiếp ./api-java/.env (thư mục Spring Boot) vào /app/.env để khi sửa api-java/.env và bấm Restart container,
+      # DocmindApiApplication.loadDotenv() sẽ nạp ngay API key mới nhất!
+      - ./api-java/.env:/app/.env:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -118,7 +124,9 @@ services:
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: docmind-tunnel
-    command: tunnel --no-autoupdate --url http://frontend:80
+    command: tunnel --no-autoupdate --protocol http2 ${CLOUDFLARE_TUNNEL_TOKEN:+run --token} ${CLOUDFLARE_TUNNEL_TOKEN:---url http://frontend:80}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       frontend:
         condition: service_started

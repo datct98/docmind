@@ -25,9 +25,12 @@ public class RestClientConfig {
         factory.setConnectTimeout(Duration.ofMillis(props.getConnectTimeoutMs()));
         factory.setReadTimeout(Duration.ofMillis(props.getReadTimeoutMs()));
 
-        return RestClient.builder()
+        var builder = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
-                .requestFactory(factory)
-                .build();
+                .requestFactory(factory);
+        if (props.getInternalToken() != null && !props.getInternalToken().isBlank()) {
+            builder.defaultHeader("X-Internal-Token", props.getInternalToken().trim());
+        }
+        return builder.build();
     }
 }

@@ -37,7 +37,9 @@ public record LearnedRuleDto(
         @JsonProperty("dimension") String dimension,
         @JsonProperty("cue_signal") String cueSignal,
         @JsonProperty("contrastive_evidence") String contrastiveEvidence,
-        @JsonProperty("always_on") boolean alwaysOn
+        @JsonProperty("always_on") boolean alwaysOn,
+        @JsonProperty("review_status") String reviewStatus,
+        @JsonProperty("security_audit_notes") String securityAuditNotes
 ) {
     public LearnedRuleDto {
         if (confidenceScore <= 0.0) {
@@ -49,6 +51,37 @@ public record LearnedRuleDto(
         if (dimension == null || dimension.isBlank()) {
             dimension = "DOM";
         }
+        if (reviewStatus == null || reviewStatus.isBlank()) {
+            reviewStatus = "APPROVED";
+        }
+    }
+
+    public LearnedRuleDto(UUID id,
+                          String category,
+                          String triggerCondition,
+                          String rootCause,
+                          String generalizedRule,
+                          List<String> retrievalKeywords,
+                          boolean active,
+                          String pageId,
+                          double confidenceScore,
+                          int appliedCount,
+                          int successCount,
+                          int failCount,
+                          int version,
+                          String previousRuleText,
+                          String quarantinedReason,
+                          Instant lastAppliedAt,
+                          Instant createdAt,
+                          Instant updatedAt,
+                          String dimension,
+                          String cueSignal,
+                          String contrastiveEvidence,
+                          boolean alwaysOn) {
+        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, pageId,
+                confidenceScore, appliedCount, successCount, failCount, version, previousRuleText,
+                quarantinedReason, lastAppliedAt, createdAt, updatedAt, dimension, cueSignal,
+                contrastiveEvidence, alwaysOn, "APPROVED", null);
     }
 
     public LearnedRuleDto(UUID id,
@@ -162,7 +195,9 @@ public record LearnedRuleDto(
                 dim,
                 entity.getCueSignal(),
                 entity.getContrastiveEvidence(),
-                entity.isAlwaysOn()
+                entity.isAlwaysOn(),
+                entity.getReviewStatus() != null ? entity.getReviewStatus() : "APPROVED",
+                entity.getSecurityAuditNotes()
         );
     }
 
@@ -203,6 +238,8 @@ public record LearnedRuleDto(
                 .cueSignal(cueSignal)
                 .contrastiveEvidence(contrastiveEvidence)
                 .alwaysOn(alwaysOn)
+                .reviewStatus(reviewStatus != null && !reviewStatus.isBlank() ? reviewStatus : "APPROVED")
+                .securityAuditNotes(securityAuditNotes)
                 .build();
     }
 

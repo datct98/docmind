@@ -330,7 +330,7 @@ const props = defineProps({
   },
   isConnected: {
     type: Boolean,
-    default: false
+    default: true
   }
 })
 
@@ -341,7 +341,6 @@ const emit = defineEmits([
   'refresh-documents',
   'view-detail',
   'delete-doc',
-  'toggle-demo',
   'open-playbook',
   'select-page',
   'create-page',

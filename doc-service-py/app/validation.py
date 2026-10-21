@@ -94,10 +94,20 @@ def _sniff_mime(data: bytes) -> tuple[str, str]:
     if head.startswith(_OLE2):
         return "application/x-ole-storage", "OLE2 compound file (legacy office)"
 
-    # HTML — look for a tag near the start, case-insensitive.
-    lowered = head[:512].lower().lstrip()
-    if lowered.startswith(b"<!doctype html") or lowered.startswith(b"<html"):
-        return "text/html", "leading <html>/<!doctype html>"
+    # HTML — look for a tag near the start, case-insensitive (including Google Sheets HTML exports starting with <meta, <link, <style, <table, <div).
+    lowered = head[:1024].lower().lstrip()
+    if lowered.startswith((
+        b"<!doctype html",
+        b"<html",
+        b"<head",
+        b"<body",
+        b"<meta ",
+        b"<link ",
+        b"<style",
+        b"<table",
+        b"<div class=\"ritz",
+    )) or (b"<table" in lowered and (b"<tr" in lowered or b"<td" in lowered or b"<style" in lowered)):
+        return "text/html", "leading HTML/table markup"
 
     # Text-ish: decodable as UTF-8 with no NUL bytes -> markdown/plain text.
     if b"\x00" not in head:

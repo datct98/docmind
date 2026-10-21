@@ -23,6 +23,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import com.example.docmind.service.security.PromptSecurityGuard;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * REST Controller quản lý CRUD cho Bộ quy tắc rút kinh nghiệm (AI Playbook - F13).
@@ -34,19 +36,29 @@ public class RuleController {
     private final LearnedRuleRepository learnedRuleRepository;
     private final EmbeddingClient embeddingClient;
     private final com.example.docmind.service.MetaLearningService metaLearningService;
+    private final com.example.docmind.service.bot.FastApiAgentService fastApiAgentService;
 
     @org.springframework.beans.factory.annotation.Autowired
     public RuleController(LearnedRuleRepository learnedRuleRepository,
                           EmbeddingClient embeddingClient,
                           @org.springframework.beans.factory.annotation.Autowired(required = false)
-                          com.example.docmind.service.MetaLearningService metaLearningService) {
+                          com.example.docmind.service.MetaLearningService metaLearningService,
+                          @org.springframework.beans.factory.annotation.Autowired(required = false)
+                          com.example.docmind.service.bot.FastApiAgentService fastApiAgentService) {
         this.learnedRuleRepository = learnedRuleRepository;
         this.embeddingClient = embeddingClient;
         this.metaLearningService = metaLearningService;
+        this.fastApiAgentService = fastApiAgentService;
+    }
+
+    public RuleController(LearnedRuleRepository learnedRuleRepository,
+                          EmbeddingClient embeddingClient,
+                          com.example.docmind.service.MetaLearningService metaLearningService) {
+        this(learnedRuleRepository, embeddingClient, metaLearningService, null);
     }
 
     public RuleController(LearnedRuleRepository learnedRuleRepository, EmbeddingClient embeddingClient) {
-        this(learnedRuleRepository, embeddingClient, null);
+        this(learnedRuleRepository, embeddingClient, null, null);
     }
 
     @GetMapping
@@ -55,7 +67,8 @@ public class RuleController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String search,
             @RequestParam(name = "page_id", required = false) String pageIdRaw,
-            @RequestParam(name = "include_global", required = false, defaultValue = "true") boolean includeGlobal
+            @RequestParam(name = "include_global", required = false, defaultValue = "true") boolean includeGlobal,
+            @RequestParam(name = "review_status", required = false) String reviewStatus
     ) {
         String safeCategory = (category == null) ? "" : category.strip();
         String safeSearch = (search == null) ? "" : search.strip();
@@ -69,13 +82,19 @@ public class RuleController {
                 if (pageId != null) {
                     entities = learnedRuleRepository.searchRulesByPage(active, safeCategory, safeSearch, pageId, includeGlobal, false);
                 } else {
-                    entities = learnedRuleRepository.searchRules(active, safeCategory, safeSearch);
+                    // Invalid pageId format: return only global rules, never leak all tenants' rules
+                    entities = learnedRuleRepository.searchRulesByPage(active, safeCategory, safeSearch, null, true, true);
                 }
             }
+        } else if (pageIdRaw != null) {
+            entities = learnedRuleRepository.searchRulesByPage(active, safeCategory, safeSearch, null, true, true);
         } else {
             entities = learnedRuleRepository.searchRules(active, safeCategory, safeSearch);
         }
         List<LearnedRuleDto> dtos = entities.stream()
+                .filter(e -> reviewStatus == null || reviewStatus.isBlank()
+                        || "ALL".equalsIgnoreCase(reviewStatus)
+                        || reviewStatus.equalsIgnoreCase(e.getReviewStatus() != null ? e.getReviewStatus() : "APPROVED"))
                 .map(LearnedRuleDto::fromEntity)
                 .toList();
         return ResponseEntity.ok(dtos);
@@ -83,6 +102,15 @@ public class RuleController {
 
     @PostMapping
     public ResponseEntity<LearnedRuleDto> createRule(@Valid @RequestBody RuleRequest request) {
+        if (PromptSecurityGuard.isPoisonedRuleAttempt(request.generalizedRule())
+                || PromptSecurityGuard.isPoisonedRuleAttempt(request.triggerCondition())
+                || PromptSecurityGuard.isPoisonedRuleAttempt(request.rootCause())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Quy tắc bị từ chối do vi phạm tiêu chuẩn an toàn / cố ý đầu độc quy tắc."
+            );
+        }
+
         UUID id = UUID.randomUUID();
         UUID pageId = parsePageId(request.pageId());
         String category = (request.category() != null && !request.category().isBlank())
@@ -170,6 +198,16 @@ public class RuleController {
 
     @PutMapping("/{id}")
     public ResponseEntity<LearnedRuleDto> updateRule(@PathVariable UUID id, @RequestBody RuleRequest request) {
+        if (request != null && (
+                PromptSecurityGuard.isPoisonedRuleAttempt(request.generalizedRule())
+                || PromptSecurityGuard.isPoisonedRuleAttempt(request.triggerCondition())
+                || PromptSecurityGuard.isPoisonedRuleAttempt(request.rootCause()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Quy tắc bị từ chối do vi phạm tiêu chuẩn an toàn / cố ý đầu độc quy tắc."
+            );
+        }
+
         LearnedRuleEntity entity = learnedRuleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy quy tắc với id: " + id));
 
@@ -322,6 +360,123 @@ public class RuleController {
             learnedRuleRepository.save(entity);
         }
 
+        return ResponseEntity.ok(LearnedRuleDto.fromEntity(entity));
+    }
+
+    @PostMapping("/nightly-extract")
+    public ResponseEntity<java.util.Map<String, Object>> extractNightlyRules(
+            @RequestBody com.example.docmind.client.FastApiAgentClient.NightlyExtractRequest request
+    ) {
+        com.example.docmind.service.bot.FastApiAgentService svc = fastApiAgentService != null
+                ? fastApiAgentService
+                : new com.example.docmind.service.bot.FastApiAgentService((com.example.docmind.config.DocServiceProperties) null);
+
+        var response = svc.extractNightlySamples(request);
+        UUID pageId = parsePageId(request.pageId());
+        java.util.List<LearnedRuleDto> savedPendingRules = new java.util.ArrayList<>();
+        java.util.List<com.example.docmind.client.FastApiAgentClient.ExtractedSampleDto> rejectedSamples = new java.util.ArrayList<>();
+
+        if (response != null && response.samples() != null) {
+            for (var sample : response.samples()) {
+                if (!sample.securityPassed() || "REJECTED".equalsIgnoreCase(sample.reviewStatus())) {
+                    rejectedSamples.add(sample);
+                    continue;
+                }
+                UUID id = UUID.randomUUID();
+                String[] kws = sample.retrievalKeywords() != null
+                        ? sample.retrievalKeywords().toArray(new String[0])
+                        : new String[]{"tư vấn", "chốt lịch"};
+                float[] embedding = embeddingClient.embed(
+                        (sample.triggerCondition() != null ? sample.triggerCondition() : "")
+                        + " " + (sample.generalizedRule() != null ? sample.generalizedRule() : "")
+                );
+
+                LearnedRuleEntity entity = LearnedRuleEntity.builder()
+                        .id(id)
+                        .category(sample.category() != null ? sample.category() : "PSYCHOLOGICAL_PERSUASION")
+                        .triggerCondition(sample.triggerCondition() != null ? sample.triggerCondition() : "")
+                        .rootCause(sample.rootCause() != null ? sample.rootCause() : "")
+                        .generalizedRule(sample.generalizedRule() != null ? sample.generalizedRule() : "")
+                        .retrievalKeywords(kws)
+                        .active(false) // Chờ Admin bấm 1-Click Approve trong Staging Queue
+                        .pageId(pageId)
+                        .confidenceScore(0.90)
+                        .dimension(com.example.docmind.entity.HarnessDimension.fromString(sample.dimension()))
+                        .cueSignal(sample.cueSignal())
+                        .contrastiveEvidence(sample.contrastiveEvidence())
+                        .reviewStatus("PENDING_REVIEW")
+                        .securityAuditNotes(sample.securityAuditNotes())
+                        .createdAt(Instant.now())
+                        .updatedAt(Instant.now())
+                        .build();
+
+                try {
+                    if (pageId != null) {
+                        learnedRuleRepository.insertRule(
+                                id, entity.getCategory(), entity.getTriggerCondition(), entity.getRootCause(),
+                                entity.getGeneralizedRule(), kws, false, embedding, pageId
+                        );
+                    } else {
+                        learnedRuleRepository.insertRule(
+                                id, entity.getCategory(), entity.getTriggerCondition(), entity.getRootCause(),
+                                entity.getGeneralizedRule(), kws, false, embedding
+                        );
+                    }
+                } catch (Exception ignored) {
+                }
+                learnedRuleRepository.save(entity);
+                savedPendingRules.add(LearnedRuleDto.fromEntity(entity));
+            }
+        }
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "engine", response != null && response.engine() != null ? response.engine() : "langgraph-nightly-auditor",
+                "passed_count", savedPendingRules.size(),
+                "rejected_count", rejectedSamples.size(),
+                "pending_rules", savedPendingRules,
+                "rejected_samples", rejectedSamples
+        ));
+    }
+
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<LearnedRuleDto> approveStagingRule(@PathVariable UUID id) {
+        LearnedRuleEntity entity = learnedRuleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy quy tắc với id: " + id));
+        entity.setReviewStatus("APPROVED");
+        entity.setActive(true);
+        entity.setQuarantinedReason(null);
+        entity.setUpdatedAt(Instant.now());
+
+        float[] embedding = embeddingClient.embed(
+                (entity.getTriggerCondition() != null ? entity.getTriggerCondition() : "")
+                + " " + (entity.getGeneralizedRule() != null ? entity.getGeneralizedRule() : "")
+        );
+        try {
+            if (entity.getPageId() != null) {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(), entity.getCategory(), entity.getTriggerCondition(), entity.getRootCause(),
+                        entity.getGeneralizedRule(), entity.getRetrievalKeywords(), true, embedding, entity.getPageId()
+                );
+            } else {
+                learnedRuleRepository.updateRuleWithEmbedding(
+                        entity.getId(), entity.getCategory(), entity.getTriggerCondition(), entity.getRootCause(),
+                        entity.getGeneralizedRule(), entity.getRetrievalKeywords(), true, embedding
+                );
+            }
+        } catch (Exception ignored) {
+        }
+        learnedRuleRepository.save(entity);
+        return ResponseEntity.ok(LearnedRuleDto.fromEntity(entity));
+    }
+
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<LearnedRuleDto> rejectStagingRule(@PathVariable UUID id) {
+        LearnedRuleEntity entity = learnedRuleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy quy tắc với id: " + id));
+        entity.setReviewStatus("REJECTED");
+        entity.setActive(false);
+        entity.setUpdatedAt(Instant.now());
+        learnedRuleRepository.save(entity);
         return ResponseEntity.ok(LearnedRuleDto.fromEntity(entity));
     }
 

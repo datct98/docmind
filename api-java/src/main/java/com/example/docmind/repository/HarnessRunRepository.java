@@ -27,7 +27,7 @@ public interface HarnessRunRepository extends JpaRepository<HarnessRunEntity, St
     List<HarnessRunEntity> findByVerdictOrderByCreatedAtDesc(String verdict, Pageable pageable);
 
     @Query("SELECT r FROM HarnessRunEntity r WHERE " +
-           "(:pageId IS NULL OR :pageId = '' OR r.pageId = :pageId) AND " +
+           "((:pageId IS NULL OR :pageId = '') AND r.pageId IS NULL OR (:pageId IS NOT NULL AND :pageId != '' AND r.pageId = :pageId)) AND " +
            "(:verdict IS NULL OR :verdict = '' OR r.verdict = :verdict) " +
            "ORDER BY r.createdAt DESC")
     List<HarnessRunEntity> findRunsWithFilter(

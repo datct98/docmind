@@ -161,7 +161,7 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                            created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
-                    WHERE active = true AND embedding IS NOT NULL
+                    WHERE active = true AND page_id IS NULL AND embedding IS NOT NULL
                     ORDER BY embedding <=> CAST(? AS vector)
                     LIMIT ?
                     """;

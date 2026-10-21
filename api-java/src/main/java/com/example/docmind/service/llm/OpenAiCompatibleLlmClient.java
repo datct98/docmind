@@ -29,7 +29,7 @@ import java.util.Map;
  *   <li>Tự động chuẩn hóa endpoint URL (thêm /chat/completions nếu chưa có).</li>
  *   <li>Xác thực qua Bearer Token: {@code Authorization: Bearer <API_KEY>}.</li>
  *   <li>Tối ưu kết nối HTTP/2 Keep-Alive Pool và truyền {@code reasoning_effort} để giảm độ trễ cho model suy luận (Grok 4.x, o1/o3).</li>
- *   <li>Giới hạn read-timeout mỗi lượt thử (tối đa 35s khi bật {@code reasoning_effort}) kèm cơ chế tự động retry khi proxy trung gian bị treo kênh (timeout / 502 / 503 / 504).</li>
+ *   <li>Giới hạn read-timeout mỗi lượt thử (tối đa 90s khi bật {@code reasoning_effort}) kèm cơ chế tự động retry khi proxy trung gian bị treo kênh (timeout / 502 / 503 / 504).</li>
  *   <li>Tự động bóc tách và loại bỏ thẻ {@code <think>...</think>} cho các mô hình suy luận (DeepSeek-R1, reasoning).</li>
  *   <li>Hỗ trợ fallback sang trường {@code reasoning_content} nếu {@code content} để trống.</li>
  *   <li>Xử lý lỗi và HTTP status linh hoạt, fallback an toàn không làm crash luồng nghiệp vụ.</li>
@@ -38,7 +38,7 @@ import java.util.Map;
 public class OpenAiCompatibleLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleLlmClient.class);
-    private static final int FAST_REASONING_ATTEMPT_TIMEOUT_MS = 35_000;
+    private static final int FAST_REASONING_ATTEMPT_TIMEOUT_MS = 90_000;
 
     private final LlmProperties props;
     private final ObjectMapper objectMapper;

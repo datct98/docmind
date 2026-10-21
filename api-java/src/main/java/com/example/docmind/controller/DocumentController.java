@@ -45,8 +45,11 @@ public class DocumentController {
     public ResponseEntity<List<DocumentStatusResponse>> list(
             @RequestParam(value = "page_id", required = false) String pageId
     ) {
-        if (pageId == null || pageId.isBlank()) {
+        if (pageId == null) {
             return ResponseEntity.ok(documentService.listAll());
+        }
+        if (pageId.isBlank()) {
+            return ResponseEntity.ok(List.of());
         }
         return ResponseEntity.ok(documentService.listAll(pageId));
     }

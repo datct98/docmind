@@ -13,10 +13,13 @@ import com.example.docmind.service.bot.FanpageBotService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import com.example.docmind.service.security.PromptSecurityGuard;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +46,15 @@ public class FeedbackController {
 
     @PostMapping
     public ResponseEntity<FeedbackResponse> submitFeedback(@Valid @RequestBody FeedbackRequest request) {
+        if (request != null && (
+                PromptSecurityGuard.isPoisonedRuleAttempt(request.userCorrection())
+                || PromptSecurityGuard.isPoisonedRuleAttempt(request.question()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Phản hồi bị từ chối do vi phạm tiêu chuẩn an toàn / cố ý đầu độc quy tắc."
+            );
+        }
+
         // 0. Selective Blame Attribution & Auto-Quarantine Circuit Breaker nếu có danh sách rule đã áp dụng ở câu trả lời sai
         if (request.appliedRuleIds() != null && !request.appliedRuleIds().isEmpty()) {
             metaLearningService.recordNegativeFeedbackAndAutoQuarantine(

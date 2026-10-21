@@ -8,6 +8,7 @@ import com.example.docmind.service.embedding.EmbeddingClient;
 import com.example.docmind.service.llm.LlmClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -19,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -543,4 +545,123 @@ class MetaLearningServiceTest {
         assertThat(afterReteach.failCount()).isEqualTo(0);
         assertThat(afterReteach.quarantinedReason()).isNull();
     }
+
+    @Test
+    void ruleEvolutionStripsVolatileFactsAndPIIBeforeUpdating() {
+        UUID pageId = UUID.randomUUID();
+        UUID ruleId = UUID.randomUUID();
+        LearnedRuleEntity rule = LearnedRuleEntity.builder()
+                .id(ruleId)
+                .category("SALES_STRATEGY")
+                .triggerCondition("Khách hỏi đặt lịch")
+                .rootCause("Chưa lưu số điện thoại")
+                .generalizedRule("Liên hệ khách hàng để tư vấn.")
+                .retrievalKeywords(new String[]{"đặt lịch"})
+                .pageId(pageId)
+                .active(true)
+                .version(1)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .updatedAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        when(ruleRepo.searchSimilarActiveRules(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of(rule));
+
+        service.learnFromFeedback(
+                "Tư vấn cho tôi",
+                "Chào bạn",
+                "Khách để lại số 0968221644 và giá 1.500.000đ yêu cầu gọi lại",
+                "conv-evo",
+                null,
+                pageId.toString()
+        );
+
+        ArgumentCaptor<String> genRuleCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> rootCauseCaptor = ArgumentCaptor.forClass(String.class);
+        verify(ruleRepo).updateRuleWithEmbedding(
+                eq(ruleId),
+                anyString(),
+                anyString(),
+                rootCauseCaptor.capture(),
+                genRuleCaptor.capture(),
+                any(),
+                eq(true),
+                any(),
+                eq(pageId)
+        );
+
+        assertThat(genRuleCaptor.getValue()).doesNotContain("0968221644");
+        assertThat(genRuleCaptor.getValue()).doesNotContain("1.500.000");
+        assertThat(rootCauseCaptor.getValue()).doesNotContain("0968221644");
+        assertThat(rootCauseCaptor.getValue()).doesNotContain("1.500.000");
+    }
+
+    @Test
+    void stripVolatileFactsPreservingVietnameseStripsPricesAndPhonesWhilePreservingPercentages() {
+        String input = "Khách liên hệ 0968221644 hỏi giá 1.500.000 VNĐ, combo 5 buổi được giảm 15% hoặc 20% vào ngày 2026-10-20.";
+        String stripped = MetaLearningService.stripVolatileFactsPreservingVietnamese(input);
+
+        // Phone stripped
+        assertThat(stripped).doesNotContain("0968221644");
+        // Volatile price stripped
+        assertThat(stripped).doesNotContain("1.500.000");
+        // Date stripped
+        assertThat(stripped).doesNotContain("2026-10-20");
+        // Business percentages preserved
+        assertThat(stripped).contains("15%");
+        assertThat(stripped).contains("20%");
+        // Quantity units preserved
+        assertThat(stripped).contains("5 buổi");
+    }
+
+    @Test
+    void ruleEvolutionStripsVolatileFactsAndPIIWhilePreservingPercentages() {
+        UUID pageId = UUID.randomUUID();
+        UUID ruleId = UUID.randomUUID();
+        LearnedRuleEntity rule = LearnedRuleEntity.builder()
+                .id(ruleId)
+                .category("PRICING_CALCULATION")
+                .triggerCondition("Khách hỏi về giá dịch vụ chăm sóc")
+                .rootCause("Nhầm giá")
+                .generalizedRule("Kiểm tra chính sách giá hiện hành.")
+                .retrievalKeywords(new String[]{"giá", "dịch vụ"})
+                .pageId(pageId)
+                .active(true)
+                .version(1)
+                .createdAt(Instant.now().minusSeconds(3600))
+                .updatedAt(Instant.now().minusSeconds(3600))
+                .build();
+
+        when(ruleRepo.searchSimilarActiveRules(any(), anyDouble(), anyInt(), any()))
+                .thenReturn(List.of(rule));
+
+        service.learnFromFeedback(
+                "Giá dịch vụ bao nhiêu?",
+                "Giá là 1.500.000đ",
+                "Sai rồi, gọi số 0912345678, giá cũ 1.500.000đ nhưng combo 5 buổi được giảm 20%!",
+                "conv-evo-pct",
+                null,
+                pageId.toString()
+        );
+
+        ArgumentCaptor<String> genRuleCaptor = ArgumentCaptor.forClass(String.class);
+        verify(ruleRepo).updateRuleWithEmbedding(
+                eq(ruleId),
+                anyString(),
+                anyString(),
+                anyString(),
+                genRuleCaptor.capture(),
+                any(),
+                eq(true),
+                any(),
+                eq(pageId)
+        );
+
+        String evolvedGenRule = genRuleCaptor.getValue();
+        assertThat(evolvedGenRule).doesNotContain("0912345678");
+        assertThat(evolvedGenRule).doesNotContain("1.500.000");
+        assertThat(evolvedGenRule).contains("20%");
+        assertThat(evolvedGenRule).contains("5 buổi");
+    }
 }
+

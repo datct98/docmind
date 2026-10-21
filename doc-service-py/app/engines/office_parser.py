@@ -517,13 +517,20 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
 
     sheet_names: list[str] = []
     sheet_rows: dict[str, int] = {}
+    skipped_sheets: list[str] = []
     blocks: list[Block] = []
     local_index = 0
+    total_sheets = len(workbook.worksheets)
 
     try:
         for worksheet in workbook.worksheets:
             title = worksheet.title
             sheet_names.append(title)
+            norm_title = title.strip().lower()
+            if total_sheets >= 4 and norm_title in {"dashboard", "note", "notes", "todo", "nháp"}:
+                skipped_sheets.append(title)
+                sheet_rows[title] = 0
+                continue
 
             # Heading block for the sheet.
             blocks.append(
@@ -564,7 +571,7 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
             else:
                 rows = []
 
-            sheet_rows[title] = len(rows)
+            sheet_rows[title] = sum(1 for r in rows if any(c.strip() for c in r))
 
             if not rows:
                 # Empty sheet: emit single empty table block
@@ -595,24 +602,14 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
                 )
                 local_index += 1
             else:
-                # Multiple rows: header row + data rows partitioned into windows
-                header_row = rows[0]
-                data_rows = rows[1:]
-                for start_idx in range(0, len(data_rows), WINDOW_SIZE):
-                    chunk = data_rows[start_idx : start_idx + WINDOW_SIZE]
-                    window_rows = [header_row] + chunk
-                    blocks.append(
-                        mk(
-                            local_index,
-                            type=BlockType.TABLE,
-                            text=_text_table(window_rows),
-                            markdown=_md_table(window_rows),
-                            html=_html_table(window_rows),
-                            heading_path=[title],
-                            parse_version=parse_version,
-                        )
-                    )
-                    local_index += 1
+                local_index = _emit_spreadsheet_grid_blocks(
+                    rows,
+                    [title],
+                    blocks,
+                    local_index,
+                    mk,
+                    parse_version,
+                )
     finally:
         workbook.close()
 
@@ -620,6 +617,595 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
         meta["library"] = parse_version
         meta["sheet_names"] = sheet_names
         meta["sheet_rows"] = sheet_rows
+        meta["skipped_sheets"] = skipped_sheets
         meta["truncated_sheets"] = []
 
     return blocks
+
+
+# --------------------------------------------------------------------------- #
+# HTML & Google Sheets Export (.html / .htm)
+# --------------------------------------------------------------------------- #
+_HTML_PARSER_VERSION = "builtin-html-1.0"
+
+
+class _GoogleSheetsAndHtmlDomParser(_html.parser.HTMLParser if hasattr(_html, "parser") else object):
+    """Lightweight stdlib HTML parser extracting tables, headings, paragraphs, and lists."""
+
+
+from html.parser import HTMLParser as _StdHTMLParser  # noqa: E402
+
+
+class _StructuredHtmlParser(_StdHTMLParser):
+    """Extract structured tables and non-table blocks while stripping <style>/<script>/<head>."""
+
+    _IGNORE_TAGS = {"style", "script", "head", "title", "noscript", "svg", "meta", "link"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._ignore_depth = 0
+        self._in_table = 0
+        self._in_thead = False
+        self._in_row = False
+        self._in_cell = False
+        self._skip_current_cell = False
+        self._current_cell_colspan = 1
+        self._current_cell_parts: list[str] = []
+        self._current_row: list[str] = []
+        self._current_row_is_thead = False
+        self._current_table: list[tuple[bool, list[str]]] = []
+
+        # Ordered sequence of ("table", rows) or ("heading", level, text) or ("para", text)
+        self.items: list[tuple] = []
+        self._block_tag: str | None = None
+        self._block_level: int = 1
+        self._block_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        t = tag.lower()
+        if t in self._IGNORE_TAGS:
+            if t not in ("meta", "link"):
+                self._ignore_depth += 1
+            return
+        if self._ignore_depth > 0:
+            return
+
+        attr_map = {k.lower(): (v or "") for k, v in attrs}
+
+        if t == "table":
+            self._flush_inline_block()
+            self._in_table += 1
+            if self._in_table == 1:
+                self._current_table = []
+            return
+
+        if self._in_table > 0:
+            if t == "thead":
+                self._in_thead = True
+            elif t == "tr":
+                self._in_row = True
+                self._current_row = []
+                self._current_row_is_thead = self._in_thead
+            elif t in ("td", "th") and self._in_row:
+                self._in_cell = True
+                self._current_cell_parts = []
+                cls = attr_map.get("class", "")
+                cell_id = attr_map.get("id", "")
+                # Skip Google Sheets row-number header cells (<th id="...R0" class="row-header">)
+                if t == "th" and (
+                    "row-header" in cls
+                    or "freezebar" in cls
+                    or bool(re.search(r"R\d+$", cell_id))
+                ):
+                    self._skip_current_cell = True
+                else:
+                    self._skip_current_cell = False
+                try:
+                    cs = int(attr_map.get("colspan", "1") or "1")
+                    self._current_cell_colspan = max(1, min(cs, 20))
+                except ValueError:
+                    self._current_cell_colspan = 1
+            elif t == "br" and self._in_cell:
+                self._current_cell_parts.append(" ; ")
+            return
+
+        # Outside tables: handle h1..h6, p, li
+        if t in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            self._flush_inline_block()
+            self._block_tag = "heading"
+            self._block_level = int(t[1])
+            self._block_parts = []
+        elif t in ("p", "li", "div"):
+            if self._block_tag is None:
+                self._block_tag = "para"
+                self._block_parts = []
+        elif t == "br" and self._block_tag is not None:
+            self._block_parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if t in self._IGNORE_TAGS:
+            if t not in ("meta", "link") and self._ignore_depth > 0:
+                self._ignore_depth -= 1
+            return
+        if self._ignore_depth > 0:
+            return
+
+        if self._in_table > 0:
+            if t in ("td", "th") and self._in_cell:
+                if not self._skip_current_cell:
+                    raw = "".join(self._current_cell_parts)
+                    clean = re.sub(r"\s+", " ", raw).strip(" ;")
+                    self._current_row.append(clean)
+                    for _ in range(self._current_cell_colspan - 1):
+                        self._current_row.append("")
+                self._in_cell = False
+                self._skip_current_cell = False
+                self._current_cell_parts = []
+            elif t == "tr" and self._in_row:
+                self._in_row = False
+                if self._current_row:
+                    self._current_table.append((self._current_row_is_thead, self._current_row))
+                self._current_row = []
+            elif t == "thead":
+                self._in_thead = False
+            elif t == "table":
+                self._in_table -= 1
+                if self._in_table == 0 and self._current_table:
+                    self.items.append(("table", list(self._current_table)))
+                    self._current_table = []
+            return
+
+        if t in ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li"):
+            self._flush_inline_block()
+
+    def handle_data(self, data: str) -> None:
+        if self._ignore_depth > 0:
+            return
+        if self._in_table > 0:
+            if self._in_cell and not self._skip_current_cell:
+                self._current_cell_parts.append(data)
+            return
+        if self._block_tag is None:
+            if data.strip():
+                self._block_tag = "para"
+                self._block_parts = [data]
+        else:
+            self._block_parts.append(data)
+
+    def _flush_inline_block(self) -> None:
+        if self._block_tag is None:
+            return
+        text = re.sub(r"[ \t]+", " ", "".join(self._block_parts)).strip()
+        if text:
+            if self._block_tag == "heading":
+                self.items.append(("heading", self._block_level, text))
+            else:
+                self.items.append(("para", text))
+        self._block_tag = None
+        self._block_parts = []
+
+
+def _is_google_sheets_col_letter_row(cells: list[str]) -> bool:
+    """Detect Google Sheets column-letter bar: ['A', 'B', 'C', ...]"""
+    non_empty = [c.strip() for c in cells if c.strip()]
+    if not non_empty:
+        return True
+    return all(bool(re.match(r"^[A-Z]{1,2}$", c)) for c in non_empty)
+
+
+def _is_table_header_row(non_empty_cells: list[str]) -> bool:
+    """Detect if a row is the column header of a structured sub-table."""
+    if len(non_empty_cells) < 2:
+        return False
+    first = non_empty_cells[0].lower().strip()
+    second = non_empty_cells[1].lower().strip()
+    header_Firsts = {
+        "mã gói",
+        "mã dịch vụ",
+        "mã sp",
+        "bước",
+        "tên ưu đãi",
+        "nội dung",
+        "hạng mục",
+        "stt",
+        "câu hỏi",
+        "khách hỏi",
+        "giai đoạn",
+        "chi nhánh",
+        "cơ sở",
+        "tên ảnh",
+        "nhóm",
+        "nhóm nội dung",
+        "vùng trị liệu",
+    }
+    if first in header_Firsts:
+        return True
+    if first == "tên gói" and ("giá" in second or "thời gian" in second):
+        return True
+    return False
+
+
+def _forward_fill_grouped_table(compact: list[list[str]]) -> list[list[str]]:
+    """Forward-fill empty leading group key cells in hierarchical tables.
+
+    For example, in '8.12 Cơ sở vật chất' (Col 0 = Cơ sở, Col 1 = Tầng) or
+    '07_Giáo_trình_massage' (Col 0 = Bước, Col 1 = Vùng trị liệu, Col 2 = Huyệt đạo),
+    subsequent rows under the same facility or step leave Col 0 (and Col 1) blank.
+    Carrying down the group label ensures every row and chunk remains self-contained.
+    """
+    if len(compact) <= 2 or not compact[0]:
+        return compact
+    num_cols = len(compact[0])
+    if num_cols < 2:
+        return compact
+
+    h0 = compact[0][0].lower().strip()
+    h1 = compact[0][1].lower().strip()
+    # Fix missing "Bước" header when Col 0 has "Bước 1", "Bước 2" and Col 1 is "Vùng trị liệu"
+    if not h0 and h1 == "vùng trị liệu" and any(r[0].lower().startswith("bước") for r in compact[1:] if r):
+        compact[0][0] = "Bước"
+        h0 = "bước"
+
+    carry_col0 = h0 in {"cơ sở", "chi nhánh", "bước", "giai đoạn", "nhóm"}
+    carry_col1 = h0 == "bước" and h1 == "vùng trị liệu"
+    if not carry_col0:
+        return compact
+
+    last_col0 = ""
+    last_col1 = ""
+    for r in compact[1:]:
+        if r[0].strip():
+            last_col0 = r[0].strip()
+            if carry_col1:
+                last_col1 = r[1].strip()
+        elif last_col0 and any(c.strip() for c in r[1:]):
+            r[0] = last_col0
+            if carry_col1 and not r[1].strip() and last_col1:
+                r[1] = last_col1
+    return compact
+
+
+def _split_grid_by_empty_columns(rows: list[list[str]]) -> list[list[list[str]]]:
+    """Split a 2D cell grid horizontally along columns that are 100% empty across all rows.
+
+    Google Sheets often place multiple tables side-by-side separated by an empty
+    divider column (e.g., Cols A..I = Pricing table, Col J = empty yellow divider,
+    Cols K..N = Treatment process table). Splitting along empty columns produces
+    clean, independent vertical table strips.
+    """
+    if not rows:
+        return []
+    max_cols = max((len(r) for r in rows), default=0)
+    if max_cols == 0:
+        return []
+
+    padded = [r + [""] * (max_cols - len(r)) for r in rows]
+    col_has_data = [
+        any(bool(padded[r_idx][c_idx].strip()) for r_idx in range(len(padded)))
+        for c_idx in range(max_cols)
+    ]
+
+    strips: list[tuple[int, int]] = []
+    c = 0
+    while c < max_cols:
+        while c < max_cols and not col_has_data[c]:
+            c += 1
+        if c >= max_cols:
+            break
+        start = c
+        while c < max_cols and col_has_data[c]:
+            c += 1
+        strips.append((start, c))
+
+    result: list[list[list[str]]] = []
+    for start, end in strips:
+        strip_rows = [r[start:end] for r in padded]
+        result.append(strip_rows)
+    return result
+
+
+def _emit_spreadsheet_grid_blocks(
+    filtered_rows: list[list[str]],
+    base_heading_path: list[str],
+    blocks: list[Block],
+    start_local_index: int,
+    mk: BlockFactory,
+    parse_version: str,
+) -> int:
+    """Shared multi-table, side-by-side strip, section-heading, and forward-fill emitter for Excel & HTML sheets."""
+    local_index = start_local_index
+    heading_path = list(base_heading_path)
+    base_depth = len(base_heading_path)
+
+    def emit_heading(level: int, text: str) -> None:
+        nonlocal heading_path, local_index
+        clean_t = text.strip()
+        if not clean_t:
+            return
+        effective_level = base_depth + max(1, level)
+        heading_path = _apply_heading(heading_path, effective_level, clean_t)
+        md_lvl = max(1, min(6, effective_level))
+        blocks.append(
+            mk(
+                local_index,
+                type=BlockType.HEADING,
+                text=clean_t,
+                markdown=f"{'#' * md_lvl} {clean_t}",
+                html=f"<h{md_lvl}>{_html.escape(clean_t)}</h{md_lvl}>",
+                heading_path=list(heading_path),
+                parse_version=parse_version,
+            )
+        )
+        local_index += 1
+
+    def emit_paragraph(text: str) -> None:
+        nonlocal local_index
+        clean_t = text.strip()
+        if not clean_t:
+            return
+        blocks.append(
+            mk(
+                local_index,
+                type=BlockType.PARAGRAPH,
+                text=clean_t,
+                markdown=clean_t,
+                html=f"<p>{_html.escape(clean_t)}</p>",
+                heading_path=list(heading_path),
+                parse_version=parse_version,
+            )
+        )
+        local_index += 1
+
+    def emit_table(table_rows: list[list[str]]) -> None:
+        nonlocal local_index
+        if not table_rows:
+            return
+        max_c = -1
+        for r in table_rows:
+            for idx in range(len(r) - 1, -1, -1):
+                if r[idx].strip():
+                    if idx > max_c:
+                        max_c = idx
+                    break
+        if max_c < 0:
+            return
+        trimmed = [[c.strip() for c in r[: max_c + 1]] for r in table_rows]
+        active_cols = [
+            c_idx
+            for c_idx in range(max_c + 1)
+            if any(
+                c_idx < len(r) and bool(r[c_idx].strip())
+                for r in trimmed
+            )
+        ]
+        if not active_cols:
+            return
+        compact = [[r[c_idx] if c_idx < len(r) else "" for c_idx in active_cols] for r in trimmed]
+
+        if len(active_cols) == 1:
+            if len(compact) == 1 and base_depth > 0:
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.TABLE,
+                        text=_text_table(compact),
+                        markdown=_md_table(compact),
+                        html=_html_table(compact),
+                        heading_path=list(heading_path),
+                        parse_version=parse_version,
+                    )
+                )
+                local_index += 1
+                return
+            items_text = "\n".join(f"- {r[0]}" for r in compact if r[0])
+            if items_text:
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.LIST,
+                        text=items_text,
+                        markdown=items_text,
+                        html=_render_list_html([f"- {r[0]}" for r in compact if r[0]]),
+                        heading_path=list(heading_path),
+                        parse_version=parse_version,
+                    )
+                )
+                local_index += 1
+            return
+
+        if (
+            len(active_cols) == 2
+            and not _is_table_header_row([c for c in compact[0] if c])
+            and ("?" in compact[0][0] or any("?" in r[0] for r in compact[:3]))
+        ):
+            compact = [["Câu hỏi khách hàng", "Câu trả lời tư vấn chuẩn"], *compact]
+        elif len(compact) == 1 and not any("?" in c for c in compact[0]) and base_depth == 0:
+            emit_paragraph(" — ".join(c for c in compact[0] if c))
+            return
+
+        compact = _forward_fill_grouped_table(compact)
+        header_row = compact[0]
+        data_rows = compact[1:]
+        if not data_rows:
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.TABLE,
+                    text=_text_table(compact),
+                    markdown=_md_table(compact),
+                    html=_html_table(compact),
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+            return
+
+        for start_idx in range(0, len(data_rows), WINDOW_SIZE):
+            chunk = data_rows[start_idx : start_idx + WINDOW_SIZE]
+            window_rows = [header_row, *chunk]
+            blocks.append(
+                mk(
+                    local_index,
+                    type=BlockType.TABLE,
+                    text=_text_table(window_rows),
+                    markdown=_md_table(window_rows),
+                    html=_html_table(window_rows),
+                    heading_path=list(heading_path),
+                    parse_version=parse_version,
+                )
+            )
+            local_index += 1
+
+    strips = _split_grid_by_empty_columns(filtered_rows)
+    for strip in strips:
+        active_table: list[list[str]] = []
+        for row in strip:
+            non_empty = [c.strip() for c in row if c.strip()]
+            if not non_empty:
+                if active_table:
+                    emit_table(active_table)
+                    active_table = []
+                continue
+
+            first_cell = non_empty[0]
+            first_lower = first_cell.lower()
+
+            # Case A: Single-cell section heading (e.g., "MASSAGE", "8.1. TỔNG_QUAN_THƯƠNG_HIỆU", "1. CHÍNH_SÁCH...", "FAQ")
+            if len(non_empty) == 1 and len(first_cell) <= 95 and "?" not in first_cell:
+                is_numbered_section = (
+                    bool(re.match(r"^(?:\d+(?:\.\d+)*|[IVX]+)[.:_\s]+\S", first_cell))
+                    and "động tác" not in first_lower
+                    and (
+                        "_" in first_cell
+                        or "⭐️" in first_cell
+                        or first_cell.isupper()
+                        or bool(re.match(r"^(?:[IVX]+|\d+)\s*[.:_]\s*[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]{2,}", first_cell))
+                    )
+                )
+                is_major = (
+                    (first_cell.isupper() and len(first_cell) >= 3)
+                    or is_numbered_section
+                    or first_lower.startswith((
+                        "massage", "gội đầu", "faq", "khách hỏi", "quy trình",
+                        "lưu_ý", "lưu ý", "ưu đãi", "bài massage", "chính sách",
+                    ))
+                )
+                is_sub = first_lower.startswith(("cơ sở", "khu vực", "chi nhánh")) and len(first_cell) <= 55
+                if is_major or is_sub:
+                    if active_table:
+                        emit_table(active_table)
+                        active_table = []
+                    emit_heading(1 if is_major else 2, first_cell)
+                    continue
+
+            # Case B: Facility title + Address row (e.g. "Cơ sở Nàng Sen Bích Câu" | "Địa chỉ: 6 Bích Câu...")
+            if (
+                len(non_empty) <= 3
+                and "?" not in first_cell
+                and first_lower.startswith(("cơ sở", "chi nhánh"))
+                and not _is_table_header_row(non_empty)
+                and any("địa chỉ" in c.lower() for c in non_empty[1:])
+            ):
+                if active_table:
+                    emit_table(active_table)
+                    active_table = []
+                combined_heading = " — ".join(non_empty)
+                emit_heading(2, combined_heading)
+                continue
+
+            # Case C: Contact / Hotline / Opening hours row
+            if first_lower.startswith(("hotline", "địa chỉ", "giờ hoạt động", "giờ mở cửa")):
+                if active_table:
+                    emit_table(active_table)
+                    active_table = []
+                info_line = " | ".join(non_empty)
+                if heading_path and len(heading_path) > base_depth:
+                    short_contact = " | ".join(
+                        c for c in non_empty if not c.lower().startswith("http")
+                    )
+                    if short_contact and short_contact not in heading_path[-1]:
+                        heading_path[-1] = f"{heading_path[-1]} ({short_contact})"
+                emit_paragraph(info_line)
+                continue
+
+            # Case D: New explicit table header row starts while another table was accumulating
+            if _is_table_header_row(non_empty) and active_table:
+                emit_table(active_table)
+                active_table = [row]
+                continue
+
+            active_table.append(row)
+
+        if active_table:
+            emit_table(active_table)
+            active_table = []
+
+    return local_index
+
+
+def parse_html(payload: bytes, mk: BlockFactory) -> list[Block]:
+    """Parse HTML / Google Sheets exported HTML into clean canonical blocks."""
+    raw_html = payload.decode("utf-8", errors="replace").lstrip("\ufeff")
+    parser = _StructuredHtmlParser()
+    parser.feed(raw_html)
+    parser._flush_inline_block()
+
+    blocks: list[Block] = []
+    heading_path: list[str] = []
+    local_index = 0
+    parse_version = _HTML_PARSER_VERSION
+
+    for item in parser.items:
+        kind = item[0]
+        if kind == "heading":
+            clean_t = item[2].strip()
+            if clean_t:
+                heading_path = _apply_heading(heading_path, item[1], clean_t)
+                md_lvl = max(1, min(6, item[1]))
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.HEADING,
+                        text=clean_t,
+                        markdown=f"{'#' * md_lvl} {clean_t}",
+                        html=f"<h{md_lvl}>{_html.escape(clean_t)}</h{md_lvl}>",
+                        heading_path=list(heading_path),
+                        parse_version=parse_version,
+                    )
+                )
+                local_index += 1
+        elif kind == "para":
+            clean_t = item[1].strip()
+            if clean_t:
+                blocks.append(
+                    mk(
+                        local_index,
+                        type=BlockType.PARAGRAPH,
+                        text=clean_t,
+                        markdown=clean_t,
+                        html=f"<p>{_html.escape(clean_t)}</p>",
+                        heading_path=list(heading_path),
+                        parse_version=parse_version,
+                    )
+                )
+                local_index += 1
+        elif kind == "table":
+            raw_tagged_rows: list[tuple[bool, list[str]]] = item[1]
+            filtered_rows: list[list[str]] = []
+            for is_thead, r in raw_tagged_rows:
+                if is_thead and _is_google_sheets_col_letter_row(r):
+                    continue
+                filtered_rows.append(r)
+            local_index = _emit_spreadsheet_grid_blocks(
+                filtered_rows,
+                heading_path,
+                blocks,
+                local_index,
+                mk,
+                parse_version,
+            )
+
+    return blocks
+

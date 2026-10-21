@@ -10,6 +10,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+import os
+from typing import Any
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +44,23 @@ class Settings(BaseSettings):
 
     # HTTP header the Java orchestrator sets so logs share one correlation id.
     correlation_header: str = "X-Correlation-Id"
+
+    # Shared HMAC secret token for internal communication between Spring Boot and FastAPI.
+    # Supports both DOCMIND_INTERNAL_TOKEN and INTERNAL_API_TOKEN environment variables.
+    docmind_internal_token: str = "docmind-internal-secret-token-2026"
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_internal_token(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            token = (
+                os.environ.get("DOCMIND_INTERNAL_TOKEN")
+                or values.get("docmind_internal_token")
+                or os.environ.get("INTERNAL_API_TOKEN")
+            )
+            if token:
+                values["docmind_internal_token"] = token
+        return values
 
 
 @lru_cache(maxsize=1)

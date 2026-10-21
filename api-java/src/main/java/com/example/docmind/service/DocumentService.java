@@ -266,15 +266,17 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public List<DocumentStatusResponse> listAll(String pageIdRaw) {
         List<DocumentEntity> docs;
-        if (pageIdRaw == null || pageIdRaw.isBlank()) {
+        if (pageIdRaw == null) {
             docs = documentRepository.findAllByOrderByCreatedAtDesc();
+        } else if (pageIdRaw.isBlank()) {
+            docs = List.of();
         } else if ("unassigned".equalsIgnoreCase(pageIdRaw.strip())) {
             docs = documentRepository.findByPageIdIsNullOrderByCreatedAtDesc();
         } else {
             UUID pageId = parseNullableUuid(pageIdRaw);
             docs = pageId != null
                     ? documentRepository.findByPageIdOrderByCreatedAtDesc(pageId)
-                    : documentRepository.findAllByOrderByCreatedAtDesc();
+                    : List.of();
         }
         return docs.stream().map(this::toStatusResponse).toList();
     }
@@ -314,7 +316,7 @@ public class DocumentService {
     }
 
     private static UUID parseNullableUuid(String raw) {
-        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw.strip())) {
+        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw.strip()) || "undefined".equalsIgnoreCase(raw.strip())) {
             return null;
         }
         try {

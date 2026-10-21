@@ -171,6 +171,13 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
         for (String t : tokensToUse) {
             parts.add("'" + t.replace("'", "''") + "'");
         }
+        // Bảo toàn số tiền có dấu chấm ngăn cách hàng nghìn (VD: '580.000', '670.000') vì to_tsvector('simple') giữ nguyên dấu chấm trong số
+        java.util.regex.Matcher dottedNumMatcher = java.util.regex.Pattern
+                .compile("\\b\\d{1,3}(?:\\.\\d{3})+\\b")
+                .matcher(lowerQuery);
+        while (dottedNumMatcher.find()) {
+            parts.add("'" + dottedNumMatcher.group() + "'");
+        }
 
         // Mở rộng từ đồng nghĩa bán hàng phổ biến (VD: khách hỏi "chi phí bao nhiêu" -> khớp "bảng giá", "niêm yết")
         if (lowerQuery.contains("chi phí") || lowerQuery.contains("bao nhiêu") || lowerQuery.contains("giá")

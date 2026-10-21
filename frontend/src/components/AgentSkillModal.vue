@@ -452,7 +452,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../api.js'
-import { getMockSkills, createMockSkill, updateMockSkill, deleteMockSkill, mockSmartParseSkill } from '../mockData.js'
 
 const props = defineProps({
   demoMode: {
@@ -541,15 +540,11 @@ const formData = ref({
 const loadSkills = async () => {
   loading.value = true
   try {
-    if (props.demoMode) {
-      skills.value = getMockSkills()
-    } else {
-      skills.value = await api.getSkills()
-    }
+    skills.value = await api.getSkills()
     emit('skills-updated', skills.value)
   } catch (err) {
-    console.warn('Fallback to mock skills:', err)
-    skills.value = getMockSkills()
+    console.error('Lỗi tải danh sách Kỹ năng Agent:', err)
+    skills.value = []
   } finally {
     loading.value = false
   }
@@ -647,9 +642,7 @@ const handleSmartParsePreview = async () => {
       page_id: formData.value.page_id,
       priority: formData.value.priority
     }
-    const parsed = props.demoMode
-      ? mockSmartParseSkill(reqPayload)
-      : await api.smartParseSkill(reqPayload)
+    const parsed = await api.smartParseSkill(reqPayload)
 
     formData.value.name = parsed.name || formData.value.name
     formData.value.code = parsed.code || formData.value.code
@@ -663,23 +656,7 @@ const handleSmartParsePreview = async () => {
     showAdvancedFields.value = true
     smartParseNotice.value = '✅ Đã tự động phân tích thành công! Bạn có thể bấm "Lưu Kỹ năng Ngay" hoặc tinh chỉnh thêm bên dưới.'
   } catch (err) {
-    // Fallback to local smart parser if network fails
-    const parsed = mockSmartParseSkill({
-      raw_instruction: rawText,
-      category: formData.value.category,
-      page_id: formData.value.page_id,
-      priority: formData.value.priority
-    })
-    formData.value.name = parsed.name
-    formData.value.code = parsed.code
-    formData.value.category = parsed.category
-    formData.value.description = parsed.description
-    formData.value.trigger_signals = parsed.trigger_signals
-    formData.value.tactical_instructions = parsed.tactical_instructions
-    formData.value.good_example = parsed.good_example
-    formData.value.anti_pattern = parsed.anti_pattern
-    showAdvancedFields.value = true
-    smartParseNotice.value = '✅ Đã tự động chuẩn hóa cấu trúc kỹ năng! Bạn có thể bấm "Lưu Kỹ năng Ngay".'
+    formError.value = err.message || 'Lỗi khi phân tích kỹ năng tự động.'
   } finally {
     parsingSmart.value = false
   }
@@ -759,17 +736,9 @@ const saveSkill = async () => {
       if (hasRaw && (!hasTactical || formData.value.tactical_instructions === originalTacticalInstructions.value)) {
         payload.tactical_instructions = formData.value.raw_instruction.trim()
       }
-      if (props.demoMode) {
-        updateMockSkill(editingSkillId.value, payload)
-      } else {
-        await api.updateSkill(editingSkillId.value, payload)
-      }
+      await api.updateSkill(editingSkillId.value, payload)
     } else {
-      if (props.demoMode) {
-        createMockSkill(payload)
-      } else {
-        await api.createSkill(payload)
-      }
+      await api.createSkill(payload)
     }
     await loadSkills()
     closeForm()
@@ -783,11 +752,7 @@ const saveSkill = async () => {
 const toggleSkillActive = async (skill) => {
   const newActive = !skill.active
   try {
-    if (props.demoMode) {
-      updateMockSkill(skill.id, { active: newActive })
-    } else {
-      await api.updateSkill(skill.id, { active: newActive })
-    }
+    await api.updateSkill(skill.id, { active: newActive })
     skill.active = newActive
     emit('skills-updated', skills.value)
   } catch (err) {
@@ -798,11 +763,7 @@ const toggleSkillActive = async (skill) => {
 const handleDeleteSkill = async (skill) => {
   if (!confirm(`Bạn có chắc chắn muốn xóa kỹ năng "${skill.name}"?`)) return
   try {
-    if (props.demoMode) {
-      deleteMockSkill(skill.id)
-    } else {
-      await api.deleteSkill(skill.id)
-    }
+    await api.deleteSkill(skill.id)
     await loadSkills()
   } catch (err) {
     alert(err.message || 'Lỗi khi xóa kỹ năng')

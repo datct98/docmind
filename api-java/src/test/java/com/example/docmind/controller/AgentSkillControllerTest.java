@@ -53,6 +53,38 @@ class AgentSkillControllerTest {
     }
 
     @Test
+    void getSkillsWithoutPageIdReturnsOnlyGlobalSkills() {
+        UUID pageA = UUID.randomUUID();
+        AgentSkillEntity globalSkill = AgentSkillEntity.builder()
+                .id(UUID.randomUUID())
+                .code("GLOBAL_SKILL")
+                .name("Kỹ năng Toàn Cục")
+                .category("SALES_STRATEGY")
+                .pageId(null)
+                .active(true)
+                .priority(90)
+                .build();
+        AgentSkillEntity tenantSkill = AgentSkillEntity.builder()
+                .id(UUID.randomUUID())
+                .code("TENANT_SKILL")
+                .name("Kỹ năng Riêng Page")
+                .category("SALES_STRATEGY")
+                .pageId(pageA)
+                .active(true)
+                .priority(90)
+                .build();
+
+        when(repository.findAllOrdered()).thenReturn(List.of(globalSkill, tenantSkill));
+
+        ResponseEntity<List<AgentSkillDto>> resp = controller.getSkills(null, null, null, null, null, true);
+
+        assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(resp.getBody()).hasSize(1);
+        assertThat(resp.getBody().get(0).code()).isEqualTo("GLOBAL_SKILL");
+        assertThat(resp.getBody().get(0).pageId()).isNull();
+    }
+
+    @Test
     void createAndUpdateAndDeleteSkillWorkCorrectly() {
         when(repository.save(any(AgentSkillEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 

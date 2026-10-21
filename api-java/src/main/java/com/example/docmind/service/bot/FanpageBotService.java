@@ -99,6 +99,34 @@ public class FanpageBotService {
             "(?:\\+84|84|0)(?:3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-46-9])(?:[.\\-\\s]?\\d){6,8}\\b"
     );
 
+    /**
+     * Che giấu số điện thoại khách hàng trong console/application log (VD: 0968***644).
+     */
+    public static String maskPhoneNumber(String rawPhone) {
+        if (rawPhone == null || rawPhone.isBlank()) {
+            return rawPhone;
+        }
+        String clean = rawPhone.trim();
+        if (clean.length() >= 9) {
+            int prefix = clean.startsWith("+84") ? 6 : 4;
+            int suffix = 3;
+            if (clean.length() > prefix + suffix) {
+                return clean.substring(0, prefix) + "***" + clean.substring(clean.length() - suffix);
+            }
+        }
+        if (clean.length() >= 6) {
+            return clean.substring(0, 3) + "***" + clean.substring(clean.length() - 2);
+        }
+        return "***";
+    }
+
+    public static String maskPiiInText(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        return VN_PHONE_PATTERN.matcher(text).replaceAll(mr -> maskPhoneNumber(mr.group()));
+    }
+
     /** Mẫu bắt khung giờ / ngày hẹn trong tin nhắn của khách hàng. */
     private static final Pattern BOOKING_TIME_PATTERN = Pattern.compile(
             "(?iU)(?<!\\p{L})((?:sáng|trưa|chiều|tối)\\s+(?:nay|mai|mốt|thứ\\s+[2-7]|chủ\\s+nhật|cuối\\s+tuần)|"
@@ -107,10 +135,11 @@ public class FanpageBotService {
             + "\\d{1,2}\\s*(?:h|giờ|:)\\s*\\d{0,2}(?:\\s*(?:sáng|trưa|chiều|tối))?(?:\\s*(?:hôm\\s+nay|nay|ngày\\s+mai|mai|mốt))?)(?!\\p{L})"
     );
 
-    /** Mẫu bắt tín hiệu muốn đặt lịch / chốt đơn của khách hàng. */
+    /** Mẫu bắt tín hiệu muốn đặt lịch / chốt đơn / đồng ý trải nghiệm thử của khách hàng. */
     private static final Pattern BUYING_OR_BOOKING_SIGNAL_PATTERN = Pattern.compile(
-            "(?iU)\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|đăng\\s+ký|chốt\\s+gói|chị\\s+qua|anh\\s+qua|"
-            + "tầm\\s+trưa|buổi\\s+trưa|tới\\s+giờ\\s+tôi\\s+tự\\s+tới|cho\\s+chị\\s+làm|sđt|số\\s+điện\\s+thoại|cọc\\s+trước|chuyển\\s+khoản)\\b"
+            "(?iU)\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|giữ\\s+suất|đăng\\s+ký|chốt\\s+gói|chốt\\s+lịch|chị\\s+qua|anh\\s+qua|"
+            + "thử\\s+xem(?:\\s+sao|\\s+thế\\s+nào|\\s+nhé|\\s+nha)?|sẽ\\s+thử|mình\\s+thử|t\\s+thử|qua\\s+thử|khám\\s+thử|soi\\s+da\\s+thử|trải\\s+nghiệm\\s+thử|làm\\s+thử|qua\\s+soi\\s+da|qua\\s+khám|"
+            + "tầm\\s+trưa|buổi\\s+trưa|tới\\s+giờ\\s+tôi\\s+tự\\s+tới|cho\\s+chị\\s+làm|cho\\s+anh\\s+làm|sđt|số\\s+điện\\s+thoại|cọc\\s+trước|chuyển\\s+khoản)\\b"
     );
 
     /** Mẫu bắt các câu hỏi trực diện về dịch vụ không tồn tại hoặc thông tin vận hành cụ thể (địa chỉ, STK). */
@@ -129,6 +158,7 @@ public class FanpageBotService {
     private com.example.docmind.service.MetaLearningService metaLearningService;
     private final GuardrailPipeline guardrailPipeline;
     private final HarnessOptimizerService harnessOptimizerService;
+    private FastApiAgentService fastApiAgentService;
 
     @Autowired
     public FanpageBotService(RetrievalService retrievalService,
@@ -140,7 +170,8 @@ public class FanpageBotService {
                              @Autowired(required = false) AgentSkillService agentSkillService,
                              @Autowired(required = false) com.example.docmind.service.MetaLearningService metaLearningService,
                              @Autowired(required = false) GuardrailPipeline guardrailPipeline,
-                             @Autowired(required = false) HarnessOptimizerService harnessOptimizerService) {
+                             @Autowired(required = false) HarnessOptimizerService harnessOptimizerService,
+                             @Autowired(required = false) FastApiAgentService fastApiAgentService) {
         this.retrievalService = retrievalService;
         this.llmClient = llmClient;
         this.chatProps = chatProps;
@@ -151,6 +182,22 @@ public class FanpageBotService {
         this.metaLearningService = metaLearningService;
         this.guardrailPipeline = guardrailPipeline != null ? guardrailPipeline : new GuardrailPipeline();
         this.harnessOptimizerService = harnessOptimizerService;
+        this.fastApiAgentService = fastApiAgentService != null
+                ? fastApiAgentService
+                : new FastApiAgentService(null, new com.example.docmind.config.DocServiceProperties());
+    }
+
+    public FanpageBotService(RetrievalService retrievalService,
+                             LlmClient llmClient,
+                             ChatProperties chatProps,
+                             DocumentRepository documentRepository,
+                             KnowledgePageRepository knowledgePageRepository,
+                             CustomerInsightEngine customerInsightEngine,
+                             AgentSkillService agentSkillService,
+                             com.example.docmind.service.MetaLearningService metaLearningService,
+                             GuardrailPipeline guardrailPipeline,
+                             HarnessOptimizerService harnessOptimizerService) {
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, guardrailPipeline, harnessOptimizerService, null);
     }
 
     public FanpageBotService(RetrievalService retrievalService,
@@ -258,7 +305,7 @@ public class FanpageBotService {
 
         // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION TRỰC TIẾP
         if (PromptSecurityGuard.isDirectJailbreakAttempt(mergedMessage)) {
-            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak page_id={} msg={}", pageId, mergedMessage);
+            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak page_id={} msg={}", pageId, maskPiiInText(mergedMessage));
             String safeReply = "Dạ em chỉ có thể hỗ trợ tư vấn thông tin dịch vụ và chương trình ưu đãi chính thức của Page thôi ạ. "
                     + "Để em kết nối ngay với Quản lý phụ trách hỗ trợ trực tiếp cho " + honorific + " nhé ạ!";
             return buildHandoffResponse(
@@ -402,11 +449,32 @@ public class FanpageBotService {
             );
         }
 
-        // 4. NÉN NGỮ CẢNH ĐA LƯỢT (CONTEXTUAL QUERY REWRITING) & HYBRID RETRIEVAL
+        // 4. NÉN NGỮ CẢNH ĐA LƯỢT QUA LANGGRAPH STATE ENGINE & HYBRID RETRIEVAL
         // Lưu ý quan trọng: Chỉ ĐỌC AI Playbook (extraRules = List.of()), KHÔNG BAO GIỜ chạy MetaLearningService từ tin nhắn khách hàng!
         long retrievalStartNs = System.nanoTime();
-        String contextualQuery = buildContextualSearchQuery(mergedMessage, request.history());
-        int topK = request.topK() != null ? request.topK() : chatProps.getTopK();
+        List<java.util.Map<String, String>> historyMaps = new ArrayList<>();
+        if (request.history() != null) {
+            for (FanpageBotRequest.ConversationTurn t : request.history()) {
+                if (t != null && t.role() != null && t.content() != null) {
+                    historyMaps.add(java.util.Map.of("role", t.role(), "content", t.content()));
+                }
+            }
+        }
+        com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult = fastApiAgentService != null
+                ? fastApiAgentService.consult(
+                        request.senderId(),
+                        pageId != null ? pageId.toString() : null,
+                        mergedMessage,
+                        historyMaps,
+                        List.of(),
+                        honorific)
+                : null;
+        if (consultResult != null && "Anh".equalsIgnoreCase(consultResult.honorific())) {
+            honorific = "Anh";
+        }
+        String baseContextualQuery = buildContextualSearchQuery(mergedMessage, request.history());
+        String contextualQuery = enrichContextualQueryWithLangGraph(baseContextualQuery, consultResult);
+        int topK = request.topK() != null ? request.topK() : Math.max(6, chatProps.getTopK());
         RetrievalService.RetrievalResult retrievalResult = retrievalService.retrieveWithRules(
                 documentIds,
                 contextualQuery,
@@ -416,9 +484,10 @@ public class FanpageBotService {
         );
         long retrievalMs = (System.nanoTime() - retrievalStartNs) / 1_000_000L;
 
-        List<ReciprocalRankFusion.FusedChunk> fused = retrievalResult != null && retrievalResult.chunks() != null
+        List<ReciprocalRankFusion.FusedChunk> rawFused = retrievalResult != null && retrievalResult.chunks() != null
                 ? retrievalResult.chunks()
                 : List.of();
+        List<ReciprocalRankFusion.FusedChunk> fused = scopeChunksToTopicFamily(rawFused, consultResult, mergedMessage);
         List<LearnedRuleDto> appliedRules = retrievalResult != null && retrievalResult.appliedRules() != null
                 ? retrievalResult.appliedRules()
                 : List.of();
@@ -471,8 +540,8 @@ public class FanpageBotService {
             List<FanpageBotResponse.ReplyBubble> fastBubbles = splitIntoBubbles(fastPhoneReply);
             double fastConfidence = computeConfidenceScore(fused);
             String fastReason = "Khách hàng đã để lại SĐT (" + extractedLead.phoneNumber() + ") / đặt lịch — Chuyển Chuyên viên liên hệ qua phone/Zalo ngay!";
-            log.info("[LLM] FanpageBotService fast-path phone-lead response retrievalMs={} llmMs=0 status=ok page_id={} honorific={} sales_stage={} handoff=true bubbles={}",
-                    retrievalMs, pageId, honorific, salesStage.code(), fastBubbles.size());
+            log.info("[LLM] FanpageBotService fast-path phone-lead response retrievalMs={} llmMs=0 status=ok page_id={} honorific={} sales_stage={} handoff=true phone={} bubbles={}",
+                    retrievalMs, pageId, honorific, salesStage.code(), maskPhoneNumber(extractedLead.phoneNumber()), fastBubbles.size());
             FanpageBotResponse fastResp = new FanpageBotResponse(
                     fastPhoneReply,
                     fastBubbles,
@@ -489,8 +558,8 @@ public class FanpageBotService {
             return applyGuardrails(fastResp, honorific, request.customerName(), isFirstTurn, salesStage.code(), mergedMessage, request.history(), fused);
         }
 
-        // 7. DỰNG PROMPT RIÊNG CỦA BOT FANPAGE (KÈM CUSTOMER INSIGHT & AGENT SKILLS) & GỌI LLM
-        String prompt = FanpageBotPromptBuilder.build(
+        // 7. DỰNG PROMPT RIÊNG CỦA BOT FANPAGE (KÈM CUSTOMER INSIGHT, AGENT SKILLS & LANGGRAPH DIRECTIVE) & GỌI LLM
+        String basePrompt = FanpageBotPromptBuilder.build(
                 mergedMessage,
                 request.customerName(),
                 request.history(),
@@ -502,6 +571,7 @@ public class FanpageBotService {
                 customerInsight,
                 activeSkills
         );
+        String prompt = basePrompt;
 
         long llmStartNs = System.nanoTime();
         log.info("[LLM] FanpageBotService calling engine={} (page_id={}, sales_stage={}, honorific={}, archetype={}, skills={}, retrievalMs={}, promptChars={})",
@@ -531,6 +601,9 @@ public class FanpageBotService {
         } else if (!processed.needsHandoff()) {
             finalCleanText = enforceConversationBookingConsistency(
                     finalCleanText, mergedMessage, bookingState, honorific, request.history(), isFirstTurn);
+            if (consultResult != null && consultResult.isProfileUpdateTurn()) {
+                finalCleanText = enforceTopicAnchorOnProfileUpdate(finalCleanText, consultResult, honorific);
+            }
         }
 
         boolean hasCompletedBookingLead = bookingState.hasCapturedPhone() && bookingState.hasConfirmedTimeSlot();
@@ -548,9 +621,9 @@ public class FanpageBotService {
 
         List<FanpageBotResponse.ReplyBubble> bubbles = splitIntoBubbles(finalCleanText);
 
-        log.info("[LLM] FanpageBotService response from engine={} retrievalMs={} latencyMs={} status={} page_id={} honorific={} sales_stage={} handoff={} bubbles={}",
+        log.info("[LLM] FanpageBotService response from engine={} retrievalMs={} latencyMs={} status={} page_id={} honorific={} sales_stage={} handoff={} lead_phone={} bubbles={}",
                 llmClient.name(), retrievalMs, llmLatencyMs, isFallback ? "fallback" : "ok",
-                pageId, honorific, finalStage, finalHandoff, bubbles.size());
+                pageId, honorific, finalStage, finalHandoff, extractedLead != null ? maskPhoneNumber(extractedLead.phoneNumber()) : "none", bubbles.size());
 
         FanpageBotResponse rawResponse = new FanpageBotResponse(
                 finalCleanText,
@@ -663,20 +736,20 @@ public class FanpageBotService {
                 ? resolvedHonorific.strip()
                 : "Chị";
 
-        Pattern priceTokenPattern = Pattern.compile("\\b(\\d{1,3}(?:\\.\\d{3})+)\\s*(?:vnđ|đ|vnd|/buổi)?\\b", Pattern.CASE_INSENSITIVE);
+        Pattern priceTokenPattern = Pattern.compile("\\b(\\d{1,3}(?:\\.\\d{3})+|\\d{2,4}k)\\s*(?:vnđ|đ|vnd|/buổi)?\\b", Pattern.CASE_INSENSITIVE);
         Matcher pm = priceTokenPattern.matcher(cleanText);
         Set<String> distinctPrices = new LinkedHashSet<>();
         while (pm.find()) {
-            distinctPrices.add(pm.group(1));
+            distinctPrices.add(pm.group(1).toLowerCase(Locale.ROOT));
         }
 
         String lower = cleanText.toLowerCase(Locale.ROOT);
         boolean dumpsComboOnBroadPrice = lower.contains("combo tiết kiệm") || lower.contains("combo toàn diện")
                 || (lower.contains("3-4 buổi") && lower.contains("5-9 buổi"))
                 || (lower.contains("giảm 10%") && lower.contains("giảm 15%"));
-        boolean dumpsMultipleServices = distinctPrices.size() >= 2;
+        boolean dumpsMultipleServices = distinctPrices.size() >= 3;
 
-        if (!dumpsMultipleServices && !dumpsComboOnBroadPrice && cleanText.length() <= 300) {
+        if (!dumpsMultipleServices && !dumpsComboOnBroadPrice && cleanText.length() <= 340) {
             return cleanText;
         }
 
@@ -691,12 +764,20 @@ public class FanpageBotService {
             String minRaw = null;
             Matcher cm = priceTokenPattern.matcher(combinedChunks + " " + cleanText);
             while (cm.find()) {
-                String digits = cm.group(1).replace(".", "");
+                String token = cm.group(1).toLowerCase(Locale.ROOT);
                 try {
-                    long val = Long.parseLong(digits);
-                    if (val >= 50_000L && val < minVal) {
+                    long val;
+                    String formatted;
+                    if (token.endsWith("k")) {
+                        val = Long.parseLong(token.substring(0, token.length() - 1)) * 1000L;
+                        formatted = token;
+                    } else {
+                        val = Long.parseLong(token.replace(".", ""));
+                        formatted = cm.group(1) + "đ";
+                    }
+                    if (val >= 90_000L && val < minVal) {
                         minVal = val;
-                        minRaw = cm.group(1) + "đ";
+                        minRaw = formatted;
                     }
                 } catch (NumberFormatException ignored) {
                 }
@@ -715,6 +796,12 @@ public class FanpageBotService {
             return opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
                     + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"
                     + "Hiện tại " + honorific + " đang muốn ưu tiên xử lý mụn, mờ nám tàn nhang hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?";
+        }
+
+        if (combinedLower.contains("gội đầu dưỡng sinh") || combinedLower.contains("massage")) {
+            return opening + "Chi phí các gói chăm sóc tại bên em rất linh hoạt chỉ từ " + startingPrice
+                    + " tùy theo liệu trình và thời lượng, đã bao gồm ngâm chân thảo dược, trà bánh và cam kết không nhận Tip ạ.\n\n"
+                    + "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em báo giá chi tiết đúng gói hợp nhất cho mình ạ?";
         }
 
         return opening + "Mức chi phí bên em rất linh hoạt chỉ từ " + startingPrice
@@ -849,10 +936,122 @@ public class FanpageBotService {
                 recentUserInputs.add(0, turn.content().strip());
             }
         }
-        if (recentUserInputs.isEmpty()) {
-            return currentMessage;
+        String joined = recentUserInputs.isEmpty()
+                ? currentMessage
+                : String.join(" ", recentUserInputs) + " " + currentMessage;
+        if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(currentMessage)
+                || FanpageBotPromptBuilder.isTrialOrBookingAcceptanceMessage(currentMessage)) {
+            joined = joined + " bảng giá dịch vụ gói cơ bản dưỡng sinh lấy ráy tai 129.000 239.000 399.000 ưu đãi";
         }
-        return String.join(" ", recentUserInputs) + " " + currentMessage;
+        return joined;
+    }
+
+    static String enrichContextualQueryWithLangGraph(
+            String baseQuery,
+            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult) {
+        String q = baseQuery != null ? baseQuery : "";
+        if (consultResult == null || "GENERAL".equalsIgnoreCase(consultResult.topicFamily())) {
+            return q;
+        }
+        if (consultResult.topicKeywords() != null && !consultResult.topicKeywords().isEmpty()) {
+            String lowerQ = q.toLowerCase(Locale.ROOT);
+            List<String> missingKeywords = new ArrayList<>();
+            for (String kw : consultResult.topicKeywords()) {
+                if (kw != null && !kw.isBlank() && !lowerQ.contains(kw.toLowerCase(Locale.ROOT))) {
+                    missingKeywords.add(kw.strip());
+                }
+            }
+            if (!missingKeywords.isEmpty()) {
+                q = String.join(" ", missingKeywords) + " " + q;
+            }
+        }
+        return q.strip();
+    }
+
+    static List<ReciprocalRankFusion.FusedChunk> scopeChunksToTopicFamily(
+            List<ReciprocalRankFusion.FusedChunk> rawFused,
+            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult,
+            String currentMessage) {
+        if (rawFused == null || rawFused.isEmpty() || consultResult == null) {
+            return rawFused == null ? List.of() : rawFused;
+        }
+        if (!"ACNE_THAM".equalsIgnoreCase(consultResult.topicFamily())) {
+            return rawFused;
+        }
+        String lowerMsg = currentMessage != null ? currentMessage.toLowerCase(Locale.ROOT) : "";
+        if (lowerMsg.contains("nám") || lowerMsg.contains("pico") || lowerMsg.contains("meso") || lowerMsg.contains("căng bóng")) {
+            return rawFused;
+        }
+        Pattern offTopicLinePattern = Pattern.compile("(?iU)(trị\\s+nám|laser\\s+pico|meso\\s+collagen|căng\\s+bóng\\s+&\\s+trẻ\\s+hóa)");
+        List<ReciprocalRankFusion.FusedChunk> scoped = new ArrayList<>(rawFused.size());
+        for (ReciprocalRankFusion.FusedChunk fc : rawFused) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) {
+                continue;
+            }
+            String text = fc.chunk().text();
+            String[] lines = text.split("\\r?\\n");
+            if (lines.length <= 1) {
+                scoped.add(fc);
+                continue;
+            }
+            List<String> keptLines = new ArrayList<>();
+            for (String line : lines) {
+                if (!offTopicLinePattern.matcher(line).find()) {
+                    keptLines.add(line);
+                }
+            }
+            String pruned = String.join("\n", keptLines).strip();
+            if (!pruned.isEmpty() && !pruned.equals(text)) {
+                com.example.docmind.repository.RetrievedChunk orig = fc.chunk();
+                com.example.docmind.repository.RetrievedChunk updated = new com.example.docmind.repository.RetrievedChunk(
+                        orig.chunkId(),
+                        orig.documentId(),
+                        orig.headingPath(),
+                        orig.sourceBlockIds(),
+                        orig.page(),
+                        orig.bbox(),
+                        pruned,
+                        orig.score()
+                );
+                scoped.add(new ReciprocalRankFusion.FusedChunk(updated, fc.score()));
+            } else {
+                scoped.add(fc);
+            }
+        }
+        return scoped;
+    }
+
+    static String enforceTopicAnchorOnProfileUpdate(
+            String cleanText,
+            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult,
+            String resolvedHonorific) {
+        if (cleanText == null || cleanText.isBlank() || consultResult == null || !consultResult.isProfileUpdateTurn()) {
+            return cleanText;
+        }
+        if (!"ACNE_THAM".equalsIgnoreCase(consultResult.topicFamily())) {
+            return cleanText;
+        }
+        String lower = cleanText.toLowerCase(Locale.ROOT);
+        boolean driftedToCatalog = lower.contains("laser pico")
+                || lower.contains("meso collagen")
+                || lower.contains("thâm nám hay dưỡng căng bóng")
+                || lower.contains("mụn, nám")
+                || lower.contains("đang cần ưu tiên cải thiện vấn đề nào nhất");
+        if (!driftedToCatalog) {
+            return cleanText;
+        }
+        String h = (resolvedHonorific != null && !resolvedHonorific.isBlank()) ? resolvedHonorific.strip() : "Anh";
+        String kws = (consultResult.topicKeywords() != null && !consultResult.topicKeywords().isEmpty())
+                ? String.join(" và ", consultResult.topicKeywords())
+                : "điều trị mụn & mờ thâm";
+        boolean hasBackAcne = kws.toLowerCase(Locale.ROOT).contains("lưng");
+        String bodyPartNote = hasBackAcne
+                ? "đặc biệt vùng da lưng và mặt của Nam giới có lớp sừng dày và tuyến bã nhờn hoạt động mạnh hơn"
+                : "nền da Nam giới thường dày và tuyến bã nhờn hoạt động mạnh hơn";
+        return "Dạ các phác đồ " + kws + " chuẩn Y khoa bên em hoàn toàn phù hợp và hiệu quả cao với " + h
+                + " Nam giới ạ (bên em có bố trí khu vực phòng trị liệu riêng tư kín đáo 1-1 nên " + h + " hoàn toàn thoải mái ạ). "
+                + "Vì " + bodyPartNote + ", Liệu trình Trị Mụn Chuẩn Y Khoa (từ 650.000đ - 1.500.000đ/buổi, cam kết 0 phụ phí) sẽ giúp tiêu viêm sâu và làm sáng vết thâm rất nhanh.\n\n"
+                + h + " tiện ghé cơ sở vào khung giờ Sáng hay Chiều để Bác sĩ Chuyên khoa I trực tiếp soi da AI 3D miễn phí 100% và lên phác đồ xử lý dứt điểm cho mình ạ?";
     }
 
     /**
@@ -865,27 +1064,36 @@ public class FanpageBotService {
             String message,
             List<FanpageBotRequest.ConversationTurn> history,
             FanpageBotResponse.ExtractedLead extractedLead) {
-        if (extractedLead != null && extractedLead.hasBuyingOrBookingSignal()) {
+        if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(message)) {
+            return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
+        }
+        if ((extractedLead != null && extractedLead.hasBuyingOrBookingSignal())
+                || FanpageBotPromptBuilder.isTrialOrBookingAcceptanceMessage(message)) {
             return FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE;
         }
         int turnCount = history != null ? history.size() : 0;
         String lower = message != null ? message.toLowerCase(Locale.ROOT) : "";
-        boolean isCoolingSignal = lower.matches("(?isU).*\\b(ừ|uk|ok|để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)|để\\s+xem|nghĩ\\s+thêm|thôi|hơi\\s+đắt|re-engage|im\\s+lặng)\\b.*");
+        boolean isBareBrushOff = lower.matches("(?isU)^\\s*(?:ừ|uk|uh|uhm|um|ok|oke|oki|okie|vâng|dạ|rồi)(?:\\s+(?:em|shop|ad|bạn|nhé|nha|ạ))?\\s*[.!,~?]*$");
+        boolean isCoolingSignal = isBareBrushOff || lower.matches("(?isU).*\\b(để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)|để\\s+xem|nghĩ\\s+thêm|thôi|khi\\s+khác|chưa\\s+cần|re-engage|im\\s+lặng)\\b.*");
         if (isCoolingSignal) {
             return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
         }
         boolean asksPriceOrPolicy = lower.contains("giá") || lower.contains("bao nhiêu")
                 || lower.contains("chiết khấu") || lower.contains("khuyến mãi") || lower.contains("combo")
                 || lower.contains("tặng") || lower.contains("bảo hành") || lower.contains("đắt")
+                || lower.contains("cao") || lower.contains("rẻ") || lower.contains("mềm")
                 || lower.contains("tip") || lower.contains("phụ phí") || lower.contains("đổi gói");
 
-        if (turnCount >= 4) {
-            return FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE;
-        }
         if (FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(message, history)) {
             return FanpageBotPromptBuilder.SalesStage.DISCOVERY;
         }
-        if (asksPriceOrPolicy || turnCount >= 2) {
+        if (asksPriceOrPolicy) {
+            return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
+        }
+        if (turnCount >= 4) {
+            return FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE;
+        }
+        if (turnCount >= 2) {
             return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
         }
         return FanpageBotPromptBuilder.SalesStage.DISCOVERY;
@@ -1366,21 +1574,21 @@ public class FanpageBotService {
         } else if (!isFirstTurn || (salesStage != null && salesStage != FanpageBotPromptBuilder.SalesStage.DISCOVERY)) {
             if (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE) {
                 questionPool = List.of(
-                        honorific + " muốn đặt lịch qua soi da AI 3D miễn phí cùng Bác sĩ vào khung giờ Sáng hay Chiều để bên em giữ lịch trước cho mình ạ?",
-                        honorific + " tiện ghé cơ sở bên em vào ngày thường hay cuối tuần để bên em sắp xếp Bác sĩ tiếp đón chu đáo nhất ạ?",
-                        honorific + " cho em xin khung giờ tiện nhất để bên em giữ suất ưu đãi và sắp xếp phòng riêng cho mình nha " + honorific + "!"
+                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ lịch trước cho mình ạ?",
+                        honorific + " tiện ghé cơ sở bên em vào ngày thường hay cuối tuần để bên em sắp xếp đón tiếp chu đáo nhất ạ?",
+                        honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi trước cho mình ạ?"
                 );
             } else {
                 questionPool = List.of(
-                        "Với tình trạng da hiện tại, " + honorific + " muốn bên em đặt lịch soi da AI 3D miễn phí cùng Bác sĩ Da liễu trước hay cần em tư vấn kỹ hơn về lộ trình các buổi ạ?",
-                        "Không biết " + honorific + " muốn trải nghiệm trước 1 buổi để cảm nhận hiệu quả hay muốn tham khảo theo Combo để nhận ưu đãi tốt nhất ạ?",
-                        honorific + " muốn bên em giữ suất soi da AI 3D miễn phí cùng Bác sĩ vào khung giờ Sáng hay Chiều để em lên lịch cho mình ạ?"
+                        "Không biết " + honorific + " muốn trải nghiệm gói cơ bản trước hay cần em tư vấn kỹ hơn về quy trình các bước ạ?",
+                        "Không biết " + honorific + " muốn trải nghiệm lẻ 1 buổi trước hay tham khảo theo gói ưu đãi để tiết kiệm chi phí nhất ạ?",
+                        honorific + " muốn bên em giữ lịch trải nghiệm vào khung giờ Sáng hay Chiều để em lên lịch cho mình ạ?"
                 );
             }
         } else {
             questionPool = List.of(
-                    "Hiện tại da của " + honorific + " đang cần ưu tiên cải thiện vấn đề nào nhất để em gợi ý liệu trình êm và hợp nhất cho mình ạ?",
-                    "Không biết hiện tại " + honorific + " đang quan tâm chăm sóc da định kỳ hay đang cần xử lý tình trạng mụn/nám cụ thể nào ạ?"
+                    "Hiện tại " + honorific + " đang muốn ưu tiên trải nghiệm dịch vụ nào nhất để em gợi ý gói phù hợp nhất cho mình ạ?",
+                    "Không biết hiện tại " + honorific + " đang muốn trải nghiệm thư giãn cơ bản hay liệu trình chăm sóc chuyên sâu hơn ạ?"
             );
         }
 
@@ -1465,6 +1673,14 @@ public class FanpageBotService {
             }
         }
 
+        // 4. Nếu ở bước chốt lịch (SOFT_BOOKING_CLOSE) hoặc khách gật đầu đồng ý thử ("Ok thử xem sao")
+        // mà câu trả lời hoàn toàn thiếu dấu hỏi chấm ở cuối -> bắt buộc nối thêm câu hỏi điều hướng đặt lịch
+        if (!text.strip().endsWith("?")
+                && (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE
+                    || FanpageBotPromptBuilder.isTrialOrBookingAcceptanceMessage(currentMessage))) {
+            text = text.strip() + "\n\n" + naturalClosing;
+        }
+
         return text;
     }
 
@@ -1527,11 +1743,9 @@ public class FanpageBotService {
             String text = bubbleTexts.get(i);
             int delayMs;
             if (i == 0) {
-                // Bong bóng 0: Hiệu ứng gõ tự nhiên mở đầu ~800–1200ms
-                delayMs = Math.min(1200, Math.max(800, text.length() * 10));
+                delayMs = Math.min(450, Math.max(250, text.length() * 4));
             } else {
-                // Bong bóng kế tiếp (index 1+): Độ trễ gõ phím người thật ~2500–3000ms
-                delayMs = Math.min(3000, Math.max(2500, text.length() * 15));
+                delayMs = Math.min(600, Math.max(350, text.length() * 5));
             }
             bubbles.add(new FanpageBotResponse.ReplyBubble(text, delayMs));
         }
@@ -1648,7 +1862,10 @@ public class FanpageBotService {
         if (history != null) {
             for (FanpageBotRequest.ConversationTurn turn : history) {
                 if (turn != null && turn.content() != null) {
-                    historyTexts.add(turn.content());
+                    String rolePrefix = (turn.role() != null && !turn.role().isBlank())
+                            ? turn.role().strip().toLowerCase(Locale.ROOT) + ": "
+                            : "";
+                    historyTexts.add(rolePrefix + turn.content());
                 }
             }
         }

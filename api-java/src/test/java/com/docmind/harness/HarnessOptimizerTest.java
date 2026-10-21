@@ -524,6 +524,34 @@ class HarnessOptimizerTest {
             assertThat(response.getBody().get(0).verdict()).isEqualTo("ADOPTED");
             assertThat(response.getBody().get(0).pageId()).isEqualTo(PAGE_ID);
         }
+
+        @Test
+        @DisplayName("Listing runs without page_id queries only global runs (pageId IS NULL)")
+        void getRunsWithoutPageIdQueriesGlobalRunsOnly() {
+            HarnessRunEntity globalRun = HarnessRunEntity.builder()
+                    .id("run-global-1")
+                    .pageId(null)
+                    .customerMessage("Khách hỏi chung")
+                    .baseResponse("Trả lời chung")
+                    .candidateA("A")
+                    .candidateB("B")
+                    .winnerCandidate("Candidate A")
+                    .verdict("ADOPTED")
+                    .deltaScore(0.35)
+                    .rationale("Candidate won")
+                    .createdAt(Instant.now())
+                    .build();
+
+            when(runRepository.findRunsWithFilter(isNull(), isNull(), any()))
+                    .thenReturn(List.of(globalRun));
+
+            ResponseEntity<List<HarnessRunDto>> response = harnessController.getRuns(null, null, 10);
+
+            assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(response.getBody()).hasSize(1);
+            assertThat(response.getBody().get(0).pageId()).isNull();
+            verify(runRepository).findRunsWithFilter(isNull(), isNull(), any());
+        }
     }
 
     // =========================================================================

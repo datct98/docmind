@@ -1,22 +1,19 @@
 /**
  * DocMind API Service Layer
- * Tương tác với backend Spring Boot (cổng 8090) qua /api
+ * Tương tác trực tiếp với backend Spring Boot (cổng 8090) qua /api
  */
 
-import { mockHarnessOptimize, mockHarnessConversationAudit, getMockHarnessRuns } from './mockData.js'
-
 const API_BASE = '/api'
-let _isMockMode = false
 
 export const api = {
   /**
-   * Kiểm tra / đặt trạng thái Mock Mode (Demo Mode)
+   * Kiểm tra trạng thái Mock Mode (luôn tắt - gọi thẳng vào API)
    */
   isMockMode() {
-    return _isMockMode
+    return false
   },
-  setMockMode(val) {
-    _isMockMode = Boolean(val)
+  setMockMode() {
+    // No-op: luôn gọi thẳng vào API
   },
 
   /**
@@ -311,6 +308,7 @@ export const api = {
     if (params.pageId) searchParams.set('page_id', params.pageId)
     if (params.includeGlobal !== undefined) searchParams.set('include_global', params.includeGlobal)
     if (params.dimension) searchParams.set('dimension', params.dimension)
+    if (params.reviewStatus) searchParams.set('review_status', params.reviewStatus)
 
     const queryStr = searchParams.toString()
     const url = queryStr ? `${API_BASE}/rules?${queryStr}` : `${API_BASE}/rules`
@@ -412,6 +410,55 @@ export const api = {
   },
 
   /**
+   * Duyệt quy tắc từ Hàng đợi Chờ duyệt (Staging Queue -> APPROVED + active)
+   * POST /api/rules/:id/approve
+   */
+  async approveRule(id) {
+    const res = await fetch(`${API_BASE}/rules/${encodeURIComponent(id)}/approve`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể duyệt quy tắc (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
+   * Từ chối quy tắc trong Hàng đợi Chờ duyệt (Staging Queue -> REJECTED)
+   * POST /api/rules/:id/reject
+   */
+  async rejectRule(id) {
+    const res = await fetch(`${API_BASE}/rules/${encodeURIComponent(id)}/reject`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể từ chối quy tắc (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
+   * Kích hoạt Luồng 2 (Cold Path): Trích xuất mẫu câu từ log hội thoại chốt đơn & Kiểm định Bảo mật AI
+   * POST /api/rules/nightly-extract
+   */
+  async extractNightlyRules(payload) {
+    const res = await fetch(`${API_BASE}/rules/nightly-extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi trích xuất & kiểm định bảo mật Cold Path (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
    * Xóa quy tắc khỏi hệ thống
    * DELETE /api/rules/:id
    */
@@ -503,14 +550,30 @@ export const api = {
       payload.action = 'REENGAGE'
     }
 
-    const res = await fetch(`${API_BASE}/bot/fanpage/message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
+    let res
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        res = await fetch(`${API_BASE}/bot/fanpage/message`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify(payload)
+        })
+        if (attempt === 1 && (res.status === 502 || res.status === 503 || res.status === 504)) {
+          await new Promise(r => setTimeout(r, 1200))
+          continue
+        }
+        break
+      } catch (fetchErr) {
+        if (attempt === 1) {
+          await new Promise(r => setTimeout(r, 1200))
+          continue
+        }
+        throw fetchErr
+      }
+    }
 
     if (!res.ok) {
       let errorMsg = `Lỗi gọi API Bot Fanpage (HTTP ${res.status})`
@@ -704,10 +767,6 @@ export const api = {
     async optimize(data) {
       if (!data) throw new Error('Dữ liệu yêu cầu tối ưu hóa Harness² không được để trống')
 
-      if (api.isMockMode()) {
-        return mockHarnessOptimize(data)
-      }
-
       const payload = {
         page_id: data.pageId || data.page_id || null,
         customer_message: data.customerMessage || data.customer_message || data.message || '',
@@ -728,33 +787,28 @@ export const api = {
         throw new Error('base_response không được để trống khi chạy tối ưu hóa Harness²')
       }
 
-      try {
-        const res = await fetch(`${API_BASE}/harness/optimize`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json'
-          },
-          body: JSON.stringify(payload)
-        })
+      const res = await fetch(`${API_BASE}/harness/optimize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
 
-        if (!res.ok) {
-          let errorMsg = `Lỗi tối ưu hóa Harness² (HTTP ${res.status})`
-          try {
-            const errJson = await res.json()
-            if (errJson.message) errorMsg = errJson.message
-            else if (errJson.detail) errorMsg = errJson.detail
-          } catch {
-            // ignore
-          }
-          throw new Error(errorMsg)
+      if (!res.ok) {
+        let errorMsg = `Lỗi tối ưu hóa Harness² (HTTP ${res.status})`
+        try {
+          const errJson = await res.json()
+          if (errJson.message) errorMsg = errJson.message
+          else if (errJson.detail) errorMsg = errJson.detail
+        } catch {
+          // ignore
         }
-
-        return await res.json()
-      } catch (err) {
-        console.warn('[Harness API] optimize request failed, falling back to mock runner:', err.message || err)
-        return mockHarnessOptimize(data)
+        throw new Error(errorMsg)
       }
+
+      return await res.json()
     },
 
     /**
@@ -764,10 +818,6 @@ export const api = {
     async auditConversation(data) {
       if (!data) throw new Error('Dữ liệu cuộc hội thoại không được để trống')
 
-      if (api.isMockMode()) {
-        return mockHarnessConversationAudit(data)
-      }
-
       const payload = {
         page_id: data.pageId || data.page_id || null,
         conversation_id: data.conversationId || data.conversation_id || null,
@@ -776,33 +826,28 @@ export const api = {
         auto_apply_rules: data.autoApplyRules !== undefined ? Boolean(data.autoApplyRules) : true
       }
 
-      try {
-        const res = await fetch(`${API_BASE}/harness/audit-conversation`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json'
-          },
-          body: JSON.stringify(payload)
-        })
+      const res = await fetch(`${API_BASE}/harness/audit-conversation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
 
-        if (!res.ok) {
-          let errorMsg = `Lỗi đánh giá toàn hội thoại Harness² (HTTP ${res.status})`
-          try {
-            const errJson = await res.json()
-            if (errJson.message) errorMsg = errJson.message
-            else if (errJson.detail) errorMsg = errJson.detail
-          } catch {
-            // ignore
-          }
-          throw new Error(errorMsg)
+      if (!res.ok) {
+        let errorMsg = `Lỗi đánh giá toàn hội thoại Harness² (HTTP ${res.status})`
+        try {
+          const errJson = await res.json()
+          if (errJson.message) errorMsg = errJson.message
+          else if (errJson.detail) errorMsg = errJson.detail
+        } catch {
+          // ignore
         }
-
-        return await res.json()
-      } catch (err) {
-        console.warn('[Harness API] auditConversation request failed, falling back to mock runner:', err.message || err)
-        return mockHarnessConversationAudit(data)
+        throw new Error(errorMsg)
       }
+
+      return await res.json()
     },
 
     /**
@@ -815,10 +860,6 @@ export const api = {
      * @returns {Promise<Array>} Danh sách HarnessRunDto
      */
     async getRuns(pageIdOrParams = null, limit = 20, verdict = null) {
-      if (api.isMockMode()) {
-        return getMockHarnessRuns(pageIdOrParams, limit, verdict)
-      }
-
       let pageId = null
       let optLimit = limit || 20
       let optVerdict = verdict || null
@@ -845,21 +886,16 @@ export const api = {
       const queryStr = searchParams.toString()
       const url = queryStr ? `${API_BASE}/harness/runs?${queryStr}` : `${API_BASE}/harness/runs`
 
-      try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { Accept: 'application/json' }
-        })
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' }
+      })
 
-        if (!res.ok) {
-          throw new Error(`Không thể lấy lịch sử Harness² runs (HTTP ${res.status})`)
-        }
-
-        return await res.json()
-      } catch (err) {
-        console.warn('[Harness API] getRuns request failed, falling back to mock runs:', err.message || err)
-        return getMockHarnessRuns(pageIdOrParams, limit, verdict)
+      if (!res.ok) {
+        throw new Error(`Không thể lấy lịch sử Harness² runs (HTTP ${res.status})`)
       }
+
+      return await res.json()
     }
   },
 
@@ -874,6 +910,118 @@ export const api = {
 
   async getHarnessRuns(pageIdOrParams, limit, verdict) {
     return this.harness.getRuns(pageIdOrParams, limit, verdict)
+  },
+
+  /**
+   * Omnichannel Conversation Inbox APIs (/api/conversations)
+   */
+  async getConversations(pageId = null, filter = 'ALL') {
+    const searchParams = new URLSearchParams()
+    if (pageId) searchParams.set('page_id', pageId)
+    if (filter) searchParams.set('filter', filter)
+    const res = await fetch(`${API_BASE}/conversations?${searchParams.toString()}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể tải danh sách hội thoại (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async getConversationDetail(sessionId) {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể tải chi tiết hội thoại (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async createNewConversation({ pageId = null, customerName = '', message = '' }) {
+    const res = await fetch(`${API_BASE}/conversations/new`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        page_id: pageId,
+        customer_name: customerName,
+        message
+      })
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi tạo hội thoại mới (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async sendCustomerTurnInConversation(sessionId, { message = '', customerName = null }) {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(sessionId)}/customer-turn`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        message,
+        customer_name: customerName
+      })
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi gửi tin nhắn khách hàng vào hộp thư (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async sendHumanSaleReplyInConversation(sessionId, { message = '', markConverted = false }) {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(sessionId)}/sale-reply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        message,
+        mark_converted: markConverted
+      })
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi gửi tin nhắn Sale thật (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async updateConversationControlMode(sessionId, { controlMode = null, status = null }) {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(sessionId)}/control-mode`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        control_mode: controlMode,
+        status
+      })
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi chuyển quyền điều khiển hội thoại (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async extractRuleFromConversation(sessionId) {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(sessionId)}/extract-rule`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Lỗi trích xuất bài học từ ca chat (HTTP ${res.status})`)
+    }
+    return await res.json()
   }
 }
 

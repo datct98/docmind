@@ -86,6 +86,15 @@ public class AntiInfoDumpingHook implements GuardrailHook {
 
         // Tìm mức giá khởi điểm thấp nhất trong text hoặc chunks
         String startingPrice = extractLowestStartingPrice(text, context.getKnowledgeChunks());
+        String combinedChunksLower = context.getKnowledgeChunks() != null
+                ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
+                : "";
+        boolean isDermatologyDoc = combinedChunksLower.contains("soi da") || combinedChunksLower.contains("nám") || combinedChunksLower.contains("mụn");
+
+        // Nếu là tài liệu ngành khác (VD: Massage / Gội đầu dưỡng sinh Nàng Sen), chỉ can thiệp khi xả quá 3 mức giá
+        if (!isDermatologyDoc && distinctPrices.size() < 3) {
+            return false;
+        }
 
         String honorific = context.getCustomerHonorific();
         boolean isFirstTurn = context.isFirstTurn();
@@ -94,9 +103,16 @@ public class AntiInfoDumpingHook implements GuardrailHook {
                 ? "Dạ em chào " + honorific + " ạ! "
                 : "Dạ ";
 
-        String rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
-                + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"
-                + "Hiện tại " + honorific + " đang muốn ưu tiên xử lý mụn, mờ nám tàn nhang hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?";
+        String rewritten;
+        if (isDermatologyDoc) {
+            rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
+                    + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"
+                    + "Hiện tại " + honorific + " đang muốn ưu tiên xử lý mụn, mờ nám tàn nhang hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?";
+        } else {
+            rewritten = opening + "Hiện các liệu trình bên em dao động chỉ từ " + startingPrice
+                    + " tùy gói dịch vụ và thời lượng chăm sóc phục hồi ạ.\n\n"
+                    + "Không biết hiện tại " + honorific + " đang quan tâm trải nghiệm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh để em tư vấn gói phù hợp nhất cho mình ạ?";
+        }
 
         if (!rewritten.equals(text)) {
             draft.setText(rewritten);

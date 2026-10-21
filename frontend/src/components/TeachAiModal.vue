@@ -176,7 +176,6 @@
 import { ref, computed } from 'vue'
 import { marked } from 'marked'
 import { api } from '../api'
-import { mockSubmitFeedback } from '../mockData'
 
 const props = defineProps({
   question: {
@@ -197,7 +196,7 @@ const props = defineProps({
   },
   isConnected: {
     type: Boolean,
-    default: false
+    default: true
   },
   pages: {
     type: Array,
@@ -253,35 +252,16 @@ const handleSubmit = async () => {
   errorMessage.value = ''
 
   try {
-    let result = null
-    if (props.isConnected) {
-      result = await api.submitFeedback({
-        question: props.question,
-        faultyAnswer: props.faultyAnswer,
-        userCorrection: userCorrection.value.trim(),
-        documentIds: props.documentIds,
-        pageId: selectedPageId.value || null,
-        source: props.source || null,
-        history: props.history || [],
-        appliedRuleIds: props.appliedRuleIds || []
-      })
-    } else {
-      // Giả lập xử lý học meta-rule trong Demo Mode
-      await new Promise(resolve => setTimeout(resolve, 900))
-      result = mockSubmitFeedback({
-        question: props.question,
-        faultyAnswer: props.faultyAnswer,
-        userCorrection: userCorrection.value.trim(),
-        documentIds: props.documentIds,
-        pageId: selectedPageId.value || null,
-        source: props.source || null,
-        history: props.history || [],
-        appliedRuleIds: props.appliedRuleIds || []
-      })
-      if (selectedCategory.value && result.learned_rule) {
-        result.learned_rule.category = selectedCategory.value
-      }
-    }
+    const result = await api.submitFeedback({
+      question: props.question,
+      faultyAnswer: props.faultyAnswer,
+      userCorrection: userCorrection.value.trim(),
+      documentIds: props.documentIds,
+      pageId: selectedPageId.value || null,
+      source: props.source || null,
+      history: props.history || [],
+      appliedRuleIds: props.appliedRuleIds || []
+    })
 
     learnedResult.value = result
   } catch (err) {

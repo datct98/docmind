@@ -151,7 +151,7 @@ export const initialMockRules = [
     cue_signal: "Khách hàng xưng hô nam giới hoặc có tín hiệu tự nhận là nam (mìn là nam, mk là nam)",
     root_cause: "Rò rỉ đại từ Chị hoặc lặp lại phantom name giả định khiến khách nam phật ý",
     generalized_rule: "Nhất quán xưng hô Anh khi phát hiện khách là nam (zero chữ Chị); không dùng tên riêng giả định.",
-    contrastive_evidence: "❌ Trước: Dạ chào chị Lan Anh, gói mụn 1.5tr cho chị ạ.\n\n✅ Sau: Dạ em chào Anh! Em gửi thông tin phác đồ trị mụn bên em ạ.",
+    contrastive_evidence: "❌ Trước: Dạ chào chị, gói mụn 1.5tr cho chị ạ.\n\n✅ Sau: Dạ em chào Anh! Em gửi thông tin phác đồ trị mụn bên em ạ.",
     retrieval_keywords: ["danh xưng", "nam giới", "anh", "xưng hô nhất quán", "honorific"],
     active: true,
     always_on: true,
@@ -1470,9 +1470,9 @@ export const initialMockHarnessRuns = [
     id: "run-opt-20261019-001",
     page_id: "page-spa-01",
     customer_message: "Mìn là nam, muốn hỏi giá trị mụn và bao lâu thì thấy hiệu quả vậy shop?",
-    base_response: "Dạ em chào Chị Lan Anh ạ! Liệu trình trị mụn bên em có giá 1.500.000đ/buổi. Bên em còn có gói Trẻ hóa 8.5tr, Căng bóng 4.5tr. Chị làm combo 5 buổi được giảm 10% nữa nha chị!",
+    base_response: "Dạ em chào Chị ạ! Liệu trình trị mụn bên em có giá 1.500.000đ/buổi. Bên em còn có gói Trẻ hóa 8.5tr, Căng bóng 4.5tr. Chị làm combo 5 buổi được giảm 10% nữa nha chị!",
     candidate_a: "Dạ em chào Anh ạ! Với tình trạng mụn của mình, Liệu trình Trị Mụn Chuẩn Y Khoa bên em có chi phí trọn gói là 1.500.000đ/buổi (đã gồm Bác sĩ Da liễu soi da AI 3D miễn phí, cam kết 0 phụ phí và 0 nhận tiền Tip ạ).\n\nThông thường nền da sẽ dịu viêm rõ rệt sau 1–2 buổi đầu tiên ạ. Anh tiện ghé thăm khám vào sáng hay chiều để em ưu tiên giữ phòng VIP cho mình nhé ạ?",
-    candidate_b: "Dạ em chào Chị Lan Anh ạ! Liệu trình trị mụn bên em có giá 1.500.000đ/buổi. Bên em còn có gói Trẻ hóa 8.5tr, Căng bóng 4.5tr. Chị làm combo 5 buổi được giảm 10% nữa nha chị!",
+    candidate_b: "Dạ em chào Chị ạ! Liệu trình trị mụn bên em có giá 1.500.000đ/buổi. Bên em còn có gói Trẻ hóa 8.5tr, Căng bóng 4.5tr. Chị làm combo 5 buổi được giảm 10% nữa nha chị!",
     candidate_a_label: "CANDIDATE",
     candidate_b_label: "BASE",
     winner_candidate: "Candidate A",
@@ -1480,7 +1480,7 @@ export const initialMockHarnessRuns = [
     score_before: 0.42,
     score_after: 0.94,
     delta_score: 0.52,
-    rationale: "Candidate A khắc phục triệt để lỗi rò rỉ xưng hô (loại bỏ Chị Lan Anh, dùng 100% Anh), giải đáp đúng trọng tâm thời gian thấy hiệu quả và khống chế câu hỏi mở A/B thay vì xả nhiều gói giá.",
+    rationale: "Candidate A khắc phục triệt để lỗi rò rỉ xưng hô (loại bỏ Chị, dùng 100% Anh), giải đáp đúng trọng tâm thời gian thấy hiệu quả và khống chế câu hỏi mở A/B thay vì xả nhiều gói giá.",
     created_at: new Date(Date.now() - 3600000 * 3).toISOString()
   },
   {
@@ -1609,7 +1609,7 @@ export const mockHarnessOptimize = (req = {}) => {
   const historyList = Array.isArray(req.history) ? req.history : []
   const historyJoined = historyList.map(h => typeof h === 'string' ? h : (h?.content || '')).join(' ').toLowerCase()
   const isMaleSignal = /(tôi là nam|toi la nam|tui là nam|t là nam|em là nam|mình là nam|mìn là nam|mk là nam|mình làm nam|nam giới|đàn ông|con trai|(?:^|\s)a\s+(?:sợ|lo|bị|muốn|cần|đang|định|hỏi))/i.test(lowerMsg + ' ' + historyJoined)
-  const honorific = isMaleSignal ? 'Anh' : (lowerBase.includes('chị') && !lowerBase.includes('lan anh') ? 'Chị' : 'Anh')
+  const honorific = isMaleSignal ? 'Anh' : (lowerBase.includes('chị') ? 'Chị' : 'Anh')
   const isCoolingSignal = !isMaleSignal && (tempDelta <= -15 || /^(ừ|uk|ok|vâng|thôi)$/i.test(lowerMsg.trim()) || /(để xem|nghĩ thêm|suy nghĩ|im lặng)/i.test(lowerMsg))
   const isComplexSymptom = /(dưới cằm|lưng|thâm mụn lâu|thâm lâu|mờ thâm|mụn viêm.*thâm|viêm.*cằm|sẹo rỗ|lâu năm)/i.test(lowerMsg)
   const isFearIneffective = /(sợ không hiệu quả|sợ ko hiệu quả|không hiệu quả|sợ tái phát|sợ không khỏi)/i.test(lowerMsg)
@@ -1698,12 +1698,12 @@ export const mockHarnessOptimize = (req = {}) => {
     lesson = 'Khi khách hỏi địa chỉ/chi nhánh, xác nhận hỗ trợ ngay kèm đặc quyền giữ suất Bác sĩ soi da AI 3D miễn phí 100% và chốt khung giờ Sáng/Chiều cụ thể.'
     improvedReply = `Dạ em rất sẵn lòng hỗ trợ thông tin chi nhánh thuận tiện nhất cho ${honorific} ạ! Khi đặt lịch trước qua Page, ${honorific} sẽ được ưu tiên phòng khám riêng và tặng 100% suất Bác sĩ Da liễu soi da AI 3D miễn phí (liệu trình chuẩn Y khoa chỉ từ 650.000đ/buổi).\n\nĐể chuyên viên gửi định vị chi tiết và giữ suất Bác sĩ tiếp đón ngay khi mình tới, ${honorific} dự kiến ghé kiểm tra vào khung giờ Sáng hay Chiều ạ?`
     rationale = 'Tận dụng tín hiệu hỏi địa chỉ để khóa ngay đặc quyền giữ suất Bác sĩ soi da AI 3D miễn phí theo khung giờ Sáng/Chiều.'
-  } else if (isMaleSignal && (lowerBase.includes('chị') || lowerBase.includes('lan anh'))) {
+  } else if (isMaleSignal && lowerBase.includes('chị')) {
     proposedDimension = 'INV'
     cue = 'Khách hàng xưng hô nam giới hoặc có tín hiệu tự nhận là nam'
     lesson = 'Bảo đảm 100% nhất quán xưng hô Anh khi phát hiện khách hàng là nam; tuyệt đối không dùng đại từ Chị hoặc lặp lại tên riêng giả định.'
     improvedReply = `Dạ với tình trạng mụn của Anh, Liệu trình Trị Mụn Chuẩn Y Khoa bên em có chi phí trọn gói là 1.500.000đ/buổi, có phòng riêng kín đáo 1-1 và cam kết 0 phụ phí ạ.\n\nAnh tiện ghé thăm khám vào sáng hay chiều để em ưu tiên giữ lịch Bác sĩ Da liễu cho mình nhé ạ?`
-    rationale = 'Khắc phục hoàn toàn lỗi rò rỉ xưng hô Chị, xóa bỏ phantom name Lan Anh, duy trì xưng hô Anh nhất quán 100% và bổ sung câu hỏi A/B dẫn dắt lịch hẹn.'
+    rationale = 'Khắc phục hoàn toàn lỗi rò rỉ xưng hô Chị, duy trì xưng hô Anh nhất quán 100% và bổ sung câu hỏi A/B dẫn dắt lịch hẹn.'
   } else if (isCoolingSignal) {
     proposedDimension = 'INV'
     cue = 'Khách hàng trả lời nửa vời, do dự về giá hoặc nhiệt độ mua hàng sụt giảm (ΔTemp <= -15%)'
@@ -1938,6 +1938,227 @@ export const mockHarnessConversationAudit = (req = {}) => {
     learned_rules: learnedRules
   }
 }
+
+// =========================================================================
+// OMNICHANNEL CONVERSATION INBOX MOCK DATA (CUSTOMER / AI_BOT / HUMAN_SALE)
+// =========================================================================
+
+const initialMockConversations = [
+  {
+    id: 'a1000000-0000-0000-0000-000000000001',
+    page_id: '11111111-1111-1111-1111-111111111111',
+    sender_psid: 'psid-hoang-minh-01',
+    customer_name: 'Anh Hoàng Minh',
+    channel: 'MESSENGER',
+    control_mode: 'BOT_ACTIVE',
+    status: 'NEEDS_HANDOFF',
+    sales_stage: 'CLOSING',
+    buying_temperature: 88,
+    temperature_label: 'HOT',
+    buyer_archetype: 'Sẵn sàng đặt lịch / Cần liên hệ ngay',
+    honorific: 'Anh',
+    captured_phone: '0968221644',
+    needs_human_handoff: true,
+    handoff_reason: 'Khách hàng để lại SĐT 0968221644 cần tư vấn đặt lịch phòng riêng.',
+    last_message_preview: 'Dạ em đã ghi nhận số điện thoại 0968221644 của Anh Hoàng Minh rồi ạ...',
+    last_sender_role: 'AI_BOT',
+    unread_count: 1,
+    customer_insight: {
+      buyer_archetype: 'READY_TO_BOOK',
+      archetype_label: 'Sẵn sàng đặt lịch / Cần liên hệ ngay',
+      buying_temperature: 88,
+      previous_temperature: 65,
+      temperature_delta: 23,
+      momentum: 'RISING',
+      temperature_label: 'HOT',
+      honorific: 'Anh',
+      active_topic: 'Trị Mụn Chuẩn Y Khoa',
+      extracted_pains: ['Mụn viêm & thâm lâu năm từ tuổi dậy thì', 'Khách Nam cần không gian điều trị riêng tư kín đáo'],
+      hidden_concerns: ['Sợ sưng đỏ ảnh hưởng công việc giao tiếp'],
+      recommended_strategy: 'Gọi điện xác nhận ngay theo SĐT 0968221644 và giữ lịch phòng VIP 1-1 cùng Bác sĩ.'
+    },
+    last_activity_at: new Date(Date.now() - 2 * 60000).toISOString(),
+    messages: [
+      {
+        id: 'm1000000-0000-0000-0000-000000000001',
+        sender_role: 'CUSTOMER',
+        sender_name: 'Anh Hoàng Minh',
+        content: 'Shop ơi mình là nam, bị mụn viêm với thâm khá lâu rồi thì bên mình có nhận làm không và giá sao ạ?',
+        sales_stage: 'CONSULTING',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 6 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000002',
+        sender_role: 'AI_BOT',
+        sender_name: 'AI Trợ Lý Fanpage',
+        content: 'Dạ em chào Anh Hoàng Minh ạ! Bên em phục vụ rất nhiều khách hàng Nam giới và có bố trí khu vực phòng riêng 1-1 kín đáo ạ.\n\nVới tình trạng mụn viêm kèm thâm lâu năm, Liệu trình Trị Mụn Chuẩn Y Khoa (60 phút/buổi) có chi phí trọn gói là 1.500.000đ/buổi (đã gồm Bác sĩ Da liễu soi da AI 3D miễn phí 100%, tặng 01 tuýp chấm mụn kháng viêm, cam kết 0 phụ phí). Hiện tại nền da của Anh thuộc tuýp da dầu hay da hỗn hợp để Bác sĩ bên em chuẩn bị phác đồ êm nhất cho mình ạ?',
+        sales_stage: 'CONSULTING',
+        latency_ms: 920,
+        created_at: new Date(Date.now() - 5 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000003',
+        sender_role: 'CUSTOMER',
+        sender_name: 'Anh Hoàng Minh',
+        content: 'Da mình da dầu, 0968221644 tư vấn đặt lịch giúp anh vào chiều mai nhé',
+        sales_stage: 'CLOSING',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 3 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000004',
+        sender_role: 'AI_BOT',
+        sender_name: 'AI Trợ Lý Fanpage',
+        content: 'Dạ em đã ghi nhận số điện thoại 0968221644 và lịch hẹn chiều mai của Anh Hoàng Minh rồi ạ! Em cũng đã ưu tiên giữ sẵn phòng riêng 1-1 kèm suất Miễn phí soi da AI 3D cùng Bác sĩ cho Anh. Chuyên viên tư vấn bên em sẽ liên hệ qua điện thoại/Zalo ngay bây giờ để xác nhận giờ hẹn cụ thể với Anh nhé ạ!',
+        sales_stage: 'CLOSING',
+        latency_ms: 840,
+        created_at: new Date(Date.now() - 2 * 60000).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'a1000000-0000-0000-0000-000000000002',
+    page_id: '11111111-1111-1111-1111-111111111111',
+    sender_psid: 'psid-thanh-thao-02',
+    customer_name: 'Chị Thanh Thảo',
+    channel: 'MESSENGER',
+    control_mode: 'HUMAN_TAKEOVER',
+    status: 'CONVERTED',
+    sales_stage: 'CLOSING',
+    buying_temperature: 95,
+    temperature_label: 'HOT',
+    buyer_archetype: 'Nhạy cảm về giá — Đã được Sale thật chốt thành công',
+    honorific: 'Chị',
+    captured_phone: '0912345888',
+    needs_human_handoff: false,
+    handoff_reason: 'Sale thật đã tiếp nhận và chốt lịch thành công',
+    last_message_preview: 'Chị chốt lịch 10h sáng thứ 7 nhé em, số chị 0912345888',
+    last_sender_role: 'CUSTOMER',
+    unread_count: 0,
+    customer_insight: {
+      buyer_archetype: 'PRICE_CONSCIOUS_CONVERTED',
+      archetype_label: 'Nhạy cảm về giá — Đã được Sale thật gỡ rào cản & chốt lịch',
+      buying_temperature: 95,
+      previous_temperature: 48,
+      temperature_delta: 47,
+      momentum: 'RECOVERING',
+      temperature_label: 'HOT',
+      honorific: 'Chị',
+      active_topic: 'Trị Nám Laser Pico',
+      extracted_pains: ['Nám mảng hai bên gò má sau sinh', 'Băn khoăn chi phí 4.500.000đ/buổi'],
+      hidden_concerns: ['Sợ đóng tiền cả gói lớn ngay từ đầu mà chưa biết hợp da không'],
+      recommended_strategy: 'Ca hội thoại mẫu xuất sắc của Sale thật — Có thể bấm Trích xuất cho AI Học (Cold Path).'
+    },
+    last_activity_at: new Date(Date.now() - 12 * 60000).toISOString(),
+    messages: [
+      {
+        id: 'm1000000-0000-0000-0000-000000000005',
+        sender_role: 'CUSTOMER',
+        sender_name: 'Chị Thanh Thảo',
+        content: 'Gói trị nám Laser Pico bên em 4.5tr/buổi hơi cao quá em ơi, để chị suy nghĩ thêm đã nhé',
+        sales_stage: 'OBJECTION_PRICE',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 20 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000006',
+        sender_role: 'HUMAN_SALE',
+        sender_name: 'Sale Trưởng Thu Hà',
+        content: 'Dạ em hoàn toàn hiểu tâm lý của Chị Thảo ạ, vì điều trị nám là khoản đầu tư quan trọng nên mình cần cân nhắc kỹ. Chị chưa cần đăng ký ngay gói điều trị đâu ạ — em xin phép giữ riêng cho Chị 01 suất Bác sĩ Chuyên khoa I soi da AI 3D phân tích gốc nám miễn phí 100% vào cuối tuần này. Chị qua xem phác đồ thực tế rồi mới quyết định, sáng Thứ 7 hay Chủ nhật Chị tiện ghé hơn ạ?',
+        sales_stage: 'OBJECTION_PRICE',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 15 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000007',
+        sender_role: 'CUSTOMER',
+        sender_name: 'Chị Thanh Thảo',
+        content: 'Chị chốt lịch 10h sáng thứ 7 nhé em, số chị 0912345888',
+        sales_stage: 'CLOSING',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 12 * 60000).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'a1000000-0000-0000-0000-000000000003',
+    page_id: '11111111-1111-1111-1111-111111111111',
+    sender_psid: 'psid-ngoc-mai-03',
+    customer_name: 'Chị Ngọc Mai',
+    channel: 'MESSENGER',
+    control_mode: 'BOT_ACTIVE',
+    status: 'BOT_ACTIVE',
+    sales_stage: 'CONSULTING',
+    buying_temperature: 62,
+    temperature_label: 'WARM',
+    buyer_archetype: 'Đang tìm hiểu dịch vụ & bảng giá',
+    honorific: 'Chị',
+    captured_phone: null,
+    needs_human_handoff: false,
+    handoff_reason: null,
+    last_message_preview: 'Dạ các phác đồ chăm sóc và điều trị da chuẩn Y khoa bên em hiện có mức chi phí chỉ từ 650.000đ/buổi...',
+    last_sender_role: 'AI_BOT',
+    unread_count: 0,
+    customer_insight: {
+      buyer_archetype: 'EXPLORING_CONSULTATION',
+      archetype_label: 'Đang tìm hiểu Giải pháp — Cần Chẩn đoán Chuyên gia (SPIN)',
+      buying_temperature: 62,
+      previous_temperature: 50,
+      temperature_delta: 12,
+      momentum: 'RISING',
+      temperature_label: 'WARM',
+      honorific: 'Chị',
+      active_topic: 'Tư vấn dịch vụ & Bảng giá',
+      extracted_pains: ['Đang tham khảo mức giá chung trước khi chia sẻ tình trạng da'],
+      hidden_concerns: ['Sợ bị báo giá mập mờ hoặc phát sinh phụ phí'],
+      recommended_strategy: 'Áp dụng Anti-Dumping Nấc 1: Đưa mức giá khởi điểm 650k kèm câu hỏi phân loại A/B.'
+    },
+    last_activity_at: new Date(Date.now() - 25 * 60000).toISOString(),
+    messages: [
+      {
+        id: 'm1000000-0000-0000-0000-000000000008',
+        sender_role: 'CUSTOMER',
+        sender_name: 'Chị Ngọc Mai',
+        content: 'Bên mình giá các gói chăm sóc da thế nào vậy shop?',
+        sales_stage: 'CONSULTING',
+        latency_ms: 0,
+        created_at: new Date(Date.now() - 26 * 60000).toISOString()
+      },
+      {
+        id: 'm1000000-0000-0000-0000-000000000009',
+        sender_role: 'AI_BOT',
+        sender_name: 'AI Trợ Lý Fanpage',
+        content: 'Dạ em chào Chị Ngọc Mai ạ! Các phác đồ chăm sóc và điều trị da chuẩn Y khoa bên em hiện có mức chi phí rất linh hoạt chỉ từ 650.000đ/buổi (đã bao gồm Bác sĩ Chuyên khoa I trực tiếp soi da AI 3D miễn phí 100%, cam kết trọn gói không phát sinh phụ phí ạ).\n\nHiện tại Chị đang muốn ưu tiên xử lý mụn ẩn/mụn viêm, làm mờ sạm nám hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?',
+        sales_stage: 'CONSULTING',
+        latency_ms: 780,
+        created_at: new Date(Date.now() - 25 * 60000).toISOString()
+      }
+    ]
+  }
+]
+
+let demoConversationsState = JSON.parse(JSON.stringify(initialMockConversations))
+
+export const getMockConversations = (pageId = null, filter = 'ALL') => {
+  return demoConversationsState.filter(s => {
+    if (filter === 'NEEDS_HANDOFF') return s.needs_human_handoff || s.status === 'NEEDS_HANDOFF'
+    if (filter === 'HUMAN_TAKEOVER') return s.control_mode === 'HUMAN_TAKEOVER'
+    if (filter === 'BOT_ACTIVE') return s.control_mode === 'BOT_ACTIVE'
+    if (filter === 'HAS_PHONE') return Boolean(s.captured_phone)
+    return true
+  })
+}
+
+export const getMockConversationDetail = (id) => {
+  const found = demoConversationsState.find(s => s.id === id) || demoConversationsState[0]
+  if (found) found.unread_count = 0
+  return {
+    session: found,
+    messages: found ? found.messages : []
+  }
+}
+
 
 
 
