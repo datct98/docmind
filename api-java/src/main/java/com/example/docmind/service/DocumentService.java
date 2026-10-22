@@ -6,6 +6,7 @@ import com.example.docmind.client.model.CanonicalDocument;
 import com.example.docmind.client.model.JobStatusResponse;
 import com.example.docmind.client.model.ParseSubmitResponse;
 import com.example.docmind.config.DocServiceProperties;
+import com.example.docmind.dto.DocumentLifecycleUpdateRequest;
 import com.example.docmind.dto.DocumentStatusResponse;
 import com.example.docmind.dto.DocumentUploadResponse;
 import com.example.docmind.entity.BlockEntity;
@@ -53,6 +54,9 @@ public class DocumentService {
     private final DocServiceProperties docServiceProps;
     private final ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.docmind.service.metadata.ChunkMetadataBackfillService chunkMetadataBackfillService;
+
     public DocumentService(DocumentRepository documentRepository,
                            BlockRepository blockRepository,
                            ChunkRepository chunkRepository,
@@ -78,6 +82,15 @@ public class DocumentService {
     /** Upload kèm phân loại vào Page / Thư mục tri thức (pageId có thể null). */
     @Transactional
     public DocumentUploadResponse upload(MultipartFile file, String pageIdRaw) {
+        return upload(file, pageIdRaw, null, null);
+    }
+
+    /** Upload kèm phân loại vào Page và thời hạn hiệu lực (effectiveFrom / effectiveTo). */
+    @Transactional
+    public DocumentUploadResponse upload(MultipartFile file,
+                                         String pageIdRaw,
+                                         String effectiveFromRaw,
+                                         String effectiveToRaw) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File rỗng");
         }
@@ -89,6 +102,8 @@ public class DocumentService {
         }
         String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
         UUID targetPageId = parseNullableUuid(pageIdRaw);
+        java.time.OffsetDateTime effectiveFrom = parseNullableOffsetDateTime(effectiveFromRaw);
+        java.time.OffsetDateTime effectiveTo = parseNullableOffsetDateTime(effectiveToRaw);
 
         // stage=validate + detect-mime (magic-byte, KHÔNG theo đuôi file).
         CorrelationIds.setStage("validate");
@@ -105,12 +120,24 @@ public class DocumentService {
         var existing = documentRepository.findBySha256(sha256);
         if (existing.isPresent()) {
             DocumentEntity doc = existing.get();
+            boolean changed = false;
             if (targetPageId != null && !targetPageId.equals(doc.getPageId())) {
                 doc.setPageId(targetPageId);
-                documentRepository.save(doc);
+                changed = true;
                 int movedChunks = chunkRepository.updatePageIdByDocumentId(doc.getId(), targetPageId);
                 log.info("dedup sha256 page reassigned document_id={} page_id={} synced_chunks={}",
                         doc.getId(), targetPageId, movedChunks);
+            }
+            if (effectiveFrom != null) {
+                doc.setEffectiveFrom(effectiveFrom);
+                changed = true;
+            }
+            if (effectiveTo != null) {
+                doc.setEffectiveTo(effectiveTo);
+                changed = true;
+            }
+            if (changed) {
+                documentRepository.save(doc);
             }
             CorrelationIds.putDocumentId(doc.getId().toString());
             log.info("dedup sha256 hit -> document_id={} status={}", doc.getId(), doc.getStatus());
@@ -140,6 +167,9 @@ public class DocumentService {
                 .status("PARSING")
                 .jobId(submit.jobId())
                 .pageId(targetPageId)
+                .effectiveFrom(effectiveFrom)
+                .effectiveTo(effectiveTo)
+                .active(Boolean.TRUE)
                 .build();
         documentRepository.save(doc);
         log.info("persist documents row document_id={} job_id={} page_id={} status=PARSING",
@@ -303,6 +333,29 @@ public class DocumentService {
         int updatedChunks = chunkRepository.updatePageIdByDocumentId(documentId, targetPageId);
         log.info("assign_page document_id={} target_page_id={} synced_chunks={}",
                 documentId, targetPageId, updatedChunks);
+        if (targetPageId != null && chunkMetadataBackfillService != null) {
+            try {
+                chunkMetadataBackfillService.backfillPage(targetPageId, false);
+            } catch (Exception e) {
+                log.warn("assign_page metadata backfill skipped page_id={} reason={}", targetPageId, e.getMessage());
+            }
+        }
+        return toStatusResponse(saved);
+    }
+
+    @Transactional
+    public DocumentStatusResponse updateLifecycle(String documentIdRaw, DocumentLifecycleUpdateRequest request) {
+        UUID documentId = safeUuid(documentIdRaw);
+        DocumentEntity doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
+        if (request != null) {
+            doc.setEffectiveFrom(request.effectiveFrom());
+            doc.setEffectiveTo(request.effectiveTo());
+            if (request.isActive() != null) {
+                doc.setActive(request.isActive());
+            }
+        }
+        DocumentEntity saved = documentRepository.saveAndFlush(doc);
         return toStatusResponse(saved);
     }
 
@@ -314,8 +367,29 @@ public class DocumentService {
                 doc.getStatus(),
                 doc.getPages(),
                 breakdown,
-                doc.getPageId() != null ? doc.getPageId().toString() : null
+                doc.getPageId() != null ? doc.getPageId().toString() : null,
+                doc.getEffectiveFrom(),
+                doc.getEffectiveTo(),
+                doc.isActive(),
+                doc.isCurrentlyEffective()
         );
+    }
+
+    private static java.time.OffsetDateTime parseNullableOffsetDateTime(String raw) {
+        if (raw == null || raw.isBlank() || "null".equalsIgnoreCase(raw.strip()) || "undefined".equalsIgnoreCase(raw.strip())) {
+            return null;
+        }
+        String trimmed = raw.strip();
+        try {
+            return java.time.OffsetDateTime.parse(trimmed);
+        } catch (Exception e) {
+            try {
+                java.time.LocalDate ld = java.time.LocalDate.parse(trimmed);
+                return ld.atStartOfDay().atOffset(java.time.ZoneOffset.ofHours(7));
+            } catch (Exception ex) {
+                return null;
+            }
+        }
     }
 
     private static UUID parseNullableUuid(String raw) {

@@ -216,11 +216,11 @@ public class FastApiAgentService {
             honorific = "Anh";
         }
 
-        TopicDetection topic = detectTopic(rawMsg);
+        TopicDetection topic = detectTopic(rawMsg, req.candidateChunks());
         boolean currentHasNewTopic = topic != null;
         if (topic == null) {
             for (int i = userTurns.size() - 1; i >= 0; i--) {
-                topic = detectTopic(userTurns.get(i));
+                topic = detectTopic(userTurns.get(i), req.candidateChunks());
                 if (topic != null) {
                     break;
                 }
@@ -228,7 +228,7 @@ public class FastApiAgentService {
         }
 
         String topicFamily = topic != null ? topic.family : "GENERAL";
-        String activeTopic = topic != null ? topic.label : "Tư vấn chăm sóc & điều trị da chuẩn Y khoa";
+        String activeTopic = topic != null ? topic.label : "Tư vấn dịch vụ & giải pháp theo tài liệu của Page";
         List<String> topicKeywords = topic != null ? topic.keywords : List.of();
 
         boolean isProfileUpdate = turnIndex > 1
@@ -285,10 +285,10 @@ public class FastApiAgentService {
         if (isProfileUpdate) {
             directive.append("- CHỈ THỊ ĐẶC BIỆT (CẬP NHẬT HỒ SƠ KHÁCH HÀNG): Khách vừa bổ sung thông tin cá nhân (\"")
                     .append(rawMsg).append("\") trong khi đang tìm hiểu về [").append(activeTopic).append("]. ")
-                    .append("Hãy xác nhận ngay rằng phác đồ [").append(activeTopic)
+                    .append("Hãy xác nhận ngay rằng dịch vụ/giải pháp [").append(activeTopic)
                     .append("] hoàn toàn phù hợp & hiệu quả cao với ").append(honorific)
-                    .append(" (có phòng trị liệu riêng tư kín đáo), giữ nguyên mạch tư vấn [")
-                    .append(activeTopic).append("] và CẤM nhắc tới các dịch vụ ngoài lề (như Nám Laser Pico hay Meso Collagen)!");
+                    .append(", giữ nguyên mạch tư vấn [")
+                    .append(activeTopic).append("] dựa trên <DOCUMENT_CONTEXT> và CẤM nhắc tới các dịch vụ ngoài lề!");
         }
 
         String psid = req.customerPsid() != null ? req.customerPsid() : "anonymous_customer";
@@ -386,7 +386,7 @@ public class FastApiAgentService {
 
     private record TopicDetection(String family, String label, List<String> keywords) {}
 
-    private TopicDetection detectTopic(String text) {
+    private TopicDetection detectTopic(String text, List<Map<String, Object>> candidateChunks) {
         if (text == null || text.isBlank()) return null;
         Matcher mAcne = ACNE_THAM_PATTERN.matcher(text);
         if (mAcne.find()) {
@@ -416,6 +416,41 @@ public class FastApiAgentService {
                     "Căng bóng & Trẻ hóa Meso Collagen",
                     List.of("Căng bóng Meso Collagen", "căng bóng", "trẻ hóa")
             );
+        }
+        if (candidateChunks != null && !candidateChunks.isEmpty()) {
+            String lower = text.toLowerCase(Locale.ROOT);
+            String[] words = lower.split("[^\\p{L}\\p{Nd}]+");
+            Set<String> stopWords = Set.of("tôi", "mình", "cho", "hỏi", "về", "là", "gì", "thế", "nào", "của", "bên", "em", "shop", "anh", "chị", "muốn", "cần", "bị", "có", "không");
+            List<String> queryWords = new ArrayList<>();
+            for (String w : words) {
+                if (w.length() >= 2 && !stopWords.contains(w)) {
+                    queryWords.add(w);
+                }
+            }
+            for (Map<String, Object> ch : candidateChunks) {
+                Object rawHeadings = ch.get("heading_path");
+                String hJoined = "";
+                if (rawHeadings instanceof List<?> list) {
+                    List<String> hs = new ArrayList<>();
+                    for (Object o : list) {
+                        if (o != null && !String.valueOf(o).isBlank()) hs.add(String.valueOf(o));
+                    }
+                    hJoined = String.join(" > ", hs);
+                } else if (rawHeadings != null) {
+                    hJoined = String.valueOf(rawHeadings);
+                }
+                String chText = String.valueOf(ch.getOrDefault("text", ""));
+                String combined = (hJoined + " " + chText).toLowerCase(Locale.ROOT);
+                List<String> matchedKw = new ArrayList<>();
+                for (String qw : queryWords) {
+                    if (combined.contains(qw)) {
+                        matchedKw.add(qw);
+                    }
+                }
+                if (matchedKw.size() >= 2 && !hJoined.isBlank()) {
+                    return new TopicDetection("DYNAMIC_TOPIC", hJoined, matchedKw.subList(0, Math.min(5, matchedKw.size())));
+                }
+            }
         }
         return null;
     }

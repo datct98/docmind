@@ -113,6 +113,12 @@ public class AntiInfoDumpingHook implements GuardrailHook {
                 ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
                 : "";
         boolean isMassageDoc = combinedChunksLower.contains("dưỡng sinh") || combinedChunksLower.contains("gội đầu");
+        boolean isDermatologyDoc = combinedChunksLower.isEmpty()
+                || combinedChunksLower.contains("soi da")
+                || combinedChunksLower.contains("laser")
+                || combinedChunksLower.contains("trị mụn")
+                || combinedChunksLower.contains("trị nám")
+                || combinedChunksLower.contains("650.000");
 
         String honorific = context.getCustomerHonorific();
         boolean isFirstTurn = context.isFirstTurn();
@@ -125,10 +131,14 @@ public class AntiInfoDumpingHook implements GuardrailHook {
         if (isMassageDoc) {
             rewritten = opening + "Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ (Hà Nội) hoặc 570.000 VNĐ (Quận 1 Sài Gòn), cùng các gói gội đầu dưỡng sinh từ 129.000 VNĐ đã bao gồm ngâm chân thảo dược và cam kết không nhận Tip ạ.\n\n"
                     + "Không biết hiện tại " + honorific + " đang quan tâm trải nghiệm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh để em tư vấn gói phù hợp nhất cho mình ạ?";
-        } else {
+        } else if (isDermatologyDoc) {
             rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
                     + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"
                     + "Hiện tại " + honorific + " đang muốn ưu tiên xử lý mụn, mờ nám tàn nhang hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?";
+        } else {
+            rewritten = opening + "Chi phí các gói dịch vụ/sản phẩm bên em rất linh hoạt chỉ từ " + startingPrice
+                    + " tùy theo nhu cầu thực tế, cam kết minh bạch trọn gói không phát sinh phụ phí ẩn ạ.\n\n"
+                    + "Không biết hiện tại " + honorific + " đang quan tâm tìm hiểu gói cơ bản để trải nghiệm trước hay gói chuyên sâu để em tư vấn chi tiết nhất cho mình ạ?";
         }
 
         if (!rewritten.equals(text)) {

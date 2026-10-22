@@ -126,3 +126,36 @@ def test_cold_path_nightly_extract_and_security_auditor():
     assert poisoned_sample["review_status"] == "REJECTED"
     assert "INDIRECT_PROMPT_INJECTION" in poisoned_sample["security_violations"]
     assert "UNAUTHORIZED_DISCOUNT_OR_PRICE_PROMISE" in poisoned_sample["security_violations"]
+
+
+def test_multi_industry_dynamic_topic_extraction_without_dermatology_contamination():
+    """Verify non-dermatology industries (e.g. IELTS Education Academy) extract dynamic topic anchors
+    from candidate_chunks and never inject dermatology few-shot examples into stage_directive.
+    """
+    education_chunks = [
+        {
+            "chunk_id": "edu_1",
+            "heading_path": ["Lộ trình IELTS", "Khóa IELTS Intensive"],
+            "text": "Khóa IELTS Intensive 6.5+: Học phí 2.500.000 VNĐ/khóa, giảng viên 8.5 IELTS kèm 1-1.",
+        }
+    ]
+    resp = client.post(
+        "/internal/v1/consult",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json={
+            "customer_psid": "psid_edu_01",
+            "page_id": "page_ielts_01",
+            "message": "Tư vấn cho mình khóa học IELTS Intensive nhé",
+            "history": [],
+            "candidate_chunks": education_chunks,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["topic_family"].startswith("DYNAMIC_")
+    assert "IELTS" in data["active_topic"]
+    assert "soi da AI 3D" not in data["stage_directive"]
+    assert "650.000đ/buổi" not in data["stage_directive"]
+    assert "Tư vấn chăm sóc & điều trị da chuẩn Y khoa" not in data["active_topic"]
+

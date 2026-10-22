@@ -118,8 +118,14 @@ public class ClosingQuestionHook implements GuardrailHook {
                 || combinedChunksLower.contains("soi da")
                 || combinedChunksLower.contains("nám")
                 || combinedChunksLower.contains("mụn");
+        boolean isMassageDoc = !isDermatologyDoc && (
+                combinedChunksLower.contains("dưỡng sinh")
+                || combinedChunksLower.contains("gội đầu")
+                || combinedChunksLower.contains("massage")
+                || combinedChunksLower.contains("ngâm chân")
+        );
 
-        String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc);
+        String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc, isMassageDoc);
 
         if (!polished.equals(draft.getText())) {
             draft.setText(polished);
@@ -138,7 +144,8 @@ public class ClosingQuestionHook implements GuardrailHook {
             boolean isFirstTurn,
             List<String> history,
             String customerMessage,
-            boolean isDermatologyDoc
+            boolean isDermatologyDoc,
+            boolean isMassageDoc
     ) {
         String lowerText = text != null ? text.toLowerCase(Locale.ROOT) : "";
         if ("HUMAN_HANDOFF".equalsIgnoreCase(salesStage)
@@ -184,7 +191,7 @@ public class ClosingQuestionHook implements GuardrailHook {
                           + " cùng Bác sĩ Da liễu và phòng riêng kín đáo cho " + honorific
                           + " rồi ạ, tới giờ " + honorific + " cứ ghé thẳng quầy lễ tân nhé ạ."
                         : "Dạ em đã khóa cố định lịch hẹn lúc " + slotLabel + dateLabel
-                          + " kèm phòng riêng cho " + honorific
+                          + " cho " + honorific
                           + " rồi ạ, tới giờ " + honorific + " cứ ghé thẳng quầy lễ tân nhé ạ.";
                 changed = true;
             }
@@ -207,13 +214,13 @@ public class ClosingQuestionHook implements GuardrailHook {
                         ? honorific + " cho em xin Số điện thoại để bên em khóa lịch hẹn lúc "
                           + slotLabel + dateSuffix + " và giữ phòng riêng kín đáo cùng Bác sĩ cho mình nhé ạ?"
                         : honorific + " cho em xin Số điện thoại và cơ sở muốn ghé để bên em khóa lịch hẹn lúc "
-                          + slotLabel + dateSuffix + " kèm phòng riêng cho mình nhé ạ?";
+                          + slotLabel + dateSuffix + " cho mình nhé ạ?";
             } else {
                 // Đã có cả giờ hẹn và SĐT -> không hỏi thêm câu hỏi chọn giờ nữa
                 return changed ? working : text;
             }
         } else {
-            naturalClosing = selectNaturalClosingQuestion(honorific, salesStage, isFirstTurn, history, isDermatologyDoc);
+            naturalClosing = selectNaturalClosingQuestion(honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc, isMassageDoc);
         }
 
         // 0. Nếu câu hỏi cuối dùng cụm từ yếu/lạc ngữ cảnh 'đang tò mò hơn về...' khi khách đang nêu triệu chứng -> thay bằng câu chốt lịch khám
@@ -306,13 +313,54 @@ public class ClosingQuestionHook implements GuardrailHook {
             changed = true;
         }
 
-        // 4. Nếu kết bài hoàn toàn không có câu hỏi nào (thiếu closing question), bổ sung câu hỏi mở phù hợp
+        // 4. Nếu câu cuối bị cắt cụt giữa chừng (do giới hạn max_tokens/num_predict, không kết thúc bằng ., !, ?, ~, ạ)
+        // thì gọt về câu hoàn chỉnh gần nhất trước khi gắn câu hỏi kết bài.
+        working = trimIncompleteTrailingFragment(working);
+
+        // 5. Nếu kết bài hoàn toàn không có câu hỏi nào (thiếu closing question), bổ sung câu hỏi mở phù hợp
         if (!working.endsWith("?") && !working.endsWith("ạ?")) {
             working = working.strip() + "\n\n" + naturalClosing;
             changed = true;
         }
 
         return changed ? working : text;
+    }
+
+    private static String trimIncompleteTrailingFragment(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String trimmed = text.strip();
+        if (trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?") || trimmed.endsWith("~")) {
+            return trimmed;
+        }
+        // Nếu kết thúc bằng "ạ" hoặc "nhé" hoặc "nha" nhưng không phải dòng bullet dở dang, thêm dấu chấm câu tự nhiên
+        String lastLine = trimmed.contains("\n") ? trimmed.substring(trimmed.lastIndexOf('\n') + 1).strip() : trimmed;
+        if (!lastLine.startsWith("-") && !lastLine.startsWith("•") && !lastLine.endsWith(":")
+                && lastLine.matches("(?isU).*\\b(ạ|nhé|nha|đó|đấy)\\s*$")) {
+            return trimmed + ".";
+        }
+        int lastSentenceEnd = -1;
+        for (int i = trimmed.length() - 1; i >= 0; i--) {
+            char c = trimmed.charAt(i);
+            if (c == '.' || c == '!' || c == '?') {
+                // Tránh cắt nhầm dấu chấm trong số tiền (VD: 399.000)
+                boolean isThousandSep = (i > 0 && i + 1 < trimmed.length()
+                        && Character.isDigit(trimmed.charAt(i - 1))
+                        && Character.isDigit(trimmed.charAt(i + 1)));
+                if (!isThousandSep) {
+                    lastSentenceEnd = i;
+                    break;
+                }
+            }
+        }
+        if (lastSentenceEnd >= 25) {
+            String candidate = trimmed.substring(0, lastSentenceEnd + 1).strip();
+            // Nếu câu trước dấu chấm cuối cùng lại là câu dẫn vào danh sách kiểu "Gói 670k sẽ bao gồm:" đã bị cắt mất phần sau,
+            // hoặc nếu sau lastSentenceEnd có câu dẫn kết thúc bằng dấu hai chấm ":"
+            return candidate;
+        }
+        return trimmed;
     }
 
     private static boolean containsAbChoice(String q) {
@@ -340,11 +388,21 @@ public class ClosingQuestionHook implements GuardrailHook {
             String salesStage,
             boolean isFirstTurn,
             List<String> history,
-            boolean isDermatologyDoc
+            String customerMessage,
+            boolean isDermatologyDoc,
+            boolean isMassageDoc
     ) {
         List<String> pool;
-        if (!isDermatologyDoc) {
-            if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
+        boolean isExplanationOrSymptom = FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(customerMessage)
+                || FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(customerMessage);
+        if (isMassageDoc) {
+            if (isExplanationOrSymptom) {
+                pool = List.of(
+                        "Hiện tại " + honorific + " đang muốn tập trung trị liệu giảm nhức mỏi vùng cổ vai gáy - lưng hay muốn thư giãn phục hồi toàn thân để em gợi ý gói phù hợp nhất cho mình ạ?",
+                        "Không biết tình trạng căng mỏi này của " + honorific + " là mới xuất hiện gần đây hay mình bị mỏi thường xuyên do ngồi làm việc nhiều để em tư vấn liệu trình sát nhất ạ?",
+                        "Không biết " + honorific + " muốn trải nghiệm gói trị liệu cơ bản (60-70 phút) trước hay gói chuyên sâu (90 phút) để em tư vấn chi tiết hơn cho mình ạ?"
+                );
+            } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
                         honorific + " muốn đặt lịch ghé cơ sở bên em vào khung giờ Sáng hay Chiều để em giữ phòng riêng trước cho mình ạ?",
                         honorific + " tiện ghé cơ sở nào gần mình nhất và vào khung giờ nào để bên em sắp xếp kỹ thuật viên chu đáo nhất ạ?",
@@ -360,6 +418,24 @@ public class ClosingQuestionHook implements GuardrailHook {
                 pool = List.of(
                         "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em gửi chi tiết gói hợp nhất cho mình ạ?",
                         "Không biết hôm nay " + honorific + " đang muốn thư giãn giảm nhức mỏi vùng nào nhất hay muốn tham khảo gói dịch vụ nào để em tư vấn kỹ hơn cho mình ạ?"
+                );
+            }
+        } else if (!isDermatologyDoc) {
+            // Domain-agnostic closing questions applicable to ANY industry (Fashion, Education, Dental, SaaS, Real Estate, etc.)
+            if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
+                pool = List.of(
+                        honorific + " muốn đăng ký/đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ suất ưu tiên trước cho mình ạ?",
+                        honorific + " cho em xin Số điện thoại hoặc khung giờ thuận tiện nhất để bên em hỗ trợ xác nhận ngay cho mình nhé ạ?"
+                );
+            } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
+                pool = List.of(
+                        "Không biết " + honorific + " đang nghiêng về gói/sản phẩm cơ bản để trải nghiệm trước hay gói chuyên sâu để em tư vấn chi tiết hơn cho mình ạ?",
+                        honorific + " muốn bên em giữ suất ưu đãi trước hay cần em gửi thêm thông tin chi tiết về phần nào nữa ạ?"
+                );
+            } else {
+                pool = List.of(
+                        "Không biết hiện tại " + honorific + " đang quan tâm tìm hiểu gói cơ bản hay gói chuyên sâu để em tư vấn phương án phù hợp nhất cho mình ạ?",
+                        "Hiện tại " + honorific + " đang ưu tiên nhu cầu nào nhất để em gợi ý đúng gói/sản phẩm phù hợp nhất cho mình ạ?"
                 );
             }
         } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {

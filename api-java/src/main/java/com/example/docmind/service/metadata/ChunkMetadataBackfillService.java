@@ -74,6 +74,9 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
             UUID targetPageId = UUID.fromString(targetPageIdStr);
             log.info("stage=chunk-metadata-backfill status=starting target_page_id={}", targetPageId);
             BackfillReport report = backfillPage(targetPageId, false);
+            if ("SKIPPED_EMPTY_PAGE".equals(report.status())) {
+                report = backfillAll(false);
+            }
             log.info("stage=chunk-metadata-backfill status=completed report={}", report);
         } catch (Exception e) {
             log.error("stage=chunk-metadata-backfill status=error message={}", e.getMessage(), e);

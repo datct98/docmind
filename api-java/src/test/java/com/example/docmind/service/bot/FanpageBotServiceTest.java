@@ -1288,5 +1288,161 @@ class FanpageBotServiceTest {
                 .doesNotContain("Quản lý kinh doanh")
                 .contains("129.000");
     }
+
+    @Test
+    @DisplayName("Systemic Fix: Multi-turn symptom and service explanation inquiries answer directly without /Chị artifact, 'Giá' query pollution, or premature Sáng/Chiều close")
+    void testSymptomAndServiceExplanationFlowDoesNotEvadeWithGenericPriceOrBrokenHonorific() {
+        List<FanpageBotRequest.ConversationTurn> turn2History = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Giá"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ em chào Anh/Chị ạ! Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ ạ.")
+        );
+
+        // 1. Contextual query on Turn 2 ("Tôi bị mỏi vai") must NOT be polluted by Turn 1 bare "Giá"
+        String queryTurn2 = FanpageBotService.buildContextualSearchQuery("Tôi bị mỏi vai", turn2History);
+        assertThat(queryTurn2).isEqualTo("Tôi bị mỏi vai");
+
+        // 2. Stripping greeting on Turn 2+ with "Anh/Chị" must never leave "Dạ /Chị ạ!"
+        String polishedTurn2 = FanpageBotService.polishConversationalVietnamese(
+                "Dạ em chào Anh/Chị ạ! Với tình trạng mỏi vai của mình, kỹ thuật viên sẽ tập trung bấm huyệt giải cơ vùng cổ vai gáy ạ.",
+                "Anh/Chị",
+                false,
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                turn2History,
+                "Tôi bị mỏi vai"
+        );
+        assertThat(polishedTurn2)
+                .doesNotContain("/Chị")
+                .doesNotContain("/Anh")
+                .contains("bấm huyệt");
+
+        // 3. SalesStage on Turn 3 & 4 ("Massage trị liệu là trị j thế", "Tôi muốn biết massage trị liệu là làm gì")
+        // must stay in VALUE_CONSULTATION rather than forcing SOFT_BOOKING_CLOSE just because turnCount >= 4
+        List<FanpageBotRequest.ConversationTurn> turn3History = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Giá"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ em chào Anh/Chị ạ!"),
+                new FanpageBotRequest.ConversationTurn("user", "Tôi bị mỏi vai"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng mỏi vai của Anh/Chị, bên em tập trung bấm huyệt giải cơ ạ.")
+        );
+        assertThat(FanpageBotService.determineSalesStage("Massage trị liệu là trị j thế", turn3History, null))
+                .isEqualTo(FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION);
+        assertThat(FanpageBotService.determineSalesStage("Tôi muốn biết massage trị liệu là làm gì", turn3History, null))
+                .isEqualTo(FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION);
+
+        // 4. Even if LLM falls back, service explanation & symptom inquiries must synthesize grounded treatment details
+        var processChunk = sampleChunk(
+                "| Bước | Tên bước | Chi tiết thực hiện | Mục đích / Lợi ích |\n"
+                + "| --- | --- | --- | --- |\n"
+                + "| B2 | Ngâm bồn thảo dược | Ngâm mình trong nước thảo dược ấm | Thư giãn cơ thể |\n"
+                + "| B6 | Trị liệu toàn thân | Massage bấm huyệt kết hợp tinh dầu dừa/nha đam | Hỗ trợ phục hồi năng lượng, giảm căng cơ và hỗ trợ cơ xương khớp |\n"
+                + "| B7 | Chườm ngải cứu | Chườm nóng bằng ngải cứu kết hợp đắp mắt thảo dược | Hỗ trợ giảm đau nhức và làm ấm cơ thể |"
+        );
+        var faqChunk = sampleChunk(
+                "| Nội dung | Chi tiết |\n"
+                + "| --- | --- |\n"
+                + "| Massage trị liệu bên mình gồm những gì? | Dạ liệu trình massage trị liệu tại Nàng Sen sẽ bắt đầu từ tắm xông thảo dược giúp cơ thể làm ấm và dễ vào trạng thái phục hồi hơn ạ. Sau đó kỹ thuật viên sẽ kết hợp massage bấm huyệt toàn thân cùng tinh dầu nhằm hỗ trợ giảm căng cơ và phục hồi cơ thể chuyên sâu. Cuối liệu trình sẽ có chườm ngải cứu và điểm tâm phục hồi nhẹ cho khách ạ. |"
+        );
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(faqChunk, processChunk), List.of()));
+        when(llmClient.complete(anyString())).thenThrow(new RuntimeException("Simulated LLM timeout"));
+
+        FanpageBotRequest reqExplanation = new FanpageBotRequest(
+                UUID.randomUUID().toString(),
+                "user-exp",
+                "Khách hàng",
+                "Massage trị liệu là trị j thế",
+                null,
+                turn3History,
+                List.of(UUID.randomUUID()),
+                5
+        );
+        FanpageBotResponse respExplanation = fanpageBotService.handleCustomerMessage(reqExplanation);
+        assertThat(respExplanation.replyText())
+                .containsIgnoringCase("ấn huyệt")
+                .containsIgnoringCase("bó cơ")
+                .containsIgnoringCase("ngải cứu")
+                .doesNotContain("khung giờ Sáng hay Chiều");
+
+        // 5. Short symptom follow-up ("Thi thoảng bị") after "Tôi bị mỏi vai và thi thoảng hơi đau nhức"
+        // must be concise, coherent, and NEVER dump raw FAQ table cells ("Em hay đau đầu:", "stres...")
+        var symptomFaqChunk = sampleChunk(
+                "| Em hay đau đầu | Nếu mình thường xuyên đau đầu hoặc cảm giác đầu nặng do áp lực công việc thì các liệu trình dưỡng sinh và trị liệu đầu - cổ - vai - gáy bên em sẽ khá phù hợp ạ 🌿 |\n"
+                + "| --- | --- |\n"
+                + "| Em nặng đầu | Dạ tình trạng nặng đầu thường gặp ở khách stress, thiếu ngủ hoặc làm việc nhiều với máy tính ạ. |"
+        );
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(symptomFaqChunk, processChunk), List.of()));
+
+        FanpageBotRequest reqMildSymptom = new FanpageBotRequest(
+                UUID.randomUUID().toString(),
+                "user-exp",
+                "Khách hàng",
+                "Tôi bị mỏi vai và thi thoảng hơi đau nhức",
+                null,
+                turn2History,
+                List.of(UUID.randomUUID()),
+                5
+        );
+        FanpageBotResponse respMildSymptom = fanpageBotService.handleCustomerMessage(reqMildSymptom);
+        assertThat(respMildSymptom.replyText())
+                .contains("NS01")
+                .contains("399.000 VNĐ")
+                .doesNotContain("là mới xuất hiện gần đây hay")
+                .doesNotContain("ạ Đặc biệt");
+
+        List<FanpageBotRequest.ConversationTurn> historyAfterMild = new ArrayList<>(turn2History);
+        historyAfterMild.add(new FanpageBotRequest.ConversationTurn("user", "Tôi bị mỏi vai và thi thoảng hơi đau nhức"));
+        historyAfterMild.add(new FanpageBotRequest.ConversationTurn("assistant", respMildSymptom.replyText()));
+
+        FanpageBotRequest reqFollowUp = new FanpageBotRequest(
+                UUID.randomUUID().toString(),
+                "user-exp",
+                "Khách hàng",
+                "Thi thoảng bị",
+                null,
+                historyAfterMild,
+                List.of(UUID.randomUUID()),
+                5
+        );
+        FanpageBotResponse respFollowUp = fanpageBotService.handleCustomerMessage(reqFollowUp);
+        assertThat(respFollowUp.replyText())
+                .doesNotContain("Dạ về nội dung")
+                .doesNotContain("Em hay đau đầu:")
+                .doesNotContain("Em nặng đầu:")
+                .doesNotContain("stres...")
+                .contains("NS01");
+    }
+
+    @Test
+    void testLlamaIndexFormattedPromptIsCompactAndStripsMarkdownTablePipes() {
+        var tableChunk = sampleChunk(
+                "| Mã gói | Tên gói | Thời gian | Giá niêm yết |\n"
+                + "| --- | --- | --- | --- |\n"
+                + "| NS01 | Massage cơ bản | 60 phút | 399.000 VNĐ |"
+        );
+        String longMoc = "=== MAP OF CONTENT (MOC) ===\n" + ("Dòng tóm tắt danh mục dài.\n").repeat(80);
+        String builtPrompt = FanpageBotPromptBuilder.build(
+                "Tôi bị mỏi vai",
+                "Khách hàng",
+                List.of(new FanpageBotRequest.ConversationTurn("user", "Giá"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em có gói từ 399.000 VNĐ ạ.")),
+                List.of(tableChunk),
+                List.of(),
+                null,
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION,
+                "Anh/Chị",
+                null,
+                List.of(),
+                longMoc,
+                null
+        );
+
+        // 1. Prompt converts Markdown table into LlamaIndex key-value node format without | --- | pipes
+        assertThat(builtPrompt)
+                .contains("Mã gói: NS01 | Tên gói: Massage cơ bản | Thời gian: 60 phút | Giá niêm yết: 399.000 VNĐ")
+                .doesNotContain("| --- |");
+        // 2. Prompt stays compact (< 2600 chars) on non-broad-price turns so Ollama CPU evaluates in < 6s
+        assertThat(builtPrompt.length()).isLessThan(2600);
+    }
 }
+
 

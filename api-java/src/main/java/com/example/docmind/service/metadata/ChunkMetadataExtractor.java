@@ -67,8 +67,43 @@ public final class ChunkMetadataExtractor {
         List<String> branchTags = extractBranchTags(headingsJoined, safeText);
         List<String> serviceCodes = extractServiceCodes(safeText);
         String chunkRole = determineChunkRole(headingsJoined, safeText, prices, serviceCodes);
+        List<String> semanticTags = extractSemanticTags(headingsJoined, safeText);
 
-        return new ChunkMetadata(chunkRole, minPrice, maxPrice, branchTags, serviceCodes);
+        return new ChunkMetadata(chunkRole, minPrice, maxPrice, branchTags, serviceCodes, semanticTags);
+    }
+
+    /**
+     * Bóc tách nhãn ngữ nghĩa (semantic_tags) đa ngành phục vụ Intent-Aware Tag Boosting:
+     * - warranty_return: bảo hành, đổi trả, cam kết, hoàn tiền, 0 phụ phí
+     * - social_proof: feedback, đánh giá thực tế, ca lâm sàng, chứng nhận, khách hàng tin chọn
+     * - spec_ingredients: thành phần, chất liệu, kích thước, bảng size, thông số, bao gồm
+     * - scarcity_promo: ưu đãi, khuyến mãi, giảm %, giờ vàng, voucher, combo
+     */
+    public static List<String> extractSemanticTags(String headings, String text) {
+        String combined = ((headings != null ? headings : "") + " " + (text != null ? text : "")).toLowerCase(Locale.ROOT);
+        Set<String> tags = new LinkedHashSet<>();
+
+        if (combined.contains("bảo hành") || combined.contains("đổi trả") || combined.contains("cam kết")
+                || combined.contains("hoàn tiền") || combined.contains("0 phụ phí")
+                || combined.contains("không phát sinh") || combined.contains("đổi size")) {
+            tags.add(ChunkMetadata.TAG_WARRANTY_RETURN);
+        }
+        if ((combined.contains("khách hàng") && (combined.contains("đánh giá") || combined.contains("hài lòng")
+                || combined.contains("tin chọn") || combined.contains("feedback") || combined.contains("review")))
+                || combined.contains("chứng nhận") || combined.contains("ca lâm sàng") || combined.contains("kiểm định")) {
+            tags.add(ChunkMetadata.TAG_SOCIAL_PROOF);
+        }
+        if (combined.contains("thành phần") || combined.contains("thảo dược") || combined.contains("chất liệu")
+                || combined.contains("chất vải") || combined.contains("kích thước") || combined.contains("bảng size")
+                || combined.contains("thông số") || combined.contains("bao gồm")) {
+            tags.add(ChunkMetadata.TAG_SPEC_INGREDIENTS);
+        }
+        if (combined.contains("ưu đãi") || combined.contains("khuyến mãi") || combined.contains("chiết khấu")
+                || combined.contains("giờ vàng") || combined.contains("voucher") || combined.contains("combo")
+                || combined.matches("(?s).*giảm\\s+\\d+%.*")) {
+            tags.add(ChunkMetadata.TAG_SCARCITY_PROMO);
+        }
+        return new ArrayList<>(tags);
     }
 
     /**

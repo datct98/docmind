@@ -77,10 +77,15 @@ public class HonorificConsistencyHook implements GuardrailHook {
             return false;
         }
         String lower = text.toLowerCase(Locale.ROOT);
+        boolean isNeutralAnhChi = "Anh/Chị".equalsIgnoreCase(context.getCustomerHonorific());
         if (context.isMale()) {
             return lower.contains("chị") || lower.contains("bạn") || lower.contains("em có thể")
                     || lower.contains("em nên") || lower.contains("em sẽ") || lower.contains("anh anh")
                     || lower.contains("anh/chị") || lower.contains("anh chị");
+        } else if (isNeutralAnhChi) {
+            return lower.contains("bạn") || lower.contains("em có thể")
+                    || lower.contains("em nên") || lower.contains("em sẽ")
+                    || lower.contains("/chị") || lower.contains("/anh");
         } else {
             return lower.contains("chị chị") || lower.contains("anh") || lower.contains("bạn")
                     || lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")
@@ -166,6 +171,10 @@ public class HonorificConsistencyHook implements GuardrailHook {
             }
         }
 
+        // Dọn dẹp dấu gạch chéo bị đứt gãy ở đầu câu ("Dạ /Chị ạ!" -> "Dạ ")
+        working = working.replaceAll("(?iU)(?<=^|\\b(?:dạ|chào)\\s+)/\\s*(?:chị|anh)(?:\\s+ạ)?[!.,~]*\\s*", "");
+
+        boolean isNeutralAnhChi = "Anh/Chị".equalsIgnoreCase(honorific);
         if (isMale) {
             if (lower.contains("chị") || lower.contains("anh") || lower.contains("bạn")) {
                 // Chuẩn hóa Anh/Chị và anh chị (không slash) -> Anh
@@ -197,6 +206,11 @@ public class HonorificConsistencyHook implements GuardrailHook {
                 if (working.toLowerCase(Locale.ROOT).contains("anh")) {
                     working = REPEATED_ANH_PATTERN.matcher(working).replaceAll("Anh");
                 }
+            }
+        } else if (isNeutralAnhChi) {
+            if (lower.contains("bạn")) {
+                working = BAN1_PATTERN.matcher(working).replaceAll(mr -> mr.group(1) + " Anh/Chị");
+                working = BAN2_PATTERN.matcher(working).replaceAll("Anh/Chị");
             }
         } else {
             // Nữ giới ("Chị")

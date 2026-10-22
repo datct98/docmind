@@ -12,6 +12,16 @@ public record KnowledgePageRequest(
         String industry,
         @JsonProperty("target_audience")
         String targetAudience,
-        String description
+        String description,
+        @JsonProperty("persona_config")
+        PagePersonaConfig personaConfig
 ) {
+    public KnowledgePageRequest(
+            String name,
+            String industry,
+            String targetAudience,
+            String description
+    ) {
+        this(name, industry, targetAudience, description, null);
+    }
 }

@@ -1,5 +1,6 @@
 package com.example.docmind.controller;
 
+import com.example.docmind.dto.DocumentLifecycleUpdateRequest;
 import com.example.docmind.dto.DocumentPageAssignRequest;
 import com.example.docmind.dto.DocumentStatusResponse;
 import com.example.docmind.dto.DocumentUploadResponse;
@@ -33,12 +34,19 @@ public class DocumentController {
     @PostMapping
     public ResponseEntity<DocumentUploadResponse> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "page_id", required = false) String pageId
+            @RequestParam(value = "page_id", required = false) String pageId,
+            @RequestParam(value = "effective_from", required = false) String effectiveFrom,
+            @RequestParam(value = "effective_to", required = false) String effectiveTo
     ) {
-        if (pageId == null || pageId.isBlank()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file));
+        if ((effectiveFrom == null || effectiveFrom.isBlank())
+                && (effectiveTo == null || effectiveTo.isBlank())) {
+            if (pageId == null || pageId.isBlank()) {
+                return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file));
+            }
+            return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file, pageId));
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(documentService.upload(file, pageId));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(documentService.upload(file, pageId, effectiveFrom, effectiveTo));
     }
 
     @GetMapping
@@ -66,6 +74,14 @@ public class DocumentController {
     ) {
         String pageId = request != null ? request.pageId() : null;
         return ResponseEntity.ok(documentService.assignPage(id, pageId));
+    }
+
+    @PutMapping("/{id}/lifecycle")
+    public ResponseEntity<DocumentStatusResponse> updateLifecycle(
+            @PathVariable("id") String id,
+            @RequestBody DocumentLifecycleUpdateRequest request
+    ) {
+        return ResponseEntity.ok(documentService.updateLifecycle(id, request));
     }
 
     @DeleteMapping("/{id}")

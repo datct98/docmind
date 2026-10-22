@@ -215,8 +215,10 @@ def _session_key(page_id: str | None, customer_psid: str | None) -> str:
     return f"{page_id or 'global'}:{customer_psid or 'default'}"
 
 
-def _detect_topic_from_text(text: str) -> tuple[str | None, str | None, list[str]]:
-    """Return (topic_family_code, readable_topic_label, keywords) if matched."""
+def _detect_topic_from_text(
+    text: str, candidate_chunks: list[dict[str, Any]] | None = None
+) -> tuple[str | None, str | None, list[str]]:
+    """Return (topic_family_code, readable_topic_label, keywords) if matched from catalog or dynamic chunks."""
     if not text:
         return None, None, []
     for code, spec in _TOPIC_FAMILIES.items():
@@ -225,6 +227,25 @@ def _detect_topic_from_text(text: str) -> tuple[str | None, str | None, list[str
             matched_terms = list(dict.fromkeys(m.group(0).lower() for m in spec["match_re"].finditer(text)))
             readable = f"{spec['label']} ({', '.join(matched_terms)})" if matched_terms else spec["label"]
             return code, readable, list(spec["keywords"]) + matched_terms
+
+    # Dynamic multi-industry topic extraction from candidate_chunks headings/content
+    if candidate_chunks:
+        lower_text = text.lower()
+        query_words = [
+            w for w in re.findall(r"[\wÀ-ỹ]{2,}", lower_text)
+            if w not in {"tôi", "mình", "cho", "hỏi", "về", "là", "gì", "thế", "nào", "của", "bên", "em", "shop", "anh", "chị", "muốn", "cần", "bị", "có", "không"}
+        ]
+        for ch in candidate_chunks:
+            headings = ch.get("heading_path") or []
+            if isinstance(headings, str):
+                headings = [headings]
+            h_joined = " > ".join(str(h) for h in headings if h).strip()
+            ch_text = str(ch.get("text") or "")
+            combined = f"{h_joined} {ch_text}".lower()
+            matched_kw = [w for w in query_words if w in combined]
+            if len(matched_kw) >= 2 and h_joined:
+                return "DYNAMIC_TOPIC", h_joined, matched_kw[:5]
+
     return None, None, []
 
 
@@ -234,6 +255,7 @@ def contextualize_memory_node(state: SalesConversationState) -> SalesConversatio
     customer_psid = state.get("customer_psid") or "anonymous_customer"
     raw_message = (state.get("message") or "").strip()
     history = state.get("history") or []
+    candidate_chunks = state.get("candidate_chunks") or []
 
     masked_msg, pii_meta = mask_pii(raw_message)
 
@@ -265,12 +287,12 @@ def contextualize_memory_node(state: SalesConversationState) -> SalesConversatio
         honorific = state.get("honorific") or prior_mem.get("honorific") or "Chị"
 
     # 2. Resolve Active Topic Anchor (current message first, then reverse history, then session memory)
-    topic_family, active_topic, topic_keywords = _detect_topic_from_text(raw_message)
+    topic_family, active_topic, topic_keywords = _detect_topic_from_text(raw_message, candidate_chunks)
     current_has_new_topic = topic_family is not None
 
     if not topic_family:
         for past_user_msg in reversed(user_history_texts):
-            tf, at, kw = _detect_topic_from_text(past_user_msg)
+            tf, at, kw = _detect_topic_from_text(past_user_msg, candidate_chunks)
             if tf:
                 topic_family, active_topic, topic_keywords = tf, at, kw
                 break
@@ -281,7 +303,7 @@ def contextualize_memory_node(state: SalesConversationState) -> SalesConversatio
         topic_keywords = prior_mem.get("topic_keywords") or []
 
     topic_family = topic_family or "GENERAL"
-    active_topic = active_topic or "Tư vấn chăm sóc & điều trị da chuẩn Y khoa"
+    active_topic = active_topic or "Tư vấn dịch vụ & giải pháp theo tài liệu của Page"
     topic_keywords = topic_keywords or []
 
     # 3. Detect if this turn is a profile/constraint update (e.g., "nhưng tôi là nam")
@@ -379,15 +401,16 @@ def retrieve_few_shot_node(state: SalesConversationState) -> SalesConversationSt
         else:
             filtered_chunks.append(ch)
 
-    # 2. Select 2-3 Golden Few-Shot Samples matching the state & scenario
+    # 2. Select 2-3 Golden Few-Shot Samples ONLY when topic_family belongs to _TOPIC_FAMILIES
     selected_samples: list[dict[str, str]] = []
-    for sample in _GOLDEN_FEW_SHOTS:
-        if is_profile_update and sample["scenario"] == "PROFILE_UPDATE_MALE":
-            selected_samples.insert(0, sample)
-        elif is_broad_price and sample["scenario"] == "BROAD_PRICE_FIRST_TURN":
-            selected_samples.insert(0, sample)
-        elif sample["stage"] == funnel_stage:
-            selected_samples.append(sample)
+    if topic_family in _TOPIC_FAMILIES:
+        for sample in _GOLDEN_FEW_SHOTS:
+            if is_profile_update and sample["scenario"] == "PROFILE_UPDATE_MALE":
+                selected_samples.insert(0, sample)
+            elif is_broad_price and sample["scenario"] == "BROAD_PRICE_FIRST_TURN":
+                selected_samples.insert(0, sample)
+            elif sample["stage"] == funnel_stage:
+                selected_samples.append(sample)
 
     # Deduplicate and cap at 2 samples to keep token count ultra-lean
     deduped: list[dict[str, str]] = []
@@ -419,7 +442,7 @@ def sales_responder_node(state: SalesConversationState) -> SalesConversationStat
     """Node 4: Assemble focused stage directive & customer_psid-locked tool scope."""
     customer_psid = state.get("customer_psid") or "anonymous_customer"
     honorific = state.get("honorific") or "Chị"
-    active_topic = state.get("active_topic") or "Tư vấn chăm sóc & điều trị da"
+    active_topic = state.get("active_topic") or "Tư vấn dịch vụ & giải pháp theo tài liệu của Page"
     topic_family = state.get("topic_family") or "GENERAL"
     funnel_stage = state.get("funnel_stage") or "CONSULTING"
     turn_index = state.get("turn_index") or 1
@@ -442,24 +465,23 @@ def sales_responder_node(state: SalesConversationState) -> SalesConversationStat
         lines.append(
             f"- CHỈ THỊ ĐẶC BIỆT (CẬP NHẬT HỒ SƠ KHÁCH HÀNG): Khách vừa bổ sung thông tin cá nhân "
             f"(\"{state.get('message')}\") trong khi đang tìm hiểu về [{active_topic}]. "
-            f"Hãy xác nhận ngay rằng phác đồ [{active_topic}] hoàn toàn phù hợp & hiệu quả cao với {honorific} "
-            f"(có phòng trị liệu riêng tư kín đáo), giữ nguyên mạch tư vấn [{active_topic}] và "
-            f"CẤM nhắc tới các dịch vụ ngoài lề (như Nám Laser Pico hay Meso Collagen)!"
+            f"Hãy xác nhận ngay rằng dịch vụ/giải pháp [{active_topic}] hoàn toàn phù hợp & hiệu quả cao với {honorific}, "
+            f"giữ nguyên mạch tư vấn [{active_topic}] dựa trên <DOCUMENT_CONTEXT> và CẤM nhắc tới các dịch vụ ngoài lề!"
         )
     elif funnel_stage == "OBJECTION_PRICE":
         lines.append(
-            "- CHỈ THỊ BƯỚC OBJECTION_PRICE: Đồng cảm nhẹ nhàng, phân tích giá trị trọn gói 0 phụ phí "
-            "hoặc quyền lợi giữ suất Bác sĩ soi da AI 3D miễn phí 100% (0đ ràng buộc) trước khi quyết định."
+            "- CHỈ THỊ BƯỚC OBJECTION_PRICE: Đồng cảm nhẹ nhàng, phân tích giá trị trọn gói và quyền lợi đi kèm "
+            "hoặc giới thiệu gói tiết kiệm/ưu đãi có trong <DOCUMENT_CONTEXT>."
         )
     elif funnel_stage == "CLOSING":
         lines.append(
             f"- CHỈ THỊ BƯỚC CLOSING: Xác nhận giữ suất ưu tiên cho {honorific} và hỏi gọn khung giờ "
-            "(Sáng hay Chiều) hoặc SĐT để gửi mã lịch hẹn VIP."
+            "(Sáng hay Chiều) hoặc SĐT để xác nhận lịch hẹn/đơn hàng."
         )
     elif funnel_stage == "SUPPORT":
         lines.append(
-            f"- CHỈ THỊ BƯỚC SUPPORT: Giải đáp trực diện thắc mắc kỹ thuật/bảo hành cho {honorific} "
-            "bằng dữ liệu tài liệu nguồn, sau đó mời đặt lịch kiểm tra trực tiếp."
+            f"- CHỈ THỊ BƯỚC SUPPORT: Giải đáp trực diện thắc mắc kỹ thuật/chính sách/bảo hành cho {honorific} "
+            "bằng dữ liệu tài liệu nguồn <DOCUMENT_CONTEXT>, sau đó gợi mở bước tiếp theo."
         )
 
     if selected_few_shots:

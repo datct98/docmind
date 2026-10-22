@@ -481,6 +481,24 @@
         </div>
 
         <div class="modal-body">
+          <!-- 6-Preset Industry Selector (Configurable Skin) -->
+          <div class="form-field-group">
+            <label class="field-label">⚡ Chọn nhanh Bộ Mẫu Ngành Hàng (Industry Persona Preset)</label>
+            <div class="industry-preset-grid">
+              <button
+                v-for="preset in industryPresets"
+                :key="preset.industry_code || preset.code"
+                type="button"
+                class="industry-preset-chip"
+                :class="{ active: pageModalForm.industry_preset === (preset.industry_code || preset.code) }"
+                @click="applyIndustryPreset(preset)"
+              >
+                <span class="preset-chip-title">{{ preset.display_name }}</span>
+                <span class="preset-chip-sub">Xưng "{{ preset.persona_config?.self_pronoun }}" - Gọi "{{ preset.persona_config?.default_customer_pronoun }}"</span>
+              </button>
+            </div>
+          </div>
+
           <div class="form-field-group">
             <label class="field-label">Tên Fanpage / Không gian Tri thức <span class="req-star">*</span></label>
             <input
@@ -513,13 +531,68 @@
             </div>
           </div>
 
+          <!-- Configurable Skin: Pronouns, Bot Name, Domain Keywords & Forbidden Words -->
+          <div class="persona-skin-box">
+            <div class="persona-skin-title">🎨 Cấu hình Lớp Vỏ Nhân vật & Ngôn từ Ngành (Configurable Skin)</div>
+            <div class="form-row-3col">
+              <div class="form-field-group">
+                <label class="field-label">Tên Trợ lý / Bot</label>
+                <input
+                  v-model="pageModalForm.bot_name"
+                  type="text"
+                  class="modal-input"
+                  placeholder="VD: Trợ lý Tư vấn"
+                />
+              </div>
+              <div class="form-field-group">
+                <label class="field-label">Cách xưng của Bot</label>
+                <input
+                  v-model="pageModalForm.self_pronoun"
+                  type="text"
+                  class="modal-input"
+                  placeholder="VD: em / bên em, mình / shop"
+                />
+              </div>
+              <div class="form-field-group">
+                <label class="field-label">Danh xưng KH mặc định</label>
+                <select v-model="pageModalForm.default_customer_pronoun" class="modal-input">
+                  <option value="Chị">Chị (Nữ giới / Spa)</option>
+                  <option value="Bạn">Bạn (Thời trang / GenZ)</option>
+                  <option value="Anh">Anh (Nam giới / Tech)</option>
+                  <option value="Anh/Chị">Anh/Chị (Đa ngành / B2B)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row-2col">
+              <div class="form-field-group">
+                <label class="field-label">🔑 Từ khóa sản phẩm/nhu cầu chủ lực (cách nhau dấu phẩy)</label>
+                <input
+                  v-model="pageModalForm.domain_keywords_str"
+                  type="text"
+                  class="modal-input"
+                  placeholder="VD: serum, kem chống nắng, da dầu, blazer, bảng size..."
+                />
+              </div>
+              <div class="form-field-group">
+                <label class="field-label">🚫 Từ ngữ cấm tuyệt đối (Auto-Sanitize)</label>
+                <input
+                  v-model="pageModalForm.forbidden_words_str"
+                  type="text"
+                  class="modal-input"
+                  placeholder="VD: trị dứt điểm 100%, cam kết khỏi bệnh, hàng fake..."
+                />
+              </div>
+            </div>
+          </div>
+
           <div class="form-field-group">
             <label class="field-label">🎭 Page Persona & Phong cách Tư vấn Chốt Sale</label>
             <textarea
               v-model="pageModalForm.description"
               rows="3"
               class="modal-input modal-textarea"
-              placeholder="VD: Xưng Em - Chị dịu dàng, chuyên nghiệp; luôn nêu quyền lợi & cam kết Y khoa trước khi báo giá, khéo léo mời đặt lịch soi da AI 3D miễn phí..."
+              placeholder="VD: Xưng Em - Chị dịu dàng, chuyên nghiệp; luôn nêu quyền lợi & cam kết trước khi báo giá..."
             ></textarea>
             <span class="field-helper">
               Chỉ dẫn này sẽ định hình giọng điệu của cả Trợ lý Q&A nội bộ lẫn Bot trực Fanpage tự động.
@@ -574,6 +647,7 @@
       :doc="inspectingDoc"
       @close="inspectingDoc = null"
       @delete-doc="confirmDeleteDoc"
+      @lifecycle-updated="handleDocumentLifecycleUpdated"
     />
 
     <!-- AI Playbook Manager Modal -->
@@ -888,11 +962,116 @@ const runLlmLivePing = async () => {
 // Create / Edit Page Modal state
 const showPageModal = ref(false)
 const editingPageId = ref(null)
+const industryPresets = ref([
+  {
+    code: 'BEAUTY_SPA',
+    display_name: 'Thẩm mỹ viện, Spa & Dưỡng sinh',
+    sample_industry: 'Làm đẹp, Spa & Dưỡng sinh',
+    sample_target_audience: 'Khách hàng nữ & nam văn phòng 22 - 50 tuổi',
+    sample_description: 'Xưng Em - gọi Chị/Anh dịu dàng, ấm áp; thấu cảm triệu chứng mệt mỏi trước khi gợi ý gói lẻ trải nghiệm.',
+    persona_config: {
+      industry_preset: 'BEAUTY_SPA',
+      bot_name: 'Chuyên viên Tư vấn Spa',
+      self_pronoun: 'em / bên em',
+      default_customer_pronoun: 'Chị',
+      tone_style: 'Ấm áp, dịu dàng, thấu cảm triệu chứng thể chất và làn da',
+      domain_keywords: ['massage', 'gội đầu', 'dưỡng sinh', 'cổ vai gáy', 'mụn', 'nám', 'trẻ hóa', 'liệu trình'],
+      forbidden_words: ['trị dứt điểm 100%', 'khỏi vĩnh viễn', 'cam kết khỏi bệnh']
+    }
+  },
+  {
+    code: 'COSMETICS_PHARMA',
+    display_name: 'Dược mỹ phẩm & Chăm sóc sức khỏe',
+    sample_industry: 'Dược mỹ phẩm & Chăm sóc cá nhân',
+    sample_target_audience: 'Khách hàng quan tâm skincare khoa học 20 - 45 tuổi',
+    sample_description: 'Xưng Em - gọi Chị/Anh chuẩn khoa học; hỏi kỹ loại da và routine hiện tại, nêu rõ thành phần và dung tích.',
+    persona_config: {
+      industry_preset: 'COSMETICS_PHARMA',
+      bot_name: 'Chuyên viên Tư vấn Dược Mỹ Phẩm',
+      self_pronoun: 'em / bên em',
+      default_customer_pronoun: 'Chị',
+      tone_style: 'Chuẩn khoa học, minh bạch thành phần & nguồn gốc',
+      domain_keywords: ['serum', 'kem dưỡng', 'sữa rửa mặt', 'kem chống nắng', 'retinol', 'b5', 'da dầu', 'da khô'],
+      forbidden_words: ['thuốc đặc trị', 'khỏi bệnh 100%', 'trắng cấp tốc']
+    }
+  },
+  {
+    code: 'FASHION_APPAREL',
+    display_name: 'Thời trang, Phụ kiện & Giày dép',
+    sample_industry: 'Thời trang & Phụ kiện',
+    sample_target_audience: 'Giới trẻ & Dân công sở 18 - 38 tuổi',
+    sample_description: 'Xưng Mình/Shop - gọi Bạn trẻ trung, thân thiện; tư vấn chuẩn size theo chiều cao cân nặng và chính sách đổi size.',
+    persona_config: {
+      industry_preset: 'FASHION_APPAREL',
+      bot_name: 'Stylist Tư vấn Thời trang',
+      self_pronoun: 'mình / shop',
+      default_customer_pronoun: 'Bạn',
+      tone_style: 'Trẻ trung, thân thiện, bắt nhịp xu hướng',
+      domain_keywords: ['size', 'bảng size', 'form dáng', 'chất liệu', 'áo', 'quần', 'váy', 'đầm', 'blazer', 'đổi size'],
+      forbidden_words: ['hàng fake', 'hàng nhái', 'giống hình 100%']
+    }
+  },
+  {
+    code: 'HOME_FURNITURE',
+    display_name: 'Nội thất, Gia dụng & Đời sống',
+    sample_industry: 'Nội thất & Gia dụng thông minh',
+    sample_target_audience: 'Gia đình trẻ, Chủ căn hộ chung cư & Nhà phố 26 - 55 tuổi',
+    sample_description: 'Xưng Em - gọi Anh/Chị chu đáo, tin cậy; tư vấn rõ kích thước, chất liệu, bảo hành chính hãng và lắp đặt tận nơi.',
+    persona_config: {
+      industry_preset: 'HOME_FURNITURE',
+      bot_name: 'Chuyên viên Tư vấn Nội thất & Gia dụng',
+      self_pronoun: 'em / bên em',
+      default_customer_pronoun: 'Anh/Chị',
+      tone_style: 'Chu đáo, tin cậy, chú trọng thông số kỹ thuật và bảo hành',
+      domain_keywords: ['kích thước', 'chất liệu', 'bảo hành', 'lắp đặt', 'vận chuyển', 'sofa', 'bàn ăn', 'căn hộ'],
+      forbidden_words: ['bền vĩnh viễn', 'không bao giờ hỏng']
+    }
+  },
+  {
+    code: 'TECH_B2B',
+    display_name: 'Công nghệ, Phần mềm SaaS & B2B',
+    sample_industry: 'Công nghệ, Phần mềm & Giải pháp B2B',
+    sample_target_audience: 'Chủ doanh nghiệp, Quản lý vận hành & Trưởng phòng IT',
+    sample_description: 'Xưng Em/Chuyên viên - gọi Anh/Chị lịch thiệp, súc tích; tập trung bài toán tối ưu chi phí, SLA và mời Demo thực tế.',
+    persona_config: {
+      industry_preset: 'TECH_B2B',
+      bot_name: 'Chuyên viên Giải pháp Doanh nghiệp',
+      self_pronoun: 'em / bên em',
+      default_customer_pronoun: 'Anh/Chị',
+      tone_style: 'Lịch thiệp, gãy gọn, tập trung hiệu quả đầu tư (ROI)',
+      domain_keywords: ['tính năng', 'tích hợp', 'api', 'báo giá', 'gói cước', 'doanh nghiệp', 'demo', 'sla'],
+      forbidden_words: ['cam kết 100% không lỗi', 'bảo mật tuyệt đối 100%']
+    }
+  },
+  {
+    code: 'GENERAL_SERVICE',
+    display_name: 'Đa ngành / Dịch vụ & Thương mại chung',
+    sample_industry: 'Thương mại & Dịch vụ Khách hàng',
+    sample_target_audience: 'Khách hàng cá nhân và gia đình',
+    sample_description: 'Xưng Em - gọi Anh/Chị lịch sự, nhiệt tình; giải đáp đúng trọng tâm theo bảng giá và chính sách niêm yết.',
+    persona_config: {
+      industry_preset: 'GENERAL_SERVICE',
+      bot_name: 'Chuyên viên Tư vấn',
+      self_pronoun: 'em / bên em',
+      default_customer_pronoun: 'Chị',
+      tone_style: 'Lịch sự, tận tâm, tư vấn rõ ràng theo tài liệu chuẩn',
+      domain_keywords: ['sản phẩm', 'dịch vụ', 'bảng giá', 'ưu đãi', 'bảo hành', 'đổi trả'],
+      forbidden_words: ['cam kết 100%']
+    }
+  }
+])
 const pageModalForm = ref({
   name: '',
   industry: '',
   target_audience: '',
-  description: ''
+  description: '',
+  industry_preset: 'BEAUTY_SPA',
+  bot_name: 'Chuyên viên Tư vấn',
+  self_pronoun: 'em / bên em',
+  default_customer_pronoun: 'Chị',
+  tone_style: '',
+  domain_keywords_str: '',
+  forbidden_words_str: ''
 })
 
 const pollingTimers = new Map()
@@ -1015,24 +1194,55 @@ const goToHub = () => {
   fetchInitialRulesCount()
 }
 
+const applyIndustryPreset = (preset) => {
+  if (!preset) return
+  const cfg = preset.persona_config || {}
+  pageModalForm.value.industry_preset = preset.industry_code || preset.code || 'GENERAL_SERVICE'
+  pageModalForm.value.industry = preset.default_industry || preset.sample_industry || pageModalForm.value.industry
+  pageModalForm.value.target_audience = preset.default_target_audience || preset.sample_target_audience || pageModalForm.value.target_audience
+  pageModalForm.value.description = preset.default_description || preset.sample_description || pageModalForm.value.description
+  pageModalForm.value.bot_name = cfg.bot_name || 'Chuyên viên Tư vấn'
+  pageModalForm.value.self_pronoun = cfg.self_pronoun || 'em / bên em'
+  pageModalForm.value.default_customer_pronoun = cfg.default_customer_pronoun || 'Chị'
+  pageModalForm.value.tone_style = cfg.tone_style || ''
+  pageModalForm.value.domain_keywords_str = Array.isArray(cfg.domain_keywords) ? cfg.domain_keywords.join(', ') : ''
+  pageModalForm.value.forbidden_words_str = Array.isArray(cfg.forbidden_words) ? cfg.forbidden_words.join(', ') : ''
+}
+
 const openCreatePageModal = () => {
   editingPageId.value = null
+  const defaultPreset = industryPresets.value[0]
   pageModalForm.value = {
     name: '',
-    industry: '',
-    target_audience: '',
-    description: ''
+    industry: defaultPreset?.sample_industry || '',
+    target_audience: defaultPreset?.sample_target_audience || '',
+    description: defaultPreset?.sample_description || '',
+    industry_preset: defaultPreset?.code || 'BEAUTY_SPA',
+    bot_name: defaultPreset?.persona_config?.bot_name || 'Chuyên viên Tư vấn',
+    self_pronoun: defaultPreset?.persona_config?.self_pronoun || 'em / bên em',
+    default_customer_pronoun: defaultPreset?.persona_config?.default_customer_pronoun || 'Chị',
+    tone_style: defaultPreset?.persona_config?.tone_style || '',
+    domain_keywords_str: (defaultPreset?.persona_config?.domain_keywords || []).join(', '),
+    forbidden_words_str: (defaultPreset?.persona_config?.forbidden_words || []).join(', ')
   }
   showPageModal.value = true
 }
 
 const openEditPageModal = (page) => {
   editingPageId.value = page.id
+  const cfg = page.persona_config || {}
   pageModalForm.value = {
     name: page.name || '',
     industry: page.industry || '',
     target_audience: page.target_audience || '',
-    description: page.description || ''
+    description: page.description || '',
+    industry_preset: cfg.industry_preset || 'GENERAL_SERVICE',
+    bot_name: cfg.bot_name || 'Chuyên viên Tư vấn',
+    self_pronoun: cfg.self_pronoun || 'em / bên em',
+    default_customer_pronoun: cfg.default_customer_pronoun || 'Chị',
+    tone_style: cfg.tone_style || '',
+    domain_keywords_str: Array.isArray(cfg.domain_keywords) ? cfg.domain_keywords.join(', ') : '',
+    forbidden_words_str: Array.isArray(cfg.forbidden_words) ? cfg.forbidden_words.join(', ') : ''
   }
   showPageModal.value = true
 }
@@ -1042,13 +1252,31 @@ const closePageModal = () => {
   editingPageId.value = null
 }
 
+const parseCsvList = (str) => {
+  if (!str || typeof str !== 'string') return []
+  return str
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
 const submitPageModal = async () => {
   if (!pageModalForm.value.name.trim()) return
   const payload = {
     name: pageModalForm.value.name.trim(),
     industry: pageModalForm.value.industry.trim(),
     target_audience: pageModalForm.value.target_audience.trim(),
-    description: pageModalForm.value.description.trim()
+    description: pageModalForm.value.description.trim(),
+    persona_config: {
+      industry_code: pageModalForm.value.industry_preset || 'GENERAL_SERVICE',
+      bot_name: (pageModalForm.value.bot_name || 'Chuyên viên Tư vấn').trim(),
+      self_pronoun: (pageModalForm.value.self_pronoun || 'em / bên em').trim(),
+      default_customer_pronoun: (pageModalForm.value.default_customer_pronoun || 'Chị').trim(),
+      tone_style: (pageModalForm.value.tone_style || pageModalForm.value.description || '').trim(),
+      emoji_level: 'LOW',
+      domain_keywords: parseCsvList(pageModalForm.value.domain_keywords_str),
+      forbidden_words: parseCsvList(pageModalForm.value.forbidden_words_str)
+    }
   }
   const isEditing = !!editingPageId.value
   const targetId = editingPageId.value
@@ -1062,6 +1290,19 @@ const submitPageModal = async () => {
       openPageWorkspace(created.id)
     }
   }
+}
+
+const handleDocumentLifecycleUpdated = (updatedDoc) => {
+  if (!updatedDoc?.document_id) return
+  const idx = documents.value.findIndex(d => d.document_id === updatedDoc.document_id)
+  if (idx !== -1) {
+    documents.value[idx] = { ...documents.value[idx], ...updatedDoc }
+  }
+  if (inspectingDoc.value && inspectingDoc.value.document_id === updatedDoc.document_id) {
+    inspectingDoc.value = { ...inspectingDoc.value, ...updatedDoc }
+  }
+  syncSelectedDocsForActivePage()
+  showToast('📅 Đã lưu cấu hình hiệu lực & vòng đời tài liệu!', 'success')
 }
 
 const confirmDeletePage = (page) => {
@@ -1081,6 +1322,11 @@ const executeDeletePage = async () => {
 const initApp = async () => {
   isConnected.value = true
   fetchLlmHealth(false).then(() => fetchLlmHealth(true))
+  api.getIndustryTemplates().then(list => {
+    if (Array.isArray(list) && list.length > 0) {
+      industryPresets.value = list
+    }
+  }).catch(() => {})
   await fetchPages()
   await fetchDocuments()
   await fetchInitialRulesCount()
@@ -1089,6 +1335,7 @@ const initApp = async () => {
 const syncSelectedDocsForActivePage = () => {
   const scopedDocs = documents.value.filter(d => {
     if (d.status !== 'READY') return false
+    if (d.is_active === false || d.is_expired === true) return false
     if (!activePageId.value) return true
     if (activePageId.value === '__unassigned__') return !d.page_id
     return d.page_id === activePageId.value
@@ -2159,6 +2406,9 @@ onUnmounted(() => {
 
 .modal-card {
   width: 100%;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
   background: #FFFFFF;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -2168,7 +2418,7 @@ onUnmounted(() => {
 }
 
 .page-persona-modal-card {
-  max-width: 560px;
+  max-width: 680px;
 }
 
 .modal-delete-card {
@@ -2193,6 +2443,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   background: #F8FAFD;
+  flex-shrink: 0;
 }
 
 .modal-title-group {
@@ -2254,6 +2505,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .form-field-group {
@@ -2266,6 +2520,69 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.form-row-3col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.industry-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.industry-preset-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: #F8FAFD;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.industry-preset-chip:hover {
+  border-color: #A8C7FA;
+  background: #E8F0FE;
+}
+
+.industry-preset-chip.active {
+  border-color: var(--accent-primary);
+  background: #D3E3FD;
+}
+
+.preset-chip-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.preset-chip-sub {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.persona-skin-box {
+  background: #F8FAFD;
+  border: 1px solid #D3E3FD;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.persona-skin-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-primary);
 }
 
 .field-label {
@@ -2344,6 +2661,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 /* Toast Banner */
@@ -2794,9 +3112,28 @@ onUnmounted(() => {
 }
 
 /* ========================================================================= */
-/* MOBILE & TABLET RESPONSIVENESS (<= 960px & <= 640px)                      */
+/* LAPTOP, TABLET & MOBILE RESPONSIVENESS                                    */
 /* ========================================================================= */
-@media (max-width: 960px) {
+@media (max-width: 1360px) {
+  .notebook-topbar {
+    height: auto;
+    min-height: 56px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar-audience-pill,
+  .brand-badge-sub {
+    display: none;
+  }
+
+  .topbar-page-select {
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 1024px) {
   .notebook-topbar {
     height: auto;
     min-height: 52px;
@@ -2857,6 +3194,10 @@ onUnmounted(() => {
     width: auto;
     height: calc(100dvh - 116px);
     border-radius: 18px;
+  }
+
+  .industry-preset-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -2946,7 +3287,12 @@ onUnmounted(() => {
   }
 
   .modal-backdrop {
-    padding: 10px;
+    padding: 8px;
+  }
+
+  .modal-card {
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
   }
 
   .modal-header {
@@ -2963,6 +3309,8 @@ onUnmounted(() => {
   }
 
   .form-row-2col,
+  .form-row-3col,
+  .industry-preset-grid,
   .llm-info-grid {
     grid-template-columns: 1fr;
   }

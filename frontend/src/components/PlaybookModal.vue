@@ -2956,4 +2956,50 @@ onMounted(() => {
 .btn-view-adopted-rule:hover {
   color: #0842A0;
 }
+
+@media (max-width: 768px) {
+  .modal-backdrop {
+    padding: 8px;
+  }
+
+  .playbook-modal {
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+
+  .modal-header,
+  .modal-tab-nav,
+  .budget-meter-panel,
+  .evolution-toolbar,
+  .modal-footer {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+  }
+
+  .modal-tab-nav {
+    overflow-x: auto;
+  }
+
+  .tab-nav-btn {
+    white-space: nowrap;
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+
+  .dimension-radio-group,
+  .contrastive-inputs-grid,
+  .run-duel-arena {
+    grid-template-columns: 1fr;
+  }
+
+  .evolution-stats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .always-on-toggle-box {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
 </style>

@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
@@ -24,28 +25,34 @@ import java.util.Map;
 public class OllamaLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaLlmClient.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final OllamaProperties props;
     private final RestClient http;
+    private final boolean enableTimeoutCooldown;
     private final java.util.concurrent.Semaphore concurrencyGate = new java.util.concurrent.Semaphore(1);
+    private volatile long cooldownUntilEpochMs = 0L;
 
     @Autowired
     public OllamaLlmClient(OllamaProperties props) {
         this.props = props;
+        this.enableTimeoutCooldown = true;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(3000);
-        factory.setReadTimeout(7500);
+        int readTimeoutMs = 30000;
+        factory.setReadTimeout(readTimeoutMs);
         this.http = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
                 .requestFactory(factory)
                 .build();
-        log.info("OllamaLlmClient active (baseUrl={}, model={}, numCtx={})",
-                props.getBaseUrl(), props.getModel(), props.getNumCtx());
+        log.info("OllamaLlmClient active (baseUrl={}, model={}, numCtx={}, readTimeoutMs={})",
+                props.getBaseUrl(), props.getModel(), props.getNumCtx(), readTimeoutMs);
     }
 
     public OllamaLlmClient(OllamaProperties props, RestClient customHttp) {
         this.props = props;
         this.http = customHttp;
+        this.enableTimeoutCooldown = false;
     }
 
     @Override
@@ -59,17 +66,23 @@ public class OllamaLlmClient implements LlmClient {
         long startNs = System.nanoTime();
         String base = props.getBaseUrl() != null ? props.getBaseUrl().replaceAll("/+$", "") : "http://localhost:11434";
         String endpoint = base + "/api/generate";
-        int maxPredictCap = 120;
+        int maxPredictCap = 135;
         int numPredict = (budget != null && budget.maxTokens() > 0)
                 ? Math.min(budget.maxTokens(), maxPredictCap)
                 : Math.min(props.getNumPredict(), maxPredictCap);
         double temp = (budget != null && budget.temperature() > 0)
                 ? budget.temperature()
                 : props.getTemperature();
+        int effectiveNumCtx = 2048;
 
-        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, numPredict={}, budgetTier={}",
-                props.getModel(), endpoint, numPredict, budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT");
+        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, numPredict={}, numCtx={}, budgetTier={}",
+                props.getModel(), endpoint, numPredict, effectiveNumCtx,
+                budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT");
 
+        if (enableTimeoutCooldown && System.currentTimeMillis() < cooldownUntilEpochMs) {
+            log.info("[LLM] Ollama CPU runner in timeout cooldown -> fast-failing in 0ms to dynamic grounded synthesis");
+            return buildFallbackAnswer(prompt, "Ollama CPU timeout cooldown");
+        }
         if (!concurrencyGate.tryAcquire()) {
             log.info("[LLM] Ollama concurrency limit reached (1 active slot) -> load-shedding to dynamic grounded fallback");
             return buildFallbackAnswer(prompt, "Ollama concurrency load shedding");
@@ -82,16 +95,18 @@ public class OllamaLlmClient implements LlmClient {
                     "keep_alive", "2h",
                     "options", Map.of(
                             "temperature", temp,
-                            "num_ctx", Math.min(props.getNumCtx(), 2048),
-                            "num_predict", numPredict,
-                            "num_thread", 12
+                            "num_ctx", effectiveNumCtx,
+                            "num_predict", numPredict
                     )
             );
-            Map<String, Object> resp = http.post()
+            String rawJson = http.post()
                     .uri("/api/generate")
                     .body(body)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+            Map<String, Object> resp = (rawJson != null && !rawJson.isBlank())
+                    ? MAPPER.readValue(rawJson, Map.class)
+                    : null;
             String result = extractResponseText(resp, prompt);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             boolean isFallback = result != null && result.startsWith("[ollama-offline]");
@@ -100,6 +115,9 @@ public class OllamaLlmClient implements LlmClient {
             return result;
         } catch (Exception e) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            if (enableTimeoutCooldown && latencyMs >= 28_500) {
+                cooldownUntilEpochMs = System.currentTimeMillis() + 15_000L;
+            }
             log.warn("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status=fallback (error={})",
                     props.getModel(), latencyMs, e.getMessage());
             return buildFallbackAnswer(prompt, e.getMessage());

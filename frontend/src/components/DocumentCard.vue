@@ -54,6 +54,17 @@
           Lỗi phân tích
         </span>
 
+        <!-- Lifecycle / Time-Bound Knowledge Badges -->
+        <span v-if="doc.is_active === false" class="badge badge-paused" title="Tài liệu đang tạm ngưng tra cứu RAG">
+          ⏸️ Tạm ngưng
+        </span>
+        <span v-else-if="doc.is_expired" class="badge badge-expired" title="Tài liệu khuyến mãi/bảng giá đã quá hạn hiệu lực">
+          ⌛ Đã hết hạn
+        </span>
+        <span v-else-if="doc.effective_to" class="badge badge-timebound" :title="'Hiệu lực đến: ' + formatShortDate(doc.effective_to)">
+          📅 Đến {{ formatShortDate(doc.effective_to) }}
+        </span>
+
         <!-- Page / Folder Assignment Badge & Quick Switcher -->
         <div v-if="pages && pages.length > 0" class="page-assign-wrapper" @click.stop>
           <select 
@@ -151,6 +162,15 @@ const fileTypeClass = computed(() => {
   if (['md', 'txt'].includes(ext)) return 'type-txt'
   return 'type-other'
 })
+
+const formatShortDate = (iso) => {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleDateString('vi-VN')
+  } catch {
+    return iso.slice(0, 10)
+  }
+}
 </script>
 
 <style scoped>
@@ -362,6 +382,24 @@ const fileTypeClass = computed(() => {
   padding: 1px 6px;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
+}
+
+.badge-paused {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.badge-expired {
+  background: #FEF2F2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+}
+
+.badge-timebound {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
 }
 
 .card-right {

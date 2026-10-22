@@ -40,6 +40,48 @@
           <span class="meta-value bold">{{ doc.pages || 0 }} trang</span>
         </div>
 
+        <!-- Time-Bound Knowledge Lifecycle Section -->
+        <div class="lifecycle-section">
+          <div class="lifecycle-header-row">
+            <h4 class="section-heading">📅 Hiệu lực Thời gian & Trạng thái RAG</h4>
+            <label class="lifecycle-toggle-label">
+              <input v-model="lifecycleForm.is_active" type="checkbox" />
+              <span>{{ lifecycleForm.is_active ? '🟢 Đang kích hoạt tra cứu' : '⏸️ Đang tạm ngưng' }}</span>
+            </label>
+          </div>
+          <p class="lifecycle-hint">
+            Dành cho tài liệu chương trình khuyến mãi / bảng giá theo tháng: Hệ thống tự động loại bỏ khỏi RAG khi quá hạn hiệu lực.
+          </p>
+          <div class="lifecycle-dates-grid">
+            <div class="lifecycle-date-field">
+              <label>Hiệu lực từ ngày (Tùy chọn)</label>
+              <input v-model="lifecycleForm.effective_from" type="date" class="lifecycle-date-input" />
+            </div>
+            <div class="lifecycle-date-field">
+              <label>Hết hạn vào ngày (Tùy chọn)</label>
+              <input v-model="lifecycleForm.effective_to" type="date" class="lifecycle-date-input" />
+            </div>
+          </div>
+          <div class="lifecycle-actions">
+            <button
+              v-if="lifecycleForm.effective_from || lifecycleForm.effective_to"
+              type="button"
+              class="btn-clear-dates"
+              @click="clearLifecycleDates"
+            >
+              Đặt lại hiệu lực vĩnh viễn
+            </button>
+            <button
+              type="button"
+              class="btn-save-lifecycle"
+              :disabled="isSavingLifecycle"
+              @click="saveLifecycle"
+            >
+              {{ isSavingLifecycle ? 'Đang lưu...' : '💾 Lưu hiệu lực tài liệu' }}
+            </button>
+          </div>
+        </div>
+
         <!-- Engine Breakdown Details -->
         <div class="engine-breakdown-section">
           <h4 class="section-heading">Phân bổ động cơ bóc tách (Engine Breakdown)</h4>
@@ -92,7 +134,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { api } from '../api'
 
 const props = defineProps({
   doc: {
@@ -101,7 +144,55 @@ const props = defineProps({
   }
 })
 
-defineEmits(['close', 'delete-doc'])
+const emit = defineEmits(['close', 'delete-doc', 'lifecycle-updated'])
+
+const isSavingLifecycle = ref(false)
+const lifecycleForm = ref({
+  is_active: true,
+  effective_from: '',
+  effective_to: ''
+})
+
+const toDateInputVal = (iso) => {
+  if (!iso || typeof iso !== 'string') return ''
+  return iso.slice(0, 10)
+}
+
+watch(
+  () => props.doc,
+  (d) => {
+    if (d) {
+      lifecycleForm.value = {
+        is_active: d.is_active !== false,
+        effective_from: toDateInputVal(d.effective_from),
+        effective_to: toDateInputVal(d.effective_to)
+      }
+    }
+  },
+  { immediate: true }
+)
+
+const clearLifecycleDates = () => {
+  lifecycleForm.value.effective_from = ''
+  lifecycleForm.value.effective_to = ''
+}
+
+const saveLifecycle = async () => {
+  if (!props.doc?.document_id) return
+  isSavingLifecycle.value = true
+  try {
+    const updated = await api.updateDocumentLifecycle(props.doc.document_id, {
+      effective_from: lifecycleForm.value.effective_from || null,
+      effective_to: lifecycleForm.value.effective_to || null,
+      is_active: lifecycleForm.value.is_active
+    })
+    emit('lifecycle-updated', updated)
+  } catch (err) {
+    alert(err.message || 'Không thể lưu cấu hình hiệu lực tài liệu')
+  } finally {
+    isSavingLifecycle.value = false
+  }
+}
 
 const hasBreakdown = computed(() => {
   return props.doc?.engine_breakdown && Object.keys(props.doc.engine_breakdown).length > 0
@@ -132,7 +223,10 @@ const calcPercent = (count) => {
 
 .modal-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 540px;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
   background: #FFFFFF;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -196,6 +290,9 @@ const calcPercent = (count) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .meta-row {
@@ -236,6 +333,104 @@ const calcPercent = (count) => {
   margin-top: 10px;
   padding-top: 14px;
   border-top: 1px solid var(--border-subtle);
+}
+
+.lifecycle-section {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: #F8FAFD;
+  border: 1px solid #D3E3FD;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lifecycle-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lifecycle-header-row .section-heading {
+  margin-bottom: 0;
+}
+
+.lifecycle-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.lifecycle-hint {
+  font-size: 0.73rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.lifecycle-dates-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lifecycle-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lifecycle-date-field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.lifecycle-date-input {
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  background: #FFFFFF;
+  color: var(--text-main);
+}
+
+.lifecycle-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn-clear-dates {
+  background: none;
+  border: none;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-save-lifecycle {
+  background: var(--accent-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save-lifecycle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .section-heading {
@@ -321,5 +516,39 @@ const calcPercent = (count) => {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 14px 16px;
+  }
+
+  .meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .meta-value {
+    text-align: left;
+    max-width: 100%;
+  }
+
+  .lifecycle-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .lifecycle-dates-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

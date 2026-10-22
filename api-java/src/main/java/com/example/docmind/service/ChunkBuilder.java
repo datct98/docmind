@@ -85,6 +85,22 @@ public final class ChunkBuilder {
                 currentGroupLength = 0;
             }
 
+            // Nếu bản thân block này là bảng Markdown nhiều dòng (2..25 dòng dữ liệu, VD: bảng FAQ hoặc bảng Giá):
+            // Phân rã theo kiến trúc LlamaIndex Atomic Table-Row Node để mỗi câu FAQ / mỗi gói dịch vụ là 1 Node độc lập,
+            // tuyệt đối không trộn 10-15 câu FAQ khác nhau vào chung 1 chunk.
+            if (("table".equalsIgnoreCase(b.type()) || isMarkdownTable(blockText))
+                    && shouldDecomposeTableIntoAtomicRows(blockText)) {
+                if (!group.isEmpty()) {
+                    chunks.addAll(flushGroup(documentId, group));
+                    group = new ArrayList<>();
+                    currentGroupLength = 0;
+                }
+                chunks.addAll(decomposeTableBlockIntoAtomicNodes(documentId, b, blockText));
+                curPage = b.page();
+                curHeading = hp;
+                continue;
+            }
+
             // Nếu bản thân block này vượt quá MAX_CHUNK_CHARS
             if (blockText.length() > MAX_CHUNK_CHARS) {
                 if (!group.isEmpty()) {
@@ -224,6 +240,289 @@ public final class ChunkBuilder {
         }
 
         return result;
+    }
+
+    private static boolean shouldDecomposeTableIntoAtomicRows(String blockText) {
+        if (blockText == null || !isMarkdownTable(blockText)) {
+            return false;
+        }
+        String[] lines = blockText.strip().split("\r?\n");
+        if (lines.length < 4 || !isMarkdownTableHeaderAndDelimiter(lines[0], lines[1])) {
+            return false;
+        }
+        int dataRows = 0;
+        for (int i = 2; i < lines.length; i++) {
+            if (!lines[i].isBlank() && lines[i].contains("|")) {
+                dataRows++;
+            }
+        }
+        return dataRows >= 2 && dataRows <= 25;
+    }
+
+    private static List<BuiltChunk> decomposeTableBlockIntoAtomicNodes(
+            UUID documentId, CanonicalBlock b, String blockText) {
+        List<BuiltChunk> result = new ArrayList<>();
+        List<String> headingPath = b.headingPath() == null ? List.of() : b.headingPath();
+        UUID[] blockIds = new UUID[]{ parseUuidSafe(b.blockId()) };
+        double[] bbox = toDoubleArray(b.bbox());
+
+        String[] lines = blockText.strip().split("\r?\n");
+        String[] firstRowCells = splitMarkdownTableCells(lines[0].strip());
+        boolean genuineHeader = isGenuineTableHeaderRow(firstRowCells);
+        String headerLine;
+        String delimiterLine = lines[1].strip();
+        int startRowIdx;
+        if (genuineHeader) {
+            headerLine = lines[0].strip();
+            startRowIdx = 2;
+        } else {
+            headerLine = synthesizeHeaderRow(firstRowCells.length);
+            startRowIdx = 0;
+        }
+        String headerPrefix = headerLine + "\n" + delimiterLine;
+
+        for (int i = startRowIdx; i < lines.length; i++) {
+            if (i == 1) {
+                continue; // skip delimiter line
+            }
+            String rowLine = lines[i].strip();
+            if (rowLine.isBlank() || !rowLine.contains("|")) {
+                continue;
+            }
+            String singleRowTable = headerPrefix + "\n" + rowLine;
+            result.add(new BuiltChunk(
+                    UUID.randomUUID(),
+                    documentId,
+                    headingPath.toArray(new String[0]),
+                    blockIds,
+                    b.page(),
+                    bbox,
+                    singleRowTable
+            ));
+        }
+        return result;
+    }
+
+    private static String synthesizeHeaderRow(int colCount) {
+        if (colCount == 2) {
+            return "| Tình huống | Tư vấn |";
+        }
+        List<String> cols = new ArrayList<>();
+        for (int i = 1; i <= Math.max(1, colCount); i++) {
+            cols.add("Cột " + i);
+        }
+        return "| " + String.join(" | ", cols) + " |";
+    }
+
+    /**
+     * Phân biệt dòng tiêu đề cột thật sự (VD: `| Mã gói | Tên gói | Giá |`) với dòng dữ liệu đầu tiên
+     * của bảng Word không có header (VD: `| Em hay đau đầu | Nếu mình thường xuyên... |` hoặc `| NS01 | Massage cơ bản | 399.000VNĐ |`).
+     */
+    public static boolean isGenuineTableHeaderRow(String[] cells) {
+        if (cells == null || cells.length == 0) {
+            return false;
+        }
+        int nonEmpty = 0;
+        for (String rawCell : cells) {
+            if (rawCell == null) continue;
+            String cell = rawCell.strip();
+            if (cell.isEmpty()) continue;
+            nonEmpty++;
+            if (cell.length() > 38 || cell.contains("?") || cell.contains("•") || cell.contains(";")) {
+                return false;
+            }
+            String lower = cell.toLowerCase(java.util.Locale.ROOT);
+            if (lower.startsWith("dạ ") || lower.startsWith("em ") || lower.startsWith("nếu ")
+                    || lower.startsWith("có ") || lower.startsWith("khách ")) {
+                return false;
+            }
+            if (cell.matches("(?i)^(?:NS|DS|CB|B)\\d{1,3}$")) {
+                return false;
+            }
+            if (lower.matches(".*\\d+\\.?\\d*\\s*(?:vnđ|vnd|đ|k|phút|p)\\b.*")) {
+                return false;
+            }
+        }
+        return nonEmpty > 0;
+    }
+
+    /**
+     * Chuyển đổi nội dung chunk (đặc biệt là các bảng Markdown 1 dòng hoặc nhiều dòng)
+     * sang định dạng LlamaIndex Structured Semantic Node sạch sẽ để đưa vào LLM Prompt,
+     * loại bỏ các đường kẻ bảng `| --- |` gây nhiễu cho mô hình.
+     */
+    public static String formatChunkAsLlamaIndexNode(String chunkText, String[] headingPath) {
+        return formatChunkAsLlamaIndexNode(chunkText, headingPath, null);
+    }
+
+    public static String formatChunkAsLlamaIndexNode(String chunkText, String[] headingPath, String query) {
+        if (chunkText == null || chunkText.isBlank()) {
+            return "";
+        }
+        String breadcrumb = (headingPath != null && headingPath.length > 0)
+                ? "[" + String.join(" > ", headingPath) + "] "
+                : "";
+        String trimmed = chunkText.strip();
+        String[] lines = trimmed.split("\r?\n");
+
+        // Tìm vị trí bắt đầu bảng Markdown (kể cả khi có 1-2 dòng tiêu đề đứng trước bảng)
+        int tableStartIdx = -1;
+        for (int i = 0; i + 1 < lines.length; i++) {
+            if (isMarkdownTableHeaderAndDelimiter(lines[i], lines[i + 1])) {
+                tableStartIdx = i;
+                break;
+            }
+        }
+        if (tableStartIdx < 0 || tableStartIdx + 2 >= lines.length) {
+            return breadcrumb + trimmed;
+        }
+
+        StringBuilder prefixBuilder = new StringBuilder();
+        for (int i = 0; i < tableStartIdx; i++) {
+            String pLine = lines[i].strip();
+            if (!pLine.isEmpty()) {
+                if (!prefixBuilder.isEmpty()) prefixBuilder.append(" — ");
+                prefixBuilder.append(pLine);
+            }
+        }
+        String prefix = prefixBuilder.isEmpty() ? "" : (prefixBuilder + ": ");
+
+        String[] firstRowCells = splitMarkdownTableCells(lines[tableStartIdx]);
+        boolean genuineHeader = isGenuineTableHeaderRow(firstRowCells);
+        String[] headers = genuineHeader ? firstRowCells : new String[0];
+        int dataStartIdx = genuineHeader ? tableStartIdx + 2 : tableStartIdx;
+
+        List<String> formattedRows = new ArrayList<>();
+        for (int i = dataStartIdx; i < lines.length; i++) {
+            if (i == tableStartIdx + 1) {
+                continue; // bỏ qua dòng delimiter | --- | --- |
+            }
+            String rowLine = lines[i].strip();
+            if (rowLine.isBlank() || !rowLine.contains("|")) {
+                continue;
+            }
+            String[] cells = splitMarkdownTableCells(rowLine);
+            List<String> labeledPairs = new ArrayList<>();
+            if (genuineHeader) {
+                for (int c = 0; c < cells.length; c++) {
+                    String val = cells[c].strip();
+                    if (val.isEmpty()) {
+                        continue;
+                    }
+                    String colName = (c < headers.length && !headers[c].isBlank())
+                            ? headers[c].strip()
+                            : ("Cột " + (c + 1));
+                    labeledPairs.add(colName + ": " + val);
+                }
+            } else {
+                List<String> nonEmptyCells = new ArrayList<>();
+                for (String c : cells) {
+                    if (c != null && !c.strip().isEmpty()) {
+                        nonEmptyCells.add(c.strip());
+                    }
+                }
+                if (nonEmptyCells.size() == 2) {
+                    labeledPairs.add("Tình huống: " + nonEmptyCells.get(0) + " | Tư vấn: " + nonEmptyCells.get(1));
+                } else {
+                    labeledPairs.addAll(nonEmptyCells);
+                }
+            }
+            if (!labeledPairs.isEmpty()) {
+                formattedRows.add(String.join(" | ", labeledPairs));
+            }
+        }
+        if (formattedRows.isEmpty()) {
+            return breadcrumb + trimmed;
+        }
+        // LlamaIndex Row-Level Node Postprocessor:
+        // - Với bảng không có header thật (2 cột Tình huống | Tư vấn hoặc bảng bị lặp dòng đầu khi split),
+        //   chỉ giữ lại 1 dòng Tình huống khớp nhất với câu hỏi để tránh ghép 2 tình huống khác nhau.
+        // - Với bảng có header thật (bảng giá/danh mục), giữ tối đa 2 dòng khớp nhất với truy vấn.
+        if (!genuineHeader && formattedRows.size() > 1 && query != null && !query.isBlank()) {
+            formattedRows = selectMostRelevantTableRows(formattedRows, query, 1);
+        } else if (formattedRows.size() > 2) {
+            if (query != null && !query.isBlank()) {
+                formattedRows = selectMostRelevantTableRows(formattedRows, query, 2);
+            } else {
+                formattedRows = formattedRows.subList(0, 2);
+            }
+        }
+        if (formattedRows.size() == 1) {
+            return breadcrumb + prefix + formattedRows.get(0);
+        }
+        return breadcrumb + prefix + "\n- " + String.join("\n- ", formattedRows);
+    }
+
+    private static List<String> selectMostRelevantTableRows(List<String> rows, String query, int maxRows) {
+        String lowerQuery = query.toLowerCase(java.util.Locale.ROOT);
+        String[] rawTokens = lowerQuery.split("(?U)[^\\p{L}\\p{Nd}]+");
+        List<String> queryTokens = new ArrayList<>();
+        for (String t : rawTokens) {
+            if (t.length() >= 2) {
+                queryTokens.add(t);
+            }
+        }
+        List<String> queryBigrams = new ArrayList<>();
+        for (int i = 0; i + 1 < queryTokens.size(); i++) {
+            queryBigrams.add(queryTokens.get(i) + " " + queryTokens.get(i + 1));
+        }
+
+        List<Integer> indices = new ArrayList<>();
+        int[] scores = new int[rows.size()];
+        int maxScore = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            indices.add(i);
+            String rowLower = rows.get(i).toLowerCase(java.util.Locale.ROOT);
+            int pipeIdx = rowLower.indexOf('|');
+            String keyCell = pipeIdx > 0 ? rowLower.substring(0, pipeIdx) : rowLower;
+
+            int score = 0;
+            for (String tok : queryTokens) {
+                int weight = tok.length() >= 4 ? 3 : 2;
+                if (keyCell.contains(tok)) {
+                    score += weight * 3; // Ưu tiên khớp ở cột tiêu đề / tình huống / tên dịch vụ
+                } else if (rowLower.contains(tok)) {
+                    score += weight;
+                }
+            }
+            for (String bg : queryBigrams) {
+                if (keyCell.contains(bg)) {
+                    score += 12;
+                } else if (rowLower.contains(bg)) {
+                    score += 5;
+                }
+            }
+            scores[i] = score;
+            if (score > maxScore) {
+                maxScore = score;
+            }
+        }
+        if (maxScore == 0) {
+            return rows.subList(0, Math.min(maxRows, rows.size()));
+        }
+        final int topScore = maxScore;
+        indices.sort((a, b) -> Integer.compare(scores[b], scores[a]));
+        List<String> selected = new ArrayList<>();
+        for (int idx : indices) {
+            if (selected.size() >= maxRows) {
+                break;
+            }
+            if (scores[idx] > 0 && scores[idx] >= (topScore * 2) / 3) {
+                selected.add(rows.get(idx));
+            }
+        }
+        return selected.isEmpty() ? rows.subList(0, Math.min(maxRows, rows.size())) : selected;
+    }
+
+    private static String[] splitMarkdownTableCells(String line) {
+        String s = line.strip();
+        if (s.startsWith("|")) {
+            s = s.substring(1);
+        }
+        if (s.endsWith("|")) {
+            s = s.substring(0, s.length() - 1);
+        }
+        return s.split("(?<!\\\\)\\|", -1);
     }
 
     /**

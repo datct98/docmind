@@ -1,6 +1,8 @@
 package com.example.docmind.service.retrieval;
 
+import com.example.docmind.dto.IndustryPersonaTemplates;
 import com.example.docmind.dto.LearnedRuleDto;
+import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.service.security.PromptSecurityGuard;
 
 import java.util.List;
@@ -36,45 +38,75 @@ public final class PromptBuilder {
             String name,
             String industry,
             String targetAudience,
-            String description
+            String description,
+            PagePersonaConfig personaConfig
     ) {
+        public PagePersona(String name, String industry, String targetAudience, String description) {
+            this(name, industry, targetAudience, description, null);
+        }
+
+        public PagePersonaConfig resolvedConfig() {
+            return IndustryPersonaTemplates.resolveEffectiveConfig(
+                    personaConfig, name, industry, targetAudience, description
+            );
+        }
+
+        public boolean isBeautyOrSpaIndustry() {
+            PagePersonaConfig cfg = resolvedConfig();
+            return "BEAUTY_SPA".equalsIgnoreCase(cfg.industryCode())
+                    || "COSMETICS_PHARMA".equalsIgnoreCase(cfg.industryCode());
+        }
+
         public boolean hasContent() {
             return (name != null && !name.isBlank())
                     || (industry != null && !industry.isBlank())
                     || (targetAudience != null && !targetAudience.isBlank())
-                    || (description != null && !description.isBlank());
+                    || (description != null && !description.isBlank())
+                    || (personaConfig != null && personaConfig.hasContent());
         }
 
         /**
          * Tự động suy luận giọng văn, cách xưng hô và chiến thuật chốt sale theo ngành hàng & tệp khách hàng.
          */
         public String resolveToneAndClosingGuidance() {
+            PagePersonaConfig cfg = resolvedConfig();
+            String rawSelf = cfg.resolvedSelfPronoun();
+            String selfP = "em".equalsIgnoreCase(rawSelf) ? "Em" : rawSelf;
+            String custP = cfg.resolvedDefaultCustomerPronoun();
+            String tone = (cfg.toneStyle() != null && !cfg.toneStyle().isBlank())
+                    ? cfg.toneStyle().strip()
+                    : "thân thiện, nhiệt tình, tự nhiên như người thật đang tư vấn";
+
             String combined = ((name != null ? name : "") + " "
                     + (industry != null ? industry : "") + " "
                     + (targetAudience != null ? targetAudience : "") + " "
                     + (description != null ? description : "")).toLowerCase();
 
-            if (combined.contains("spa") || combined.contains("làm đẹp") || combined.contains("mỹ phẩm")
-                    || combined.contains("thẩm mỹ") || combined.contains("da") || combined.contains("nữ")) {
-                return "Xưng 'Em' - gọi khách là 'Chị' (hoặc theo quy định riêng của tài liệu). "
-                        + "Giọng văn dịu dàng, tận tâm, tinh tế, tạo cảm giác an tâm tuyệt đối về chất lượng chuẩn y khoa và minh bạch chi phí. "
-                        + "Khi chốt sale: luôn nêu bật quà tặng kèm / bảo hành / quyền lợi miễn phí trước khi báo giá, khéo léo gợi ý gói Combo tiết kiệm nếu có lợi cho khách, và kết thúc bằng 1 câu hỏi quan tâm nhẹ nhàng (VD: hỏi tình trạng da hiện tại của Chị hoặc mời Chị đặt lịch qua soi da/thăm khám miễn phí).";
+            if ("BEAUTY_SPA".equalsIgnoreCase(cfg.industryCode())
+                    || combined.contains("spa") || combined.contains("làm đẹp") || combined.contains("thẩm mỹ")) {
+                return "Xưng '" + selfP + "' - gọi khách là '" + custP + "' (hoặc theo giới tính khách). "
+                        + "Giọng văn " + tone + ". "
+                        + "Khi chốt sale: luôn nêu bật quà tặng kèm / bảo hành / quyền lợi miễn phí trước khi báo giá, khéo léo gợi ý gói Combo tiết kiệm nếu có lợi cho khách, và kết thúc bằng 1 câu hỏi quan tâm nhẹ nhàng.";
             }
-            if (combined.contains("b2b") || combined.contains("saas") || combined.contains("phần mềm")
-                    || combined.contains("công nghệ") || combined.contains("doanh nghiệp") || combined.contains("sme")
-                    || combined.contains("it")) {
-                return "Xưng 'Em / Bên em' - gọi khách là 'Anh/Chị' (hoặc Quý doanh nghiệp). "
-                        + "Giọng văn chuyên gia tư vấn giải pháp (Consultative B2B Sales): mạch lạc, tin cậy, nhấn mạnh cam kết SLA, tính bảo mật và tối ưu chi phí vận hành. "
-                        + "Khi chốt sale: phân tích rõ giá trị giữa các gói cước và kết thúc bằng lời mời trải nghiệm bản Demo thực tế hoặc nhận bảng tính chi phí theo quy mô nhân sự.";
+            if ("FASHION_APPAREL".equalsIgnoreCase(cfg.industryCode())) {
+                return "Xưng '" + selfP + "' - gọi khách là '" + custP + "'. "
+                        + "Giọng văn " + tone + ". "
+                        + "Khi chốt sale: tư vấn chuẩn bảng size theo chiều cao/cân nặng, làm nổi bật chất liệu và chính sách đổi trả, kết thúc bằng câu hỏi chọn màu/size hoặc giữ đơn.";
             }
-            if (combined.contains("bất động sản") || combined.contains("căn hộ") || combined.contains("nghỉ dưỡng")
-                    || combined.contains("nhà đầu tư") || combined.contains("bđs") || combined.contains("villa")) {
-                return "Xưng 'Em' - gọi khách là 'Anh/Chị'. "
-                        + "Giọng văn sang trọng, chuyên nghiệp, chuẩn xác về tiến độ dòng tiền và pháp lý. "
-                        + "Khi chốt sale: làm nổi bật ưu đãi chiết khấu thanh toán sớm và kết thúc bằng lời mời gửi bảng tính dòng tiền chi tiết hoặc lịch tham quan thực tế.";
+            if ("HOME_FURNITURE".equalsIgnoreCase(cfg.industryCode())) {
+                return "Xưng '" + selfP + "' - gọi khách là '" + custP + "'. "
+                        + "Giọng văn " + tone + ". "
+                        + "Khi chốt sale: nêu rõ kích thước, chất liệu, chế độ bảo hành/lắp đặt trong tài liệu và kết thúc bằng câu hỏi tư vấn kích thước phù hợp không gian của khách.";
             }
-            return "Xưng 'Em' - gọi khách là 'Anh/Chị'. "
-                    + "Giọng văn thân thiện, nhiệt tình, tự nhiên như người thật đang tư vấn. "
+            if ("TECH_B2B".equalsIgnoreCase(cfg.industryCode())
+                    || combined.contains("b2b") || combined.contains("saas") || combined.contains("phần mềm")
+                    || combined.contains("công nghệ") || combined.contains("doanh nghiệp")) {
+                return "Xưng '" + selfP + " / Bên em' - gọi khách là '" + custP + "' (hoặc Quý doanh nghiệp). "
+                        + "Giọng văn " + tone + ": mạch lạc, tin cậy, nhấn mạnh cam kết SLA, tính bảo mật và tối ưu chi phí vận hành. "
+                        + "Khi chốt sale: phân tích rõ giá trị giữa các gói cước và kết thúc bằng lời mời trải nghiệm bản Demo thực tế.";
+            }
+            return "Xưng '" + selfP + "' - gọi khách là '" + custP + "'. "
+                    + "Giọng văn " + tone + ". "
                     + "Khi chốt sale: nhấn mạnh lợi ích thực tế, ưu đãi/quà tặng đi kèm trong tài liệu và kết thúc bằng 1 câu hỏi gợi mở nhu cầu để hỗ trợ khách chốt đơn.";
         }
     }

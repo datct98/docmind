@@ -20,36 +20,28 @@ public interface ChunkRepositoryCustom {
                      String text,
                      float[] embedding);
 
-    default void insertChunk(UUID id,
-                             UUID documentId,
-                             UUID pageId,
-                             String[] headingPath,
-                             UUID[] sourceBlockIds,
-                             int page,
-                             double[] bbox,
-                             String text,
-                             float[] embedding) {
-        insertChunk(id, documentId, headingPath, sourceBlockIds, page, bbox, text, embedding);
-    }
+    void insertChunk(UUID id,
+                     UUID documentId,
+                     UUID pageId,
+                     String[] headingPath,
+                     UUID[] sourceBlockIds,
+                     int page,
+                     double[] bbox,
+                     String text,
+                     float[] embedding);
 
     /** Đồng bộ page_id của toàn bộ chunks (vector + full-text) khi tài liệu chuyển Page. */
-    default int updatePageIdByDocumentId(UUID documentId, UUID pageId) {
-        return 0;
-    }
+    int updatePageIdByDocumentId(UUID documentId, UUID pageId);
 
     /** Arm 1: vector search theo cosine distance (embedding <=> query), score = 1 - distance. */
     List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit);
 
     /** Arm 1 (cô lập cứng theo page_id ở tầng SQL): chỉ truy vấn chunks thuộc đúng pageId. */
-    default List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit, UUID pageId) {
-        return searchByVector(documentIds, queryEmbedding, limit);
-    }
+    List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit, UUID pageId);
 
     /** Arm 2: full-text search (tsv @@ plainto_tsquery), score = ts_rank. */
     List<RetrievedChunk> searchByFullText(List<UUID> documentIds, String query, int limit);
 
     /** Arm 2 (cô lập cứng theo page_id ở tầng SQL): chỉ truy vấn chunks thuộc đúng pageId. */
-    default List<RetrievedChunk> searchByFullText(List<UUID> documentIds, String query, int limit, UUID pageId) {
-        return searchByFullText(documentIds, query, limit);
-    }
+    List<RetrievedChunk> searchByFullText(List<UUID> documentIds, String query, int limit, UUID pageId);
 }

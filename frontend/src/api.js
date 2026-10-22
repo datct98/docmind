@@ -77,6 +77,21 @@ export const api = {
   },
 
   /**
+   * Lấy danh sách 6 bộ Industry Persona Preset mẫu (Configurable Skin)
+   * GET /api/pages/industry-templates
+   */
+  async getIndustryTemplates() {
+    const res = await fetch(`${API_BASE}/pages/industry-templates`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể lấy danh sách mẫu ngành hàng (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
    * Tạo Page / Thư mục tri thức mới
    * POST /api/pages
    */
@@ -168,15 +183,22 @@ export const api = {
   },
 
   /**
-   * Upload tài liệu mới (gán trực tiếp vào Page nếu có pageId)
+   * Upload tài liệu mới (gán trực tiếp vào Page nếu có pageId, kèm tùy chọn hiệu lực thời gian)
    * POST /api/documents
-   * multipart/form-data: file, page_id
+   * multipart/form-data: file, page_id, effective_from, effective_to, is_active
    */
-  async uploadDocument(file, pageId = null) {
+  async uploadDocument(file, pageId = null, lifecycle = null) {
     const formData = new FormData()
     formData.append('file', file)
     if (pageId) {
       formData.append('page_id', pageId)
+    }
+    if (lifecycle && typeof lifecycle === 'object') {
+      if (lifecycle.effective_from) formData.append('effective_from', lifecycle.effective_from)
+      if (lifecycle.effective_to) formData.append('effective_to', lifecycle.effective_to)
+      if (lifecycle.is_active !== undefined && lifecycle.is_active !== null) {
+        formData.append('is_active', String(lifecycle.is_active))
+      }
     }
 
     const res = await fetch(`${API_BASE}/documents`, {
@@ -195,6 +217,36 @@ export const api = {
       throw new Error(errorMsg)
     }
 
+    return await res.json()
+  },
+
+  /**
+   * Cập nhật thời hạn hiệu lực (effective_from, effective_to) và trạng thái hoạt động (is_active) của tài liệu
+   * PUT /api/documents/:id/lifecycle
+   */
+  async updateDocumentLifecycle(docId, { effective_from = null, effective_to = null, is_active = true }) {
+    const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/lifecycle`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        effective_from: effective_from || '',
+        effective_to: effective_to || '',
+        is_active: is_active !== false
+      })
+    })
+    if (!res.ok) {
+      let errorMsg = `Không thể cập nhật hiệu lực tài liệu (HTTP ${res.status})`
+      try {
+        const errJson = await res.json()
+        if (errJson.message) errorMsg = errJson.message
+      } catch {
+        // ignore
+      }
+      throw new Error(errorMsg)
+    }
     return await res.json()
   },
 

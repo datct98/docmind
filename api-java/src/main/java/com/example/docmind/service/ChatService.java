@@ -185,7 +185,8 @@ public class ChatService {
                 PromptSecurityGuard.sanitizeModelOutput(rawAnswer),
                 honorific,
                 request.question(),
-                appliedRules
+                appliedRules,
+                pagePersona
         );
         log.info("[LLM] ChatService response from engine={} latencyMs={} status={} fused_chunks={} applied_rules={} page_persona={} honorific={}",
                 llmClient.name(), llmLatencyMs, isFallback ? "fallback" : "ok",
@@ -246,7 +247,8 @@ public class ChatService {
                             p.getName(),
                             p.getIndustry(),
                             p.getTargetAudience(),
-                            p.getDescription()
+                            p.getDescription(),
+                            p.getPersonaConfig()
                     ))
                     .orElse(null);
         } catch (Exception e) {
@@ -278,12 +280,13 @@ public class ChatService {
             String raw,
             String honorific,
             String question,
-            List<LearnedRuleDto> appliedRules) {
+            List<LearnedRuleDto> appliedRules,
+            PromptBuilder.PagePersona pagePersona) {
         if (raw == null || raw.isBlank()) {
             return "";
         }
         String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "Chị";
-        String cleaned = raw
+        String cleaned = com.example.docmind.service.bot.FanpageBotService.sanitizeForbiddenWords(raw, pagePersona)
                 .replaceAll("(?iU)[^.!?\\n]*\\b(tham\\s+khảo|xem\\s+thêm)[^.!?\\n]*\\btrong\\s+tài\\s+liệu[^.!?\\n]*[.!?]?\\s*", "")
                 .replaceAll("(?iU)[^.!?\\n]*\\bđối\\s+tượng\\s+khách\\s+hàng\\s+(chủ\\s+yếu|mục\\s+tiêu)[^.!?\\n]*[.!?]?\\s*", "")
                 .replaceAll("(?iU)(?:dạ[,\\s]*)?(?:bên\\s+em|chúng\\s+tôi|nàng\\s+sen|spa|page)\\s+chuyên\\s+(?:phục\\s+vụ|dành\\s+cho)\\s+khách\\s+hàng\\s+nữ[^.!?:\\n]*[,;.]?\\s*(?:nhưng\\s+thực\\s+tế[,\\s]*)?", "Dạ ")

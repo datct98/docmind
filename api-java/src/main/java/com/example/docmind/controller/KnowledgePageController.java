@@ -1,7 +1,9 @@
 package com.example.docmind.controller;
 
+import com.example.docmind.dto.IndustryPersonaTemplates;
 import com.example.docmind.dto.KnowledgePageDto;
 import com.example.docmind.dto.KnowledgePageRequest;
+import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.entity.DocumentEntity;
 import com.example.docmind.entity.KnowledgePageEntity;
 import com.example.docmind.exception.ResourceNotFoundException;
@@ -57,15 +59,28 @@ public class KnowledgePageController {
         return ResponseEntity.ok(dtos);
     }
 
+    @GetMapping("/industry-templates")
+    public ResponseEntity<List<IndustryPersonaTemplates.IndustryTemplateDto>> listIndustryTemplates() {
+        return ResponseEntity.ok(IndustryPersonaTemplates.allTemplates());
+    }
+
     @PostMapping
     @Transactional
     public ResponseEntity<KnowledgePageDto> createPage(@Valid @RequestBody KnowledgePageRequest request) {
+        String name = request.name().strip();
+        String industry = request.industry() != null ? request.industry().strip() : "";
+        String targetAudience = request.targetAudience() != null ? request.targetAudience().strip() : "";
+        String description = request.description() != null ? request.description().strip() : "";
+        PagePersonaConfig effectiveConfig = IndustryPersonaTemplates.resolveEffectiveConfig(
+                request.personaConfig(), name, industry, targetAudience, description
+        );
         KnowledgePageEntity entity = KnowledgePageEntity.builder()
                 .id(UUID.randomUUID())
-                .name(request.name().strip())
-                .industry(request.industry() != null ? request.industry().strip() : "")
-                .targetAudience(request.targetAudience() != null ? request.targetAudience().strip() : "")
-                .description(request.description() != null ? request.description().strip() : "")
+                .name(name)
+                .industry(industry)
+                .targetAudience(targetAudience)
+                .description(description)
+                .personaConfigJson(effectiveConfig.toJson())
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
@@ -89,6 +104,16 @@ public class KnowledgePageController {
         }
         if (request.description() != null) {
             entity.setDescription(request.description().strip());
+        }
+        if (request.personaConfig() != null) {
+            PagePersonaConfig effectiveConfig = IndustryPersonaTemplates.resolveEffectiveConfig(
+                    request.personaConfig(),
+                    entity.getName(),
+                    entity.getIndustry(),
+                    entity.getTargetAudience(),
+                    entity.getDescription()
+            );
+            entity.setPersonaConfig(effectiveConfig);
         }
         entity.setUpdatedAt(OffsetDateTime.now());
         KnowledgePageEntity saved = pageRepository.save(entity);

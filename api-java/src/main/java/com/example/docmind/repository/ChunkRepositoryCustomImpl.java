@@ -56,27 +56,33 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
         jdbc.update(connection -> {
             String sql = """
                     INSERT INTO chunks
-                        (id, document_id, page_id, heading_path, source_block_ids, page, bbox, text, embedding, tsv)
+                        (id, document_id, page_id, heading_path, source_block_ids, page, bbox, text, embedding, tsv, semantic_tags)
                     VALUES
                         (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS vector),
-                         setweight(to_tsvector('simple', coalesce(array_to_string(?, ' '), '')), 'A') || setweight(to_tsvector('simple', ?), 'B'))
+                         setweight(to_tsvector('simple', coalesce(array_to_string(?, ' '), '')), 'A') || setweight(to_tsvector('simple', ?), 'B'),
+                         ?)
                     """;
             var ps = connection.prepareStatement(sql);
             ps.setObject(1, id);
             ps.setObject(2, documentId);
             ps.setObject(3, pageId);
             String[] safeHeadingPath = headingPath != null ? headingPath : new String[0];
+            String safeText = text != null ? text : "";
+            List<String> extractedSemanticTags = com.example.docmind.service.metadata.ChunkMetadataExtractor
+                    .extractSemanticTags(String.join(" > ", safeHeadingPath), safeText);
             Array headingArray = connection.createArrayOf("text", safeHeadingPath);
             Array blockIdsArray = connection.createArrayOf("uuid", sourceBlockIds != null ? sourceBlockIds : new UUID[0]);
             Array bboxArray = connection.createArrayOf("float8", toObjectArray(bbox));
+            Array semanticTagsArray = connection.createArrayOf("text", extractedSemanticTags.toArray(new String[0]));
             ps.setArray(4, headingArray);
             ps.setArray(5, blockIdsArray);
             ps.setInt(6, page);
             ps.setArray(7, bboxArray);
-            ps.setString(8, text != null ? text : "");
+            ps.setString(8, safeText);
             ps.setString(9, vectorLiteral); // null => NULL::vector
             ps.setArray(10, headingArray);
-            ps.setString(11, text != null ? text : "");
+            ps.setString(11, safeText);
+            ps.setArray(12, semanticTagsArray);
             return ps;
         });
     }
@@ -113,6 +119,13 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                 FROM chunks
                 WHERE embedding IS NOT NULL
                   AND document_id IN (%s)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM documents d
+                      WHERE d.id = chunks.document_id
+                        AND (d.is_active = FALSE
+                             OR (d.effective_from IS NOT NULL AND d.effective_from > now())
+                             OR (d.effective_to IS NOT NULL AND d.effective_to < now()))
+                  )
                   %s
                 ORDER BY embedding <=> CAST(? AS vector)
                 LIMIT ?
@@ -222,6 +235,13 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                     FROM chunks
                     WHERE (tsv @@ to_tsquery('simple', ?) OR tsv @@ plainto_tsquery('simple', ?))
                       AND document_id IN (%s)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM documents d
+                          WHERE d.id = chunks.document_id
+                            AND (d.is_active = FALSE
+                                 OR (d.effective_from IS NOT NULL AND d.effective_from > now())
+                                 OR (d.effective_to IS NOT NULL AND d.effective_to < now()))
+                      )
                       %s
                     ORDER BY score DESC
                     LIMIT ?

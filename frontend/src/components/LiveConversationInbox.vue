@@ -2423,7 +2423,7 @@ defineExpose({
 }
 
 /* ========================================================================= */
-/* MOBILE NAVIGATION & RESPONSIVE BREAKPOINTS (<= 960px & <= 640px)          */
+/* MOBILE NAVIGATION & RESPONSIVE BREAKPOINTS (<= 1280px, <= 1024px, <= 640px) */
 /* ========================================================================= */
 .mobile-inbox-tabs {
   display: none;
@@ -2434,7 +2434,21 @@ defineExpose({
   display: none;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1280px) {
+  .inbox-left-panel {
+    width: 290px;
+    min-width: 260px;
+    max-width: 310px;
+  }
+
+  .inbox-right-insight {
+    width: 280px;
+    min-width: 250px;
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 1024px) {
   .omnichannel-inbox-layout {
     flex-direction: column;
     gap: 8px;

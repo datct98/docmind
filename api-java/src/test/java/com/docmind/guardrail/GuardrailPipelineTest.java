@@ -493,4 +493,42 @@ class GuardrailPipelineTest {
         assertThat(bounded).startsWith("Dạ em chào Anh ạ!");
         assertThat(bounded).contains("\n\n");
     }
+
+    // =========================================================================
+    // 9. MULTI-INDUSTRY DOMAIN-AGNOSTIC GUARDRAILS (NO SPA/DERMATOLOGY LEAKAGE)
+    // =========================================================================
+
+    @Test
+    @DisplayName("Multi-Industry: Education/IELTS page guardrail never leaks Dermatology or Massage terms")
+    void testMultiIndustry_educationIeltsPage_neverLeaksSpaOrMassageTerms() {
+        GuardrailContext ctx = GuardrailContext.builder()
+                .customerHonorific("Anh")
+                .isFirstTurn(true)
+                .salesStage("DISCOVERY")
+                .customerMessage("học phí khóa IELTS bên mình bao nhiêu")
+                .knowledgeChunks(List.of(
+                        "[Khóa học IELTS] | Mã gói | Tên khóa | Học phí |\n| --- | --- | --- |\n"
+                                + "| IE01 | Khóa IELTS Foundation | 990.000 VNĐ |\n"
+                                + "| IE02 | Khóa IELTS Intensive 1-1 | 2.500.000 VNĐ |"
+                ))
+                .build();
+
+        String infoDumpReply = "Dạ em chào Anh ạ! Bên em có Khóa IELTS Foundation 990.000 VNĐ, Khóa IELTS Intensive 2.500.000 VNĐ và Khóa IELTS Master 4.500.000 VNĐ.\n"
+                + "- Lộ trình cá nhân hóa\n"
+                + "- Giảng viên 8.5 IELTS\n"
+                + "- Cam kết đầu ra bằng văn bản\n"
+                + "- Tặng bộ giáo trình Cambridge\n"
+                + "Anh có muốn đăng ký không ạ?";
+
+        GuardrailResult result = pipeline.process(ctx, infoDumpReply);
+
+        assertThat(result.text())
+                .contains("990.000")
+                .doesNotContain("soi da AI 3D")
+                .doesNotContain("650.000")
+                .doesNotContain("Massage")
+                .doesNotContain("cổ vai gáy")
+                .doesNotContain("ngâm chân");
+        assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(2);
+    }
 }

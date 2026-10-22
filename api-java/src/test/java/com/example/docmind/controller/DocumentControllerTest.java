@@ -101,4 +101,31 @@ class DocumentControllerTest {
 
         verify(documentService).delete("doc-123");
     }
+
+    @Test
+    void updateLifecycleReturnsUpdatedStatus() throws Exception {
+        java.time.OffsetDateTime from = java.time.OffsetDateTime.parse("2026-10-01T00:00:00Z");
+        java.time.OffsetDateTime to = java.time.OffsetDateTime.parse("2026-10-31T23:59:59Z");
+        when(documentService.updateLifecycle(any(), any()))
+                .thenReturn(new DocumentStatusResponse(
+                        "doc-123",
+                        "promo.md",
+                        "READY",
+                        1,
+                        Map.of(),
+                        null,
+                        from,
+                        to,
+                        true,
+                        true
+                ));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/documents/doc-123/lifecycle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"effective_from\":\"2026-10-01T00:00:00Z\",\"effective_to\":\"2026-10-31T23:59:59Z\",\"is_active\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.document_id").value("doc-123"))
+                .andExpect(jsonPath("$.is_active").value(true))
+                .andExpect(jsonPath("$.is_expired").value(false));
+    }
 }

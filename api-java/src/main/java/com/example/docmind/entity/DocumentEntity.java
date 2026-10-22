@@ -58,11 +58,38 @@ public class DocumentEntity {
     @Column(name = "page_id")
     private UUID pageId;
 
+    @Column(name = "effective_from")
+    private OffsetDateTime effectiveFrom;
+
+    @Column(name = "effective_to")
+    private OffsetDateTime effectiveTo;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean active;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public boolean isActive() {
+        return active == null || active;
+    }
+
+    public boolean isCurrentlyEffective() {
+        if (!isActive()) {
+            return false;
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        if (effectiveFrom != null && now.isBefore(effectiveFrom)) {
+            return false;
+        }
+        if (effectiveTo != null && now.isAfter(effectiveTo)) {
+            return false;
+        }
+        return true;
+    }
 
     @PrePersist
     void onCreate() {
@@ -70,11 +97,17 @@ public class DocumentEntity {
         if (createdAt == null) {
             createdAt = now;
         }
+        if (active == null) {
+            active = Boolean.TRUE;
+        }
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
+        if (active == null) {
+            active = Boolean.TRUE;
+        }
         updatedAt = OffsetDateTime.now();
     }
 }

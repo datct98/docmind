@@ -339,4 +339,49 @@ class PriceLadderTrackerTest {
                 .as("Customer user turn stating Saigon must be authoritative")
                 .isEqualTo("saigon");
     }
+
+    @Test
+    @DisplayName("Dynamic Multi-Industry Price Ladder: Extracts arbitrary Education/SaaS price tiers and promo from chunks without hardcoding")
+    void dynamicMultiIndustryPriceLadderFromChunks() {
+        RetrievedChunk courseTableChunk = new RetrievedChunk(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                List.of("BẢNG HỌC PHÍ KHÓA HỌC TIẾNG ANH"),
+                List.of(UUID.randomUUID()),
+                1,
+                new double[]{0, 0, 100, 100},
+                """
+                | Mã gói | Tên khóa học | Học phí | Thời lượng |
+                | --- | --- | --- | --- |
+                | EDU03 | Khóa IELTS Chuyên Sâu 1-1 | 2.500.000 VNĐ | 3 tháng |
+                | EDU02 | Khóa Giao Tiếp Tiêu Chuẩn | 990.000 VNĐ | 2 tháng |
+                | EDU01 | Khóa Phát Âm Nền Tảng | 299.000 VNĐ | 1 tháng |
+                """,
+                0.95
+        );
+        var fusedTable = new ReciprocalRankFusion.FusedChunk(courseTableChunk, 0.05);
+        var fusedPromo = promoChunk("ƯU ĐÃI HỌC PHÍ: Giảm 20% khi đăng ký nhóm từ 2 học viên.");
+
+        // Step 1: Customer was quoted 2.500.000 VNĐ and objects "hơi đắt" -> down-sells to 990.000 VNĐ (EDU02)
+        List<FanpageBotRequest.ConversationTurn> history1 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "học phí sao ạ"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên mình có Khóa IELTS Chuyên Sâu 1-1 giá 2.500.000 VNĐ ạ.")
+        );
+        var step1 = PriceLadderTracker.evaluate("hơi đắt shop ơi", history1, List.of(fusedTable, fusedPromo), null);
+        assertThat(step1.isPriceObjection()).isTrue();
+        assertThat(step1.previousPriceQuoted()).isEqualTo(2_500_000L);
+        assertThat(step1.targetPrice()).isEqualTo(990_000L);
+        assertThat(step1.targetPackageName()).contains("Khóa Giao Tiếp Tiêu Chuẩn").contains("EDU02");
+        assertThat(step1.isCatalogFloor()).isFalse();
+
+        // Step 2: Customer objects again at 990.000 VNĐ -> down-sells to 299.000 VNĐ floor (EDU01) + custom 20% promo
+        List<FanpageBotRequest.ConversationTurn> history2 = List.of(
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên mình có Khóa Giao Tiếp Tiêu Chuẩn 990.000 VNĐ ạ.")
+        );
+        var step2 = PriceLadderTracker.evaluate("có gói nào rẻ hơn không", history2, List.of(fusedTable, fusedPromo), null);
+        assertThat(step2.targetPrice()).isEqualTo(299_000L);
+        assertThat(step2.targetPackageName()).contains("Khóa Phát Âm Nền Tảng").contains("EDU01");
+        assertThat(step2.isCatalogFloor()).isTrue();
+        assertThat(step2.discountPolicy()).contains("Giảm 20% khi đăng ký nhóm từ 2 học viên");
+    }
 }

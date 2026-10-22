@@ -144,4 +144,14 @@ class KnowledgePageControllerTest {
 
         verify(knowledgePageRepository).delete(existing);
     }
+
+    @Test
+    void listIndustryTemplatesReturnsSixPresets() throws Exception {
+        mockMvc.perform(get("/api/pages/industry-templates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(6))
+                .andExpect(jsonPath("$[0].industry_code").value("BEAUTY_SPA"))
+                .andExpect(jsonPath("$[2].industry_code").value("FASHION_APPAREL"))
+                .andExpect(jsonPath("$[2].persona_config.default_customer_pronoun").value("Bạn"));
+    }
 }

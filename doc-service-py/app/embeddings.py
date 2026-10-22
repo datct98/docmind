@@ -61,14 +61,50 @@ class EmbeddingProvider(Protocol):
 # --- Stub provider (deterministic, no model) --------------------------------
 
 
-class _StubProvider:
-    """Deterministic 384-dim stub mirroring the Java ``StubEmbeddingClient``.
+# --- Vietnamese semantic concept clusters for deterministic 384-dim projection ---
+_VI_SEMANTIC_CONCEPTS: list[tuple[str, tuple[str, ...]]] = [
+    (
+        "__concept_neck_shoulder_pain__",
+        (
+            "mỏi vai", "bả vai", "cổ vai gáy", "vai gáy", "căng cơ", "bó cơ",
+            "nhức mỏi", "đau nhức", "đau vai", "đau cổ", "ngồi máy tính",
+            "văn phòng", "ngồi làm việc", "ấn huyệt", "bấm huyệt", "giải cơ",
+        ),
+    ),
+    (
+        "__concept_headache_sleep__",
+        (
+            "đau đầu", "nặng đầu", "mất ngủ", "khó ngủ", "ngủ không sâu",
+            "tiền đình", "căng thẳng", "stress", "áp lực công việc", "dưỡng sinh đầu",
+        ),
+    ),
+    (
+        "__concept_herbal_therapy_process__",
+        (
+            "ngâm bồn", "thảo dược", "xông hơi", "ngải cứu", "chườm nóng",
+            "muối gừng", "ngâm chân", "quy trình", "các bước", "điểm tâm", "thực dưỡng",
+        ),
+    ),
+    (
+        "__concept_pricing_packages__",
+        (
+            "bảng giá", "mức giá", "chi phí", "bao nhiêu tiền", "niêm yết",
+            "399.000", "530.000", "580.000", "129.000", "239.000", "trọn gói", "không nhận tip",
+        ),
+    ),
+    (
+        "__concept_privacy_couple_vip__",
+        (
+            "phòng riêng", "phòng vip", "phòng đôi", "cặp đôi", "vợ chồng",
+            "riêng tư", "kín đáo", "2 người", "đi đôi",
+        ),
+    ),
+]
 
-    Algorithm (kept identical to the Java side so both are self-consistent):
-    lowercase, split on ``\\W+``, per-token ``hash`` -> index ``floorMod(h, dim)``
-    with sign from the high bit; empty text seeds a single component; finally
-    L2-normalize. NOT semantically meaningful — only deterministic so retrieval
-    math runs without any model.
+
+class _StubProvider:
+    """Deterministic 384-dim stub mirroring the Java ``StubEmbeddingClient``
+    with Vietnamese semantic concept cluster projection.
     """
 
     name = "stub"
@@ -88,6 +124,15 @@ class _StubProvider:
                 idx = h % self.dim  # Python % already floor-mods for +dim
                 sign = 1.0 if ((h >> 31) & 1) == 0 else -1.0
                 v[idx] += sign
+        for concept_id, triggers in _VI_SEMANTIC_CONCEPTS:
+            matches = sum(1 for kw in triggers if kw in src)
+            if matches > 0:
+                weight = min(4.5, 2.0 + matches * 0.8)
+                for salt in range(3):
+                    ch = _java_string_hashcode(f"{concept_id}:{salt}")
+                    cidx = ch % self.dim
+                    csign = 1.0 if ((ch >> 31) & 1) == 0 else -1.0
+                    v[cidx] += csign * weight
         if all(x == 0.0 for x in v):
             seed = _java_string_hashcode(src) % self.dim
             v[seed] = 1.0

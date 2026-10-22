@@ -6,6 +6,7 @@ import com.example.docmind.entity.LearnedRuleEntity;
 import com.example.docmind.repository.ChunkRepository;
 import com.example.docmind.repository.LearnedRuleRepository;
 import com.example.docmind.repository.RetrievedChunk;
+import com.example.docmind.service.bot.FanpageBotPromptBuilder;
 import com.example.docmind.service.embedding.EmbeddingClient;
 import com.example.docmind.service.metadata.ChunkMetadataExtractor;
 import com.example.docmind.service.text.VietnameseQueryNormalizer;
@@ -235,6 +236,22 @@ public class RetrievalService {
 
         // 2. Thu thập keywords để mở rộng truy vấn full-text (bỏ qua từ khóa nhiễu chung chung + mở rộng viết tắt giá 580k -> 580.000VNĐ)
         Set<String> keywordsToExpand = new LinkedHashSet<>(extractExpandedPriceTokens(question));
+        if (FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(question)) {
+            keywordsToExpand.add("quy trình");
+            keywordsToExpand.add("gồm những gì");
+            keywordsToExpand.add("tập trung vào gì");
+            keywordsToExpand.add("bấm huyệt");
+            keywordsToExpand.add("chườm ngải cứu");
+            keywordsToExpand.add("tắm xông");
+            keywordsToExpand.add("phục hồi");
+        }
+        if (FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(question)) {
+            keywordsToExpand.add("cổ vai gáy");
+            keywordsToExpand.add("căng cơ");
+            keywordsToExpand.add("phục hồi");
+            keywordsToExpand.add("trị liệu");
+            keywordsToExpand.add("bấm huyệt");
+        }
         for (LearnedRuleDto rule : appliedRules) {
             if (rule.retrievalKeywords() != null) {
                 for (String kw : rule.retrievalKeywords()) {
@@ -456,8 +473,14 @@ public class RetrievalService {
         String q = question != null ? question.toLowerCase() : "";
         boolean isPromoQuery = q.contains("ưu đãi") || q.contains("khuyến mãi") || q.contains("voucher")
                 || q.contains("chiết khấu") || q.contains("giảm giá") || q.contains("combo");
-        boolean isProcessQuery = q.contains("quy trình") || q.contains("các bước")
-                || q.contains("gồm những gì") || q.contains("làm những gì");
+        boolean isProcessQuery = FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(q);
+        boolean isSymptomQuery = FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(q);
+        boolean isWarrantyQuery = q.contains("bảo hành") || q.contains("đổi trả") || q.contains("hoàn tiền")
+                || q.contains("đổi hàng") || q.contains("bảo trì") || q.contains("cam kết");
+        boolean isSocialProofQuery = q.contains("review") || q.contains("đánh giá") || q.contains("uy tín")
+                || q.contains("chứng nhận") || q.contains("phản hồi") || q.contains("feedback");
+        boolean isSpecQuery = q.contains("thành phần") || q.contains("chất liệu") || q.contains("kích thước")
+                || q.contains("thông số") || q.contains("cấu hình") || q.contains("size") || q.contains("xuất xứ");
         boolean isEntryOrDownsellQuery = q.contains("thử") || q.contains("trải nghiệm") || q.contains("cơ bản")
                 || q.contains("khởi điểm") || q.contains("rẻ") || q.contains("mềm") || q.contains("thấp")
                 || q.contains("tiết kiệm") || q.contains("nhỏ") || q.contains("cao thế") || q.contains("cao quá")
@@ -466,26 +489,50 @@ public class RetrievalService {
         boolean isHighTierSpecificQuery = q.contains("vip") || q.contains("tinh hoa") || q.contains("chuyên sâu")
                 || q.contains("đá muối") || q.contains("nhiệt cứu") || q.contains("xông hơi") || q.contains("120 phút")
                 || q.contains("105 phút");
-        boolean isCatalogOrSuitabilityQuery = isEntryOrDownsellQuery
+        boolean isCatalogOrSuitabilityQuery = isEntryOrDownsellQuery || isSymptomQuery
                 || q.contains("dịch vụ") || q.contains("sản phẩm") || q.contains("chi phí")
                 || q.contains("giá") || q.contains("bao nhiêu") || q.contains("gói") || q.contains("liệu trình")
                 || q.contains("phù hợp") || q.contains("tuổi") || q.contains("trung niên") || q.contains("nam")
                 || q.contains("dùng được") || q.contains("gội đầu") || q.contains("massage") || q.contains("cổ vai gáy");
 
+        List<String> semanticTags = ChunkMetadataExtractor.extractSemanticTags(headings, text);
         boolean hasTable = text.contains("|") && text.contains("---");
-        boolean isPromoChunk = hasTable && (headings.contains("chiết khấu") || headings.contains("combo")
+        boolean isPromoChunk = (hasTable && (headings.contains("chiết khấu") || headings.contains("combo")
                 || headings.contains("ưu đãi") || text.contains("tên ưu đãi") || text.contains("mức ưu đãi")
-                || text.contains("voucher"));
+                || text.contains("voucher"))) || semanticTags.contains("scarcity_promo");
         boolean isProcessChunk = hasTable && (headings.contains("quy trình") || headings.contains("lưu_ý")
-                || text.contains("| bước |") || text.contains("mục đích / lợi ích") || text.contains("quy trình chi tiết"));
+                || headings.contains("chi tiết")
+                || text.contains("| bước |") || text.contains("mục đích / lợi ích") || text.contains("quy trình chi tiết")
+                || text.contains("gồm những gì") || text.contains("tập trung vào gì")
+                || text.contains("bấm huyệt") || text.contains("chườm ngải cứu"));
+        boolean isTreatmentFaqChunk = hasTable && (headings.contains("khách hỏi") || headings.contains("faq")
+                || headings.contains("lưu_ý_quy_trình") || text.contains("| nội dung | chi tiết |")
+                || text.contains("căng cứng vùng cổ vai gáy") || text.contains("gồm những gì?")
+                || text.contains("tập trung vào gì?"));
+        boolean isWarrantyChunk = semanticTags.contains("warranty_return");
+        boolean isSocialProofChunk = semanticTags.contains("social_proof");
+        boolean isSpecChunk = semanticTags.contains("spec_ingredients");
 
         if (isPromoQuery && isPromoChunk) {
             return 3;
         }
-        if (isProcessQuery && isProcessChunk) {
+        if (isProcessQuery && (isProcessChunk || isTreatmentFaqChunk)) {
+            return (!q.contains("giá") && !q.contains("bao nhiêu")) ? 4 : 3;
+        }
+        if (isSymptomQuery && (isTreatmentFaqChunk || isProcessChunk)) {
             return 3;
         }
-        if (!isCatalogOrSuitabilityQuery && !isPromoQuery && !isProcessQuery) {
+        if (isWarrantyQuery && isWarrantyChunk) {
+            return 3;
+        }
+        if (isSocialProofQuery && isSocialProofChunk) {
+            return 3;
+        }
+        if (isSpecQuery && isSpecChunk) {
+            return 3;
+        }
+        if (!isCatalogOrSuitabilityQuery && !isPromoQuery && !isProcessQuery && !isSymptomQuery
+                && !isWarrantyQuery && !isSocialProofQuery && !isSpecQuery) {
             return 0;
         }
         if (isPriceCatalogTable(c)) {
@@ -498,7 +545,7 @@ public class RetrievalService {
         if (isPromoChunk && isEntryOrDownsellQuery) {
             return 2;
         }
-        if (isPromoChunk || isProcessChunk) {
+        if (isPromoChunk || isProcessChunk || isTreatmentFaqChunk || isWarrantyChunk || isSocialProofChunk || isSpecChunk) {
             return 1;
         }
         return 0;
@@ -565,7 +612,7 @@ public class RetrievalService {
                     }
                 }
                 int rawPriority = catalogChunkPriority(cand.chunk(), question);
-                if (rawPriority == 3 && selectedPriority3Chunks >= 4) {
+                if (rawPriority >= 3 && selectedPriority3Chunks >= 4) {
                     rawPriority = 1;
                 }
                 if (rawPriority == 2 && selectedPriceTables >= 4 && isPriceCatalogTable(cand.chunk()) && uncoveredHits == 0) {
@@ -585,7 +632,7 @@ public class RetrievalService {
             if (isPriceCatalogTable(chosen.chunk())) {
                 selectedPriceTables++;
             }
-            if (catalogChunkPriority(chosen.chunk(), question) == 3) {
+            if (catalogChunkPriority(chosen.chunk(), question) >= 3) {
                 selectedPriority3Chunks++;
             }
             String chosenText = ((chosen.chunk().headingPath() != null ? String.join(" ", chosen.chunk().headingPath()) : "")

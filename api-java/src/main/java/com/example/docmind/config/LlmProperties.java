@@ -64,6 +64,50 @@ public class LlmProperties {
     private int maxTokens = 0;
 
     /**
+     * Nhà cung cấp LLM dự phòng (fallback) khi primary gặp lỗi / timeout / offline / load-shedding:
+     * ollama | deepseek | grok | openai | gemini | openrouter | custom.
+     */
+    private String fallbackProvider;
+
+    /**
+     * Base URL của nhà cung cấp LLM dự phòng (tùy chọn; tự động phân giải theo preset nếu để trống).
+     */
+    private String fallbackBaseUrl;
+
+    /**
+     * API Key của nhà cung cấp LLM dự phòng.
+     */
+    private String fallbackApiKey;
+
+    /**
+     * Tên model của nhà cung cấp LLM dự phòng (tùy chọn; tự động phân giải theo preset nếu để trống).
+     */
+    private String fallbackModel;
+
+    /**
+     * Kiểm tra xem có cấu hình nhà cung cấp LLM dự phòng hợp lệ hay không.
+     */
+    public boolean hasFallbackProvider() {
+        return fallbackProvider != null && !fallbackProvider.isBlank();
+    }
+
+    /**
+     * Tạo bản sao LlmProperties dành riêng cho nhà cung cấp dự phòng (fallback).
+     */
+    public LlmProperties toFallbackProperties() {
+        LlmProperties fb = new LlmProperties();
+        fb.setProvider(this.fallbackProvider);
+        fb.setBaseUrl(this.fallbackBaseUrl);
+        fb.setApiKey(this.fallbackApiKey);
+        fb.setModel(this.fallbackModel);
+        fb.setTemperature(this.temperature);
+        fb.setTimeoutSeconds(this.timeoutSeconds);
+        fb.setReasoningEffort(this.reasoningEffort);
+        fb.setMaxTokens(this.maxTokens);
+        return fb;
+    }
+
+    /**
      * Phân giải tham số reasoning_effort tối ưu cho model hiện tại.
      */
     public String resolveReasoningEffort() {

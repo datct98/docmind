@@ -226,4 +226,53 @@ class ChunkBuilderTest {
             assertThat(c.text().length()).isLessThanOrEqualTo(ChunkBuilder.MAX_CHUNK_CHARS);
         }
     }
+
+    @Test
+    void decomposesMultiRowFaqAndPricingTableIntoIsolatedAtomicRowNodes() {
+        UUID docId = UUID.randomUUID();
+        String bId = UUID.randomUUID().toString();
+        String faqTable = "| Câu hỏi khách hàng | Câu trả lời chuẩn |\n"
+                + "| --- | --- |\n"
+                + "| Em hay đau đầu | Nếu mình thường xuyên đau đầu do áp lực công việc thì liệu trình dưỡng sinh rất phù hợp ạ. |\n"
+                + "| Em nặng đầu | Tình trạng nặng đầu thường gặp ở khách căng thẳng, thiếu ngủ. |\n"
+                + "| Tôi bị mỏi cổ vai gáy | Kỹ thuật viên sẽ ấn huyệt giải cơ và chườm nóng ngải cứu giúp nhẹ vai rõ rệt. |";
+
+        CanonicalBlock tb = tableBlock(bId, 1, 0, List.of("FAQ Nàng Sen", "Triệu chứng"), 0, 0, 200, 100, faqTable, faqTable);
+
+        List<ChunkBuilder.BuiltChunk> chunks = ChunkBuilder.build(docId, List.of(tb));
+
+        // 3 atomic FAQ row nodes so "Em hay đau đầu" never contaminates "Tôi bị mỏi cổ vai gáy"
+        assertThat(chunks).hasSize(3);
+        assertThat(chunks.get(0).text()).contains("Em hay đau đầu").doesNotContain("mỏi cổ vai gáy");
+        assertThat(chunks.get(1).text()).contains("Em nặng đầu").doesNotContain("Em hay đau đầu");
+        assertThat(chunks.get(2).text()).contains("Tôi bị mỏi cổ vai gáy").doesNotContain("Em hay đau đầu");
+
+        String formattedForLlm = ChunkBuilder.formatChunkAsLlamaIndexNode(chunks.get(2).text(), chunks.get(2).headingPath());
+        assertThat(formattedForLlm)
+                .contains("[FAQ Nàng Sen > Triệu chứng]")
+                .contains("Câu hỏi khách hàng: Tôi bị mỏi cổ vai gáy")
+                .contains("Câu trả lời chuẩn: Kỹ thuật viên sẽ ấn huyệt giải cơ")
+                .doesNotContain("| --- |");
+    }
+
+    @Test
+    void filtersOutFakeHeaderRowInHeaderlessDocxFaqTable() {
+        String headerlessDocxChunk = "| Em hay đau đầu | Nếu mình thường xuyên đau đầu hoặc cảm giác đầu nặng do áp lực công việc thì các liệu trình dưỡng sinh và trị liệu đầu - cổ - vai - gáy bên em sẽ khá phù hợp ạ 🌿 |\n"
+                + "| --- | --- |\n"
+                + "| Em nặng đầu | Dạ tình trạng nặng đầu thường gặp ở khách stress, thiếu ngủ hoặc làm việc nhiều với máy tính ạ. |\n"
+                + "| Em đau cổ vai gáy | Nếu mình đang căng cứng vùng cổ vai gáy thì bên Nàng Sen thường sẽ phù hợp với các gói phục hồi trị liệu chuyên sâu hơn ạ. |\n"
+                + "| Em mất ngủ | Dạ nếu mình thường xuyên khó ngủ hoặc ngủ không sâu thì các liệu trình đầu - cổ - vai - gáy kết hợp dưỡng sinh bên em sẽ khá phù hợp ạ. |";
+
+        String formatted = ChunkBuilder.formatChunkAsLlamaIndexNode(
+                headerlessDocxChunk,
+                new String[]{"FAQ"},
+                "Thi thoảng bị | Tôi bị mỏi vai và thi thoảng hơi đau nhức"
+        );
+
+        assertThat(formatted)
+                .contains("Tình huống: Em đau cổ vai gáy")
+                .doesNotContain("Em hay đau đầu")
+                .doesNotContain("Em nặng đầu")
+                .doesNotContain("| --- |");
+    }
 }

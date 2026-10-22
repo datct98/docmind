@@ -1638,4 +1638,29 @@ const handleClose = () => {
   color: #4A148C;
   border-color: #D0BCFF;
 }
+
+@media (max-width: 768px) {
+  .modal-backdrop {
+    padding: 8px;
+  }
+
+  .skill-modal {
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+
+  .modal-header,
+  .toolbar-section,
+  .skills-list-body,
+  .skill-form-scroll-body,
+  .form-sticky-footer,
+  .modal-footer {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+  }
+
+  .search-action-row {
+    flex-wrap: wrap;
+  }
+}
 </style>

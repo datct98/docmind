@@ -4,6 +4,7 @@ import com.example.docmind.service.llm.GeminiLlmClient;
 import com.example.docmind.service.llm.LlmClient;
 import com.example.docmind.service.llm.OllamaLlmClient;
 import com.example.docmind.service.llm.OpenAiCompatibleLlmClient;
+import com.example.docmind.service.llm.ResilientFallbackLlmClient;
 import com.example.docmind.service.llm.StubLlmClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,31 @@ public class LlmConfiguration {
                                OllamaProperties ollamaProps,
                                GeminiProperties geminiProps,
                                ObjectMapper objectMapper) {
+        LlmClient primary = buildSingleClient(llmProps, ollamaProps, geminiProps, objectMapper);
+        if (llmProps != null && llmProps.hasFallbackProvider()) {
+            LlmProperties fallbackProps = llmProps.toFallbackProperties();
+            OllamaProperties fallbackOllamaProps = new OllamaProperties();
+            if (ollamaProps != null) {
+                fallbackOllamaProps.setEnabled(ollamaProps.isEnabled());
+                fallbackOllamaProps.setBaseUrl(ollamaProps.getBaseUrl());
+                fallbackOllamaProps.setModel(ollamaProps.getModel());
+                fallbackOllamaProps.setTemperature(ollamaProps.getTemperature());
+                fallbackOllamaProps.setNumCtx(ollamaProps.getNumCtx());
+                fallbackOllamaProps.setNumPredict(ollamaProps.getNumPredict());
+                fallbackOllamaProps.setReadTimeoutMs(ollamaProps.getReadTimeoutMs());
+            }
+            LlmClient fallback = buildSingleClient(fallbackProps, fallbackOllamaProps, geminiProps, objectMapper);
+            log.info("[LLM] Enabled ResilientFallbackLlmClient: primary={} -> fallback={}",
+                    primary.name(), fallback.name());
+            return new ResilientFallbackLlmClient(primary, fallback);
+        }
+        return primary;
+    }
+
+    private LlmClient buildSingleClient(LlmProperties llmProps,
+                                        OllamaProperties ollamaProps,
+                                        GeminiProperties geminiProps,
+                                        ObjectMapper objectMapper) {
         String rawProvider = llmProps.getProvider();
         log.info("[LLM] Đang khởi tạo LlmClient (configured provider={})", rawProvider);
 
