@@ -1018,13 +1018,13 @@ public class FanpageBotService {
         }
 
         if (combinedLower.contains("gội đầu dưỡng sinh") || combinedLower.contains("massage")) {
-            return opening + "Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ (Hà Nội) hoặc 570.000 VNĐ (Quận 1 Sài Gòn), cùng các gói gội đầu dưỡng sinh từ 129.000 VNĐ đã bao gồm ngâm chân thảo dược và cam kết không nhận Tip ạ.\n\n"
-                    + "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em báo giá chi tiết đúng gói hợp nhất cho mình ạ?";
+            return opening + "Bên em có Gội đầu dưỡng sinh từ 129.000 VNĐ và Massage cơ bản từ 399.000 VNĐ (trọn gói, không nhận Tip) ạ.\n\n"
+                    + "Hiện tại " + honorific + " đang quan tâm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh ạ?";
         }
 
-        return opening + "Mức chi phí bên em rất linh hoạt chỉ từ " + startingPrice
-                + " tùy theo gói giải pháp và nhu cầu thực tế, cam kết minh bạch trọn gói không phát sinh phụ phí ạ.\n\n"
-                + "Hiện tại " + honorific + " đang quan tâm ưu tiên hạng mục nào nhất để em báo giá chi tiết đúng gói hợp nhất cho mình ạ?";
+        return opening + "Chi phí bên em khởi điểm chỉ từ " + startingPrice
+                + ", cam kết minh bạch trọn gói không phát sinh phụ phí ạ.\n\n"
+                + "Hiện tại " + honorific + " đang quan tâm gói cơ bản hay gói chuyên sâu để em tư vấn chi tiết ạ?";
     }
 
     static String generateGroundedFallbackReply(
@@ -3193,6 +3193,34 @@ public class FanpageBotService {
             );
         }
 
+        // Nếu khách vừa nói "thi thoảng" / "mới bị" (MILD_OR_OCCASIONAL) mà LLM lại nhầm thành "thường xuyên bị" -> sửa đúng theo lời khách
+        if (FanpageBotPromptBuilder.detectSymptomSeverity(currentMessage)
+                == FanpageBotPromptBuilder.SymptomSeverity.MILD_OR_OCCASIONAL) {
+            working = working.replaceAll("(?iU)\\bthường\\s+xuyên\\s+bị\\b", "thi thoảng bị");
+        }
+
+        // Loại bỏ câu giảng giải nguyên nhân sách vở rườm rà ("Điều này thường do...", "Tình trạng này thường xuất hiện khi...") khi đã có câu tư vấn giải pháp
+        if (working.contains(". ")) {
+            String strippedCause = working.replaceAll(
+                    "(?isU)(?:(?<=^)|(?<=[.!?]\\s)|(?<=\\n))(?:dạ\\s+)?(?:điều\\s+này|tình\\s+trạng\\s+này|nguyên\\s+nhân\\s+này|việc\\s+này)\\s+(?:thường\\s+do|có\\s+thể\\s+do|thường\\s+xuất\\s+hiện\\s+khi|xảy\\s+ra\\s+do)[^.!?\\n]{10,140}[.!]\\s*",
+                    ""
+            ).strip();
+            if (!strippedCause.isBlank() && strippedCause.length() >= 40) {
+                working = strippedCause;
+            }
+        }
+
+        // Nếu văn bản có từ 3 đoạn trở lên (2 dấu \n\n), gộp đoạn 1 (đồng cảm ngắn) và đoạn 2 (giải pháp) thành 1 đoạn duy nhất để giữ đúng nhịp tối đa 2 bong bóng chat
+        String[] paras = working.split("\\n\\s*\\n");
+        if (paras.length >= 3 && !paras[0].strip().endsWith("?") && paras[0].strip().length() <= 130) {
+            StringBuilder merged = new StringBuilder();
+            merged.append(paras[0].strip()).append(" ").append(paras[1].strip());
+            for (int i = 2; i < paras.length; i++) {
+                merged.append("\n\n").append(paras[i].strip());
+            }
+            working = merged.toString();
+        }
+
         // GỌT GIŨA CÂU HỎI KẾT THÚC DỒN DẬP / KHÔ KHAN / LẶP LẠI THEO GIAI ĐOẠN VỚI LỊCH SỬ (Issue #2)
         working = polishClosingQuestions(working, honorific, salesStage, isFirstTurn, history, currentMessage);
 
@@ -3256,10 +3284,21 @@ public class FanpageBotService {
         }
 
         List<String> pastAssistantTexts = new ArrayList<>();
+        FanpageBotPromptBuilder.SymptomSeverity currentSev =
+                FanpageBotPromptBuilder.detectSymptomSeverity(currentMessage);
+        boolean hasStatedFrequency = currentSev == FanpageBotPromptBuilder.SymptomSeverity.MILD_OR_OCCASIONAL
+                || currentSev == FanpageBotPromptBuilder.SymptomSeverity.CHRONIC_OR_DEEP;
         if (history != null) {
             for (FanpageBotRequest.ConversationTurn turn : history) {
                 if (turn != null && "assistant".equalsIgnoreCase(turn.role()) && turn.content() != null) {
                     pastAssistantTexts.add(turn.content().toLowerCase(Locale.ROOT));
+                } else if (turn != null && "user".equalsIgnoreCase(turn.role()) && turn.content() != null) {
+                    FanpageBotPromptBuilder.SymptomSeverity turnSev =
+                            FanpageBotPromptBuilder.detectSymptomSeverity(turn.content());
+                    if (turnSev == FanpageBotPromptBuilder.SymptomSeverity.MILD_OR_OCCASIONAL
+                            || turnSev == FanpageBotPromptBuilder.SymptomSeverity.CHRONIC_OR_DEEP) {
+                        hasStatedFrequency = true;
+                    }
                 }
             }
         }
@@ -3278,29 +3317,37 @@ public class FanpageBotService {
             ).strip();
         } else if (FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(currentMessage)
                 || FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(currentMessage)) {
-            questionPool = List.of(
-                    "Hiện tại " + honorific + " đang muốn tập trung trị liệu giảm nhức mỏi vùng cổ vai gáy - lưng hay muốn thư giãn phục hồi toàn thân để em gợi ý gói phù hợp nhất cho mình ạ?",
-                    "Không biết tình trạng căng mỏi này của " + honorific + " là mới xuất hiện gần đây hay mình bị mỏi thường xuyên do ngồi làm việc nhiều để em tư vấn liệu trình sát nhất ạ?",
-                    "Không biết " + honorific + " muốn trải nghiệm gói trị liệu cơ bản (60-70 phút) trước hay gói chuyên sâu (90 phút) để em tư vấn chi tiết hơn cho mình ạ?"
-            );
+            if (hasStatedFrequency) {
+                questionPool = List.of(
+                        honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
+                        honorific + " đang ưu tiên chăm sóc vùng cổ vai gáy hay thư giãn toàn thân ạ?",
+                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                );
+            } else {
+                questionPool = List.of(
+                        honorific + " đang muốn tập trung vùng cổ vai gáy hay thư giãn toàn thân để em gợi ý gói phù hợp ạ?",
+                        "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?",
+                        honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?"
+                );
+            }
         } else if (!isFirstTurn || (salesStage != null && salesStage != FanpageBotPromptBuilder.SalesStage.DISCOVERY)) {
             if (salesStage == FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE) {
                 questionPool = List.of(
                         honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ lịch trước cho mình ạ?",
-                        honorific + " tiện ghé cơ sở bên em vào ngày thường hay cuối tuần để bên em sắp xếp đón tiếp chu đáo nhất ạ?",
+                        honorific + " tiện ghé cơ sở bên em vào ngày thường hay cuối tuần để bên em sắp xếp chu đáo nhất ạ?",
                         honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi trước cho mình ạ?"
                 );
             } else {
                 questionPool = List.of(
-                        "Không biết " + honorific + " muốn trải nghiệm gói cơ bản trước hay cần em tư vấn kỹ hơn về quy trình các bước ạ?",
-                        "Không biết " + honorific + " muốn trải nghiệm lẻ 1 buổi trước hay tham khảo theo gói ưu đãi để tiết kiệm chi phí nhất ạ?",
-                        honorific + " muốn bên em giữ lịch trải nghiệm vào khung giờ Sáng hay Chiều để em lên lịch cho mình ạ?"
+                        honorific + " muốn trải nghiệm gói cơ bản trước hay cần em tư vấn kỹ hơn về quy trình ạ?",
+                        honorific + " muốn trải nghiệm lẻ 1 buổi trước hay tham khảo gói ưu đãi tiết kiệm hơn ạ?",
+                        honorific + " muốn bên em giữ lịch trải nghiệm vào khung giờ Sáng hay Chiều ạ?"
                 );
             }
         } else {
             questionPool = List.of(
-                    "Hiện tại " + honorific + " đang muốn ưu tiên trải nghiệm dịch vụ nào nhất để em gợi ý gói phù hợp nhất cho mình ạ?",
-                    "Không biết hiện tại " + honorific + " đang muốn trải nghiệm thư giãn cơ bản hay liệu trình chăm sóc chuyên sâu hơn ạ?"
+                    "Hiện tại " + honorific + " đang quan tâm trải nghiệm dịch vụ nào nhất để em gợi ý gói phù hợp ạ?",
+                    honorific + " đang muốn trải nghiệm gói cơ bản hay liệu trình chăm sóc chuyên sâu hơn ạ?"
             );
         }
 
@@ -3319,6 +3366,19 @@ public class FanpageBotService {
             }
         }
 
+        // Nếu khách đã nói rõ tần suất ("thi thoảng", "thường xuyên", "mới bị") mà LLM vẫn hỏi lại tần suất ở cuối -> thay bằng câu hỏi bước tiếp theo
+        if (hasStatedFrequency && text.endsWith("?")) {
+            Pattern redundantFreqQ = Pattern.compile(
+                    "(?isU)(?:\\n\\s*\\n|(?<=[.!?])\\s+)(?:dạ\\s+)?[^.!?\\n]*(?:thường\\s+xuyên\\s+hay|hay\\s+thường\\s+xuyên|mới\\s+xuất\\s+hiện|xuất\\s+hiện\\s+khi\\s+làm\\s+việc)[^?]*\\?\\s*$"
+            );
+            Matcher freqM = redundantFreqQ.matcher(text);
+            if (freqM.find()) {
+                String prefixBeforeQuestion = text.substring(0, freqM.start()).strip();
+                String sep = freqM.group().contains("\n") ? "\n\n" : " ";
+                text = prefixBeforeQuestion + sep + naturalClosing;
+            }
+        }
+
         // 0. Nếu đã sang lượt thứ 2+ (!isFirstTurn) mà LLM vẫn lặp lại câu hỏi khảo sát lượt 1 ở cuối -> thay bằng câu hỏi luân chuyển
         if (!isFirstTurn) {
             Pattern repeatedTurn1QuestionPattern = Pattern.compile(
@@ -3332,21 +3392,24 @@ public class FanpageBotService {
             }
         }
 
-        // 1. Bắt trực diện cặp câu hỏi xin phép máy móc hoặc câu hỏi đóng Yes/No ("Em có thể tư vấn thêm... không?", "Chị muốn em hỗ trợ đặt lịch... không ạ?")
+        // 1. Bắt trực diện cặp câu hỏi xin phép máy móc hoặc câu hỏi đóng Yes/No ("Em có thể tư vấn thêm... không?", "Chị muốn thử trước không ạ?")
         Pattern dryPermissionQuestionPattern = Pattern.compile(
-                "(?iU)(?:\\s*(?:em\\s+có\\s+thể\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ|chia\\s+sẻ)\\s+thêm[^?]*\\?|"
-                + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?muốn\\s+(?:bên\\s+)?em\\s+(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|gửi|hỗ\\s+trợ|đặt\\s+lịch|giữ\\s+lịch)(?!.*\\bhay\\b)[^?]*\\?|"
-                + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?cần\\s+(?:bên\\s+)?em\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ)(?!.*\\bhay\\b)[^?]*\\?))+"
+                "(?iU)(?:[,;]?\\s*(?:em\\s+có\\s+thể\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ|chia\\s+sẻ)\\s+thêm[^?]*\\?|"
+                + "(?:anh/chị|chị|anh|bạn|mình)\\s+(?:có\\s+)?muốn\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|gửi|hỗ\\s+trợ|đặt\\s+lịch|giữ\\s+lịch|thử|trải\\s+nghiệm|tham\\s+khảo)(?![^?]*\\bhay\\b)[^?]*\\?|"
+                + "(?:anh/chị|chị|anh|bạn|mình)\\s+(?:có\\s+)?cần\\s+(?:bên\\s+)?em\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ)(?![^?]*\\bhay\\b)[^?]*\\?))+"
         );
         Matcher m = dryPermissionQuestionPattern.matcher(text);
         if (m.find()) {
             String matchedGroup = m.group();
-            String withoutDryQuestions = m.replaceAll("").strip();
+            String withoutDryQuestions = m.replaceAll("").strip().replaceAll("[,;:]+\\s*$", "");
             if (withoutDryQuestions.endsWith("?")) {
                 return withoutDryQuestions;
             }
             if (withoutDryQuestions.isEmpty()) {
                 return "Dạ " + naturalClosing;
+            }
+            if (!withoutDryQuestions.endsWith(".") && !withoutDryQuestions.endsWith("!") && !withoutDryQuestions.endsWith("~")) {
+                withoutDryQuestions = withoutDryQuestions + ".";
             }
             String separator = matchedGroup.contains("\n") ? "\n\n" : " ";
             return withoutDryQuestions + separator + naturalClosing;

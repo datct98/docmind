@@ -114,15 +114,22 @@ public class ClosingQuestionHook implements GuardrailHook {
         String combinedChunksLower = context.getKnowledgeChunks() != null
                 ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
                 : "";
-        boolean isDermatologyDoc = combinedChunksLower.isEmpty()
-                || combinedChunksLower.contains("soi da")
+        String lowerDraft = text.toLowerCase(Locale.ROOT);
+        String lowerCustomerMsg = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
+        boolean isDermatologyDoc = combinedChunksLower.contains("soi da")
                 || combinedChunksLower.contains("nám")
-                || combinedChunksLower.contains("mụn");
+                || combinedChunksLower.contains("mụn")
+                || (combinedChunksLower.isEmpty() && (
+                        lowerDraft.contains("soi da") || lowerDraft.contains("nám") || lowerDraft.contains("mụn")
+                        || lowerDraft.contains("liệu trình trị") || lowerCustomerMsg.contains("da ")
+                        || lowerCustomerMsg.contains("mụn") || lowerCustomerMsg.contains("nám")));
         boolean isMassageDoc = !isDermatologyDoc && (
                 combinedChunksLower.contains("dưỡng sinh")
                 || combinedChunksLower.contains("gội đầu")
                 || combinedChunksLower.contains("massage")
                 || combinedChunksLower.contains("ngâm chân")
+                || lowerDraft.contains("massage")
+                || lowerDraft.contains("vai gáy")
         );
 
         String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc, isMassageDoc);
@@ -150,7 +157,12 @@ public class ClosingQuestionHook implements GuardrailHook {
         String lowerText = text != null ? text.toLowerCase(Locale.ROOT) : "";
         if ("HUMAN_HANDOFF".equalsIgnoreCase(salesStage)
                 || "BOOKING_LEAD_CAPTURED".equalsIgnoreCase(salesStage)
-                || (lowerText.contains("chuyên viên") && (lowerText.contains("liên hệ") || lowerText.contains("kết nối") || lowerText.contains("hỗ trợ chi tiết")))) {
+                || (lowerText.contains("chuyên viên") && (
+                        lowerText.contains("liên hệ")
+                        || lowerText.contains("kết nối")
+                        || lowerText.contains("hỗ trợ chi tiết")
+                        || lowerText.contains("phụ trách")
+                        || lowerText.contains("nhắn phản hồi")))) {
             return text;
         }
 
@@ -258,6 +270,9 @@ public class ClosingQuestionHook implements GuardrailHook {
                     } else if (withoutDry.isEmpty()) {
                         working = "Dạ " + naturalClosing;
                     } else {
+                        if (!withoutDry.endsWith(".") && !withoutDry.endsWith("!") && !withoutDry.endsWith("~")) {
+                            withoutDry = withoutDry + ".";
+                        }
                         String sep = matchedGroup.contains("\n") || withoutDry.endsWith(".") || withoutDry.endsWith("!") ? "\n\n" : " ";
                         working = withoutDry + sep + naturalClosing;
                     }
@@ -395,47 +410,59 @@ public class ClosingQuestionHook implements GuardrailHook {
         List<String> pool;
         boolean isExplanationOrSymptom = FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(customerMessage)
                 || FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(customerMessage);
+        FanpageBotPromptBuilder.SymptomSeverity curSev =
+                FanpageBotPromptBuilder.detectSymptomSeverity(customerMessage);
+        boolean hasStatedFrequency = curSev == FanpageBotPromptBuilder.SymptomSeverity.MILD_OR_OCCASIONAL
+                || curSev == FanpageBotPromptBuilder.SymptomSeverity.CHRONIC_OR_DEEP;
         if (isMassageDoc) {
             if (isExplanationOrSymptom) {
-                pool = List.of(
-                        "Hiện tại " + honorific + " đang muốn tập trung trị liệu giảm nhức mỏi vùng cổ vai gáy - lưng hay muốn thư giãn phục hồi toàn thân để em gợi ý gói phù hợp nhất cho mình ạ?",
-                        "Không biết tình trạng căng mỏi này của " + honorific + " là mới xuất hiện gần đây hay mình bị mỏi thường xuyên do ngồi làm việc nhiều để em tư vấn liệu trình sát nhất ạ?",
-                        "Không biết " + honorific + " muốn trải nghiệm gói trị liệu cơ bản (60-70 phút) trước hay gói chuyên sâu (90 phút) để em tư vấn chi tiết hơn cho mình ạ?"
-                );
+                if (hasStatedFrequency) {
+                    pool = List.of(
+                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
+                            honorific + " đang ưu tiên chăm sóc vùng cổ vai gáy hay thư giãn toàn thân ạ?",
+                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                    );
+                } else {
+                    pool = List.of(
+                            honorific + " đang muốn tập trung vùng cổ vai gáy hay thư giãn toàn thân để em gợi ý gói phù hợp ạ?",
+                            "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?",
+                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?"
+                    );
+                }
             } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        honorific + " muốn đặt lịch ghé cơ sở bên em vào khung giờ Sáng hay Chiều để em giữ phòng riêng trước cho mình ạ?",
-                        honorific + " tiện ghé cơ sở nào gần mình nhất và vào khung giờ nào để bên em sắp xếp kỹ thuật viên chu đáo nhất ạ?",
-                        honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi và chuẩn bị phòng trước cho mình ạ?"
+                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để em giữ phòng riêng trước cho mình ạ?",
+                        honorific + " tiện ghé cơ sở nào gần mình nhất để bên em sắp xếp chu đáo ạ?",
+                        honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi trước ạ?"
                 );
             } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        "Không biết " + honorific + " muốn đặt lịch trải nghiệm trước vào khung giờ Sáng hay Chiều, hay cần em tư vấn chi tiết hơn về các bước trong gói ạ?",
-                        honorific + " đang tiện ghé cơ sở nào gần mình hơn để em kiểm tra khung giờ trống và ưu đãi tại cơ sở đó cho mình ạ?",
-                        honorific + " muốn bên em giữ lịch hẹn vào hôm nay hay cuối tuần để em sắp xếp phòng cho mình ạ?"
+                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều, hay cần em tư vấn thêm về quy trình ạ?",
+                        honorific + " đang tiện ghé cơ sở nào gần mình hơn để em kiểm tra giờ trống cho mình ạ?",
+                        honorific + " muốn bên em giữ lịch hẹn vào hôm nay hay cuối tuần để em sắp xếp phòng ạ?"
                 );
             } else {
                 pool = List.of(
-                        "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em gửi chi tiết gói hợp nhất cho mình ạ?",
-                        "Không biết hôm nay " + honorific + " đang muốn thư giãn giảm nhức mỏi vùng nào nhất hay muốn tham khảo gói dịch vụ nào để em tư vấn kỹ hơn cho mình ạ?"
+                        "Hiện tại " + honorific + " đang quan tâm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh ạ?",
+                        "Hôm nay " + honorific + " đang muốn giảm nhức mỏi vùng nào nhất để em gợi ý gói phù hợp ạ?"
                 );
             }
         } else if (!isDermatologyDoc) {
             // Domain-agnostic closing questions applicable to ANY industry (Fashion, Education, Dental, SaaS, Real Estate, etc.)
             if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        honorific + " muốn đăng ký/đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ suất ưu tiên trước cho mình ạ?",
-                        honorific + " cho em xin Số điện thoại hoặc khung giờ thuận tiện nhất để bên em hỗ trợ xác nhận ngay cho mình nhé ạ?"
+                        honorific + " muốn đăng ký/đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ suất ưu tiên ạ?",
+                        honorific + " cho em xin Số điện thoại hoặc khung giờ thuận tiện để bên em xác nhận ngay nhé ạ?"
                 );
             } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        "Không biết " + honorific + " đang nghiêng về gói/sản phẩm cơ bản để trải nghiệm trước hay gói chuyên sâu để em tư vấn chi tiết hơn cho mình ạ?",
-                        honorific + " muốn bên em giữ suất ưu đãi trước hay cần em gửi thêm thông tin chi tiết về phần nào nữa ạ?"
+                        honorific + " đang nghiêng về gói cơ bản để trải nghiệm trước hay gói chuyên sâu ạ?",
+                        honorific + " muốn bên em giữ suất ưu đãi trước hay cần em gửi thêm thông tin phần nào nữa ạ?"
                 );
             } else {
                 pool = List.of(
-                        "Không biết hiện tại " + honorific + " đang quan tâm tìm hiểu gói cơ bản hay gói chuyên sâu để em tư vấn phương án phù hợp nhất cho mình ạ?",
-                        "Hiện tại " + honorific + " đang ưu tiên nhu cầu nào nhất để em gợi ý đúng gói/sản phẩm phù hợp nhất cho mình ạ?"
+                        "Hiện tại " + honorific + " đang quan tâm gói cơ bản hay gói chuyên sâu để em tư vấn phù hợp ạ?",
+                        "Hiện tại " + honorific + " đang ưu tiên nhu cầu nào nhất để em gợi ý đúng gói phù hợp ạ?"
                 );
             }
         } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {

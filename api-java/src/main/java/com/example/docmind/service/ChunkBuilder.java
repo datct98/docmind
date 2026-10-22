@@ -467,6 +467,9 @@ public final class ChunkBuilder {
             queryBigrams.add(queryTokens.get(i) + " " + queryTokens.get(i + 1));
         }
 
+        boolean prefersBasicTier = lowerQuery.matches("(?isU).*\\b(thi\\s+thoảng|thỉnh\\s+thoảng|mới\\s+bị|hơi\\s+mỏi|hơi\\s+đau|nhẹ|cơ\\s+bản|khởi\\s+điểm|rẻ\\s+hơn|đắt)\\b.*");
+        boolean prefersDeepTier = !prefersBasicTier && lowerQuery.matches("(?isU).*\\b(thường\\s+xuyên|lâu\\s+năm|lâu\\s+ngày|mãn\\s+tính|căng\\s+cứng|rất\\s+mỏi|chuyên\\s+sâu|phục\\s+hồi)\\b.*");
+
         List<Integer> indices = new ArrayList<>();
         int[] scores = new int[rows.size()];
         int maxScore = 0;
@@ -491,6 +494,11 @@ public final class ChunkBuilder {
                 } else if (rowLower.contains(bg)) {
                     score += 5;
                 }
+            }
+            if (prefersBasicTier && rowLower.contains("cơ bản") && !rowLower.contains("nâng cao")) {
+                score += 18;
+            } else if (prefersDeepTier && (rowLower.contains("chuyên sâu") || rowLower.contains("phục hồi") || rowLower.contains("nâng cao"))) {
+                score += 18;
             }
             scores[i] = score;
             if (score > maxScore) {
