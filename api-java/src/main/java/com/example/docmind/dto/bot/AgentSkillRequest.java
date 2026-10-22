@@ -47,7 +47,15 @@ public record AgentSkillRequest(
 
         @JsonProperty("raw_instruction")
         @JsonAlias({"rawInstruction", "natural_input", "naturalInput"})
-        String rawInstruction
+        String rawInstruction,
+
+        @JsonProperty("resolution_strategy")
+        @JsonAlias("resolutionStrategy")
+        String resolutionStrategy,
+
+        @JsonProperty("conflict_skill_id")
+        @JsonAlias("conflictSkillId")
+        String conflictSkillId
 ) {
     public AgentSkillRequest(
             String code,
@@ -62,7 +70,24 @@ public record AgentSkillRequest(
             Boolean active,
             String pageId
     ) {
-        this(code, name, category, description, triggerSignals, tacticalInstructions, goodExample, antiPattern, priority, active, pageId, null);
+        this(code, name, category, description, triggerSignals, tacticalInstructions, goodExample, antiPattern, priority, active, pageId, null, null, null);
+    }
+
+    public AgentSkillRequest(
+            String code,
+            String name,
+            String category,
+            String description,
+            String triggerSignals,
+            String tacticalInstructions,
+            String goodExample,
+            String antiPattern,
+            Integer priority,
+            Boolean active,
+            String pageId,
+            String rawInstruction
+    ) {
+        this(code, name, category, description, triggerSignals, tacticalInstructions, goodExample, antiPattern, priority, active, pageId, rawInstruction, null, null);
     }
 }
 

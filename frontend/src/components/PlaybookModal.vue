@@ -19,39 +19,26 @@
           </div>
           <div>
             <div class="title-with-badge">
-              <h3 class="modal-title">Bộ nhớ Kinh nghiệm & Tiến hóa AI (Harness² Studio)</h3>
+              <h3 class="modal-title">Bộ nhớ Kinh nghiệm & Quy tắc AI (AI Playbook)</h3>
               <span class="badge badge-accent">{{ rules.length }} quy tắc</span>
-              <span v-if="harnessRuns.length > 0" class="badge badge-harness">
-                🧬 {{ harnessRuns.length }} đợt tự tiến hóa
-              </span>
             </div>
             <p class="modal-subtitle">
-              Thư viện kinh nghiệm Cue – Lesson – Evidence & Lịch sử tối ưu hóa tương phản Propose–Probe–Select
+              Thư viện quy tắc thực chiến được đúc kết từ Quản trị viên & vận hành hội thoại theo từng Page
             </p>
           </div>
         </div>
         <button class="btn-close" @click="handleClose">×</button>
       </div>
 
-      <!-- Main Navigation Tabs: Rules Library vs Evolution History -->
+      <!-- Main Navigation Tabs: Rules Library -->
       <div class="modal-tab-nav">
         <button 
-          class="tab-nav-btn" 
-          :class="{ active: activeMainTab === 'rules' }"
+          class="tab-nav-btn active" 
           @click="activeMainTab = 'rules'"
         >
           <span class="tab-icon">📚</span>
           <span>Kho Thư viện Kinh nghiệm (Playbook)</span>
           <span class="tab-counter">{{ rules.length }}</span>
-        </button>
-        <button 
-          class="tab-nav-btn" 
-          :class="{ active: activeMainTab === 'evolution' }"
-          @click="switchTabToEvolution"
-        >
-          <span class="tab-icon">🧬</span>
-          <span>Lịch sử Tự tiến hóa Harness²</span>
-          <span class="tab-counter counter-emerald">{{ harnessRuns.length }}</span>
         </button>
       </div>
 

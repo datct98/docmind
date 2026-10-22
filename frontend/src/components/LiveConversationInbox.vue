@@ -398,14 +398,6 @@
                   >
                     💬 Báo sai & Dạy AI
                   </button>
-                  <button
-                    class="btn-ai-msg-action btn-harness-inline"
-                    :disabled="optimizingMsgId === msg.id"
-                    title="Chạy vòng lặp Propose–Probe–Select (Harness²) để tự tối ưu câu trả lời này"
-                    @click="handleOptimizeMessageHarness(msg, mIdx)"
-                  >
-                    {{ optimizingMsgId === msg.id ? '⏳ Đang tối ưu Harness²...' : '🧬 Tự tối ưu Harness²' }}
-                  </button>
                 </div>
               </div>
             </div>

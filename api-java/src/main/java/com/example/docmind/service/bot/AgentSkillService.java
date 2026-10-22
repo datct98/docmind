@@ -193,7 +193,8 @@ public class AgentSkillService {
         }
         boolean hasName = request.name() != null && !request.name().isBlank();
         boolean hasRaw = request.rawInstruction() != null && !request.rawInstruction().isBlank();
-        if (!hasName && !hasRaw) {
+        boolean hasTactical = request.tacticalInstructions() != null && !request.tacticalInstructions().isBlank();
+        if (!hasName && !hasRaw && !hasTactical) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên kỹ năng (name) không được để trống.");
         }
         if ((request.tacticalInstructions() != null && PromptSecurityGuard.isPoisonedRuleAttempt(request.tacticalInstructions()))
@@ -233,6 +234,160 @@ public class AgentSkillService {
                 : (parsed != null ? parsed.antiPattern() : "");
 
         Instant now = Instant.now();
+        UUID targetPageId = parsePageId(request.pageId());
+        int resolvedPriority = request.priority() != null
+                ? Math.max(1, Math.min(100, request.priority()))
+                : (parsed != null ? parsed.priority() : 90);
+        boolean resolvedActive = request.active() != null ? request.active() : true;
+
+        AgentSkillDto candidateDto = new AgentSkillDto(
+                null,
+                code,
+                name,
+                category,
+                description,
+                triggerSignals,
+                tacticalInstructions,
+                goodExample,
+                antiPattern,
+                resolvedPriority,
+                resolvedActive,
+                targetPageId != null ? targetPageId.toString() : null,
+                0,
+                0,
+                0.95,
+                now,
+                now
+        );
+
+        String strategy = request.resolutionStrategy() != null && !request.resolutionStrategy().isBlank()
+                ? request.resolutionStrategy().strip().toUpperCase(Locale.ROOT)
+                : "AUTO";
+
+        List<AgentSkillEntity> existingSkills = agentSkillRepository.findActiveForPage(targetPageId);
+        if (existingSkills == null) {
+            existingSkills = List.of();
+        }
+
+        // 1. Nếu Quản trị viên đã xác nhận GHI ĐÈ (OVERRIDE) từ Modal cảnh báo xung đột trên UI
+        if ("OVERRIDE".equals(strategy)) {
+            AgentSkillEntity targetConflict = resolveConflictTarget(existingSkills, request.conflictSkillId(), candidateDto);
+            if (targetConflict != null && java.util.Objects.equals(targetConflict.getPageId(), targetPageId)) {
+                String oldName = targetConflict.getName();
+                targetConflict.setCode(code);
+                targetConflict.setName(name);
+                targetConflict.setCategory(category);
+                targetConflict.setDescription(description);
+                targetConflict.setTriggerSignals(triggerSignals);
+                targetConflict.setTacticalInstructions(tacticalInstructions);
+                targetConflict.setGoodExample(goodExample);
+                targetConflict.setAntiPattern(antiPattern);
+                targetConflict.setPriority(Math.max(resolvedPriority, targetConflict.getPriority()));
+                targetConflict.setActive(true);
+                targetConflict.setUpdatedAt(now);
+                AgentSkillEntity saved = agentSkillRepository.save(targetConflict);
+                log.info("stage=agent_skill_governance action=override_in_place id={} old_name='{}' new_name='{}' page_id={}",
+                        saved.getId(), oldName, saved.getName(), saved.getPageId());
+                return AgentSkillDto.fromEntity(saved).withGovernance(
+                        "OVERRIDDEN",
+                        "Đã ghi đè kỹ năng '" + oldName + "' bằng kỹ năng mới '" + saved.getName() + "'."
+                );
+            }
+            if (targetConflict != null && targetConflict.getPageId() == null && targetPageId != null) {
+                int overridePriority = Math.min(100, Math.max(98, Math.max(resolvedPriority, targetConflict.getPriority() + 4)));
+                AgentSkillEntity pageOverrideEntity = AgentSkillEntity.builder()
+                        .id(UUID.randomUUID())
+                        .code(code)
+                        .name(name)
+                        .category(category)
+                        .description(description)
+                        .triggerSignals(triggerSignals)
+                        .tacticalInstructions(tacticalInstructions)
+                        .goodExample(goodExample)
+                        .antiPattern(antiPattern)
+                        .priority(overridePriority)
+                        .active(true)
+                        .pageId(targetPageId)
+                        .confidenceScore(0.95)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+                AgentSkillEntity saved = agentSkillRepository.save(pageOverrideEntity);
+                log.info("stage=agent_skill_governance action=override_global_for_page id={} global_code={} page_id={} priority={}",
+                        saved.getId(), targetConflict.getCode(), targetPageId, overridePriority);
+                return AgentSkillDto.fromEntity(saved).withGovernance(
+                        "OVERRIDDEN",
+                        "Đã áp dụng kỹ năng riêng cho Page (Ưu tiên " + overridePriority + ") ghi đè lên kỹ năng mặc định '" + targetConflict.getName() + "'."
+                );
+            }
+        }
+
+        // 2. Nếu ở chế độ AUTO: Kiểm tra Xung đột Chiến thuật (Conflict) trước tiên
+        if ("AUTO".equals(strategy) && !existingSkills.isEmpty()) {
+            for (AgentSkillEntity existing : existingSkills) {
+                if (existing == null || !existing.isActive()) {
+                    continue;
+                }
+                ConflictAnalysis conflict = analyzeTacticalConflict(existing, candidateDto);
+                if (conflict != null) {
+                    log.info("stage=agent_skill_governance action=conflict_detected existing_code={} candidate_name='{}' page_id={}",
+                            existing.getCode(), candidateDto.name(), targetPageId);
+                    return AgentSkillDto.conflictDetected(
+                            candidateDto,
+                            AgentSkillDto.fromEntity(existing),
+                            conflict.reason(),
+                            conflict.recommendedAction()
+                    );
+                }
+            }
+
+            // 3. Nếu KHÔNG xung đột: Kiểm tra Trùng lặp / Bổ trợ (Duplicate / Complementary) để TỰ ĐỘNG GỘP (Auto-Merge)
+            AgentSkillEntity sameScopeDup = findDuplicateOrComplementary(existingSkills, candidateDto, targetPageId, true);
+            if (sameScopeDup != null) {
+                AgentSkillEntity merged = mergeSkillIntoExisting(sameScopeDup, candidateDto, now);
+                AgentSkillEntity saved = agentSkillRepository.save(merged);
+                log.info("stage=agent_skill_governance action=auto_merge_same_scope id={} code={} page_id={}",
+                        saved.getId(), saved.getCode(), saved.getPageId());
+                return AgentSkillDto.fromEntity(saved).withGovernance(
+                        "AUTO_MERGED",
+                        "Phát hiện kỹ năng tương đồng — Hệ thống đã tự động gộp tín hiệu kích hoạt & chỉ dẫn bổ sung vào kỹ năng: " + saved.getName()
+                );
+            }
+
+            if (targetPageId != null) {
+                AgentSkillEntity globalDup = findDuplicateOrComplementary(existingSkills, candidateDto, targetPageId, false);
+                if (globalDup != null) {
+                    String mergedTriggers = mergeCommaSeparatedSignals(globalDup.getTriggerSignals(), candidateDto.triggerSignals());
+                    String mergedTactics = mergeTacticalInstructions(globalDup.getTacticalInstructions(), candidateDto.tacticalInstructions());
+                    int mergedPriority = Math.min(100, Math.max(96, Math.max(resolvedPriority, globalDup.getPriority() + 2)));
+                    AgentSkillEntity pageMerged = AgentSkillEntity.builder()
+                            .id(UUID.randomUUID())
+                            .code(code)
+                            .name(name)
+                            .category(category)
+                            .description(description.isBlank() ? globalDup.getDescription() : description)
+                            .triggerSignals(mergedTriggers)
+                            .tacticalInstructions(mergedTactics)
+                            .goodExample(goodExample.isBlank() ? globalDup.getGoodExample() : goodExample)
+                            .antiPattern(antiPattern.isBlank() ? globalDup.getAntiPattern() : antiPattern)
+                            .priority(mergedPriority)
+                            .active(true)
+                            .pageId(targetPageId)
+                            .confidenceScore(0.95)
+                            .createdAt(now)
+                            .updatedAt(now)
+                            .build();
+                    AgentSkillEntity saved = agentSkillRepository.save(pageMerged);
+                    log.info("stage=agent_skill_governance action=auto_merge_from_global id={} global_code={} page_id={}",
+                            saved.getId(), globalDup.getCode(), targetPageId);
+                    return AgentSkillDto.fromEntity(saved).withGovernance(
+                            "AUTO_MERGED",
+                            "Đã tự động kế thừa & gộp chỉ dẫn bổ sung với kỹ năng chuẩn '" + globalDup.getName() + "' thành kỹ năng chuyên biệt cho Page."
+                    );
+                }
+            }
+        }
+
         AgentSkillEntity entity = AgentSkillEntity.builder()
                 .id(UUID.randomUUID())
                 .code(code)
@@ -243,9 +398,10 @@ public class AgentSkillService {
                 .tacticalInstructions(tacticalInstructions)
                 .goodExample(goodExample)
                 .antiPattern(antiPattern)
-                .priority(request.priority() != null ? Math.max(1, Math.min(100, request.priority())) : (parsed != null ? parsed.priority() : 75))
-                .active(request.active() != null ? request.active() : true)
-                .pageId(parsePageId(request.pageId()))
+                .priority(resolvedPriority)
+                .active(resolvedActive)
+                .pageId(targetPageId)
+                .confidenceScore(0.95)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -253,7 +409,7 @@ public class AgentSkillService {
         AgentSkillEntity saved = agentSkillRepository.save(entity);
         log.info("stage=agent_skill action=create id={} code={} category={} page_id={}",
                 saved.getId(), saved.getCode(), saved.getCategory(), saved.getPageId());
-        return AgentSkillDto.fromEntity(saved);
+        return AgentSkillDto.fromEntity(saved).withGovernance("CREATED", "Đã tạo mới kỹ năng thành công.");
     }
 
     @Transactional
@@ -586,10 +742,10 @@ public class AgentSkillService {
             return catPrefix + "Móc Câu Chốt Lịch Hẹn & Câu Hỏi Khống Chế A/B";
         }
         if (lower.contains("chê đắt") || lower.contains("đắt quá") || lower.contains("suy nghĩ thêm") || lower.contains("hỏi ý kiến")) {
-            return catPrefix + "Xử Lý Từ Chối Về Giá & Neo Giá Trị Y Khoa";
+            return catPrefix + "Xử Lý Từ Chối Về Giá & Neo Giá Trị Cốt Lõi";
         }
-        if (lower.contains("sợ đau") || lower.contains("sợ sưng") || lower.contains("nghỉ dưỡng") || lower.contains("biến chứng")) {
-            return catPrefix + "Trấn An Tâm Lý Sợ Đau & Cam Kết An Toàn Y Khoa";
+        if (lower.contains("sợ đau") || lower.contains("sợ sưng") || lower.contains("nghỉ dưỡng") || lower.contains("biến chứng") || lower.contains("rủi ro")) {
+            return catPrefix + "Trấn An Tâm Lý Lo Ngại & Cam Kết An Toàn";
         }
         String firstLine = cleanRaw.split("[\\r\\n.!?;]+")[0].strip();
         firstLine = firstLine.replaceFirst("^(?i)(khi khách hàng|khi khách|nếu khách hàng|nếu khách|quy tắc|kỹ năng|hướng dẫn)\\s+", "");
@@ -632,24 +788,24 @@ public class AgentSkillService {
         if (lower.contains("đắt") || lower.contains("cao quá") || lower.contains("suy nghĩ")) {
             signals.add("đắt quá");
             signals.add("giá cao");
-            signals.add("để chị suy nghĩ");
+            signals.add("suy nghĩ thêm");
             signals.add("tham khảo thêm");
         }
-        if (lower.contains("lịch") || lower.contains("hẹn") || lower.contains("soi da") || lower.contains("qua khám")) {
+        if (lower.contains("lịch") || lower.contains("hẹn") || lower.contains("đặt chỗ") || lower.contains("ghé")) {
             signals.add("đặt lịch");
-            signals.add("soi da");
-            signals.add("qua khám");
             signals.add("lịch hẹn");
+            signals.add("qua cơ sở");
         }
         if (lower.contains("trả góp")) signals.add("trả góp");
         if (lower.contains("bảo hành")) signals.add("bảo hành");
-        if (lower.contains("mụn")) signals.add("trị mụn");
-        if (lower.contains("nám") || lower.contains("tàn nhang")) signals.add("trị nám");
-        if (lower.contains("căng bóng") || lower.contains("meso")) signals.add("căng bóng");
-        if (lower.contains("sợ đau") || lower.contains("sưng")) {
+        if (lower.contains("khuyến mãi") || lower.contains("ưu đãi") || lower.contains("voucher") || lower.contains("giảm giá")) {
+            signals.add("khuyến mãi");
+            signals.add("ưu đãi");
+            signals.add("giảm giá");
+        }
+        if (lower.contains("sợ đau") || lower.contains("an toàn") || lower.contains("tác dụng phụ")) {
             signals.add("có đau không");
-            signals.add("có sưng không");
-            signals.add("nghỉ dưỡng");
+            signals.add("an toàn không");
         }
         if (signals.isEmpty()) {
             signals.add("tư vấn");
@@ -663,7 +819,7 @@ public class AgentSkillService {
         String catLabel = switch (category) {
             case "PSYCHOLOGY" -> "Thấu cảm tâm lý khách hàng";
             case "COMMUNICATION" -> "Tinh chỉnh nhịp điệu & ngôn từ giao tiếp";
-            default -> "Chiến thuật dẫn dắt & chốt lịch hẹn thông minh";
+            default -> "Chiến thuật dẫn dắt & chuyển đổi thông minh";
         };
         String snippet = cleanRaw.length() > 140 ? cleanRaw.substring(0, 140).strip() + "..." : cleanRaw;
         return catLabel + ": " + snippet;
@@ -672,31 +828,411 @@ public class AgentSkillService {
     private static String inferTacticalInstructionsFromText(String cleanRaw, String lower) {
         StringBuilder sb = new StringBuilder();
         sb.append("CHỈ DẪN THỰC THI TRỌNG TÂM:\n");
-        sb.append("- ").append(cleanRaw).append("\n");
-        if (!lower.contains("1 tin nhắn") && !lower.contains("câu hỏi khống chế") && !lower.contains("a/b")) {
-            sb.append("- Nguyên tắc nhịp độ: Mỗi lượt phản hồi chỉ đưa 1 lợi ích cốt lõi đi kèm 1 câu hỏi khống chế lựa chọn A/B ngắn gọn để giữ quyền dẫn dắt cuộc trò chuyện.\n");
-        }
-        if (!lower.contains("xả sạch") && (lower.contains("giá") || lower.contains("chi phí"))) {
-            sb.append("- Chống xả sạch thông tin: Giữ lại quyền lợi khám/soi da trực tiếp làm móc câu chuyển đổi sang lịch hẹn thay vì liệt kê toàn bộ bảng giá dài dòng.");
-        }
+        sb.append("- ").append(cleanRaw);
         return sb.toString().strip();
     }
 
     private static String inferGoodExampleFromText(String lower) {
         if (lower.contains("giá") || lower.contains("xả sạch") || lower.contains("3 nấc")) {
-            return "Dạ các phác đồ chăm sóc và điều trị da chuẩn Y khoa bên em hiện có mức chi phí rất linh hoạt chỉ từ 650.000đ/buổi, đã bao gồm Bác sĩ soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ. Hiện tại Chị đang muốn ưu tiên xử lý dứt điểm mụn ẩn/mụn viêm, làm mờ sạm nám hay dưỡng căng bóng trẻ hóa để em báo đúng gói phù hợp nhất cho mình ạ?";
+            return "Dạ bên em hiện có các gói dịch vụ linh hoạt theo đúng nhu cầu thực tế kèm cam kết minh bạch trọn gói không phụ phí ạ. Hiện tại Anh/Chị đang quan tâm nhu cầu cơ bản hay chuyên sâu để em báo đúng gói phù hợp nhất cho mình ạ?";
         }
         if (lower.contains("đắt") || lower.contains("suy nghĩ")) {
-            return "Dạ em rất hiểu tâm lý muốn cân nhắc kỹ trước khi làm đẹp cho da mặt mình ạ. Bên em đang tặng 100% suất Bác sĩ Chuyên khoa I soi da AI 3D chuyên sâu trước 10 phút để Chị xem rõ phác đồ rồi mới quyết định, Chị tiện ghé tầm Sáng hay Chiều hơn ạ?";
+            return "Dạ em rất hiểu tâm lý muốn cân nhắc kỹ trước khi quyết định ạ. Anh/Chị có thể trải nghiệm kiểm tra/tư vấn bước đầu hoàn toàn thoải mái không ràng buộc trước khi chọn gói, Anh/Chị tiện vào khung Sáng hay Chiều hơn ạ?";
         }
-        return "Dạ bên em hiện đang tặng suất Bác sĩ Chuyên khoa I trực tiếp soi da AI 3D và lên phác đồ cá nhân hóa hoàn toàn miễn phí (0đ) trong 10 phút ạ. Để em giữ trước suất ưu tiên không phải chờ đợi cho mình, Chị tiện ghé vào khung giờ Sáng hay Chiều mai hơn ạ?";
+        return "Dạ bên em sẵn sàng thiết kế giải pháp phù hợp nhất với nhu cầu riêng của Anh/Chị ạ. Để em chuẩn bị hỗ trợ chu đáo nhất không phải chờ đợi, Anh/Chị tiện vào khung giờ Sáng hay Chiều ạ?";
     }
 
     private static String inferAntiPatternFromText(String lower) {
         if (lower.contains("giá") || lower.contains("xả sạch") || lower.contains("3 nấc")) {
-            return "Liệt kê một lèo tất cả 4 dịch vụ + Combo giảm 10%-15% ngay khi khách mới nhắn 'giá', khiến khách ngợp thông tin và im lặng rời đi.";
+            return "Liệt kê một lèo toàn bộ bảng giá dài dòng ngay khi khách mới hỏi thăm khiến khách ngợp thông tin và rời đi.";
         }
-        return "Trả lời dài dòng như văn mẫu, tung hết mọi thông tin trong 1 tin nhắn và kết thúc bằng câu hỏi đóng cụt lủn 'Chị thấy sao ạ?' hoặc 'Khi nào rảnh chị nhắn em nhé'.";
+        return "Trả lời dài dòng như văn mẫu, tung hết mọi thông tin trong 1 tin nhắn và kết thúc bằng câu hỏi đóng cụt lủn.";
+    }
+
+    // =========================================================================
+    // SKILL GOVERNANCE ENGINE: DUPLICATE AUTO-MERGE & TACTICAL CONFLICT DETECTOR
+    // =========================================================================
+
+    public record ConflictAnalysis(
+            String dimensionName,
+            String reason,
+            String recommendedAction
+    ) {}
+
+    public static ConflictAnalysis analyzeTacticalConflict(AgentSkillEntity existing, AgentSkillDto candidate) {
+        if (existing == null || candidate == null) {
+            return null;
+        }
+        Set<String> existingSignals = extractSignalSet(existing.getTriggerSignals());
+        Set<String> candidateSignals = extractSignalSet(candidate.triggerSignals());
+        Set<String> sharedSignals = new java.util.LinkedHashSet<>(existingSignals);
+        sharedSignals.retainAll(candidateSignals);
+
+        String existingText = ((existing.getName() != null ? existing.getName() : "") + " "
+                + (existing.getTacticalInstructions() != null ? existing.getTacticalInstructions() : "") + " "
+                + (existing.getAntiPattern() != null ? " cấm: " + existing.getAntiPattern() : ""))
+                .toLowerCase(Locale.ROOT);
+        String candidateText = ((candidate.name() != null ? candidate.name() : "") + " "
+                + (candidate.tacticalInstructions() != null ? candidate.tacticalInstructions() : ""))
+                .toLowerCase(Locale.ROOT);
+
+        boolean sameTopic = !sharedSignals.isEmpty() || sharesTacticalTopic(existingText, candidateText);
+        if (!sameTopic) {
+            return null;
+        }
+
+        String sharedLabel = sharedSignals.isEmpty()
+                ? "cùng tình huống tư vấn"
+                : String.join(", ", sharedSignals.stream().limit(4).toList());
+
+        // Chiều 1: Chiến thuật Báo giá (Chống xả bảng giá vs. Xả/liệt kê toàn bộ bảng giá)
+        boolean existHoldPrice = holdsBackFullPriceList(existingText);
+        boolean candHoldPrice = holdsBackFullPriceList(candidateText);
+        boolean existDumpPrice = mandatesFullPriceDump(existingText);
+        boolean candDumpPrice = mandatesFullPriceDump(candidateText);
+
+        if ((existHoldPrice && candDumpPrice) || (existDumpPrice && candHoldPrice)) {
+            String reason = String.format(
+                    "Xung đột chiến thuật Báo giá trên tín hiệu [%s]: Kỹ năng mới yêu cầu '%s', đối lập trực tiếp với kỹ năng hiện có '%s' (%s).",
+                    sharedLabel,
+                    candDumpPrice ? "liệt kê/xả đầy đủ toàn bộ bảng giá ngay lập tức" : "chỉ báo 1 mức giá khởi điểm, chống xả bảng giá",
+                    existing.getName(),
+                    existHoldPrice ? "yêu cầu chống xả sạch thông tin, chỉ neo 1 mức giá khởi điểm kèm câu hỏi chẩn đoán" : "yêu cầu liệt kê toàn bộ bảng giá"
+            );
+            String recommendation = existHoldPrice
+                    ? "Khuyên dùng kỹ năng hiện có '" + existing.getName() + "' (hoặc chỉnh sửa kỹ năng mới): Giữ nhịp 1 mức giá khởi điểm + 1 câu hỏi A/B giúp tăng tỷ lệ khách phản hồi cao hơn gấp 3 lần so với xả toàn bộ bảng giá."
+                    : "Khuyên Ghi đè bằng kỹ năng mới để áp dụng chiến thuật Phân bổ thông tin 3 nấc & Neo giá trị.";
+            return new ConflictAnalysis("PRICE_DISCLOSURE", reason, recommendation);
+        }
+
+        // Chiều 2: Chính sách Giảm giá / Chiết khấu khi khách chê đắt (Giữ nguyên giá vs. Giảm giá ngay)
+        boolean existHoldDiscount = forbidsImmediateDiscount(existingText);
+        boolean candHoldDiscount = forbidsImmediateDiscount(candidateText);
+        boolean existGiveDiscount = mandatesImmediateDiscount(existingText);
+        boolean candGiveDiscount = mandatesImmediateDiscount(candidateText);
+
+        if ((existHoldDiscount && candGiveDiscount) || (existGiveDiscount && candHoldDiscount)) {
+            String reason = String.format(
+                    "Xung đột chính sách Đàm phán & Chiết khấu trên tín hiệu [%s]: Kỹ năng mới yêu cầu '%s', mâu thuẫn với kỹ năng hiện có '%s' (%s).",
+                    sharedLabel,
+                    candGiveDiscount ? "giảm giá / tặng chiết khấu ngay khi khách chê đắt" : "giữ nguyên giá, tuyệt đối không tự ý hạ giá",
+                    existing.getName(),
+                    existHoldDiscount ? "cấm tự ý hạ giá, dùng bảo chứng chất lượng & trải nghiệm rủi ro 0đ" : "cho phép giảm giá ngay"
+            );
+            String recommendation = "Nếu Page đang chạy chiến dịch khuyến mãi đặc biệt, bạn có thể chọn 'Ghi đè'. Ngược lại, khuyên giữ nguyên tắc bảo vệ biên lợi nhuận của '" + existing.getName() + "'.";
+            return new ConflictAnalysis("DISCOUNT_POLICY", reason, recommendation);
+        }
+
+        // Chiều 3: Nhịp độ Xin SĐT & Chốt Sale (Không ép chốt sớm vs. Bắt buộc xin SĐT ngay câu đầu)
+        boolean existSoftClose = forbidsEarlyHardClose(existingText);
+        boolean candSoftClose = forbidsEarlyHardClose(candidateText);
+        boolean existHardClose = mandatesEarlyHardClose(existingText);
+        boolean candHardClose = mandatesEarlyHardClose(candidateText);
+
+        if ((existSoftClose && candHardClose) || (existHardClose && candSoftClose)) {
+            String reason = String.format(
+                    "Xung đột nhịp độ Chốt Sale & Xin SĐT trên tín hiệu [%s]: Kỹ năng mới yêu cầu '%s', trái ngược với kỹ năng hiện có '%s' (%s).",
+                    sharedLabel,
+                    candHardClose ? "ép chốt / xin SĐT ngay từ đầu" : "không ép chốt sớm, dùng cam kết vi mô Sáng/Chiều trước",
+                    existing.getName(),
+                    existSoftClose ? "hạ áp lực bán hàng, chỉ xin SĐT sau khi khách đã chọn khung giờ" : "ép xin SĐT ngay lập tức"
+            );
+            String recommendation = "Khuyên dùng chiến thuật Cam kết vi mô (hỏi Sáng/Chiều trước khi xin SĐT) để tránh làm khách hàng phòng vệ và rời bỏ cuộc trò chuyện.";
+            return new ConflictAnalysis("CLOSING_PRESSURE", reason, recommendation);
+        }
+
+        // Chiều 4: Độ dài & Nhịp thở Tin nhắn (Ngắn gọn <40 từ vs. Giải thích dài dòng/chi tiết từ A-Z)
+        boolean existConcise = requiresConcisePacing(existingText);
+        boolean candConcise = requiresConcisePacing(candidateText);
+        boolean existVerbose = mandatesLongVerboseExplanation(existingText);
+        boolean candVerbose = mandatesLongVerboseExplanation(candidateText);
+
+        if ((existConcise && candVerbose) || (existVerbose && candConcise)) {
+            String reason = String.format(
+                    "Xung đột quy tắc Độ dài & Nhịp điệu phản hồi: Kỹ năng mới yêu cầu '%s', mâu thuẫn với kỹ năng '%s' (%s).",
+                    candVerbose ? "trình bày giải thích dài và liệt kê chi tiết toàn bộ quy trình" : "cô đọng ngắn gọn dưới 40 từ",
+                    existing.getName(),
+                    existConcise ? "giới hạn nhịp thở ngắn gọn <= 40 từ mỗi bong bóng chat" : "trình bày dài chi tiết"
+            );
+            String recommendation = "Trên kênh chat (Messenger/Zalo), phản hồi ngắn gọn dưới 40 từ giúp khách dễ đọc trên điện thoại hơn. Khuyên chọn 'Chỉnh sửa' hoặc 'Bỏ qua' nếu không thực sự cần gửi bài giải thích dài.";
+            return new ConflictAnalysis("MESSAGE_PACING", reason, recommendation);
+        }
+
+        return null;
+    }
+
+    public static boolean areTacticallyConflicting(AgentSkillDto a, AgentSkillDto b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        AgentSkillEntity entityA = AgentSkillEntity.builder()
+                .id(a.id())
+                .code(a.code())
+                .name(a.name())
+                .category(a.category())
+                .triggerSignals(a.triggerSignals())
+                .tacticalInstructions(a.tacticalInstructions())
+                .antiPattern(a.antiPattern())
+                .priority(a.priority())
+                .active(a.active())
+                .build();
+        return analyzeTacticalConflict(entityA, b) != null;
+    }
+
+    private static AgentSkillEntity findDuplicateOrComplementary(
+            List<AgentSkillEntity> existingSkills,
+            AgentSkillDto candidate,
+            UUID targetPageId,
+            boolean sameScopeOnly
+    ) {
+        Set<String> candSignals = extractSignalSet(candidate.triggerSignals());
+        String candNormName = normalizeNameForComparison(candidate.name());
+
+        for (AgentSkillEntity existing : existingSkills) {
+            if (existing == null || !existing.isActive()) {
+                continue;
+            }
+            boolean isSameScope = java.util.Objects.equals(existing.getPageId(), targetPageId);
+            if (sameScopeOnly && !isSameScope) {
+                continue;
+            }
+            if (!sameScopeOnly && existing.getPageId() != null) {
+                continue;
+            }
+
+            if (existing.getCode() != null && existing.getCode().equalsIgnoreCase(candidate.code())) {
+                return existing;
+            }
+            String existNormName = normalizeNameForComparison(existing.getName());
+            if (!candNormName.isEmpty() && candNormName.equals(existNormName)) {
+                return existing;
+            }
+
+            Set<String> existSignals = extractSignalSet(existing.getTriggerSignals());
+            if (!candSignals.isEmpty() && !existSignals.isEmpty()) {
+                Set<String> intersection = new java.util.LinkedHashSet<>(candSignals);
+                intersection.retainAll(existSignals);
+                int minSize = Math.min(candSignals.size(), existSignals.size());
+                boolean highSignalOverlap = (minSize > 0 && (double) intersection.size() / minSize >= 0.60)
+                        || intersection.size() >= 3;
+                boolean sameCategory = existing.getCategory() != null
+                        && existing.getCategory().equalsIgnoreCase(candidate.category());
+                if (highSignalOverlap && sameCategory) {
+                    return existing;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static AgentSkillEntity resolveConflictTarget(
+            List<AgentSkillEntity> existingSkills,
+            String conflictSkillIdRaw,
+            AgentSkillDto candidate
+    ) {
+        if (conflictSkillIdRaw != null && !conflictSkillIdRaw.isBlank()) {
+            try {
+                UUID cid = UUID.fromString(conflictSkillIdRaw.strip());
+                for (AgentSkillEntity e : existingSkills) {
+                    if (e != null && cid.equals(e.getId())) {
+                        return e;
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        for (AgentSkillEntity e : existingSkills) {
+            if (e != null && analyzeTacticalConflict(e, candidate) != null) {
+                return e;
+            }
+        }
+        return null;
+    }
+
+    private static AgentSkillEntity mergeSkillIntoExisting(
+            AgentSkillEntity existing,
+            AgentSkillDto candidate,
+            Instant now
+    ) {
+        existing.setTriggerSignals(mergeCommaSeparatedSignals(existing.getTriggerSignals(), candidate.triggerSignals()));
+        existing.setTacticalInstructions(mergeTacticalInstructions(existing.getTacticalInstructions(), candidate.tacticalInstructions()));
+        if ((existing.getGoodExample() == null || existing.getGoodExample().isBlank())
+                && candidate.goodExample() != null && !candidate.goodExample().isBlank()) {
+            existing.setGoodExample(candidate.goodExample());
+        }
+        if ((existing.getAntiPattern() == null || existing.getAntiPattern().isBlank())
+                && candidate.antiPattern() != null && !candidate.antiPattern().isBlank()) {
+            existing.setAntiPattern(candidate.antiPattern());
+        }
+        existing.setPriority(Math.max(existing.getPriority(), candidate.priority()));
+        existing.setActive(true);
+        existing.setUpdatedAt(now);
+        return existing;
+    }
+
+    public static String mergeCommaSeparatedSignals(String sigA, String sigB) {
+        java.util.LinkedHashMap<String, String> merged = new java.util.LinkedHashMap<>();
+        for (String raw : new String[]{sigA, sigB}) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            for (String token : raw.split("[,;]+")) {
+                String clean = token.strip();
+                if (!clean.isEmpty()) {
+                    merged.putIfAbsent(clean.toLowerCase(Locale.ROOT), clean);
+                }
+            }
+        }
+        return String.join(", ", merged.values());
+    }
+
+    public static String mergeTacticalInstructions(String baseInstructions, String additionalInstructions) {
+        String base = baseInstructions != null ? baseInstructions.strip() : "";
+        String add = additionalInstructions != null ? additionalInstructions.strip() : "";
+        if (base.isEmpty()) return add;
+        if (add.isEmpty()) return base;
+
+        String cleanedAdd = add.replaceFirst("(?i)^CHỈ DẪN THỰC THI TRỌNG TÂM:\\s*", "").strip();
+        String baseLower = base.toLowerCase(Locale.ROOT);
+        StringBuilder sb = new StringBuilder(base);
+        for (String line : cleanedAdd.split("\\r?\\n")) {
+            String trimmed = line.strip();
+            if (trimmed.isEmpty()) continue;
+            String normalizedLine = trimmed.replaceFirst("^[-•*]\\s*", "").strip();
+            if (normalizedLine.length() >= 8 && !baseLower.contains(normalizedLine.toLowerCase(Locale.ROOT))) {
+                sb.append("\n- [Bổ sung]: ").append(normalizedLine);
+            }
+        }
+        return sb.toString().strip();
+    }
+
+    private static Set<String> extractSignalSet(String rawSignals) {
+        Set<String> set = new java.util.LinkedHashSet<>();
+        if (rawSignals == null || rawSignals.isBlank()) {
+            return set;
+        }
+        for (String s : rawSignals.split("[,;]+")) {
+            String clean = s.strip().toLowerCase(Locale.ROOT);
+            if (clean.length() >= 2) {
+                set.add(clean);
+            }
+        }
+        return set;
+    }
+
+    private static String normalizeNameForComparison(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
+            return "";
+        }
+        return rawName.toLowerCase(Locale.ROOT)
+                .replaceAll("\\[[^\\]]*\\]", "")
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .strip();
+    }
+
+    private static boolean sharesTacticalTopic(String textA, String textB) {
+        boolean priceA = textA.contains("bảng giá") || textA.contains("hỏi giá") || textA.contains("báo giá");
+        boolean priceB = textB.contains("bảng giá") || textB.contains("hỏi giá") || textB.contains("báo giá");
+        if (priceA && priceB) return true;
+
+        boolean discountA = textA.contains("chê đắt") || textA.contains("giảm giá") || textA.contains("hạ giá");
+        boolean discountB = textB.contains("chê đắt") || textB.contains("giảm giá") || textB.contains("hạ giá");
+        if (discountA && discountB) return true;
+
+        boolean closeA = textA.contains("xin sđt") || textA.contains("số điện thoại") || textA.contains("chốt lịch");
+        boolean closeB = textB.contains("xin sđt") || textB.contains("số điện thoại") || textB.contains("chốt lịch");
+        if (closeA && closeB) return true;
+
+        boolean lengthA = textA.contains("40 từ") || textA.contains("ngắn gọn") || textA.contains("dài dòng");
+        boolean lengthB = textB.contains("40 từ") || textB.contains("ngắn gọn") || textB.contains("dài dòng");
+        return lengthA && lengthB;
+    }
+
+    private static boolean holdsBackFullPriceList(String text) {
+        return text.contains("không xả")
+                || text.contains("đừng xả")
+                || text.contains("chống xả")
+                || text.contains("không liệt kê toàn bộ")
+                || text.contains("đừng liệt kê")
+                || text.contains("không liệt kê hết")
+                || text.contains("1 mức giá khởi điểm")
+                || text.contains("chỉ nêu 1 mức giá")
+                || text.contains("chỉ báo 1 mức giá")
+                || text.contains("3 nấc");
+    }
+
+    private static boolean mandatesFullPriceDump(String text) {
+        if (holdsBackFullPriceList(text)) {
+            return false;
+        }
+        return text.contains("liệt kê đầy đủ")
+                || text.contains("liệt kê toàn bộ bảng giá")
+                || text.contains("báo hết bảng giá")
+                || text.contains("báo đầy đủ bảng giá")
+                || text.contains("gửi toàn bộ bảng giá")
+                || text.contains("xả hết bảng giá")
+                || text.contains("báo tất cả các gói")
+                || text.contains("liệt kê chi tiết tất cả các gói")
+                || text.contains("gửi hết các mức giá");
+    }
+
+    private static boolean forbidsImmediateDiscount(String text) {
+        return text.contains("không giảm giá")
+                || text.contains("tuyệt đối không hạ giá")
+                || text.contains("không tự ý hạ giá")
+                || text.contains("không tự ý giảm giá")
+                || text.contains("giữ nguyên giá")
+                || text.contains("đừng giảm giá");
+    }
+
+    private static boolean mandatesImmediateDiscount(String text) {
+        if (forbidsImmediateDiscount(text)) {
+            return false;
+        }
+        return text.contains("giảm giá ngay")
+                || text.contains("hạ giá ngay")
+                || text.contains("tặng ngay voucher giảm")
+                || text.contains("chiết khấu thêm ngay")
+                || text.contains("tự động giảm giá")
+                || text.contains("giảm ngay 10%")
+                || text.contains("giảm ngay 15%")
+                || text.contains("giảm ngay 20%");
+    }
+
+    private static boolean forbidsEarlyHardClose(String text) {
+        return text.contains("không xin sđt sớm")
+                || text.contains("chưa xin sđt")
+                || text.contains("không ép chốt")
+                || text.contains("tuyệt đối không chèo kéo")
+                || text.contains("hạ hoàn toàn áp lực bán hàng")
+                || text.contains("không đòi sđt");
+    }
+
+    private static boolean mandatesEarlyHardClose(String text) {
+        if (forbidsEarlyHardClose(text)) {
+            return false;
+        }
+        return text.contains("xin sđt ngay lập tức")
+                || text.contains("bắt buộc xin số điện thoại ngay")
+                || text.contains("xin số điện thoại ngay câu đầu")
+                || text.contains("ép chốt ngay")
+                || text.contains("phải lấy sđt ngay");
+    }
+
+    private static boolean requiresConcisePacing(String text) {
+        return text.contains("40 từ")
+                || text.contains("tối đa 2 câu")
+                || text.contains("không giải thích dài dòng");
+    }
+
+    private static boolean mandatesLongVerboseExplanation(String text) {
+        if (requiresConcisePacing(text)) {
+            return false;
+        }
+        return text.contains("giải thích thật dài")
+                || text.contains("trình bày chi tiết từ a-z")
+                || text.contains("mô tả đầy đủ mọi bước quy trình")
+                || text.contains("viết càng chi tiết càng dài càng tốt");
     }
 }
 

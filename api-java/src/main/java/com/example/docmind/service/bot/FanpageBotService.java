@@ -212,10 +212,26 @@ public class FanpageBotService {
                              @Autowired(required = false) AgentSkillService agentSkillService,
                              @Autowired(required = false) com.example.docmind.service.MetaLearningService metaLearningService,
                              @Autowired(required = false) GuardrailPipeline guardrailPipeline,
-                             @Autowired(required = false) HarnessOptimizerService harnessOptimizerService,
                              @Autowired(required = false) FastApiAgentService fastApiAgentService,
                              @Autowired(required = false) MapOfContentService mapOfContentService,
                              @Autowired(required = false) QueryComplexityClassifier queryComplexityClassifier) {
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine,
+                agentSkillService, metaLearningService, guardrailPipeline, null, fastApiAgentService, mapOfContentService, queryComplexityClassifier);
+    }
+
+    public FanpageBotService(RetrievalService retrievalService,
+                             LlmClient llmClient,
+                             ChatProperties chatProps,
+                             DocumentRepository documentRepository,
+                             KnowledgePageRepository knowledgePageRepository,
+                             CustomerInsightEngine customerInsightEngine,
+                             AgentSkillService agentSkillService,
+                             com.example.docmind.service.MetaLearningService metaLearningService,
+                             GuardrailPipeline guardrailPipeline,
+                             HarnessOptimizerService harnessOptimizerService,
+                             FastApiAgentService fastApiAgentService,
+                             MapOfContentService mapOfContentService,
+                             QueryComplexityClassifier queryComplexityClassifier) {
         this.retrievalService = retrievalService;
         this.llmClient = llmClient;
         this.chatProps = chatProps;

@@ -515,6 +515,22 @@ public class CustomerInsightEngine {
         String archetype = insight != null && insight.buyerArchetype() != null ? insight.buyerArchetype() : "EXPLORING_CONSULTATION";
         String honorific = insight != null && insight.honorific() != null ? insight.honorific() : "Chị";
 
+        // Lọc bỏ các Kỹ năng Toàn cục (page_id == null) nếu Page hiện tại đã có Kỹ năng Riêng (page_id != null) ghi đè/xung đột chiến thuật
+        List<AgentSkillDto> pageScopedSkills = pool.stream()
+                .filter(s -> s.pageId() != null && !s.pageId().isBlank())
+                .toList();
+        if (!pageScopedSkills.isEmpty()) {
+            pool = pool.stream()
+                    .filter(candidate -> {
+                        if (candidate.pageId() != null && !candidate.pageId().isBlank()) {
+                            return true;
+                        }
+                        return pageScopedSkills.stream()
+                                .noneMatch(pageSkill -> AgentSkillService.areTacticallyConflicting(pageSkill, candidate));
+                    })
+                    .toList();
+        }
+
         record ScoredSkill(AgentSkillDto skill, int score) {}
         List<ScoredSkill> scored = new ArrayList<>(pool.size());
 
@@ -524,34 +540,34 @@ public class CustomerInsightEngine {
             int matchedInCurrentMsg = 0;
             int matchedInHistory = 0;
 
-            // 1. Điểm khớp từ khóa trong trigger_signals
+            // 1. Điểm khớp từ khóa trong trigger_signals (Giới hạn trần để tránh skill nhiều từ đồng nghĩa lấn át skill tùy chỉnh)
             if (skill.triggerSignals() != null && !skill.triggerSignals().isBlank()) {
                 String[] signals = skill.triggerSignals().split("[,;]+");
                 for (String rawSig : signals) {
                     String sig = rawSig.strip().toLowerCase(Locale.ROOT);
                     if (sig.length() >= 2) {
                         if (msg.contains(sig)) {
-                            score += 45; // Khớp trực tiếp ở tin nhắn hiện tại
                             matchedInCurrentMsg++;
                         } else if (fullConvo.contains(sig)) {
-                            score += 18; // Khớp trong lịch sử hội thoại
                             matchedInHistory++;
                         }
                     }
                 }
+                score += Math.min(3, matchedInCurrentMsg) * 45;
+                score += Math.min(2, matchedInHistory) * 18;
             }
 
-            // 2. Điểm thưởng kích hoạt cho Kỹ năng Tùy chỉnh / Kỹ năng riêng của Page hoặc Kỹ năng học từ Báo sai & Dạy AI
+            // 2. Điểm thưởng kích hoạt công bằng cho Kỹ năng Tùy chỉnh trên UI / Kỹ năng riêng của Page
             boolean isCustomSkill = !BUILT_IN_CODES.contains(code);
             boolean isPageScoped = skill.pageId() != null && !skill.pageId().isBlank();
             if (isCustomSkill || isPageScoped) {
                 if (matchedInCurrentMsg > 0) {
-                    score += 85;
+                    score += 135;
                 } else if (matchedInHistory > 0) {
-                    score += 40;
+                    score += 55;
                 }
                 if (isPageScoped && (matchedInCurrentMsg > 0 || matchedInHistory > 0)) {
-                    score += 25;
+                    score += 55;
                 }
             }
 

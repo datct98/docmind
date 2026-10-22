@@ -290,5 +290,148 @@ class AgentSkillControllerTest {
         assertThat(parsedPsych.category()).isEqualTo("PSYCHOLOGY");
         assertThat(parsedPsych.name()).startsWith("[Tâm lý]");
     }
+
+    @Test
+    void createSkillAutoMergesWhenDuplicateOrComplementarySkillDetectedOnSamePage() {
+        UUID pageId = UUID.randomUUID();
+        AgentSkillEntity existingPageSkill = AgentSkillEntity.builder()
+                .id(UUID.randomUUID())
+                .code("SALES_PRICING_PAGE")
+                .name("[Chốt Sale] Chống Xả Sạch Thông Tin & Phân Bổ 3 Nấc Báo Giá")
+                .category("SALES_STRATEGY")
+                .description("Báo giá khéo léo")
+                .triggerSignals("giá, báo giá, chi phí")
+                .tacticalInstructions("Chỉ báo 1 mức giá khởi điểm dễ tiếp cận nhất.")
+                .priority(90)
+                .active(true)
+                .pageId(pageId)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(repository.findActiveForPage(pageId)).thenReturn(List.of(existingPageSkill));
+        when(repository.save(any(AgentSkillEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AgentSkillRequest duplicateComplementaryReq = new AgentSkillRequest(
+                null,
+                null,
+                "SALES_STRATEGY",
+                null,
+                "giá, báo giá, bảng giá gói",
+                "Không xả bảng giá, nhớ nhấn mạnh miễn phí ngâm chân thảo dược và không nhận Tip.",
+                null,
+                null,
+                95,
+                true,
+                pageId.toString(),
+                null,
+                "AUTO",
+                null
+        );
+
+        ResponseEntity<AgentSkillDto> resp = controller.createSkill(duplicateComplementaryReq);
+        AgentSkillDto body = resp.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.governanceAction()).isEqualTo("AUTO_MERGED");
+        assertThat(body.conflictDetected()).isFalse();
+        assertThat(body.id()).isEqualTo(existingPageSkill.getId());
+        assertThat(body.triggerSignals()).contains("bảng giá gói");
+        assertThat(body.tacticalInstructions())
+                .contains("Chỉ báo 1 mức giá khởi điểm dễ tiếp cận nhất.")
+                .contains("nhớ nhấn mạnh miễn phí ngâm chân thảo dược và không nhận Tip.");
+        assertThat(body.priority()).isEqualTo(95);
+    }
+
+    @Test
+    void createSkillDetectsTacticalConflictAndSupportsAdminOverrideConfirmation() {
+        UUID pageId = UUID.randomUUID();
+        AgentSkillEntity existingAntiDumpSkill = AgentSkillEntity.builder()
+                .id(UUID.randomUUID())
+                .code("SALES_ANTI_INFO_DUMPING_PACING")
+                .name("🎯 [Sale] Phân bổ Thông tin 3 Nấc & Chống Xả Sạch Thông Tin")
+                .category("SALES_STRATEGY")
+                .description("Chống xả bảng giá")
+                .triggerSignals("giá, báo giá, bao nhiêu tiền, bảng giá")
+                .tacticalInstructions("Tuyệt đối không xả sạch bảng giá nhiều dịch vụ. Chỉ nêu 1 mức giá khởi điểm.")
+                .priority(97)
+                .active(true)
+                .pageId(null) // Global skill
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(repository.findActiveForPage(pageId)).thenReturn(List.of(existingAntiDumpSkill));
+        when(repository.save(any(AgentSkillEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Bước 1: Admin nạp skill mâu thuẫn (yêu cầu liệt kê đầy đủ toàn bộ bảng giá ngay)
+        AgentSkillRequest conflictingReq = new AgentSkillRequest(
+                null,
+                "[Sale] Báo Đầy Đủ Toàn Bộ Bảng Giá Ngay",
+                "SALES_STRATEGY",
+                "Báo hết bảng giá cho khách",
+                "giá, báo giá, bảng giá",
+                "Khi khách hỏi giá, hãy liệt kê đầy đủ toàn bộ bảng giá của tất cả các gói ngay lập tức.",
+                null,
+                null,
+                90,
+                true,
+                pageId.toString(),
+                null,
+                "AUTO",
+                null
+        );
+
+        AgentSkillDto conflictResult = controller.createSkill(conflictingReq).getBody();
+        assertThat(conflictResult).isNotNull();
+        assertThat(conflictResult.conflictDetected()).isTrue();
+        assertThat(conflictResult.governanceAction()).isEqualTo("CONFLICT_DETECTED");
+        assertThat(conflictResult.conflictingSkill()).isNotNull();
+        assertThat(conflictResult.conflictingSkill().code()).isEqualTo("SALES_ANTI_INFO_DUMPING_PACING");
+        assertThat(conflictResult.conflictReason()).contains("Xung đột chiến thuật Báo giá");
+        assertThat(conflictResult.recommendedAction()).isNotBlank();
+
+        // Bước 2: Admin bấm "Xác nhận Ghi đè (OVERRIDE)" trên Modal giao diện
+        AgentSkillRequest overrideReq = new AgentSkillRequest(
+                null,
+                "[Sale] Báo Đầy Đủ Toàn Bộ Bảng Giá Ngay",
+                "SALES_STRATEGY",
+                "Báo hết bảng giá cho khách",
+                "giá, báo giá, bảng giá",
+                "Khi khách hỏi giá, hãy liệt kê đầy đủ toàn bộ bảng giá của tất cả các gói ngay lập tức.",
+                null,
+                null,
+                90,
+                true,
+                pageId.toString(),
+                null,
+                "OVERRIDE",
+                existingAntiDumpSkill.getId().toString()
+        );
+
+        AgentSkillDto overridden = controller.createSkill(overrideReq).getBody();
+        assertThat(overridden).isNotNull();
+        assertThat(overridden.conflictDetected()).isFalse();
+        assertThat(overridden.governanceAction()).isEqualTo("OVERRIDDEN");
+        assertThat(overridden.pageId()).isEqualTo(pageId.toString());
+        assertThat(overridden.priority()).isGreaterThanOrEqualTo(98);
+
+        // Bước 3: Kiểm chứng CustomerInsightEngine tự động ưu tiên Skill ghi đè của Page và loại bỏ Global Skill bị xung đột
+        com.example.docmind.service.bot.CustomerInsightEngine engine = new com.example.docmind.service.bot.CustomerInsightEngine();
+        List<AgentSkillDto> pool = List.of(
+                AgentSkillDto.fromEntity(existingAntiDumpSkill),
+                overridden
+        );
+        var insight = engine.analyzeInsight("Báo giá cho mình với", List.of(), "Chị", com.example.docmind.service.bot.FanpageBotPromptBuilder.SalesStage.DISCOVERY, null);
+        List<AgentSkillDto> selected = engine.selectActiveSkills(
+                insight,
+                "Báo giá cho mình với",
+                List.of(),
+                com.example.docmind.service.bot.FanpageBotPromptBuilder.SalesStage.DISCOVERY,
+                pool
+        );
+        assertThat(selected).extracting(AgentSkillDto::name)
+                .contains("[Sale] Báo Đầy Đủ Toàn Bộ Bảng Giá Ngay")
+                .doesNotContain("🎯 [Sale] Phân bổ Thông tin 3 Nấc & Chống Xả Sạch Thông Tin");
+    }
 }
 

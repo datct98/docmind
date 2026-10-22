@@ -69,16 +69,6 @@
             </div>
 
             <div class="messenger-actions">
-              <button
-                class="btn-conv-audit-sim"
-                :disabled="chatItems.length === 0 || isAuditingConversation || isDeliveringBubbles || isSending"
-                @click="runWholeConversationAudit"
-                title="Harness² đọc lại toàn bộ cuộc hội thoại từ đầu đến cuối, phát hiện các điểm thừa thãi/mâu thuẫn xuyên lượt và tự động tối ưu toàn diện"
-              >
-                <span v-if="isAuditingConversation" class="spin-icon">⏳</span>
-                <span v-else>🧬</span>
-                <span>{{ isAuditingConversation ? 'Đang kiểm toán...' : 'Đánh giá Toàn Hội Thoại' }}</span>
-              </button>
               <button class="btn-skill-sim" @click="isSkillModalOpen = true" title="Quản lý Kho Kỹ năng Tâm lý, Chốt Sale & Giao tiếp">
                 🎯 Kỹ năng Agent
               </button>
@@ -216,18 +206,6 @@
                       @click="openTeachForMessage(idx)"
                     >
                       💬 Báo sai & Dạy AI
-                    </button>
-
-                    <button
-                      class="btn-harness-opt"
-                      :class="{ 'is-loading': isOptimizingHarness && optimizingAssistantIndex === idx }"
-                      :disabled="isOptimizingHarness"
-                      title="Chạy chu trình Harness² Propose → Probe → Anonymized Select tự động tối ưu hóa phản hồi này"
-                      @click="runHarnessOptimization(idx)"
-                    >
-                      <span v-if="isOptimizingHarness && optimizingAssistantIndex === idx" class="spin-icon">⏳</span>
-                      <span v-else class="harness-icon">🧬</span>
-                      <span>{{ isOptimizingHarness && optimizingAssistantIndex === idx ? 'Đang tối ưu...' : 'Tự tối ưu Harness²' }}</span>
                     </button>
                   </div>
                 </div>

@@ -65,7 +65,7 @@
                   💬 Mô tả bằng lời tự nhiên cách bạn muốn AI xử lý tình huống <span class="required">*</span>
                 </label>
                 <p class="smart-helper">
-                  Bạn chỉ cần viết tự nhiên vào đúng 1 ô này (ví dụ: <em>"Khi khách hỏi giá chung chung, đừng xả hết bảng giá, chỉ báo giá từ 650k kèm miễn phí soi da AI 3D rồi hỏi khách muốn trị mụn hay nám"</em>). AI sẽ tự động chuyển hóa thành cấu trúc chuẩn.
+                  Bạn chỉ cần viết tự nhiên vào đúng 1 ô này (ví dụ: <em>"Khi khách hỏi giá chung chung, đừng xả hết bảng giá, chỉ nêu 1 mức giá khởi điểm dễ tiếp cận kèm lợi ích cốt lõi rồi hỏi khách muốn ưu tiên nhu cầu nào"</em>). Hệ thống sẽ tự động kiểm tra trùng lặp để gộp hoặc cảnh báo nếu xung đột.
                 </p>
               </div>
               <button
@@ -82,7 +82,7 @@
               v-model="formData.raw_instruction"
               rows="4"
               class="form-textarea smart-textarea"
-              placeholder="Nhập lời dặn dò của bạn cho AI tại đây... (VD: Khi khách chê đắt hoặc đòi suy nghĩ thêm, tuyệt đối không giảm giá vô lý. Hãy đồng cảm, nhấn mạnh Bác sĩ CKI trực tiếp làm có bảo hành văn bản, rồi mời khách qua soi da AI 3D miễn phí 0đ vào Sáng hoặc Chiều để xem phác đồ trước khi quyết định.)"
+              placeholder="Nhập lời dặn dò của bạn cho AI tại đây... (VD: Khi khách chê đắt hoặc đòi suy nghĩ thêm, tuyệt đối không tự ý hạ giá. Hãy đồng cảm LAER, neo giá trị khác biệt từ tài liệu của Page và mời khách trải nghiệm/tư vấn bước đầu không rủi ro vào Sáng hoặc Chiều.)"
             ></textarea>
 
             <!-- Quick Scope & Category Row -->
@@ -344,6 +344,18 @@
 
         <!-- Skills List Body -->
         <div class="skills-list-body">
+          <!-- Governance Auto-Merge / Override Notification Banner -->
+          <div v-if="governanceNotice" class="governance-notice-banner" :class="governanceNotice.type">
+            <div class="gov-notice-content">
+              <span class="gov-notice-icon">{{ governanceNotice.icon }}</span>
+              <div>
+                <strong>{{ governanceNotice.title }}</strong>
+                <p>{{ governanceNotice.message }}</p>
+              </div>
+            </div>
+            <button type="button" class="btn-close-gov" @click="governanceNotice = null">×</button>
+          </div>
+
           <div v-if="loading" class="empty-state">
             <p>Đang tải Kho Kỹ năng Agent...</p>
           </div>
@@ -440,11 +452,95 @@
         <!-- Modal Footer -->
         <div class="modal-footer">
           <span class="footer-hint">
-            💡 <strong>Cơ chế hoạt động:</strong> Ở mỗi lượt tin nhắn, <code>CustomerInsightEngine</code> đọc vị tâm lý khách hàng và tự động chọn <strong>Top 3 Kỹ năng phù hợp nhất</strong> đang bật để bơm vào não bộ tư vấn của Bot.
+            💡 <strong>Cơ chế hoạt động:</strong> Hệ thống tự động <strong>Gộp kỹ năng tương đồng (Auto-Merge)</strong> và cảnh báo khi phát hiện <strong>Xung đột chiến thuật</strong> để đảm bảo AI luôn nhất quán.
           </span>
           <button class="btn btn-ghost btn-sm" @click="handleClose">Đóng</button>
         </div>
       </template>
+
+      <!-- MODAL XÁC NHẬN XUNG ĐỘT CHIẾN THUẬT (CONFLICT RESOLUTION MODAL) -->
+      <div v-if="conflictModalData" class="conflict-modal-backdrop" @click.self="skipConflictCandidate">
+        <div class="conflict-modal-card">
+          <div class="conflict-modal-header">
+            <div class="conflict-header-title">
+              <span class="conflict-alert-icon">⚠️</span>
+              <div>
+                <h4>Phát hiện Xung đột Chiến thuật với Kỹ năng Hiện có!</h4>
+                <p>Hệ thống phát hiện chỉ dẫn mới đối lập với một kỹ năng đang kích hoạt trên phạm vi này.</p>
+              </div>
+            </div>
+            <button type="button" class="btn-close" @click="skipConflictCandidate">×</button>
+          </div>
+
+          <div class="conflict-modal-body">
+            <div class="conflict-reason-box">
+              <strong>🔍 Chi tiết điểm mâu thuẫn:</strong>
+              <p>{{ conflictModalData.conflict_reason }}</p>
+            </div>
+
+            <div v-if="conflictModalData.recommended_action" class="conflict-recommend-box">
+              <strong>💡 Đánh giá &amp; Khuyến nghị từ AI:</strong>
+              <p>{{ conflictModalData.recommended_action }}</p>
+            </div>
+
+            <div class="conflict-comparison-grid">
+              <!-- Cột 1: Kỹ năng hiện có -->
+              <div class="conflict-col existing-col">
+                <div class="conflict-col-badge">🛡️ KỸ NĂNG HIỆN CÓ ĐANG BẬT</div>
+                <h5>{{ conflictModalData.conflicting_skill?.name }}</h5>
+                <div class="conflict-meta-tags">
+                  <span class="scope-tag">
+                    {{ conflictModalData.conflicting_skill?.page_id ? `📂 ${getPageName(conflictModalData.conflicting_skill.page_id)}` : '🌐 Toàn hệ thống' }}
+                  </span>
+                  <span class="prio-tag">⚡ Ưu tiên {{ conflictModalData.conflicting_skill?.priority }}</span>
+                </div>
+                <div class="conflict-field">
+                  <span class="cf-label">📡 Tín hiệu kích hoạt:</span>
+                  <p>{{ conflictModalData.conflicting_skill?.trigger_signals }}</p>
+                </div>
+                <div class="conflict-field">
+                  <span class="cf-label">🎯 Chỉ dẫn hiện tại:</span>
+                  <p class="cf-pre">{{ conflictModalData.conflicting_skill?.tactical_instructions }}</p>
+                </div>
+              </div>
+
+              <!-- Cột 2: Kỹ năng mới đang nạp -->
+              <div class="conflict-col candidate-col">
+                <div class="conflict-col-badge candidate-badge">✨ KỸ NĂNG MỚI BẠN VỪA NHẬP</div>
+                <h5>{{ conflictModalData.name }}</h5>
+                <div class="conflict-meta-tags">
+                  <span class="scope-tag">
+                    {{ conflictModalData.page_id ? `📂 ${getPageName(conflictModalData.page_id)}` : '🌐 Toàn hệ thống' }}
+                  </span>
+                  <span class="prio-tag">⚡ Ưu tiên {{ conflictModalData.priority }}</span>
+                </div>
+                <div class="conflict-field">
+                  <span class="cf-label">📡 Tín hiệu kích hoạt:</span>
+                  <p>{{ conflictModalData.trigger_signals }}</p>
+                </div>
+                <div class="conflict-field">
+                  <span class="cf-label">🎯 Chỉ dẫn mới:</span>
+                  <p class="cf-pre">{{ conflictModalData.tactical_instructions }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="conflict-modal-footer">
+            <button type="button" class="btn btn-ghost btn-sm" :disabled="saving" @click="skipConflictCandidate">
+              ⚪ Bỏ qua (Giữ kỹ năng cũ)
+            </button>
+            <div class="conflict-right-btns">
+              <button type="button" class="btn btn-edit-conflict btn-sm" :disabled="saving" @click="editConflictCandidate">
+                ✏️ Chỉnh sửa lại
+              </button>
+              <button type="button" class="btn btn-override-conflict btn-sm" :disabled="saving" @click="confirmConflictOverride">
+                {{ saving ? '⏳ Đang ghi đè...' : '🔴 Xác nhận Ghi đè bằng Kỹ năng mới' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -484,39 +580,41 @@ const saving = ref(false)
 const parsingSmart = ref(false)
 const formError = ref('')
 const smartParseNotice = ref('')
+const governanceNotice = ref(null)
+const conflictModalData = ref(null)
 
 const quickTemplates = [
   {
     id: 'anti_dumping_3_step',
     icon: '🛡️',
     title: 'Chống "Xả sạch thông tin" khi hỏi Giá (3 Nấc)',
-    subtitle: 'Giữ lại quyền lợi làm móc câu, chỉ báo giá từ 650k + hỏi A/B',
+    subtitle: 'Neo 1 mức giá khởi điểm + 1 lợi ích cốt lõi + Hỏi A/B (<40 từ)',
     category: 'SALES_STRATEGY',
-    raw: 'Khi khách mới hỏi "giá", "báo giá" chung chung mà chưa nói rõ tình trạng da: Tuyệt đối không xả sạch bảng giá 4 dịch vụ hay chiết khấu Combo. Chỉ nêu mức giá khởi điểm dễ tiếp cận (chỉ từ 650.000đ/buổi, miễn phí 100% Bác sĩ soi da AI 3D, cam kết 0 phụ phí) và đặt 1 câu hỏi khống chế A/B hỏi khách muốn ưu tiên xử lý Mụn, Nám hay Căng bóng trẻ hóa.'
+    raw: 'Khi khách mới hỏi "giá", "báo giá" chung chung mà chưa nói rõ nhu cầu: Tuyệt đối không xả sạch bảng giá nhiều gói. Chỉ nêu 1 mức giá khởi điểm dễ tiếp cận nhất trong tài liệu của Page kèm 1 quyền lợi miễn phí/trọn gói và đặt 1 câu hỏi lựa chọn A/B dưới 40 từ để hỏi nhu cầu ưu tiên.'
   },
   {
     id: 'appointment_hook_ab',
     icon: '🎯',
-    title: 'Bán Lịch Hẹn & Câu hỏi Khống chế A/B',
+    title: 'Cam kết Vi mô (Micro-Commitment) & Chốt Lịch A/B',
     subtitle: '1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi chốt Sáng hay Chiều',
     category: 'SALES_STRATEGY',
-    raw: 'Mục tiêu tối thượng trên chat là Bán Lịch Hẹn chứ không bán thông tin. Luôn giữ lại quyền lợi "Bác sĩ Chuyên khoa I trực tiếp soi da AI 3D miễn phí 100% trong 10 phút" làm móc câu để khách có lý do hợp lý đến cơ sở, và kết thúc bằng câu hỏi khống chế A/B: Chị tiện ghé vào khung giờ Sáng hay Chiều ạ?'
+    raw: 'Khi khách đã quan tâm dịch vụ/sản phẩm, tuyệt đối không hỏi đóng hoặc xin SĐT quá sớm. Hãy dùng 1 quyền lợi trải nghiệm thực tế làm móc câu và đặt câu hỏi lựa chọn A/B nhẹ nhàng: Anh/Chị tiện ghé hoặc trao đổi vào khung giờ Sáng hay Chiều ạ?'
   },
   {
     id: 'price_objection_value',
     icon: '💎',
-    title: 'Xử lý khách chê đắt / "Để suy nghĩ thêm"',
-    subtitle: 'Neo chuẩn Y khoa + Bảo hành văn bản + Mời soi da 0đ rủi ro',
+    title: 'Đàm phán LAER khi khách chê đắt / "Suy nghĩ thêm"',
+    subtitle: 'Đồng cảm + Neo giá trị khác biệt + Đề xuất bước thử 0 rủi ro',
     category: 'SALES_STRATEGY',
-    raw: 'Khi khách chê giá cao hoặc nói để suy nghĩ thêm: Đồng cảm nhẹ nhàng, nhấn mạnh sự khác biệt do Bác sĩ Chuyên khoa I trực tiếp điều trị kèm cam kết bảo hành văn bản và 0 phụ phí. Sau đó hạ rào cản bằng cách mời khách ghé soi da AI 3D miễn phí 0đ trước (ưng ý mới làm) vào Sáng hoặc Chiều.'
+    raw: 'Khi khách chê giá cao, so sánh giá rẻ hoặc nói để suy nghĩ thêm: Tuyệt đối không tự ý hạ giá. Hãy đồng cảm ngắn gọn, phân hóa rõ chất lượng thực tế trong tài liệu của Page so với dịch vụ đại trà và mời khách trải nghiệm/tư vấn bước đầu 0 rủi ro vào Sáng hoặc Chiều.'
   },
   {
     id: 'empathy_fear_of_pain',
     icon: '🤝',
-    title: 'Trấn an tâm lý sợ đau / từng làm hỏng nơi khác',
-    subtitle: 'Đồng cảm sâu sắc + Cam kết phác đồ êm dịu không nghỉ dưỡng',
+    title: 'Thấu cảm Gắn nhãn (FBI Voss) & Xóa bỏ Rào cản Sợ rủi ro',
+    subtitle: 'Gọi tên nỗi lo + Cam kết minh bạch trọn gói không chèo kéo',
     category: 'PSYCHOLOGY',
-    raw: 'Khi khách lo lắng sợ đau, sợ bong tróc hoặc từng chữa nhiều nơi không khỏi: Trấn an tâm lý ngay ở câu đầu, khẳng định công nghệ không xâm lấn, không cần nghỉ dưỡng và Bác sĩ sẽ test bước sóng êm dịu trên vùng da nhỏ miễn phí trước khi thực hiện.'
+    raw: 'Khi khách lo lắng về hiệu quả, sợ đau hoặc sợ phát sinh chi phí/bị chèo kéo: Hãy đồng cảm ngay câu đầu, khẳng định cam kết minh bạch trọn gói từ tài liệu của Page và mời khách kiểm tra thực tế trước khi quyết định.'
   }
 ]
 
@@ -716,6 +814,7 @@ const closeForm = () => {
   originalTacticalInstructions.value = ''
   formError.value = ''
   smartParseNotice.value = ''
+  conflictModalData.value = null
 }
 
 const saveSkill = async () => {
@@ -731,22 +830,97 @@ const saveSkill = async () => {
   saving.value = true
   formError.value = ''
   try {
-    const payload = { ...formData.value }
+    const payload = { ...formData.value, resolution_strategy: 'AUTO' }
     if (editingSkillId.value) {
       if (hasRaw && (!hasTactical || formData.value.tactical_instructions === originalTacticalInstructions.value)) {
         payload.tactical_instructions = formData.value.raw_instruction.trim()
       }
       await api.updateSkill(editingSkillId.value, payload)
+      await loadSkills()
+      closeForm()
     } else {
-      await api.createSkill(payload)
+      const res = await api.createSkill(payload)
+      if (res && res.conflict_detected) {
+        conflictModalData.value = res
+        return
+      }
+      if (res && res.governance_action === 'AUTO_MERGED') {
+        governanceNotice.value = {
+          type: 'merged',
+          icon: '🔄',
+          title: 'Đã tự động gộp kỹ năng tương đồng (Auto-Merged)',
+          message: res.governance_message || `Hệ thống đã tự động gộp tín hiệu và chỉ dẫn bổ sung vào kỹ năng: ${res.name}`
+        }
+      } else if (res && res.governance_action === 'OVERRIDDEN') {
+        governanceNotice.value = {
+          type: 'overridden',
+          icon: '⚡',
+          title: 'Đã ghi đè kỹ năng xung đột',
+          message: res.governance_message || `Đã áp dụng kỹ năng: ${res.name}`
+        }
+      }
+      await loadSkills()
+      closeForm()
     }
-    await loadSkills()
-    closeForm()
   } catch (err) {
     formError.value = err.message || 'Không thể lưu kỹ năng.'
   } finally {
     saving.value = false
   }
+}
+
+const confirmConflictOverride = async () => {
+  if (!conflictModalData.value) return
+  saving.value = true
+  formError.value = ''
+  try {
+    const payload = {
+      ...formData.value,
+      name: conflictModalData.value.name || formData.value.name,
+      category: conflictModalData.value.category || formData.value.category,
+      trigger_signals: conflictModalData.value.trigger_signals || formData.value.trigger_signals,
+      tactical_instructions: conflictModalData.value.tactical_instructions || formData.value.tactical_instructions,
+      good_example: conflictModalData.value.good_example || formData.value.good_example,
+      anti_pattern: conflictModalData.value.anti_pattern || formData.value.anti_pattern,
+      resolution_strategy: 'OVERRIDE',
+      conflict_skill_id: conflictModalData.value.conflicting_skill?.id || null
+    }
+    const res = await api.createSkill(payload)
+    governanceNotice.value = {
+      type: 'overridden',
+      icon: '⚡',
+      title: 'Đã xác nhận Ghi đè kỹ năng thành công',
+      message: res?.governance_message || `Đã áp dụng kỹ năng mới "${res?.name || payload.name}".`
+    }
+    conflictModalData.value = null
+    await loadSkills()
+    closeForm()
+  } catch (err) {
+    formError.value = err.message || 'Lỗi khi ghi đè kỹ năng.'
+    conflictModalData.value = null
+  } finally {
+    saving.value = false
+  }
+}
+
+const editConflictCandidate = () => {
+  if (conflictModalData.value) {
+    formData.value.name = conflictModalData.value.name || formData.value.name
+    formData.value.category = conflictModalData.value.category || formData.value.category
+    formData.value.description = conflictModalData.value.description || formData.value.description
+    formData.value.trigger_signals = conflictModalData.value.trigger_signals || formData.value.trigger_signals
+    formData.value.tactical_instructions = conflictModalData.value.tactical_instructions || formData.value.tactical_instructions
+    formData.value.good_example = conflictModalData.value.good_example || formData.value.good_example
+    formData.value.anti_pattern = conflictModalData.value.anti_pattern || formData.value.anti_pattern
+  }
+  conflictModalData.value = null
+  showAdvancedFields.value = true
+  smartParseNotice.value = '✏️ Bạn có thể điều chỉnh lại Tín hiệu kích hoạt hoặc Chỉ dẫn chiến thuật bên dưới rồi bấm Lưu.'
+}
+
+const skipConflictCandidate = () => {
+  conflictModalData.value = null
+  closeForm()
 }
 
 const toggleSkillActive = async (skill) => {
@@ -1637,6 +1811,267 @@ const handleClose = () => {
   background: #E8DDF8;
   color: #4A148C;
   border-color: #D0BCFF;
+}
+
+/* Governance Notice Banner */
+.governance-notice-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: #EFF6FF;
+  border: 1px solid #93C5FD;
+  color: #1E3A8A;
+}
+
+.governance-notice-banner.overridden {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #78350F;
+}
+
+.gov-notice-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.gov-notice-icon {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.gov-notice-content strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 2px;
+}
+
+.gov-notice-content p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.btn-close-gov {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* Conflict Resolution Confirmation Modal */
+.conflict-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1400;
+  padding: 20px;
+}
+
+.conflict-modal-card {
+  width: 100%;
+  max-width: 860px;
+  max-height: 88vh;
+  background: #FFFFFF;
+  border: 2px solid #F59E0B;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+}
+
+.conflict-modal-header {
+  padding: 16px 22px;
+  background: #FFFBEB;
+  border-bottom: 1px solid #FDE68A;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conflict-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conflict-alert-icon {
+  font-size: 1.6rem;
+}
+
+.conflict-header-title h4 {
+  margin: 0;
+  font-size: 1.02rem;
+  color: #92400E;
+  font-weight: 700;
+}
+
+.conflict-header-title p {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: #B45309;
+}
+
+.conflict-modal-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.conflict-reason-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+  font-size: 0.85rem;
+}
+
+.conflict-reason-box p {
+  margin: 4px 0 0;
+  line-height: 1.45;
+}
+
+.conflict-recommend-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1E40AF;
+  font-size: 0.84rem;
+}
+
+.conflict-recommend-box p {
+  margin: 4px 0 0;
+  line-height: 1.45;
+}
+
+.conflict-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.conflict-col {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  background: #F8FAFC;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conflict-col.candidate-col {
+  background: #F0FDF4;
+  border-color: #BBF7D0;
+}
+
+.conflict-col-badge {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #E2E8F0;
+  color: #334155;
+}
+
+.conflict-col-badge.candidate-badge {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+.conflict-col h5 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #0F172A;
+}
+
+.conflict-meta-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: #475569;
+}
+
+.conflict-field {
+  font-size: 0.8rem;
+}
+
+.cf-label {
+  font-weight: 600;
+  color: #334155;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.conflict-field p {
+  margin: 0;
+  color: #1E293B;
+  line-height: 1.4;
+}
+
+.cf-pre {
+  white-space: pre-wrap;
+}
+
+.conflict-modal-footer {
+  padding: 14px 22px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.conflict-right-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-edit-conflict {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #93C5FD;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.btn-override-conflict {
+  background: #DC2626;
+  color: #FFFFFF;
+  border: 1px solid #B91C1C;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.btn-override-conflict:hover {
+  background: #B91C1C;
 }
 
 @media (max-width: 768px) {
