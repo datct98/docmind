@@ -58,6 +58,8 @@ class RuleControllerTest {
                 .updatedAt(Instant.now())
                 .build();
 
+        when(learnedRuleRepository.searchRules(any(), any(), any()))
+                .thenReturn(List.of(entity));
         when(learnedRuleRepository.searchRulesByPage(any(), any(), any(), any(), any(Boolean.class), any(Boolean.class)))
                 .thenReturn(List.of(entity));
 

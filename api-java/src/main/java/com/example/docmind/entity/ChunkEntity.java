@@ -59,4 +59,8 @@ public class ChunkEntity {
 
     @Column(name = "page_id")
     private UUID pageId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "chunk_metadata")
+    private String chunkMetadataJson;
 }

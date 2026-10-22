@@ -1,6 +1,7 @@
 package com.example.docmind.service.llm;
 
 import com.example.docmind.config.LlmProperties;
+import com.example.docmind.service.reasoning.QueryComplexity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -43,6 +44,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private final LlmProperties props;
     private final ObjectMapper objectMapper;
     private final RestClient http;
+    private final RestClient simpleHttp;
+    private final RestClient deepHttp;
     private final String provider;
     private final String model;
     private final String endpoint;
@@ -62,6 +65,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
         if (customHttp != null) {
             this.http = customHttp;
+            this.simpleHttp = customHttp;
+            this.deepHttp = customHttp;
         } else {
             int configuredTimeoutMs = Math.max(props.getTimeoutSeconds() * 1000, 10000);
             int attemptTimeoutMs = (this.reasoningEffort != null && configuredTimeoutMs > FAST_REASONING_ATTEMPT_TIMEOUT_MS)
@@ -77,6 +82,14 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             this.http = RestClient.builder()
                     .requestFactory(factory)
                     .build();
+
+            JdkClientHttpRequestFactory simpleFactory = new JdkClientHttpRequestFactory(jdkClient);
+            simpleFactory.setReadTimeout(Duration.ofSeconds(ReasoningBudget.SIMPLE_TIMEOUT_SECONDS));
+            this.simpleHttp = RestClient.builder().requestFactory(simpleFactory).build();
+
+            JdkClientHttpRequestFactory deepFactory = new JdkClientHttpRequestFactory(jdkClient);
+            deepFactory.setReadTimeout(Duration.ofSeconds(ReasoningBudget.DEEP_TIMEOUT_SECONDS));
+            this.deepHttp = RestClient.builder().requestFactory(deepFactory).build();
         }
 
         log.info("OpenAiCompatibleLlmClient active (provider={}, model={}, endpoint={}, reasoningEffort={})",
@@ -85,19 +98,29 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     @Override
     public String complete(String prompt) {
+        return complete(prompt, null);
+    }
+
+    @Override
+    public String complete(String prompt, ReasoningBudget budget) {
         long startNs = System.nanoTime();
         String safePrompt = prompt != null ? prompt : "";
-        log.info("[LLM] Calling provider={}, model={}, endpoint={}, reasoningEffort={}, promptChars={}",
-                provider, model, endpoint, reasoningEffort != null ? reasoningEffort : "default", safePrompt.length());
+        String effort = (budget != null && budget.reasoningEffort() != null)
+                ? budget.reasoningEffort()
+                : (reasoningEffort != null ? reasoningEffort : "default");
+        int targetTokens = (budget != null && budget.maxTokens() > 0) ? budget.maxTokens() : props.getMaxTokens();
+        log.info("[LLM] Calling provider={}, model={}, endpoint={}, reasoningEffort={}, maxTokens={}, budgetTier={}, promptChars={}",
+                provider, model, endpoint, effort, targetTokens,
+                budget != null ? budget.complexity().name() : "DEFAULT", safePrompt.length());
         try {
-            Map<String, Object> body = buildRequestBody(safePrompt, true);
+            Map<String, Object> body = buildRequestBody(safePrompt, true, budget);
             String rawJson;
             try {
-                rawJson = executePostWithRetry(body);
+                rawJson = executePostWithRetry(body, budget);
             } catch (HttpClientErrorException.BadRequest badReq) {
                 if (body.containsKey("reasoning_effort") || body.containsKey("max_tokens")) {
                     log.info("[LLM] Provider {} rejected optional reasoning_effort/max_tokens (400), retrying standard payload", provider);
-                    rawJson = executePostWithRetry(buildRequestBody(safePrompt, false));
+                    rawJson = executePostWithRetry(buildRequestBody(safePrompt, false, budget), budget);
                 } else {
                     throw badReq;
                 }
@@ -107,7 +130,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             if (parsed.emptyContentWithReasoning()) {
                 log.info("[LLM] Provider {} returned empty content after {} reasoning tokens, retrying once without reasoning_effort",
                         provider, parsed.reasoningTokens());
-                rawJson = executePostWithRetry(buildRequestBody(safePrompt, false));
+                rawJson = executePostWithRetry(buildRequestBody(safePrompt, false, budget), budget);
                 parsed = parseCompletion(rawJson, prompt);
             }
 
@@ -128,40 +151,67 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     }
 
     private Map<String, Object> buildRequestBody(String safePrompt, boolean includeOptionalTuning) {
+        return buildRequestBody(safePrompt, includeOptionalTuning, null);
+    }
+
+    private Map<String, Object> buildRequestBody(String safePrompt, boolean includeOptionalTuning, ReasoningBudget budget) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", List.of(Map.of("role", "user", "content", safePrompt)));
-        body.put("temperature", props.getTemperature());
+        double temp = (budget != null && budget.temperature() >= 0) ? budget.temperature() : props.getTemperature();
+        body.put("temperature", temp);
         body.put("stream", false);
         if (includeOptionalTuning) {
-            if (reasoningEffort != null && !reasoningEffort.isBlank()) {
-                body.put("reasoning_effort", reasoningEffort);
+            String effort = (budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank())
+                    ? budget.reasoningEffort()
+                    : this.reasoningEffort;
+            if (effort != null && !effort.isBlank()) {
+                body.put("reasoning_effort", effort);
             }
-            if (props.getMaxTokens() > 0) {
-                body.put("max_tokens", props.getMaxTokens());
+            int maxToks = (budget != null && budget.maxTokens() > 0)
+                    ? budget.maxTokens()
+                    : props.getMaxTokens();
+            if (maxToks > 0) {
+                body.put("max_tokens", maxToks);
             }
         }
         return body;
     }
 
     private String executePostWithRetry(Map<String, Object> body) {
+        return executePostWithRetry(body, null);
+    }
+
+    private String executePostWithRetry(Map<String, Object> body, ReasoningBudget budget) {
         try {
-            return executePost(body);
+            return executePost(body, budget);
         } catch (ResourceAccessException timeoutOrIo) {
             log.warn("[LLM] Provider {} attempt 1 timed out or network stalled ({}), retrying once...",
                     provider, timeoutOrIo.getMessage());
-            return executePost(body);
+            return executePost(body, budget);
         } catch (HttpServerErrorException.BadGateway
                  | HttpServerErrorException.ServiceUnavailable
                  | HttpServerErrorException.GatewayTimeout gatewayErr) {
             log.warn("[LLM] Provider {} attempt 1 returned upstream gateway error ({}), retrying once...",
                     provider, gatewayErr.getStatusCode());
-            return executePost(body);
+            return executePost(body, budget);
         }
     }
 
     private String executePost(Map<String, Object> body) {
-        var requestSpec = http.post()
+        return executePost(body, null);
+    }
+
+    private String executePost(Map<String, Object> body, ReasoningBudget budget) {
+        RestClient clientToUse = this.http;
+        if (budget != null) {
+            if (budget.complexity() == QueryComplexity.SIMPLE && simpleHttp != null) {
+                clientToUse = simpleHttp;
+            } else if (budget.complexity() == QueryComplexity.DEEP_REASONING && deepHttp != null) {
+                clientToUse = deepHttp;
+            }
+        }
+        var requestSpec = clientToUse.post()
                 .uri(endpoint)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON);

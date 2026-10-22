@@ -88,6 +88,18 @@ public class ClosingQuestionHook implements GuardrailHook {
     }
 
     @Override
+    public boolean isApplicable(GuardrailContext context, GuardrailDraft draft) {
+        if (draft == null || draft.getText() == null || draft.getText().isBlank()) {
+            return false;
+        }
+        if (context == null) {
+            return false;
+        }
+        String stage = context.getSalesStage();
+        return !"HUMAN_HANDOFF".equalsIgnoreCase(stage) && !"BOOKING_LEAD_CAPTURED".equalsIgnoreCase(stage);
+    }
+
+    @Override
     public boolean apply(GuardrailContext context, GuardrailDraft draft) {
         String text = draft.getText();
         if (text == null || text.isBlank()) {

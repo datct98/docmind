@@ -20,4 +20,7 @@ public class ChatProperties {
 
     /** Hằng số RRF (thường 60). */
     private int rrfK = 60;
+
+    /** Số chunk backlink tối đa được mở rộng thêm vào retrieval (mặc định 2). */
+    private int maxBacklinks = 2;
 }

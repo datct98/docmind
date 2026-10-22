@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -235,7 +236,9 @@ public class DocumentService {
         CorrelationIds.setStage("embed");
         UUID currentPageId = doc.getPageId();
         for (ChunkBuilder.BuiltChunk c : builtChunks) {
-            float[] embedding = embeddingClient.embed(c.text());
+            String prefix = formatHeadingPrefix(c.headingPath());
+            String textToEmbed = prefix.isBlank() ? c.text() : prefix + "\n" + c.text();
+            float[] embedding = embeddingClient.embed(textToEmbed);
             chunkRepository.insertChunk(
                     c.id(), c.documentId(), currentPageId, c.headingPath(), c.sourceBlockIds(),
                     c.page(), c.bbox(), c.text(), embedding);
@@ -406,5 +409,25 @@ public class DocumentService {
 
     private static String[] toStringArray(List<String> list) {
         return list == null ? new String[0] : list.toArray(new String[0]);
+    }
+
+    /**
+     * Dựng breadcrumb chuỗi từ heading_path để gắn vào đầu văn bản trước khi sinh dense vector embedding.
+     * Ví dụ: ["MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM)"] -> "[MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM)]"
+     */
+    public static String formatHeadingPrefix(String[] headingPath) {
+        if (headingPath == null || headingPath.length == 0) {
+            return "";
+        }
+        List<String> valid = new ArrayList<>();
+        for (String h : headingPath) {
+            if (h != null && !h.isBlank()) {
+                valid.add(h.trim());
+            }
+        }
+        if (valid.isEmpty()) {
+            return "";
+        }
+        return "[" + String.join(" > ", valid) + "]";
     }
 }

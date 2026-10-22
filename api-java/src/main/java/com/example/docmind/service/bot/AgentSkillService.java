@@ -8,9 +8,14 @@ import com.example.docmind.repository.AgentSkillRepository;
 import com.example.docmind.service.security.PromptSecurityGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Normalizer;
@@ -31,9 +36,22 @@ public class AgentSkillService {
     private static final Set<String> VALID_CATEGORIES = Set.of("PSYCHOLOGY", "SALES_STRATEGY", "COMMUNICATION");
 
     private final AgentSkillRepository agentSkillRepository;
+    private final TransactionTemplate transactionTemplate;
 
     public AgentSkillService(AgentSkillRepository agentSkillRepository) {
+        this(agentSkillRepository, (PlatformTransactionManager) null);
+    }
+
+    @Autowired
+    public AgentSkillService(AgentSkillRepository agentSkillRepository,
+                             @Nullable PlatformTransactionManager transactionManager) {
         this.agentSkillRepository = agentSkillRepository;
+        if (transactionManager != null) {
+            this.transactionTemplate = new TransactionTemplate(transactionManager);
+            this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        } else {
+            this.transactionTemplate = null;
+        }
     }
 
     public List<AgentSkillDto> getSkills(String category, Boolean active, String search, String pageIdRaw, boolean includeGlobal) {
@@ -386,33 +404,36 @@ public class AgentSkillService {
         }
     }
 
-    @Transactional
     public void recordSkillsApplied(List<AgentSkillDto> activeSkills) {
         if (activeSkills == null || activeSkills.isEmpty()) {
             return;
         }
         try {
-            List<UUID> ids = activeSkills.stream()
+            List<UUID> sortedIds = activeSkills.stream()
                     .map(AgentSkillDto::id)
                     .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .sorted()
                     .toList();
-            if (ids.isEmpty()) {
+            if (sortedIds.isEmpty()) {
                 return;
             }
-            List<AgentSkillEntity> entities = agentSkillRepository.findAllById(ids);
-            if (entities == null || entities.isEmpty()) {
-                return;
+            if (transactionTemplate != null) {
+                transactionTemplate.executeWithoutResult(status -> {
+                    for (UUID id : sortedIds) {
+                        agentSkillRepository.incrementAppliedCount(id);
+                    }
+                });
+            } else {
+                for (UUID id : sortedIds) {
+                    agentSkillRepository.incrementAppliedCount(id);
+                }
             }
-            for (AgentSkillEntity entity : entities) {
-                entity.setAppliedCount(Math.max(0, entity.getAppliedCount()) + 1);
-            }
-            agentSkillRepository.saveAll(entities);
         } catch (Exception e) {
-            log.debug("Bỏ qua cập nhật applied_count cho agent_skills: {}", e.getMessage());
+            log.warn("Non-fatal: Bỏ qua lỗi cập nhật telemetry agent_skills (applied_count): {}", e.getMessage());
         }
     }
 
-    @Transactional
     public void recordConversionSuccess(UUID pageId, String conversationText) {
         if (conversationText == null || conversationText.isBlank()) {
             return;
@@ -423,6 +444,7 @@ public class AgentSkillService {
             if (activeSkills == null || activeSkills.isEmpty()) {
                 return;
             }
+            List<UUID> matchedIds = new java.util.ArrayList<>();
             for (AgentSkillEntity skill : activeSkills) {
                 if (skill == null || !skill.isActive() || skill.getTriggerSignals() == null) {
                     continue;
@@ -435,16 +457,27 @@ public class AgentSkillService {
                         break;
                     }
                 }
-                if (matched) {
-                    double currentConf = skill.getConfidenceScore() <= 0.0 ? 0.90 : skill.getConfidenceScore();
-                    skill.setConversionCount(Math.max(0, skill.getConversionCount()) + 1);
-                    skill.setConfidenceScore(Math.min(0.99, Math.round((currentConf + 0.02) * 100.0) / 100.0));
-                    skill.setUpdatedAt(Instant.now());
-                    agentSkillRepository.save(skill);
+                if (matched && skill.getId() != null) {
+                    matchedIds.add(skill.getId());
+                }
+            }
+            if (matchedIds.isEmpty()) {
+                return;
+            }
+            List<UUID> sortedMatchedIds = matchedIds.stream().distinct().sorted().toList();
+            if (transactionTemplate != null) {
+                transactionTemplate.executeWithoutResult(status -> {
+                    for (UUID id : sortedMatchedIds) {
+                        agentSkillRepository.incrementConversionSuccess(id);
+                    }
+                });
+            } else {
+                for (UUID id : sortedMatchedIds) {
+                    agentSkillRepository.incrementConversionSuccess(id);
                 }
             }
         } catch (Exception e) {
-            log.debug("Bỏ qua cập nhật conversion_count cho agent_skills: {}", e.getMessage());
+            log.warn("Non-fatal: Bỏ qua lỗi cập nhật conversion_count cho agent_skills: {}", e.getMessage());
         }
     }
 

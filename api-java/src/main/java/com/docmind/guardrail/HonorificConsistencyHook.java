@@ -68,6 +68,27 @@ public class HonorificConsistencyHook implements GuardrailHook {
     }
 
     @Override
+    public boolean isApplicable(GuardrailContext context, GuardrailDraft draft) {
+        if (context == null || draft == null) {
+            return false;
+        }
+        String text = draft.getText();
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (context.isMale()) {
+            return lower.contains("chị") || lower.contains("bạn") || lower.contains("em có thể")
+                    || lower.contains("em nên") || lower.contains("em sẽ") || lower.contains("anh anh")
+                    || lower.contains("anh/chị") || lower.contains("anh chị");
+        } else {
+            return lower.contains("chị chị") || lower.contains("anh") || lower.contains("bạn")
+                    || lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")
+                    || lower.contains("anh/chị") || lower.contains("anh chị");
+        }
+    }
+
+    @Override
     public boolean apply(GuardrailContext context, GuardrailDraft draft) {
         String originalText = draft.getText();
         if (originalText == null || originalText.isBlank()) {

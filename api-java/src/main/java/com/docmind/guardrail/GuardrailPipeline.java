@@ -39,6 +39,7 @@ public class GuardrailPipeline {
 
     public GuardrailPipeline() {
         this(List.of(
+                new SyntaxSanitizationHook(),
                 new HonorificConsistencyHook(),
                 new ClosingQuestionHook(),
                 new AntiInfoDumpingHook(),

@@ -804,6 +804,10 @@ def _is_table_header_row(non_empty_cells: list[str]) -> bool:
         "mã gói",
         "mã dịch vụ",
         "mã sp",
+        "mã hàng",
+        "mã",
+        "code",
+        "sku",
         "bước",
         "tên ưu đãi",
         "nội dung",
@@ -814,14 +818,37 @@ def _is_table_header_row(non_empty_cells: list[str]) -> bool:
         "giai đoạn",
         "chi nhánh",
         "cơ sở",
+        "địa điểm",
+        "khu vực",
         "tên ảnh",
         "nhóm",
+        "nhóm dịch vụ",
         "nhóm nội dung",
         "vùng trị liệu",
+        "danh mục",
+        "phân loại",
+        "loại dịch vụ",
+        "dịch vụ",
+        "tên dịch vụ",
+        "sản phẩm",
+        "tên sản phẩm",
+        "gói",
+        "gói dịch vụ",
+        "khoản mục",
+        "tiêu chí",
+        "bộ phận",
+        "tầng",
+        "phòng",
     }
     if first in header_Firsts:
         return True
+    if first.startswith("mã ") or first.startswith("nhóm ") or first.startswith("loại "):
+        return True
     if first == "tên gói" and ("giá" in second or "thời gian" in second):
+        return True
+    if any(k in second for k in ("giá", "đơn giá", "chi phí", "thời gian", "thời lượng")):
+        return True
+    if any(any(k in c.lower() for k in ("giá", "đơn giá", "chi phí", "thời gian", "thời lượng")) for c in non_empty_cells[1:]):
         return True
     return False
 
@@ -831,7 +858,8 @@ def _forward_fill_grouped_table(compact: list[list[str]]) -> list[list[str]]:
 
     For example, in '8.12 Cơ sở vật chất' (Col 0 = Cơ sở, Col 1 = Tầng) or
     '07_Giáo_trình_massage' (Col 0 = Bước, Col 1 = Vùng trị liệu, Col 2 = Huyệt đạo),
-    subsequent rows under the same facility or step leave Col 0 (and Col 1) blank.
+    or service/pricing catalogs (Col 0 = Danh mục / Phân loại / Dịch vụ),
+    subsequent rows under the same category or facility leave Col 0 (and Col 1) blank.
     Carrying down the group label ensures every row and chunk remains self-contained.
     """
     if len(compact) <= 2 or not compact[0]:
@@ -846,11 +874,60 @@ def _forward_fill_grouped_table(compact: list[list[str]]) -> list[list[str]]:
     if not h0 and h1 == "vùng trị liệu" and any(r[0].lower().startswith("bước") for r in compact[1:] if r):
         compact[0][0] = "Bước"
         h0 = "bước"
+    elif not h0 and any(r[0].strip() for r in compact[1:] if r):
+        first_val = next((r[0].lower().strip() for r in compact[1:] if r and r[0].strip()), "")
+        if first_val.startswith("bước"):
+            compact[0][0] = "Bước"
+            h0 = "bước"
+        elif first_val.startswith(("cơ sở", "chi nhánh")):
+            compact[0][0] = "Cơ sở"
+            h0 = "cơ sở"
+        elif first_val.startswith(("nhóm", "danh mục")):
+            compact[0][0] = "Danh mục"
+            h0 = "danh mục"
 
-    carry_col0 = h0 in {"cơ sở", "chi nhánh", "bước", "giai đoạn", "nhóm"}
-    carry_col1 = h0 == "bước" and h1 == "vùng trị liệu"
+    group_keywords = {
+        "cơ sở", "chi nhánh", "địa điểm", "khu vực", "cụm", "branch", "facility", "location", "area",
+        "bước", "giai đoạn", "thao tác", "quy trình", "step", "phase", "process",
+        "nhóm", "nhóm dịch vụ", "nhóm nội dung", "danh mục", "phân loại", "loại", "loại dịch vụ",
+        "chuyên mục", "chủ đề", "hạng mục", "category", "group", "type", "section",
+        "dịch vụ", "gói", "gói dịch vụ", "service", "package",
+        "tầng", "phòng", "khu", "floor", "room", "zone",
+        "bộ phận", "phòng ban", "đơn vị", "department",
+    }
+    non_group_keywords = {
+        "stt", "số tt", "số thứ tự", "id", "no", "no.", "#",
+        "mã", "mã gói", "mã dv", "mã sp", "code", "sku",
+        "giá", "đơn giá", "số tiền", "chi phí", "doanh số", "price", "amount",
+        "ngày", "thời gian", "giờ", "date", "time", "duration",
+        "ghi chú", "note", "ảnh", "hình", "image", "photo",
+    }
+
+    carry_col0 = any(kw == h0 or h0.startswith(kw + " ") or h0.endswith(" " + kw) for kw in group_keywords)
+    if not carry_col0 and not any(kw == h0 or kw in h0 for kw in non_group_keywords):
+        first_has_col0 = bool(compact[1][0].strip())
+        has_blank_col0_with_data = any(
+            not r[0].strip() and any(c.strip() for c in r[1:])
+            for r in compact[2:]
+        )
+        if first_has_col0 and has_blank_col0_with_data:
+            carry_col0 = True
+
     if not carry_col0:
         return compact
+
+    carry_col1 = False
+    if num_cols >= 3:
+        sub_group_keywords = group_keywords | {"vùng trị liệu", "vùng", "vị trí", "động tác"}
+        if any(kw == h1 or kw in h1 for kw in sub_group_keywords):
+            carry_col1 = True
+        elif not any(kw == h1 or kw in h1 for kw in non_group_keywords):
+            has_blank_col1_with_data = any(
+                not r[1].strip() and any(c.strip() for c in r[2:])
+                for r in compact[2:]
+            )
+            if has_blank_col1_with_data:
+                carry_col1 = True
 
     last_col0 = ""
     last_col1 = ""
@@ -861,8 +938,11 @@ def _forward_fill_grouped_table(compact: list[list[str]]) -> list[list[str]]:
                 last_col1 = r[1].strip()
         elif last_col0 and any(c.strip() for c in r[1:]):
             r[0] = last_col0
-            if carry_col1 and not r[1].strip() and last_col1:
-                r[1] = last_col1
+            if carry_col1:
+                if r[1].strip():
+                    last_col1 = r[1].strip()
+                elif last_col1:
+                    r[1] = last_col1
     return compact
 
 
@@ -903,6 +983,25 @@ def _split_grid_by_empty_columns(rows: list[list[str]]) -> list[list[list[str]]]
         strip_rows = [r[start:end] for r in padded]
         result.append(strip_rows)
     return result
+
+
+def _is_compatible_table_row(row: list[str], header_row: list[str]) -> bool:
+    """Check if a candidate data row is structurally compatible with an active table header."""
+    row_cells = [c.strip() for c in row if c.strip()]
+    header_cells = [c.strip() for c in header_row if c.strip()]
+    if len(row_cells) < 2 or len(header_cells) < 2:
+        return False
+    row_indices = [idx for idx, c in enumerate(row) if c.strip()]
+    header_indices = [idx for idx, c in enumerate(header_row) if c.strip()]
+    if not row_indices or not header_indices:
+        return False
+    max_row_col = max(row_indices)
+    max_header_col = max(header_indices)
+    if abs(max_row_col - max_header_col) > 1:
+        return False
+    if len(row_cells) < max(2, len(header_cells) // 2):
+        return False
+    return True
 
 
 def _emit_spreadsheet_grid_blocks(
@@ -1020,7 +1119,12 @@ def _emit_spreadsheet_grid_blocks(
             and ("?" in compact[0][0] or any("?" in r[0] for r in compact[:3]))
         ):
             compact = [["Câu hỏi khách hàng", "Câu trả lời tư vấn chuẩn"], *compact]
-        elif len(compact) == 1 and not any("?" in c for c in compact[0]) and base_depth == 0:
+        elif (
+            len(compact) == 1
+            and not any("?" in c for c in compact[0])
+            and base_depth == 0
+            and not _is_table_header_row([c for c in compact[0] if c])
+        ):
             emit_paragraph(" — ".join(c for c in compact[0] if c))
             return
 
@@ -1061,12 +1165,31 @@ def _emit_spreadsheet_grid_blocks(
     strips = _split_grid_by_empty_columns(filtered_rows)
     for strip in strips:
         active_table: list[list[str]] = []
+        last_detected_header: list[str] | None = None
+
+        def flush_active_table(is_section_break: bool = True) -> None:
+            nonlocal active_table, last_detected_header
+            if not active_table:
+                return
+            if is_section_break and len(active_table) == 1:
+                first_non_empty = [c.strip() for c in active_table[0] if c.strip()]
+                if _is_table_header_row(first_non_empty) or (
+                    last_detected_header is not None and active_table[0] == last_detected_header
+                ):
+                    last_detected_header = list(active_table[0])
+                    active_table = []
+                    return
+            if active_table:
+                hdr_non_empty = [c.strip() for c in active_table[0] if c.strip()]
+                if _is_table_header_row(hdr_non_empty):
+                    last_detected_header = list(active_table[0])
+            emit_table(active_table)
+            active_table = []
+
         for row in strip:
             non_empty = [c.strip() for c in row if c.strip()]
             if not non_empty:
-                if active_table:
-                    emit_table(active_table)
-                    active_table = []
+                flush_active_table(is_section_break=True)
                 continue
 
             first_cell = non_empty[0]
@@ -1094,9 +1217,7 @@ def _emit_spreadsheet_grid_blocks(
                 )
                 is_sub = first_lower.startswith(("cơ sở", "khu vực", "chi nhánh")) and len(first_cell) <= 55
                 if is_major or is_sub:
-                    if active_table:
-                        emit_table(active_table)
-                        active_table = []
+                    flush_active_table(is_section_break=True)
                     emit_heading(1 if is_major else 2, first_cell)
                     continue
 
@@ -1108,18 +1229,14 @@ def _emit_spreadsheet_grid_blocks(
                 and not _is_table_header_row(non_empty)
                 and any("địa chỉ" in c.lower() for c in non_empty[1:])
             ):
-                if active_table:
-                    emit_table(active_table)
-                    active_table = []
+                flush_active_table(is_section_break=True)
                 combined_heading = " — ".join(non_empty)
                 emit_heading(2, combined_heading)
                 continue
 
             # Case C: Contact / Hotline / Opening hours row
             if first_lower.startswith(("hotline", "địa chỉ", "giờ hoạt động", "giờ mở cửa")):
-                if active_table:
-                    emit_table(active_table)
-                    active_table = []
+                flush_active_table(is_section_break=True)
                 info_line = " | ".join(non_empty)
                 if heading_path and len(heading_path) > base_depth:
                     short_contact = " | ".join(
@@ -1131,10 +1248,18 @@ def _emit_spreadsheet_grid_blocks(
                 continue
 
             # Case D: New explicit table header row starts while another table was accumulating
-            if _is_table_header_row(non_empty) and active_table:
-                emit_table(active_table)
+            if _is_table_header_row(non_empty):
+                if active_table:
+                    flush_active_table(is_section_break=True)
+                last_detected_header = list(row)
                 active_table = [row]
                 continue
+
+            # Sub-table carry-over: if starting a new table segment after a section break and
+            # a compatible header exists, inherit it so the first data row is preserved.
+            if not active_table and last_detected_header is not None:
+                if _is_compatible_table_row(row, last_detected_header):
+                    active_table.append(list(last_detected_header))
 
             active_table.append(row)
 

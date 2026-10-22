@@ -1,7 +1,0 @@
-{
-  "task_id": "docmind-scaffold",
-  "task_description": "Scaffold the NotebookLLM-style document-RAG system 'DocMind' as a runnable MVP skeleton inside the monorepo: docker-compose (Postgres+pgvector) + shared canonical-JSON contract/docs (FEAT-001), a FastAPI document-parsing service with real routing/interfaces/logging/job-lifecycle and stubbed ML engines (FEAT-002), and a Spring Boot 4 / Java 21 orchestrator with multipart upload+validation, an async Python-service client with correlation-id, Flyway migrations for documents/blocks/chunks (pgvector + tsvector), and a Java-only chat/RAG path with LLM+embedding interfaces behind stubs (FEAT-003). Routing, interfaces, structured JSON logging, job lifecycle, and the Java<->Python HTTP contract must be real and wired end to end; ML is stubbed. Do not modify anything outside docmind/.",
-  "status": "completed",
-  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
-  "blocked_reason": null
-}

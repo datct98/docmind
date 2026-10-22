@@ -58,22 +58,25 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                     INSERT INTO chunks
                         (id, document_id, page_id, heading_path, source_block_ids, page, bbox, text, embedding, tsv)
                     VALUES
-                        (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS vector), to_tsvector('simple', ?))
+                        (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS vector),
+                         setweight(to_tsvector('simple', coalesce(array_to_string(?, ' '), '')), 'A') || setweight(to_tsvector('simple', ?), 'B'))
                     """;
             var ps = connection.prepareStatement(sql);
             ps.setObject(1, id);
             ps.setObject(2, documentId);
             ps.setObject(3, pageId);
-            Array headingArray = connection.createArrayOf("text", headingPath);
-            Array blockIdsArray = connection.createArrayOf("uuid", sourceBlockIds);
+            String[] safeHeadingPath = headingPath != null ? headingPath : new String[0];
+            Array headingArray = connection.createArrayOf("text", safeHeadingPath);
+            Array blockIdsArray = connection.createArrayOf("uuid", sourceBlockIds != null ? sourceBlockIds : new UUID[0]);
             Array bboxArray = connection.createArrayOf("float8", toObjectArray(bbox));
             ps.setArray(4, headingArray);
             ps.setArray(5, blockIdsArray);
             ps.setInt(6, page);
             ps.setArray(7, bboxArray);
-            ps.setString(8, text);
+            ps.setString(8, text != null ? text : "");
             ps.setString(9, vectorLiteral); // null => NULL::vector
-            ps.setString(10, text);
+            ps.setArray(10, headingArray);
+            ps.setString(11, text != null ? text : "");
             return ps;
         });
     }

@@ -9,6 +9,11 @@ public interface LlmClient {
     /** Trả về answer text. */
     String complete(String prompt);
 
+    /** Trả về answer text với ngân sách suy luận thích ứng (ReasoningBudget F8). */
+    default String complete(String prompt, ReasoningBudget budget) {
+        return complete(prompt);
+    }
+
     /** Tên impl (để log / debug). */
     String name();
 }

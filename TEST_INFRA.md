@@ -1,160 +1,164 @@
-# DocMind E2E Test Infrastructure (M-E2E)
+# DocMind Obsidian Knowledge Graph & Adaptive Reasoning Upgrade — Test Infrastructure
 
-This document establishes the architecture, conventions, execution guide, and verification standards for the **End-to-End (E2E) Testing Track** of the DocMind Sales RAG & Self-Improving AI platform.
+## 1. Test Philosophy & Design Principles
 
----
+The end-to-end test infrastructure for DocMind is architected on four core testing principles:
 
-## 1. Testing Philosophy & Methodology
+1. **Strictly Opaque-Box & Requirement-Driven**:
+   - All assertions, expected values, budgets, and state transitions derive exclusively from the authoritative user specifications in `ORIGINAL_REQUEST.md` (`## 2026-10-21T02:21:29Z`) and the architectural contract definitions in `docmind/PROJECT.md`.
+   - Zero coupling to internal Java or Python class names, private method signatures, or temporary implementation details. All tests interact via public REST APIs (`/api/bot/fanpage/message`, `/api/documents/parse`, `/api/chat`), database state, or canonical schemas (`docs/canonical-schema.md`).
 
-The DocMind E2E test suite adheres to an **opaque-box, requirement-driven testing methodology**:
+2. **Progressive Testability & Milestone Decoupling**:
+   - Verification tracks evaluate features systematically across milestones (M1: Table Preservation & Subpath Indexing, M2: Backlinks, MOC & PriceLadder, M3: Adaptive Reasoning & Tone, M4: DB Backfill & Docker Sync).
+   - Tests do not assume mock shortcuts; they measure real system outputs, latencies, and schemas.
 
-1. **Opaque-Box Verification**: Tests interact exclusively through public APIs, canonical schema contracts (`docs/canonical-schema.md`), and HTTP interfaces (`/v1/parse`, `/api/chat`, `/api/feedback`, `/api/rules`). Tests do not couple to internal implementation details or private methods.
-2. **Authoritative Expected Output Derivation**: Every test case derives its expected values directly from `ORIGINAL_REQUEST.md` and `PROJECT.md`.
-3. **Multi-Tier Coverage**:
-   - **Tier 1 (Feature Coverage)**: Individual features F1–F19 tested in isolation (minimum 5 tests per feature, $\ge 95$ tests).
-   - **Tier 2 (Boundary & Corner Cases)**: Edge conditions, empty inputs, extreme file sizes, Unicode handling, malformed payloads (minimum 5 tests per feature, $\ge 95$ tests).
-   - **Tier 3 (Cross-Feature Combinations)**: Pairwise and multi-service interaction flows (e.g., Excel ingestion $\to$ chunking $\to$ chat retrieval; Markdown tables $\to$ feedback loop $\to$ query expansion; conversational correction $\to$ playbook rule persistence $\to$ subsequent chat grounding).
-   - **Tier 4 (Real-World Sales Scenarios)**: Realistic end-to-end sales operations with full-scale documents (pricing policy `.docx`, sales inventory `.xlsx` with 350+ rows across sheets, product catalog `.md`, and multi-turn mistake correction).
-4. **Dual-Mode Execution**:
-   - **Contract Simulator Mode (Default/Hermetic)**: High-speed, deterministic contract verification against specification oracles without requiring running databases or live servers. Ideal for isolated milestones and CI fast-feedback.
-   - **Live Service Mode**: End-to-end integration against active FastAPI (`:8000`) and Spring Boot (`:8090`) services when booted.
+3. **Empirical Precision & Grounded Oracles**:
+   - All expected pricing, service durations, branch catalogs, and FAQ resolutions are anchored directly in the verified knowledge base of Page **"Nàng sen"** (`2850a8ef-ca4a-40eb-87fa-4f808640efee`):
+     * Hà Nội Massage NS01: `399.000 VNĐ` (60 phút full body).
+     * Sài Gòn (Quận 1) Massage NS01: `570.000 VNĐ` (70 phút).
+     * Hà Nội Dưỡng sinh DS02: `239.000 VNĐ` (60 phút).
+     * Catalog Floor DS01: `129.000 VNĐ` (30 phút lấy ráy tai).
+     * Sài Gòn Dưỡng sinh DS01: `129.000 VNĐ`, DS02: `260.000 VNĐ`.
+     * Promo Policy: Giảm 10% khi mua từ 5 buổi hoặc từ 5 voucher.
+     * FAQ Comparison 670k vs 780k: 780k có phòng VIP riêng khép kín, gội dưỡng sinh tại phòng không cần di chuyển giữa các bước.
 
----
-
-## 2. Directory Layout
-
-The E2E test harness and test suites reside in `tests_e2e/`:
-
-```
-d:\Project\digital-spirituality\docmind\
-├── TEST_INFRA.md                       # This infrastructure specification
-├── TEST_READY.md                       # Final test readiness report
-└── tests_e2e\
-    ├── __init__.py                     # Package marker
-    ├── conftest.py                     # Pytest fixtures, hooks & configuration
-    ├── run_e2e.py                      # Standalone zero-dependency executable test runner
-    ├── harness\
-    │   ├── __init__.py                 # Harness exports
-    │   ├── models.py                   # Canonical block schema, DTOs & response models
-    │   ├── client.py                   # Dual-mode E2E Client (Contract Oracle + Live HTTP)
-    │   └── generators.py               # Document fixture generators (.docx, .xlsx 350+, .md)
-    ├── test_tier1_feature_coverage.py  # Tier 1: F1-F19 isolated feature coverage (95+ tests)
-    ├── test_tier2_boundary_corner.py   # Tier 2: F1-F19 boundary & corner cases (95+ tests)
-    ├── test_tier3_cross_feature.py     # Tier 3: Pairwise cross-feature combinations
-    └── test_tier4_sales_scenarios.py   # Tier 4: Real-world sales document scenarios
-```
+4. **Adversarial & Boundary Rigor**:
+   - Every input path exercises malformed Vietnamese abbreviations, extreme price queries (0 VNĐ to 100M VNĐ), prompt injection traps, and rapid bursts.
 
 ---
 
-## 3. Test Tier Breakdown
+## 2. Feature Inventory & Coverage Mapping
 
-### Tier 1: Feature Coverage (F1 to F19 in Isolation)
-Minimum 5 test cases per feature covering primary behavior (Happy Path):
-- **F1 (Markdown AST Parsing)**: Heading hierarchy, pipe table detection, bullet list structuring, paragraph extraction, Vietnamese UTF-8 preservation.
-- **F2 (Excel Full Row Parsing)**: 200+ row processing without truncation, 350+ row ingestion, multi-sheet traversal, all non-empty row accounting, column width independence.
-- **F3 (Excel Empty Boundary Stripping)**: Trailing empty row elimination, trailing empty column pruning, internal empty row preservation, whitespace cell handling, sparse matrix cleaning.
-- **F4 (Excel Bounded Window Partitioning)**: 100-row window chunking, worksheet title breadcrumb propagation, row 0 header duplication, monotonic block ordering, markdown pipe formatting.
-- **F5 (Python Test Suite & Fixtures)**: Test runner discovery, fixture validity, canonical schema compliance, stats breakdown accounting, error status propagation.
-- **F6 (Bounded Chunk Splitting)**: 1200-char boundary enforcement, paragraph boundary splitting, heading_path inheritance, source_block_ids tracking, bounding box union preservation.
-- **F7 (Markdown Table Preservation in Chunks)**: Table markdown syntax preference, pipe formatting retention, header divider preservation, chunk readability for LLM.
-- **F8 (Flyway V2 Schema Migration)**: `learned_rules` table schema, `feedback_logs` table schema, pgvector 384-dim embedding column, active flag default, foreign key integrity.
-- **F9 (Explicit Feedback Loop)**: `POST /api/feedback` happy path, rule extraction, DB persistence, regenerated answer grounding, applied rules return.
-- **F10 (Conversational Correction Detection)**: Multi-turn correction detection, correction trigger phrases, implicit rule extraction, `newly_learned_rule` attachment in `POST /api/chat`.
-- **F11 (Root-Cause Rule Extraction)**: `root_cause` identification, `generalized_rule` abstraction (stripping volatile numbers/prices), `trigger_condition` mapping, `category` categorization, `retrieval_keywords` extraction.
-- **F12 (Playbook Query Expansion & Prompt Injection)**: Active rule vector retrieval, keyword query augmentation, prompt rule injection, `applied_rules` in ChatResponse.
-- **F13 (Rules CRUD REST API)**: `GET /api/rules` listing, `POST /api/rules` creation, `PUT /api/rules/{id}` update and toggle active, `DELETE /api/rules/{id}` removal, search & category filtering.
-- **F14 (Java Test Suite Verification)**: Chunking slice test verification, meta-learning service verification, rule repository verification, controller contract verification.
-- **F15 ("Báo sai & Dạy AI" Action Workflow)**: Modal launch trigger, feedback submission payload, rule preview display, assistant response update.
-- **F16 (Applied & Learned Rule Badges)**: `applied_rules` badge rendering, `newly_learned_rule` highlight card rendering, collapsible badge details, badge styling tokens.
-- **F17 (AI Playbook Manager Panel/Modal)**: Rule list view, category filter, active toggle action, rule editor dialog, rule deletion confirmation.
-- **F18 (Dual Mode Support)**: Live mode endpoint routing, offline demo mock data fallback, state persistence across switches, error fallback graceful handling.
-- **F19 (Frontend Build Cleanliness)**: Build script invocation, bundle output presence, asset path resolution, zero fatal errors.
-
-### Tier 2: Boundary & Corner Cases (F1 to F19 Edge Conditions)
-Minimum 5 test cases per feature covering adversarial conditions, stress limits, and malformed inputs:
-- Zero-byte / empty files, whitespace-only files.
-- Extreme sizes (1,000+ rows, 50KB markdown strings, 500-column sheets).
-- Special characters, SQL injection strings, XSS payload escaping in markdown and feedback.
-- Non-standard markdown tables (ragged columns, missing separators).
-- Deeply nested headings (`#` to `######` exceeding 6 levels, jumping from `h1` to `h5`).
-- Volatile price stripping edge cases (e.g., "$1,200.50", "500.000 VNĐ", "15% off", relative dates).
-- Duplicate feedback submissions and rule deduplication.
-- Malformed UUIDs, non-existent rule IDs, 404/400 error codes.
-- Network timeouts and service failure fallbacks.
-
-### Tier 3: Cross-Feature Combinations (Pairwise Interactions)
-Pairwise and end-to-end pipeline integrations:
-1. **Excel Ingestion + Chunk Splitting + Retrieval**: Multi-sheet 350+ row Excel parsed, partitioned into 100-row blocks, chunked with header retention, retrieved by semantic query.
-2. **Markdown Table + Prompt Injection + Chat Grounding**: Markdown product table parsed, preserved in chunk text, retrieved in chat, verified in LLM answer citations.
-3. **Conversational Correction + Query Expansion**: Chat turn 1 gives wrong answer $\to$ Chat turn 2 user corrects $\to$ auto-learns rule $\to$ Chat turn 3 question expanded with `retrieval_keywords` $\to$ correct answer.
-4. **Explicit Feedback + Playbook Rule Toggle + Chat Verification**: User submits feedback via `/api/feedback` $\to$ rule created $\to$ rule toggled inactive via `/api/rules/{id}` $\to$ verified NOT applied in chat $\to$ toggled active $\to$ verified applied.
-5. **Document Ingestion + Rule Injection + Citation Tracking**: Uploading document, generating chunks, querying with active playbook rule, verifying both `citations` and `applied_rules` in response.
-
-### Tier 4: Real-World Sales Scenarios
-Realistic end-to-end sales enterprise workflows:
-1. **Scenario 1: Pricing Policy `.docx`**:
-   - Ingests sales pricing policy document with tiered volume discounts, reseller margins, and regional rules.
-   - Verifies canonical block extraction with heading paths.
-   - Queries system on volume discount rules; verifies grounded response.
-2. **Scenario 2: Large Sales Inventory `.xlsx` (350+ Rows across Sheets)**:
-   - Ingests multi-sheet sales workbook with "Điện Thoại" (200 rows), "Laptop & Tablet" (150 rows), "Phụ Kiện" (100 rows).
-   - Verifies zero truncation, 100-row window partitioning, sheet name breadcrumbs.
-   - Queries specific SKU stock counts and prices; verifies precise retrieval.
-3. **Scenario 3: Product Catalog `.md`**:
-   - Ingests nested markdown catalog with detailed specifications, tables, bullet points.
-   - Verifies structured parsing and markdown table preservation in chunks.
-   - Multi-turn conversational inquiry.
-4. **Scenario 4: Multi-Turn Sales Error Correction & Meta-Learning**:
-   - AI answers sales commission question incorrectly based on outdated row.
-   - User corrects: "Theo chính sách Q4, chiết khấu đại lý cấp 1 đạt doanh số trên 500 triệu là 18%, không phải 15%".
-   - Verifies meta-rule extracted without hardcoded 500M or 18% values (abstracts to "Kiểm tra chính sách theo quý hiện tại và ngưỡng doanh số bậc cao nhất").
-   - Subsequent question on Q4 commission applies the rule and returns accurate result.
+| # | Feature Code | Feature Name | Source Requirement | Tier 1 (Coverage >=5) | Tier 2 (Boundary >=5) | Tier 3 (Cross-Feature) | Tier 4 (Real-World) |
+|---|--------------|--------------|--------------------|:---------------------:|:---------------------:|:----------------------:|:-------------------:|
+| 1 | **F1** | Non-Destructive Table Preservation | Survey R1, M1 | 5 tests | 5 tests | Pairwise with F2, F4 | Scenario 1, 6 |
+| 2 | **F2** | Hierarchical Heading Path Indexing (`resolveSubpath`) | Survey R1, M1 | 5 tests | 5 tests | Pairwise with F3, F6 | Scenario 1, 6 |
+| 3 | **F3** | Centralized Vietnamese Query Normalizer | Survey R1, M1 | 5 tests | 5 tests | Pairwise with F7 | Scenario 2 |
+| 4 | **F4** | Dynamic ChunkMetadata Extraction | Survey R1, M1 | 5 tests | 5 tests | Pairwise with F5 | Scenario 6, 7 |
+| 5 | **F5** | Bidirectional Backlinks Entity Graph | Survey R2, M2 | 5 tests | 5 tests | Pairwise with F4 | Scenario 7 |
+| 6 | **F6** | Dynamic Map of Content (MOC) | Survey R2, M2 | 5 tests | 5 tests | Pairwise with F2 | Scenario 1, 6 |
+| 7 | **F7** | Stateful PriceLadderTracker | Survey R2, M2 | 5 tests | 5 tests | Pairwise with F3 | Scenario 3, 4, 5 |
+| 8 | **F8** | Adaptive Deep Reasoning Engine (4-8s vs 15-30s) | Survey R3, M3 | 5 tests | 5 tests | Pairwise with F7 | Scenario 1, 3, 4 |
+| 9 | **F9** | Empathetic Vietnamese Tone & Zero Syntax Leak | Survey R3, M3 | 5 tests | 5 tests | Pairwise with Guardrails | Scenario 1 - 7 |
+| 10 | **F10** | Non-Destructive DB Backfill | Survey R4, M4 | 5 tests | 5 tests | Pairwise with Schema | Scenario 1, 6 |
+| 11 | **F11** | Live Docker Synchronization | Survey R4, M4 | 5 tests | 5 tests | Pairwise with Health | Scenario 1 - 7 |
+| 12 | **F12** | Opaque-Box E2E Acceptance Suite | E2E Testing Track | Full Suite | Full Suite | Full Suite | Full Suite |
+| 13 | **F13** | Integration & Forensic Audit | Implementation Track | Audit Checks | Audit Checks | Audit Checks | Audit Checks |
 
 ---
 
-## 4. How to Run the Tests
+## 3. Test Architecture & Runner Invocation
 
-### Option A: Standalone Zero-Dependency Runner (Recommended)
-The standalone runner requires only standard Python:
-
-```bash
-# Run all tiers (Tiers 1-4)
-python tests_e2e/run_e2e.py
-
-# Run a specific tier
-python tests_e2e/run_e2e.py --tier 1
-python tests_e2e/run_e2e.py --tier 2
-python tests_e2e/run_e2e.py --tier 3
-python tests_e2e/run_e2e.py --tier 4
-
-# Filter by feature ID
-python tests_e2e/run_e2e.py --feature F1
-python tests_e2e/run_e2e.py --feature F11
-
-# Run in Live Service Mode (requires running doc-service-py and api-java)
-python tests_e2e/run_e2e.py --mode live
+### Architecture Diagram
+```text
++---------------------------------------------------------------------------------+
+|                       E2E Test Runner (pytest / standalone)                     |
+|            docmind/tests_e2e/test_obsidian_adaptive_acceptance.py               |
++---------------------------------------------------------------------------------+
+        |                                                                 |
+        | HTTP (REST JSON)                                                | SQL / Subprocess
+        v                                                                 v
++-------------------------------+                       +-------------------------+
+|     docmind-api (:8090)       |                       |   docmind-postgres      |
+|  POST /api/bot/fanpage/message|                       |      (:5433)            |
+|  POST /api/documents/parse    |                       | SELECT ... FROM chunks  |
+|  GET  /api/health             |                       | heading_path, tsv       |
++-------------------------------+                       +-------------------------+
+        |                                                                 ^
+        |                                                                 |
+        v                                                                 |
++-------------------------------+-----------------------------------------+
+|   Obsidian Knowledge Graph    |  BacklinkGraph, MOC, PriceLadderTracker |
++-------------------------------+-----------------------------------------+
 ```
 
-### Option B: Pytest Runner
-If `pytest` is installed in your Python environment:
+### Environment Configuration
+The test suite respects standard environment overrides:
+- `API_JAVA_URL`: Target API endpoint (default: `http://localhost:8090`).
+- `PAGE_ID`: Active test Fanpage ID (default: `2850a8ef-ca4a-40eb-87fa-4f808640efee` — Page "Nàng sen").
+- `DOCMIND_E2E_MODE`: `live` (calls running Docker stack) or `contract` (uses internal reference validator).
 
-```bash
-# Run the entire E2E test suite
-pytest tests_e2e -v
+### Invocation Commands
 
-# Run by tier
-pytest tests_e2e/test_tier1_feature_coverage.py -v
-pytest tests_e2e/test_tier2_boundary_corner.py -v
-pytest tests_e2e/test_tier3_cross_feature.py -v
-pytest tests_e2e/test_tier4_sales_scenarios.py -v
+1. **Full Acceptance Test Suite (All Tiers)**:
+   ```bash
+   python -m pytest docmind/tests_e2e/test_obsidian_adaptive_acceptance.py -v
+   ```
 
-# Run with keyword filter
-pytest tests_e2e -k "F11 or F12"
-```
+2. **Standalone Execution (Zero-dependency directly via Python)**:
+   ```bash
+   python docmind/tests_e2e/test_obsidian_adaptive_acceptance.py
+   ```
+
+3. **Specific Tier Execution via Pytest Markers**:
+   ```bash
+   # Run only Tier 1: Feature Coverage
+   python -m pytest docmind/tests_e2e/test_obsidian_adaptive_acceptance.py -k "tier1" -v
+
+   # Run only Tier 2: Boundary & Corner Cases
+   python -m pytest docmind/tests_e2e/test_obsidian_adaptive_acceptance.py -k "tier2" -v
+
+   # Run only Tier 3: Pairwise Combinations
+   python -m pytest docmind/tests_e2e/test_obsidian_adaptive_acceptance.py -k "tier3" -v
+
+   # Run only Tier 4: Real-World 5-Turn Probe on Page 'Nàng sen'
+   python -m pytest docmind/tests_e2e/test_obsidian_adaptive_acceptance.py -k "tier4" -v
+   ```
 
 ---
 
-## 5. Verification & Acceptance Criteria
-- **Pass Rate**: 100% of tests must pass.
-- **Coverage**: All features F1–F19 covered with $\ge 5$ tests each in Tier 1 and $\ge 5$ tests each in Tier 2.
-- **Contract Fidelity**: Canonical block schema, REST DTOs, and meta-learning constraints validated against authoritative specifications.
+## 4. 4-Tier Test Methodology
+
+### Tier 1: Feature Coverage (Isolation, >=5 Tests Per Feature)
+- **F1: Table Preservation**:
+  * T1.1.1: Preserve Markdown pipe syntax (`| ... |`) and column alignments.
+  * T1.1.2: Replicate column headers across split chunks for long tables.
+  * T1.1.3: Maintain cell value pairings without collapsing into comma-delimited strings.
+  * T1.1.4: Forward-fill merged hierarchical category cells without data loss.
+  * T1.1.5: Verify multi-sheet HTML/Excel parsing retains table block types.
+- **F2: Hierarchical Heading Path Indexing**:
+  * T1.2.1: Full inheritance breadcrumb (`Sheet > Category > Section`).
+  * T1.2.2: Heading-path search matches with Weight A in PostgreSQL tsvector.
+  * T1.2.3: Hybrid search combining heading path + table cell text.
+  * T1.2.4: Resolution of branch tags from heading paths (`Cơ sở Nàng Sen Quận 1`).
+  * T1.2.5: Graceful fallback for root chunks lacking parent headings.
+- **F3: Messenger Abbreviation & Typo Normalizer**:
+  * T1.3.1: Telex typo correction (`muosn` -> `muốn`).
+  * T1.3.2: Shorthand normalization (`ko`, `k` -> `không`).
+  * T1.3.3: Price/quantity shorthand (`bn` -> `bao nhiêu`).
+  * T1.3.4: Contact inquiry shorthand (`sdt`, `đt` -> `số điện thoại`).
+  * T1.3.5: Mixed abbreviations in single sentence (`"mk muosn hoi gia bn k dat"`).
+- **F4: Dynamic ChunkMetadata Extraction**:
+  * T1.4.1: Min and max price extraction from table columns.
+  * T1.4.2: Branch tag identification from text and headers (`my_dinh`, `quan_1`).
+  * T1.4.3: Service code identification (`NS01`, `DS01`, `DS02`).
+  * T1.4.4: Role classification for pricing tables (`PRICE_TABLE`).
+  * T1.4.5: Role classification for Q&A tables (`FAQ`).
+
+### Tier 2: Boundary & Corner Cases (Extreme Inputs & Robustness)
+- **T2.1**: Extreme price queries: 0 VNĐ / Free service inquiry handling.
+- **T2.2**: Extreme high price queries: 100M - 1B VNĐ catalog ceiling handling.
+- **T2.3**: Empty string or pure whitespace message payload handling (graceful 400 or safe fallback).
+- **T2.4**: Rapid burst inquiries (consecutive messages within milliseconds).
+- **T2.5**: Non-existent package code inquiry (`NS99`, `DS88`) without hallucination.
+- **T2.6**: Complex Vietnamese accents (mixed uppercase diacritics and unaccented inputs).
+- **T2.7**: Multi-turn history scaling (extended conversation context without token overflow).
+
+### Tier 3: Pairwise & Cross-Feature Interactions
+- **T3.1**: Branch filter + price floor inquiry (`"cơ sở Quận 1 giá thấp nhất là bao nhiêu?"`).
+- **T3.2**: Typo normalization + price objection (`"muosn thử nhưng cao the"`).
+- **T3.3**: Dynamic branch switching across turns (Hà Nội -> Sài Gòn).
+- **T3.4**: FAQ comparison combined with price resistance (`"gói 670k và 780k khác gì nhau mà đắt thế"`).
+- **T3.5**: Service code linked to promotion policy (`"gói DS01 có được giảm 10% khi mua 5 buổi không?"`).
+
+### Tier 4: Real-World Scenarios (The Page 'Nàng sen' Dialogue Probe)
+Page ID: `2850a8ef-ca4a-40eb-87fa-4f808640efee`
+- **Scenario 1 (Turn 1)**: `"giá"` -> quotes `399.000 VNĐ` (or `570k` Q1), latency 4–8s, concise bubbles (<= 2).
+- **Scenario 2 (Turn 2)**: `"tôi muosn thử trải nghiệm trước"` -> retains package, moves to soft booking, latency 4–8s.
+- **Scenario 3 (Turn 3)**: `"cao thế"` -> down-sells to `239.000 VNĐ` (60 phút), latency 15–30s (< 30s), `needs_human_handoff = false`.
+- **Scenario 4 (Turn 4)**: `"nhưng hơi đắt"` -> down-sells to `129.000 VNĐ` (30 phút floor), latency 15–30s (< 30s), `needs_human_handoff = false`.
+- **Scenario 5 (Turn 5)**: `"có gói nào rẻ hơn không"` -> confirms `129.000 VNĐ` is floor + offers 10% promo policy (5 buổi/voucher), `needs_human_handoff = false`.
+- **Scenario 6 (Cross-Section 1)**: `"cơ sở Quận 1 Sài Gòn có gói nào?"` -> retrieves Sài Gòn packages (`570k` / `129k` / `260k`).
+- **Scenario 7 (Cross-Section 2)**: `"gói 670k và 780k khác gì nhau?"` -> accurately cites FAQ regarding private VIP room shampoo service.
+- **Scenario 8 (Zero Syntax Leak)**: 0 wikilinks `[[...]]`, 0 citations `[1]`, 0 markdown header hashes `#`, 0 table pipes `|` in customer bubbles.
+- **Scenario 9 (Vietnamese Tone)**: 100% consistent `Em - Chị` or `Em - Anh` consultative voice, 0 phantom names.

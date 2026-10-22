@@ -7,8 +7,12 @@ import com.example.docmind.repository.ChunkRepository;
 import com.example.docmind.repository.LearnedRuleRepository;
 import com.example.docmind.repository.RetrievedChunk;
 import com.example.docmind.service.embedding.EmbeddingClient;
+import com.example.docmind.service.metadata.ChunkMetadataExtractor;
+import com.example.docmind.service.text.VietnameseQueryNormalizer;
+import com.example.docmind.service.graph.ObsidianMetadataCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,15 +40,30 @@ public class RetrievalService {
     private final EmbeddingClient embeddingClient;
     private final ChatProperties chatProps;
     private final LearnedRuleRepository learnedRuleRepository;
+    private final ObsidianMetadataCache metadataCache;
 
     public RetrievalService(ChunkRepository chunkRepository,
                             EmbeddingClient embeddingClient,
                             ChatProperties chatProps,
                             LearnedRuleRepository learnedRuleRepository) {
+        this(chunkRepository, embeddingClient, chatProps, learnedRuleRepository, null);
+    }
+
+    @Autowired
+    public RetrievalService(ChunkRepository chunkRepository,
+                            EmbeddingClient embeddingClient,
+                            ChatProperties chatProps,
+                            LearnedRuleRepository learnedRuleRepository,
+                            @Autowired(required = false) ObsidianMetadataCache metadataCache) {
         this.chunkRepository = chunkRepository;
         this.embeddingClient = embeddingClient;
         this.chatProps = chatProps;
         this.learnedRuleRepository = learnedRuleRepository;
+        this.metadataCache = metadataCache != null ? metadataCache : new ObsidianMetadataCache(chunkRepository);
+    }
+
+    public ObsidianMetadataCache getMetadataCache() {
+        return metadataCache;
     }
 
     private static final double MIN_RULE_CONFIDENCE = 0.45;
@@ -82,6 +101,7 @@ public class RetrievalService {
                                              Integer topK,
                                              List<LearnedRuleDto> extraRules,
                                              UUID pageId) {
+        question = VietnameseQueryNormalizer.normalize(question);
         int candidateK = pageId != null ? Math.max(chatProps.getCandidateK(), 80) : chatProps.getCandidateK();
         int finalK = topK != null ? topK : chatProps.getTopK();
 
@@ -261,10 +281,21 @@ public class RetrievalService {
         // Đa dạng hóa kết quả theo Độ phủ Từ khóa Câu hỏi (Query-Coverage MMR - học hỏi từ PR #1)
         List<ReciprocalRankFusion.FusedChunk> top = diversifyByQueryCoverage(fused, question, finalK);
 
-        log.info("stage=rerank fused_total={} returned={} rrf_k={}",
-                fused.size(), top.size(), chatProps.getRrfK());
+        // F5: Mở rộng Backlinks hai chiều qua ObsidianMetadataCache (FAQ, PROCESS, PROMO)
+        List<ReciprocalRankFusion.FusedChunk> expanded = metadataCache != null
+                ? metadataCache.expandBacklinks(
+                        top,
+                        question,
+                        pageId,
+                        documentIds,
+                        chatProps.getMaxBacklinks()
+                )
+                : top;
 
-        return new RetrievalResult(top, appliedRules);
+        log.info("stage=rerank fused_total={} returned={} rrf_k={}",
+                fused.size(), expanded.size(), chatProps.getRrfK());
+
+        return new RetrievalResult(expanded, appliedRules);
     }
 
     /**
@@ -397,11 +428,7 @@ public class RetrievalService {
         if (c == null || c.text() == null) {
             return false;
         }
-        String t = c.text().toLowerCase();
-        return t.contains("| ns01 |") || t.contains("| ds01 |") || t.contains("| ds02 |")
-                || t.contains("| gds01 |") || t.contains("| gói 1 |")
-                || t.contains("129.000") || t.contains("199.000") || t.contains("239.000")
-                || t.contains("260.000") || t.contains("299.000") || t.contains("380.000") || t.contains("399.000");
+        return ChunkMetadataExtractor.isEntryLevelPriceChunk(c.headingPath(), c.text());
     }
 
     private static boolean isPriceCatalogTable(RetrievedChunk c) {

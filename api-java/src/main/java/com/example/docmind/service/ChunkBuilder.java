@@ -203,7 +203,7 @@ public final class ChunkBuilder {
         double[] bbox = toDoubleArray(b.bbox());
 
         List<String> textParts;
-        if ("table".equalsIgnoreCase(b.type())) {
+        if ("table".equalsIgnoreCase(b.type()) || isMarkdownTable(blockText)) {
             textParts = splitTableText(blockText, maxChars);
         } else {
             textParts = splitPlainText(blockText, maxChars);
@@ -227,18 +227,56 @@ public final class ChunkBuilder {
     }
 
     /**
+     * Kiểm tra xem chuỗi có phải là bảng Markdown hay không.
+     */
+    public static boolean isMarkdownTable(String text) {
+        if (text == null) {
+            return false;
+        }
+        String trimmed = text.strip();
+        if (!trimmed.contains("|")) {
+            return false;
+        }
+        String[] lines = trimmed.split("\r?\n", 3);
+        if (lines.length < 2) {
+            return false;
+        }
+        return isMarkdownTableHeaderAndDelimiter(lines[0], lines[1]);
+    }
+
+    /**
+     * Kiểm tra xem 2 dòng đầu có phải là Header row và Delimiter row hợp lệ của bảng Markdown hay không.
+     */
+    public static boolean isMarkdownTableHeaderAndDelimiter(String line0, String line1) {
+        if (line0 == null || line1 == null) {
+            return false;
+        }
+        String l0 = line0.strip();
+        String l1 = line1.strip();
+        if (!l0.contains("|") || !l1.contains("|") || !l1.contains("-")) {
+            return false;
+        }
+        // Dòng delimiter trong Markdown chỉ chứa |, -, :, và khoảng trắng
+        return l1.matches("^[\\|\\s\\-\\:]+$");
+    }
+
+    /**
      * Phân tách bảng Markdown (| col1 | col2 |\n|---|---|\n| r1 | r2 |)
      * sao cho mỗi phần giữ lại dòng tiêu đề (header + separator).
      */
     public static List<String> splitTableText(String tableText, int maxChars) {
-        String[] lines = tableText.split("\r?\n");
+        if (tableText == null || tableText.isBlank()) {
+            return List.of();
+        }
+        String cleanTable = tableText.strip();
+        String[] lines = cleanTable.split("\r?\n");
         if (lines.length <= 2) {
-            return splitPlainText(tableText, maxChars);
+            return splitPlainText(cleanTable, maxChars);
         }
 
         // Kiểm tra xem 2 dòng đầu có phải là header và delimiter không
-        boolean hasHeader = lines[0].contains("|") && lines[1].contains("|") && lines[1].contains("-");
-        String headerPrefix = hasHeader ? lines[0] + "\n" + lines[1] : "";
+        boolean hasHeader = isMarkdownTableHeaderAndDelimiter(lines[0], lines[1]);
+        String headerPrefix = hasHeader ? lines[0].strip() + "\n" + lines[1].strip() : "";
         int startIdx = hasHeader ? 2 : 0;
 
         List<String> parts = new ArrayList<>();
@@ -266,7 +304,7 @@ public final class ChunkBuilder {
             parts.add(current.toString().strip());
         }
 
-        return parts.isEmpty() ? List.of(tableText) : parts;
+        return parts.isEmpty() ? List.of(cleanTable) : parts;
     }
 
     /**

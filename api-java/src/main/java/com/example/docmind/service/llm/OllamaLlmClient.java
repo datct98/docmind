@@ -27,13 +27,14 @@ public class OllamaLlmClient implements LlmClient {
 
     private final OllamaProperties props;
     private final RestClient http;
+    private final java.util.concurrent.Semaphore concurrencyGate = new java.util.concurrent.Semaphore(1);
 
     @Autowired
     public OllamaLlmClient(OllamaProperties props) {
         this.props = props;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000);
-        factory.setReadTimeout(Math.max(props.getReadTimeoutMs(), 10000));
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(7500);
         this.http = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
                 .requestFactory(factory)
@@ -48,21 +49,42 @@ public class OllamaLlmClient implements LlmClient {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public String complete(String prompt) {
+        return complete(prompt, null);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public String complete(String prompt, ReasoningBudget budget) {
         long startNs = System.nanoTime();
         String base = props.getBaseUrl() != null ? props.getBaseUrl().replaceAll("/+$", "") : "http://localhost:11434";
         String endpoint = base + "/api/generate";
-        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}", props.getModel(), endpoint);
+        int maxPredictCap = 120;
+        int numPredict = (budget != null && budget.maxTokens() > 0)
+                ? Math.min(budget.maxTokens(), maxPredictCap)
+                : Math.min(props.getNumPredict(), maxPredictCap);
+        double temp = (budget != null && budget.temperature() > 0)
+                ? budget.temperature()
+                : props.getTemperature();
+
+        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, numPredict={}, budgetTier={}",
+                props.getModel(), endpoint, numPredict, budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT");
+
+        if (!concurrencyGate.tryAcquire()) {
+            log.info("[LLM] Ollama concurrency limit reached (1 active slot) -> load-shedding to dynamic grounded fallback");
+            return buildFallbackAnswer(prompt, "Ollama concurrency load shedding");
+        }
         try {
             Map<String, Object> body = Map.of(
                     "model", props.getModel(),
-                    "prompt", prompt,
+                    "prompt", prompt != null ? prompt : "",
                     "stream", false,
+                    "keep_alive", "2h",
                     "options", Map.of(
-                            "temperature", props.getTemperature(),
-                            "num_ctx", props.getNumCtx(),
-                            "num_predict", props.getNumPredict()
+                            "temperature", temp,
+                            "num_ctx", Math.min(props.getNumCtx(), 2048),
+                            "num_predict", numPredict,
+                            "num_thread", 12
                     )
             );
             Map<String, Object> resp = http.post()
@@ -81,6 +103,8 @@ public class OllamaLlmClient implements LlmClient {
             log.warn("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status=fallback (error={})",
                     props.getModel(), latencyMs, e.getMessage());
             return buildFallbackAnswer(prompt, e.getMessage());
+        } finally {
+            concurrencyGate.release();
         }
     }
 

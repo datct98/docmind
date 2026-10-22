@@ -11,6 +11,7 @@ import com.example.docmind.service.llm.LlmClient;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
 import com.example.docmind.service.retrieval.RetrievalService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -1219,6 +1220,73 @@ class FanpageBotServiceTest {
         assertThat(respB.replyBubbles().get(1).text())
                 .containsAnyOf("Sáng hay Chiều", "Số điện thoại", "ngày thường hay cuối tuần")
                 .endsWith("?");
+    }
+
+    @Test
+    @DisplayName("Fast-path for oversized message (> 2000 chars) returns grounded reply under calibrated SLA without calling external retrieval or LLM")
+    void testOversizedMessageFastPathReturnsUnderSla() {
+        String oversized = "Em ơi giá dịch vụ bao nhiêu? ".repeat(100); // ~2900 chars
+        FanpageBotRequest req = new FanpageBotRequest(
+                UUID.randomUUID().toString(),
+                "user-oversized",
+                "Khách hàng",
+                oversized,
+                null,
+                List.of(),
+                List.of(),
+                5
+        );
+        // JIT warmup loop (30 iterations) to eliminate JVM cold-start and classloading latency
+        for (int i = 0; i < 30; i++) {
+            fanpageBotService.handleCustomerMessage(req);
+        }
+
+        long t0 = System.nanoTime();
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+        long elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
+
+        assertThat(elapsedMs).isLessThan(500);
+        assertThat(resp.needsHumanHandoff()).isFalse();
+        assertThat(resp.salesStage()).isEqualTo("DISCOVERY");
+        assertThat(resp.replyText()).contains("129.000");
+        assertThat(resp.triggeredHooks()).contains("OVERSIZED_PAYLOAD_FAST_PATH");
+        verify(llmClient, never()).complete(anyString());
+        verify(retrievalService, never()).retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any());
+    }
+
+    @Test
+    @DisplayName("Retail bargaining 'bớt thêm đi shop' at floor defends catalog floor without false B2B handoff")
+    void testRetailBargainingDoesNotTriggerWholesaleHandoff() {
+        UUID docId = UUID.randomUUID();
+        var chunk = sampleChunk("Gói DS01 | Lấy ráy tai cơ bản | 129.000 VNĐ | 30 phút. Ưu đãi: Giảm 10% khi mua 5 buổi.");
+        when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
+        when(llmClient.complete(anyString())).thenReturn(
+                "Dạ gói Lấy ráy tai cơ bản 129.000 VNĐ là mức giá mềm nhất rồi ạ, bên em còn có ưu đãi giảm 10% khi mua liệu trình 5 buổi Chị nhé!"
+        );
+
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "giá sao em"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói mềm nhất là 129.000 VNĐ ạ.")
+        );
+        FanpageBotRequest req = new FanpageBotRequest(
+                UUID.randomUUID().toString(),
+                "user-bargain",
+                "Khách hàng",
+                "bớt thêm đi shop",
+                null,
+                history,
+                List.of(docId),
+                5
+        );
+        FanpageBotResponse resp = fanpageBotService.handleCustomerMessage(req);
+
+        assertThat(resp.needsHumanHandoff()).isFalse();
+        assertThat(resp.handoffCategory()).isNull();
+        assertThat(resp.replyText())
+                .doesNotContain("nhu cầu hợp tác")
+                .doesNotContain("Quản lý kinh doanh")
+                .contains("129.000");
     }
 }
 

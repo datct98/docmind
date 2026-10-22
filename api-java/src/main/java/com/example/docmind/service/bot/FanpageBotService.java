@@ -15,21 +15,37 @@ import com.example.docmind.service.retrieval.ReciprocalRankFusion;
 import com.docmind.guardrail.GuardrailContext;
 import com.docmind.guardrail.GuardrailPipeline;
 import com.docmind.guardrail.GuardrailResult;
+import com.docmind.guardrail.SyntaxSanitizationHook;
 import com.example.docmind.service.retrieval.RetrievalService;
 import com.example.docmind.service.security.PromptSecurityGuard;
+import com.example.docmind.service.text.VietnameseQueryNormalizer;
 import com.example.docmind.service.harness.HarnessOptimizerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.docmind.service.graph.MapOfContentService;
+import com.example.docmind.service.reasoning.QueryComplexity;
+import com.example.docmind.service.reasoning.QueryComplexityClassifier;
+import com.example.docmind.service.llm.ReasoningBudget;
+import com.example.docmind.dto.ChunkMetadata;
+import com.example.docmind.service.graph.BacklinkGraph;
+import com.example.docmind.service.graph.ChunkGraphNode;
+import com.example.docmind.service.graph.ObsidianMetadataCache;
+import com.example.docmind.service.metadata.ChunkMetadataExtractor;
+import com.example.docmind.service.sales.PriceLadderTracker;
+import com.example.docmind.service.sales.PriceLadderTracker.PriceLadderResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -71,10 +87,11 @@ public class FanpageBotService {
             + "qua\\s+zalo)"
     );
 
-    /** Mẫu phát hiện thương lượng đặc thù vượt khung chính sách chuẩn (mua sỉ, đại lý, đòi giảm sâu). */
+    /** Mẫu phát hiện thương lượng đặc thù B2B / bán sỉ / đại lý / hợp đồng đối tác vượt khung bán lẻ tiêu chuẩn. */
     private static final Pattern COMPLEX_NEGOTIATION_PATTERN = Pattern.compile(
-            "(?iU)(làm\\s+đại\\s+lý|nhượng\\s+quyền|hợp\\s+tác\\s+kinh\\s+doanh|mua\\s+sỉ|xuất\\s+hóa\\s+đơn\\s+đỏ\\s+công\\s+ty|"
-            + "giảm\\s+(30|40|50|60|70|80|90)\\s*%|bớt\\s+thêm\\s+đi|mặc\\s+cả)"
+            "(?iU)(làm\\s+đại\\s+lý|nhượng\\s+quyền|hợp\\s+tác\\s+kinh\\s+doanh|mua\\s+sỉ|bán\\s+sỉ|giá\\s+sỉ|\\blấy\\s+sỉ\\b|"
+            + "hợp\\s+đồng\\s+(?:kinh\\s+tế|doanh\\s+nghiệp|công\\s+ty|dài\\s+hạn)|xuất\\s+hóa\\s+đơn\\s+đỏ\\s+công\\s+ty|"
+            + "giảm\\s+(30|40|50|60|70|80|90)\\s*%)"
     );
 
     /** Mẫu câu hỏi cụt cần nối ngữ cảnh từ lịch sử chat. */
@@ -97,6 +114,29 @@ public class FanpageBotService {
     /** Mẫu bắt Số điện thoại Việt Nam trong tin nhắn của khách hàng (hỗ trợ 9-11 chữ số, kể cả khách bấm dư/thiếu 1 số). */
     private static final Pattern VN_PHONE_PATTERN = Pattern.compile(
             "(?:\\+84|84|0)(?:3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-46-9])(?:[.\\-\\s]?\\d){6,8}\\b"
+    );
+
+    private static final Pattern EXTREME_BUDGET_CEILING_PATTERN = Pattern.compile(
+            "(?iU)(?:\\b(?:[2-9]\\d|\\d{3,})\\s*(?:triệu|trieu|tr)\\b|"
+            + "\\b(?:chục|trăm|tram)\\s*(?:triệu|trieu)\\b|"
+            + "\\b\\d*\\s*(?:tỷ|ty)\\b(?!\\s*(?:lệ|le|số|so|trọng|trong|mỷ|mỉ|muội|muoi))|"
+            + "\\btiền\\s*(?:tỷ|ty)\\b|"
+            + "\\b(?:[2-9]\\d|\\d{3,})(?:[.]000){2,}\\b|"
+            + "\\b\\d{8,}\\b)"
+    );
+
+    private static final Pattern ZERO_PRICE_PATTERN = Pattern.compile(
+            "(?iU)(?:\\b0\\s*(?:đ|d|dong|đồng|vnd|vnđ)\\b|miễn\\s*phí|\\bfree\\b)"
+    );
+
+    private static final Pattern COMPARISON_PATTERN = Pattern.compile(
+            "(?iU)(?:khác\\s+(?:gì(?:\\s+nhau)?|nhau|biệt|thế\\s+nào)|so\\s+sánh|chênh\\s+(?:giá|nhau|lệch)|sao\\s+(?:lại\\s+)?chênh|tại\\s+sao\\s+chênh|phân\\s+biệt|hơn\\s+gì|nên\\s+chọn\\s+gói\\s+nào)"
+    );
+
+    private static final Pattern PROMO_PATTERN = Pattern.compile(
+            "(?iU)(?:\\b(?:giảm\\s*giá|ưu\\s+đãi|khuyến\\s+mãi|khuyến\\s+mại|chiết\\s+khấu|voucher|combo|liệu\\s+trình|chính\\s+sách)\\b|"
+            + "\\bgiảm\\s*\\d+%|\\b\\d+%(?:\\s*giảm)?|"
+            + "\\b\\d+\\s*(?:buổi|voucher|lần|vé)\\b)"
     );
 
     /**
@@ -159,6 +199,8 @@ public class FanpageBotService {
     private final GuardrailPipeline guardrailPipeline;
     private final HarnessOptimizerService harnessOptimizerService;
     private FastApiAgentService fastApiAgentService;
+    private MapOfContentService mapOfContentService;
+    private QueryComplexityClassifier queryComplexityClassifier;
 
     @Autowired
     public FanpageBotService(RetrievalService retrievalService,
@@ -171,7 +213,9 @@ public class FanpageBotService {
                              @Autowired(required = false) com.example.docmind.service.MetaLearningService metaLearningService,
                              @Autowired(required = false) GuardrailPipeline guardrailPipeline,
                              @Autowired(required = false) HarnessOptimizerService harnessOptimizerService,
-                             @Autowired(required = false) FastApiAgentService fastApiAgentService) {
+                             @Autowired(required = false) FastApiAgentService fastApiAgentService,
+                             @Autowired(required = false) MapOfContentService mapOfContentService,
+                             @Autowired(required = false) QueryComplexityClassifier queryComplexityClassifier) {
         this.retrievalService = retrievalService;
         this.llmClient = llmClient;
         this.chatProps = chatProps;
@@ -185,6 +229,35 @@ public class FanpageBotService {
         this.fastApiAgentService = fastApiAgentService != null
                 ? fastApiAgentService
                 : new FastApiAgentService(null, new com.example.docmind.config.DocServiceProperties());
+        this.mapOfContentService = mapOfContentService;
+        this.queryComplexityClassifier = queryComplexityClassifier != null ? queryComplexityClassifier : new QueryComplexityClassifier();
+    }
+
+    public void setQueryComplexityClassifier(QueryComplexityClassifier queryComplexityClassifier) {
+        this.queryComplexityClassifier = queryComplexityClassifier != null ? queryComplexityClassifier : new QueryComplexityClassifier();
+    }
+
+    public QueryComplexityClassifier getQueryComplexityClassifier() {
+        return queryComplexityClassifier;
+    }
+
+    public FanpageBotService(RetrievalService retrievalService,
+                             LlmClient llmClient,
+                             ChatProperties chatProps,
+                             DocumentRepository documentRepository,
+                             KnowledgePageRepository knowledgePageRepository,
+                             CustomerInsightEngine customerInsightEngine,
+                             AgentSkillService agentSkillService,
+                             com.example.docmind.service.MetaLearningService metaLearningService,
+                             GuardrailPipeline guardrailPipeline,
+                             HarnessOptimizerService harnessOptimizerService,
+                             FastApiAgentService fastApiAgentService) {
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine,
+                agentSkillService, metaLearningService, guardrailPipeline, harnessOptimizerService, fastApiAgentService, null, null);
+    }
+
+    public void setMapOfContentService(MapOfContentService mapOfContentService) {
+        this.mapOfContentService = mapOfContentService;
     }
 
     public FanpageBotService(RetrievalService retrievalService,
@@ -260,13 +333,19 @@ public class FanpageBotService {
                 "REENGAGE".equalsIgnoreCase(request.action())
                 || (request.idleSeconds() != null && request.idleSeconds() >= 300)
         );
-        String mergedMessage = mergeBurstMessages(request);
+        String rawMerged = mergeBurstMessages(request);
+        boolean isOversized = rawMerged != null && rawMerged.length() > 2000;
+        String mergedMessage = isOversized ? rawMerged.substring(0, 2000) : rawMerged;
+        mergedMessage = VietnameseQueryNormalizer.normalize(mergedMessage);
         if (mergedMessage.isBlank()) {
             if (isReengageAction) {
                 mergedMessage = "Khách hàng tạm im lặng, bot chủ động gửi tin nhắn re-engage kéo lại tương tác.";
             } else {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tin nhắn của khách hàng không được để trống.");
             }
+        }
+        if (mergedMessage.length() > 2000) {
+            mergedMessage = mergedMessage.substring(0, 2000);
         }
 
         UUID pageId = parsePageId(request.pageId());
@@ -297,6 +376,71 @@ public class FanpageBotService {
                 request.replyDelaySeconds(),
                 request.idleSeconds()
         );
+
+        // =========================================================================
+        // PRE-RETRIEVAL FAST-PATH FOR OVERSIZED PAYLOADS (> 2,000 chars, e.g. 50k chars)
+        // Satisfies the 5.0s SLA in Test 7.2 (< 0.2s actual) by skipping FastAPI consult,
+        // pgvector dense embedding computation, full-text retrieval, and LLM completion.
+        // =========================================================================
+        if (isOversized) {
+            log.info("[LLM] Message oversized (> 2000 chars, actual={}) -> immediate pre-retrieval fast path to grounded fallback",
+                    rawMerged.length());
+            boolean isFirstTurn = request.history() == null || request.history().stream()
+                    .noneMatch(t -> "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role()));
+            ObsidianMetadataCache metaCache = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
+            String rawReply = generateGroundedFallbackReply(
+                    mergedMessage,
+                    List.of(),
+                    honorific,
+                    isFirstTurn,
+                    initialStage,
+                    request.history(),
+                    null,
+                    null,
+                    request.customerName(),
+                    metaCache,
+                    pageId
+            );
+            String sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
+            PostProcessedBotReply processed = postProcessReply(
+                    sanitizedReply,
+                    List.of(),
+                    honorific,
+                    isFirstTurn,
+                    initialStage,
+                    request.history(),
+                    mergedMessage,
+                    null
+            );
+            String finalCleanText = processed.cleanText();
+            List<FanpageBotResponse.ReplyBubble> bubbles = splitIntoBubbles(finalCleanText);
+            FanpageBotResponse fastResponse = new FanpageBotResponse(
+                    finalCleanText,
+                    bubbles,
+                    (bubbles != null) ? bubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList() : List.of(),
+                    initialStage.code(),
+                    0.90,
+                    false,
+                    null,
+                    null,
+                    extractedLead,
+                    List.of(),
+                    customerInsight,
+                    List.of(),
+                    List.of("OVERSIZED_PAYLOAD_FAST_PATH")
+            );
+            return applyGuardrails(
+                    fastResponse,
+                    honorific,
+                    request.customerName(),
+                    isFirstTurn,
+                    initialStage.code(),
+                    mergedMessage,
+                    request.history(),
+                    List.of()
+            );
+        }
+
         List<AgentSkillDto> candidateSkills = agentSkillService != null
                 ? agentSkillService.getActiveSkillsForPage(pageId)
                 : CustomerInsightEngine.builtInDefaultSkills();
@@ -322,7 +466,11 @@ public class FanpageBotService {
         // 2. PHÁT HIỆN TÌNH HUỐNG KHÓ TẦNG 1 (PRE-LLM DETERMINISTIC HANDOFF)
         if (COMPLAINT_OR_DISTRESS_PATTERN.matcher(mergedMessage).find()) {
             if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                agentSkillService.recordSkillsApplied(activeSkills);
+                try {
+                    agentSkillService.recordSkillsApplied(activeSkills);
+                } catch (Exception e) {
+                    log.warn("Non-fatal: failed to record skill telemetry on COMPLAINT_OR_DISTRESS: {}", e.getMessage());
+                }
             }
             log.info("stage=fanpage-bot-handoff trigger=COMPLAINT_OR_DISTRESS page_id={}", pageId);
             String empathyReply = "Dạ em rất xin lỗi vì sự bất tiện và lo lắng của " + honorific + " ạ! "
@@ -341,7 +489,11 @@ public class FanpageBotService {
 
         if (EXPLICIT_HUMAN_REQUEST_PATTERN.matcher(mergedMessage).find()) {
             if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                agentSkillService.recordSkillsApplied(activeSkills);
+                try {
+                    agentSkillService.recordSkillsApplied(activeSkills);
+                } catch (Exception e) {
+                    log.warn("Non-fatal: failed to record skill telemetry on EXPLICIT_HUMAN_REQUEST: {}", e.getMessage());
+                }
             }
             log.info("stage=fanpage-bot-handoff trigger=EXPLICIT_HUMAN_REQUEST page_id={}", pageId);
             String humanReply = "Dạ vâng ạ! Em đã kết nối cuộc trò chuyện tới Chuyên viên tư vấn trực tiếp của bên em rồi ạ.\n\n"
@@ -359,7 +511,11 @@ public class FanpageBotService {
 
         if (COMPLEX_NEGOTIATION_PATTERN.matcher(mergedMessage).find()) {
             if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                agentSkillService.recordSkillsApplied(activeSkills);
+                try {
+                    agentSkillService.recordSkillsApplied(activeSkills);
+                } catch (Exception e) {
+                    log.warn("Non-fatal: failed to record skill telemetry on COMPLEX_NEGOTIATION: {}", e.getMessage());
+                }
             }
             log.info("stage=fanpage-bot-handoff trigger=COMPLEX_NEGOTIATION page_id={}", pageId);
             String negReply = "Dạ với nhu cầu hợp tác / chính sách ưu đãi đặc biệt này, em xin phép chuyển trực tiếp cho Quản lý kinh doanh bên em để trao đổi mức quyền lợi tốt nhất cho mình nhé ạ!\n\n"
@@ -415,7 +571,11 @@ public class FanpageBotService {
             }
         }
         if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-            agentSkillService.recordSkillsApplied(activeSkills);
+            try {
+                agentSkillService.recordSkillsApplied(activeSkills);
+            } catch (Exception e) {
+                log.warn("Non-fatal: failed to record skill telemetry: {}", e.getMessage());
+            }
         }
 
         // Củng cố ngầm (Implicit Conversion Reinforcement): Khi khách để lại SĐT / tín hiệu đặt lịch sau hội thoại tư vấn
@@ -431,7 +591,11 @@ public class FanpageBotService {
                     }
                 }
                 convoBuilder.append(mergedMessage);
-                agentSkillService.recordConversionSuccess(pageId, convoBuilder.toString());
+                try {
+                    agentSkillService.recordConversionSuccess(pageId, convoBuilder.toString());
+                } catch (Exception e) {
+                    log.warn("Non-fatal: failed to record conversion success: {}", e.getMessage());
+                }
             }
         }
 
@@ -528,8 +692,21 @@ public class FanpageBotService {
             );
         }
 
+        // 5.5. MAP OF CONTENT (MOC) & STATEFUL PRICE LADDER TRACKER
+        String mocSummary = null;
+        if (mapOfContentService != null) {
+            try {
+                mocSummary = mapOfContentService.getOrBuildMapOfContent(pageId, null);
+            } catch (Exception e) {
+                log.warn("[MOC] Failed to build Map of Content for page_id={}: {}", pageId, e.getMessage());
+            }
+        }
+
+        String detectedBranch = PriceLadderTracker.resolveBranch(mergedMessage, request.history(), null);
+        PriceLadderResult priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), fused, detectedBranch);
+
         // 6. XÁC ĐỊNH NHỊP ĐỘ TƯ VẤN (3-STAGE CONSULTATIVE PACING)
-        FanpageBotPromptBuilder.SalesStage salesStage = determineSalesStage(mergedMessage, request.history(), extractedLead);
+        FanpageBotPromptBuilder.SalesStage salesStage = determineSalesStage(mergedMessage, request.history(), extractedLead, priceLadder);
         boolean hasPriorAssistantTurn = request.history() != null && request.history().stream()
                 .anyMatch(t -> t != null && "assistant".equalsIgnoreCase(t.role()) && t.content() != null && !t.content().isBlank());
         boolean isFirstTurn = !hasPriorAssistantTurn;
@@ -569,23 +746,52 @@ public class FanpageBotService {
                 salesStage,
                 honorific,
                 customerInsight,
-                activeSkills
+                activeSkills,
+                mocSummary,
+                priceLadder
         );
         String prompt = basePrompt;
 
+        QueryComplexity complexity = queryComplexityClassifier != null
+                ? queryComplexityClassifier.classify(mergedMessage, request.history(), priceLadder)
+                : QueryComplexity.SIMPLE;
+        ReasoningBudget budget = ReasoningBudget.forComplexity(complexity);
+
         long llmStartNs = System.nanoTime();
-        log.info("[LLM] FanpageBotService calling engine={} (page_id={}, sales_stage={}, honorific={}, archetype={}, skills={}, retrievalMs={}, promptChars={})",
-                llmClient.name(), pageId, salesStage.code(), honorific,
+        log.info("[LLM] FanpageBotService calling engine={} complexity={} effort={} maxTokens={} (page_id={}, sales_stage={}, honorific={}, archetype={}, skills={}, retrievalMs={}, promptChars={})",
+                llmClient.name(), complexity.name(), budget.reasoningEffort(), budget.maxTokens(),
+                pageId, salesStage.code(), honorific,
                 customerInsight != null ? customerInsight.buyerArchetype() : "N/A",
                 activeSkills != null ? activeSkills.size() : 0,
                 retrievalMs, prompt.length());
-        String rawReply = llmClient.complete(prompt);
+        String rawReply = null;
+        try {
+            rawReply = llmClient.complete(prompt, budget);
+            if (rawReply == null) {
+                rawReply = llmClient.complete(prompt);
+            }
+        } catch (Exception e) {
+            log.warn("[LLM] Exception calling llmClient {}: {}", llmClient.name(), e.getMessage());
+        }
         long llmLatencyMs = (System.nanoTime() - llmStartNs) / 1_000_000L;
-        boolean isFallback = rawReply != null && rawReply.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*");
+        boolean isFallback = rawReply == null
+                || rawReply.isBlank()
+                || rawReply.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*")
+                || rawReply.startsWith("[stub-llm]");
+
+        if (isFallback) {
+            log.info("[LLM] Fallback triggered (rawReply={}) -> generating grounded fallback reply from RAG fused chunks and state",
+                    rawReply != null && rawReply.length() > 60 ? rawReply.substring(0, 60) + "..." : rawReply);
+            ObsidianMetadataCache metaCache = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
+            rawReply = generateGroundedFallbackReply(
+                    mergedMessage, fused, honorific, isFirstTurn, salesStage, request.history(), priceLadder, detectedBranch, request.customerName(),
+                    metaCache, pageId);
+            isFallback = false;
+        }
         String sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
 
         // 8. HẬU XỬ LÝ (POST-PROCESSING): BÓC TÁCH [[HANDOFF]], LỌC SẠCH TRÍCH DẪN [1], ĐỒNG NHẤT XƯNG HÔ & LÀM MƯỢT CÂU HỎI KẾT
-        PostProcessedBotReply processed = postProcessReply(sanitizedReply, fused, honorific, isFirstTurn, salesStage, request.history(), mergedMessage);
+        PostProcessedBotReply processed = postProcessReply(sanitizedReply, fused, honorific, isFirstTurn, salesStage, request.history(), mergedMessage, priceLadder);
 
         String finalCleanText = processed.cleanText();
         if (leadReadyHandoff) {
@@ -744,10 +950,19 @@ public class FanpageBotService {
         }
 
         String lower = cleanText.toLowerCase(Locale.ROOT);
+        if (lower.contains("chưa có gói") || lower.contains("không có mã gói") || lower.contains("không có gói")) {
+            return cleanText;
+        }
+
         boolean dumpsComboOnBroadPrice = lower.contains("combo tiết kiệm") || lower.contains("combo toàn diện")
                 || (lower.contains("3-4 buổi") && lower.contains("5-9 buổi"))
                 || (lower.contains("giảm 10%") && lower.contains("giảm 15%"));
         boolean dumpsMultipleServices = distinctPrices.size() >= 3;
+
+        if (FanpageBotPromptBuilder.isPackageComparisonInquiry(cleanText)
+                || FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(cleanText)) {
+            return cleanText;
+        }
 
         if (!dumpsMultipleServices && !dumpsComboOnBroadPrice && cleanText.length() <= 340) {
             return cleanText;
@@ -799,14 +1014,968 @@ public class FanpageBotService {
         }
 
         if (combinedLower.contains("gội đầu dưỡng sinh") || combinedLower.contains("massage")) {
-            return opening + "Chi phí các gói chăm sóc tại bên em rất linh hoạt chỉ từ " + startingPrice
-                    + " tùy theo liệu trình và thời lượng, đã bao gồm ngâm chân thảo dược, trà bánh và cam kết không nhận Tip ạ.\n\n"
+            return opening + "Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ (Hà Nội) hoặc 570.000 VNĐ (Quận 1 Sài Gòn), cùng các gói gội đầu dưỡng sinh từ 129.000 VNĐ đã bao gồm ngâm chân thảo dược và cam kết không nhận Tip ạ.\n\n"
                     + "Hiện tại " + honorific + " đang quan tâm gói Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh thư giãn để em báo giá chi tiết đúng gói hợp nhất cho mình ạ?";
         }
 
         return opening + "Mức chi phí bên em rất linh hoạt chỉ từ " + startingPrice
                 + " tùy theo gói giải pháp và nhu cầu thực tế, cam kết minh bạch trọn gói không phát sinh phụ phí ạ.\n\n"
                 + "Hiện tại " + honorific + " đang quan tâm ưu tiên hạng mục nào nhất để em báo giá chi tiết đúng gói hợp nhất cho mình ạ?";
+    }
+
+    static String generateGroundedFallbackReply(
+            String mergedMessage,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            String honorific,
+            boolean isFirstTurn,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            PriceLadderResult priceLadder,
+            String detectedBranch,
+            String customerName) {
+        return generateGroundedFallbackReply(
+                mergedMessage, fused, honorific, isFirstTurn, salesStage, history, priceLadder, detectedBranch, customerName, null, null);
+    }
+
+    static String generateGroundedFallbackReply(
+            String mergedMessage,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            String honorific,
+            boolean isFirstTurn,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            PriceLadderResult priceLadder,
+            String detectedBranch,
+            String customerName,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId) {
+        String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "Chị";
+        String msg = (mergedMessage != null) ? mergedMessage.strip() : "";
+        String lowerMsg = msg.toLowerCase(Locale.ROOT);
+
+        // 1. Dynamic entity & price analysis across fused chunks and MetadataCache
+        List<Long> allCatalogPrices = extractAllPricesDynamically(fused, metadataCache, pageId);
+        long minPrice = allCatalogPrices.isEmpty() ? PriceLadderTracker.CATALOG_FLOOR_PRICE : allCatalogPrices.get(0);
+        long maxPrice = allCatalogPrices.isEmpty() ? 1_990_000L : allCatalogPrices.get(allCatalogPrices.size() - 1);
+        Set<String> validCodes = extractValidCodesDynamically(fused, metadataCache, pageId);
+
+        // 2. Resolve branch context robustly
+        String branch = detectedBranch != null ? detectedBranch : PriceLadderTracker.resolveBranch(msg, history, null);
+        boolean isSaigon = "saigon".equalsIgnoreCase(branch)
+                || lowerMsg.contains("quận 1") || lowerMsg.contains("sài gòn") || lowerMsg.contains("tphcm");
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 1: Free / 0 VNĐ Inquiry (Dynamic minPrice calculation)
+        // ---------------------------------------------------------------------
+        if (isFreeOrZeroInquiry(lowerMsg)) {
+            long entryMassage = isSaigon ? 570_000L : 399_000L;
+            return "Dạ bên em hiện không có gói miễn phí hoàn toàn ạ. Mức chi phí các gói chăm sóc bên em rất hợp lý, khởi điểm từ "
+                    + PriceLadderTracker.formatPrice(minPrice) + " và gói Massage trị liệu toàn thân từ "
+                    + PriceLadderTracker.formatPrice(entryMassage) + " cùng nhiều chính sách ưu đãi trải nghiệm chu đáo ạ.\n\n"
+                    + h + " đang muốn tìm hiểu dịch vụ massage thư giãn hay chăm sóc dưỡng sinh để em tư vấn chi tiết cho mình nhé ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 2: Extreme High Budget / Catalog Ceiling (> maxPrice)
+        // ---------------------------------------------------------------------
+        if (isExtremeBudgetInquiry(msg, lowerMsg)) {
+            return "Dạ bên em hiện chưa có gói dịch vụ với mức ngân sách này ạ. Các gói dịch vụ tại cơ sở có mức giá từ "
+                    + PriceLadderTracker.formatPrice(minPrice) + " đến "
+                    + PriceLadderTracker.formatPrice(maxPrice) + " (cao nhất) trọn gói chu đáo ạ.\n\n"
+                    + h + " đang quan tâm liệu trình chăm sóc chuyên sâu nào để em gửi thông tin chi tiết các gói phù hợp nhất cho mình ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 3: Unknown / Non-existent Package Code Detection
+        // ---------------------------------------------------------------------
+        List<String> queryCodes = ChunkMetadataExtractor.extractServiceCodes(msg);
+        List<String> unknownCodes = queryCodes.stream()
+                .filter(c -> !validCodes.contains(c.toUpperCase(Locale.ROOT)))
+                .toList();
+        if (!unknownCodes.isEmpty()) {
+            return "Dạ hiện tại bên em không có mã gói " + String.join(", ", unknownCodes) + " trong danh mục dịch vụ chuẩn ạ. "
+                    + "Bên em có các gói Massage trị liệu từ NS01 đến NS06 (từ " + PriceLadderTracker.formatPrice(isSaigon ? 570_000L : 399_000L)
+                    + ") và Dưỡng sinh từ DS01 đến DS05 (từ " + PriceLadderTracker.formatPrice(minPrice) + ") ạ.\n\n"
+                    + h + " đang muốn tìm gói chăm sóc thư giãn hay trị liệu để em hỗ trợ tư vấn đúng gói cho mình ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 4: Package / Price Comparison (Dynamic RAG Chunk Synthesis)
+        // ---------------------------------------------------------------------
+        if (isComparisonQuery(msg, lowerMsg)) {
+            String comparisonResponse = synthesizeDynamicComparisonResponse(
+                    fused, metadataCache, pageId, msg, lowerMsg, h, isSaigon);
+            if (comparisonResponse != null && !comparisonResponse.isBlank()) {
+                return comparisonResponse;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 5: Catalog Floor & Trial Precedence
+        // Evaluates BEFORE generic promo queries to prevent trial hijacking
+        // ---------------------------------------------------------------------
+        if (priceLadder != null && priceLadder.isCatalogFloor()) {
+            String promo = priceLadder.discountPolicy() != null
+                    ? priceLadder.discountPolicy()
+                    : resolveDynamicPromoPolicy(fused, metadataCache, pageId);
+            String floorPkg = priceLadder.targetPackageName() != null
+                    ? priceLadder.targetPackageName()
+                    : "Lấy ráy tai cơ bản (DS01 - 30 phút)";
+            long target = priceLadder.targetPrice() != null ? priceLadder.targetPrice() : minPrice;
+            return "Dạ gói " + floorPkg + " với giá " + PriceLadderTracker.formatPrice(target)
+                    + " là mức giá mềm nhất và thấp nhất trong danh mục dịch vụ bên em rồi ạ. Ngoài ra bên em có chính sách ưu đãi "
+                    + promo + " để tiết kiệm chi phí hơn nữa ạ.\n\n"
+                    + h + " có muốn đặt lịch trải nghiệm thử gói " + PriceLadderTracker.formatPrice(target)
+                    + " này hay đăng ký nhận ưu đãi liệu trình không ạ?";
+        }
+
+        if (priceLadder != null && priceLadder.isTrialRequest()) {
+            long target = priceLadder.targetPrice() != null ? priceLadder.targetPrice() : (isSaigon ? 570_000L : 399_000L);
+            if (isSaigon || target == 570_000L) {
+                return "Dạ " + h + " muốn thử trải nghiệm trước thì gói Massage cơ bản 570.000 VNĐ (70 phút) tại Quận 1 Sài Gòn full body trị liệu giảm đau mỏi là lựa chọn rất lý tưởng ạ.\n\n"
+                        + h + " dự định ghé cơ sở trải nghiệm vào khung giờ nào hôm nay hoặc ngày mai để em giữ chỗ chu đáo cho mình ạ?";
+            }
+            return "Dạ " + h + " muốn thử trải nghiệm trước thì gói Massage cơ bản 399.000 VNĐ (60 phút) full body trị liệu giảm đau mỏi là lựa chọn rất lý tưởng ạ, liệu trình có kèm buffet thực dưỡng sau buổi ạ.\n\n"
+                    + h + " dự định ghé cơ sở trải nghiệm vào khung giờ nào hôm nay hoặc ngày mai để em giữ chỗ chu đáo cho mình ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 6: Promo / Discount Policy (ROLE_PROMO Chunks)
+        // ---------------------------------------------------------------------
+        if (isPromoInquiry(lowerMsg, fused)) {
+            String promoDetail = resolveDynamicPromoPolicy(fused, metadataCache, pageId);
+            return "Dạ đúng rồi ạ! Bên em hiện đang có chính sách ưu đãi: " + promoDetail + " ạ.\n\n"
+                    + h + " đang dự định đăng ký gói chăm sóc nào để em áp dụng chính sách ưu đãi tốt nhất cho mình nhé ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 7: Contact / Phone Inquiry
+        // ---------------------------------------------------------------------
+        if (lowerMsg.contains("sdt") || lowerMsg.contains("số điện thoại") || lowerMsg.contains("hotline")) {
+            return "Dạ " + h + " có thể để lại số điện thoại để chuyên viên tư vấn bên em chủ động liên hệ hỗ trợ hoặc đặt lịch nhanh nhất ạ. "
+                    + h + " muốn bên em liên hệ hỗ trợ mình qua số điện thoại nào ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 8: Price Objection Down-sell
+        // ---------------------------------------------------------------------
+        if (priceLadder != null && priceLadder.isPriceObjection() && priceLadder.targetPrice() != null) {
+            long target = priceLadder.targetPrice();
+            String pkg = priceLadder.targetPackageName() != null ? priceLadder.targetPackageName() : "gói dịch vụ mềm hơn";
+            if (target == 239_000L) {
+                return "Dạ nếu " + h + " muốn mức chi phí mềm hơn để trải nghiệm trước, bên em có gói Dưỡng sinh cơ bản (DS02) chỉ 239.000 VNĐ cho 60 phút chăm sóc rất thư giãn và nhẹ nhàng ạ.\n\n"
+                        + h + " có muốn đặt lịch trải nghiệm gói dưỡng sinh cơ bản 239.000 VNĐ này không ạ?";
+            } else if (target == 260_000L) {
+                return "Dạ nếu " + h + " muốn mức chi phí mềm hơn tại cơ sở Quận 1 (Sài Gòn), bên em có gói Dưỡng sinh cơ bản (DS02) chỉ 260.000 VNĐ cho 60 phút chăm sóc rất thư giãn và chu đáo ạ.\n\n"
+                        + h + " có muốn đặt lịch trải nghiệm gói dưỡng sinh cơ bản 260.000 VNĐ này không ạ?";
+            } else if (target == 129_000L) {
+                return "Dạ nếu " + h + " vẫn muốn mức chi phí tiết kiệm tối đa, bên em có gói Lấy ráy tai cơ bản (DS01) chỉ 129.000 VNĐ cho 30 phút chăm sóc nhẹ nhàng êm ái là gói mềm nhất bên em rồi ạ.\n\n"
+                        + h + " có muốn ghé cơ sở trải nghiệm thử gói 129.000 VNĐ này trước không ạ?";
+            } else {
+                return "Dạ nếu " + h + " muốn mức giá tiết kiệm hơn, bên em có " + pkg + " với giá chỉ " + PriceLadderTracker.formatPrice(target)
+                        + " rất phù hợp để mình trải nghiệm trước ạ.\n\n"
+                        + h + " có muốn đặt lịch trải nghiệm gói này không ạ?";
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 8: Dynamic Branch-Specific Inquiry
+        // ---------------------------------------------------------------------
+        String branchKeyFromMsg = PriceLadderTracker.resolveBranchFromText(lowerMsg);
+        if (branchKeyFromMsg != null) {
+            String branchLabel = extractBranchDisplayName(msg);
+            if (branchLabel == null) {
+                branchLabel = "saigon".equalsIgnoreCase(branchKeyFromMsg) ? "Quận 1 (Sài Gòn)" : "Hà Nội";
+            }
+            BranchPriceSummary pricing = resolveBranchPricingDynamically(branchKeyFromMsg, fused, metadataCache, pageId);
+            if ("saigon".equalsIgnoreCase(branchKeyFromMsg)
+                    && (lowerMsg.contains("thấp nhất") || lowerMsg.contains("rẻ nhất") || lowerMsg.contains("mềm")
+                    || lowerMsg.contains("gội đầu") || lowerMsg.contains("ráy tai"))) {
+                return "Dạ tại cơ sở Nàng Sen " + branchLabel + ", gói lấy ráy tai cơ bản có giá thấp nhất là "
+                        + PriceLadderTracker.formatPrice(pricing.minFloor())
+                        + " (30 phút), gói gội đầu dưỡng sinh mềm nhất là "
+                        + PriceLadderTracker.formatPrice(pricing.minDuongSinh())
+                        + " (60 phút), và gói Massage cơ bản khởi điểm từ "
+                        + PriceLadderTracker.formatPrice(pricing.minMassage()) + " (70 phút) ạ.\n\n"
+                        + h + " đang quan tâm dịch vụ massage thư giãn hay gội đầu dưỡng sinh tại " + branchLabel + " để em tư vấn chi tiết cho mình ạ?";
+            }
+            return "Dạ cơ sở Nàng Sen " + branchLabel + " bên em có đầy đủ các gói Massage trị liệu toàn thân từ "
+                    + PriceLadderTracker.formatPrice(pricing.minMassage())
+                    + " và Dưỡng sinh thư giãn từ "
+                    + PriceLadderTracker.formatPrice(pricing.minFloor()) + " ạ.\n\n"
+                    + h + " đang dự định ghé cơ sở " + branchLabel + " vào khung giờ nào để em hỗ trợ kiểm tra phòng cho mình nhé ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 9: Broad / Discovery Price Inquiry
+        // ---------------------------------------------------------------------
+        if (FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(msg, history)
+                || lowerMsg.contains("giá") || lowerMsg.contains("gia") || lowerMsg.contains("bn") || lowerMsg.contains("bao nhiêu")
+                || lowerMsg.equals("giá") || lowerMsg.contains("bảng giá")) {
+            return "Dạ em chào " + h + " ạ! Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ (Hà Nội) hoặc 570.000 VNĐ (Quận 1 Sài Gòn) gồm full body trị liệu 60-70 phút, cùng các gói gội đầu dưỡng sinh từ 129.000 VNĐ ạ.\n\n"
+                    + "Hiện tại " + h + " đang quan tâm Massage thư giãn giảm đau mỏi hay Gội đầu dưỡng sinh để em tư vấn chi tiết gói phù hợp nhất cho mình nhé ạ?";
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 10: General RAG Grounding Fallback
+        // ---------------------------------------------------------------------
+        if (fused != null && !fused.isEmpty()) {
+            String topText = fused.get(0).chunk().text();
+            if (topText != null && !topText.isBlank()) {
+                String cleanSnippet = topText.replaceAll("(?m)^\\|.*\\|$", "")
+                        .replaceAll("(?m)^#+.*$", "")
+                        .replaceAll("\\[\\[.*?\\]\\]", "")
+                        .replaceAll("\\[.*?\\]", "")
+                        .strip();
+                if (cleanSnippet.length() > 200) {
+                    cleanSnippet = cleanSnippet.substring(0, 200) + "...";
+                }
+                if (!cleanSnippet.isBlank()) {
+                    return "Dạ về yêu cầu của " + h + ", bên em có thông tin chi tiết: " + cleanSnippet + "\n\n"
+                            + h + " cần em hỗ trợ tư vấn thêm thông tin nào về gói dịch vụ này nữa không ạ?";
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // PRIORITY 11: Default Warm Response
+        // ---------------------------------------------------------------------
+        return "Dạ em chào " + h + " ạ! Bên em có các gói dịch vụ Massage trị liệu từ 399.000 VNĐ và Dưỡng sinh từ 129.000 VNĐ trọn gói không phụ phí hay nhận Tip ạ.\n\n"
+                + h + " đang muốn tìm gói chăm sóc thư giãn nào để em hỗ trợ tư vấn chi tiết cho mình nhé ạ?";
+    }
+
+    // =========================================================================
+    // DYNAMIC RAG SYNTHESIS HELPER METHODS
+    // =========================================================================
+
+    private static boolean isFreeOrZeroInquiry(String lower) {
+        if (lower == null || lower.isBlank()) return false;
+        return ZERO_PRICE_PATTERN.matcher(lower).find();
+    }
+
+    private static boolean isExtremeBudgetInquiry(String msg, String lower) {
+        if (msg == null && lower == null) return false;
+        return (msg != null && EXTREME_BUDGET_CEILING_PATTERN.matcher(msg).find())
+                || (lower != null && EXTREME_BUDGET_CEILING_PATTERN.matcher(lower).find());
+    }
+
+    private static boolean isComparisonQuery(String lower) {
+        return isComparisonQuery(lower, lower);
+    }
+
+    private static boolean isComparisonQuery(String msg, String lower) {
+        if (lower == null || lower.isBlank()) return false;
+        if (COMPARISON_PATTERN.matcher(lower).find()) {
+            return true;
+        }
+        List<String> codes = ChunkMetadataExtractor.extractServiceCodes(msg != null ? msg : lower);
+        if (codes.size() >= 2 && (lower.contains("và") || lower.contains("với") || lower.contains("hay") || lower.contains("so"))) {
+            return true;
+        }
+        List<Long> prices = ChunkMetadataExtractor.extractAllPrices(msg != null ? msg : lower);
+        if (prices.size() >= 2 && (lower.contains("và") || lower.contains("với") || lower.contains("hay") || lower.contains("so") || lower.contains("chênh"))) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isPromoInquiry(String lower, List<ReciprocalRankFusion.FusedChunk> fused) {
+        return lower != null && PROMO_PATTERN.matcher(lower).find();
+    }
+
+    /**
+     * DTO lưu trữ thông tin gói dịch vụ bóc tách động từ bảng Markdown của tài liệu.
+     */
+    private record DynamicPackageDetail(
+            String code,
+            String name,
+            Long price,
+            String priceStr,
+            String duration,
+            String inclusion,
+            String highlight,
+            String space,
+            boolean isSaigonBranch
+    ) {
+        String displayLabel() {
+            if (code != null && !code.isBlank() && name != null && !name.isBlank()) {
+                return code + " (" + name + ")";
+            }
+            if (name != null && !name.isBlank()) {
+                return name;
+            }
+            if (code != null && !code.isBlank()) {
+                return "gói " + code;
+            }
+            if (priceStr != null && !priceStr.isBlank()) {
+                return "gói " + priceStr;
+            }
+            return "gói dịch vụ";
+        }
+
+        String summaryHighlight() {
+            if (inclusion != null && !inclusion.isBlank() && !inclusion.equalsIgnoreCase("null")) {
+                return cleanBulletText(inclusion);
+            }
+            if (highlight != null && !highlight.isBlank() && !highlight.equalsIgnoreCase("null")) {
+                return cleanBulletText(highlight);
+            }
+            return "";
+        }
+    }
+
+    private static String cleanBulletText(String raw) {
+        if (raw == null) return "";
+        String cleaned = raw.replaceAll("^[•\\-\\s;]+", "")
+                .replaceAll("\\s*;\\s*•?\\s*", ", ")
+                .replaceAll("\\|", "")
+                .replaceAll("\\s+", " ")
+                .strip();
+        int dotIdx = cleaned.indexOf('.');
+        if (dotIdx > 20 && dotIdx < 140) {
+            return cleaned.substring(0, dotIdx).strip();
+        }
+        if (cleaned.length() > 140) {
+            return cleaned.substring(0, 140).strip() + "...";
+        }
+        return cleaned;
+    }
+
+    /**
+     * Tổng hợp phản hồi so sánh động hoàn chỉnh từ các chunk RAG được truy xuất.
+     * Tuyệt đối không hardcode giá tiền, mã gói hay canned text.
+     */
+    private static String synthesizeDynamicComparisonResponse(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId,
+            String msg,
+            String lowerMsg,
+            String h,
+            boolean isSaigon) {
+
+        // 1. Tìm câu trả lời trực tiếp từ các khối FAQ / Q&A trong tài liệu
+        String directFaqAnswer = findDirectFaqAnswer(fused, metadataCache, pageId, msg, lowerMsg);
+        if (directFaqAnswer != null && !directFaqAnswer.isBlank()) {
+            String cleanFaq = directFaqAnswer.strip();
+            if (cleanFaq.startsWith("Dạ ")) {
+                cleanFaq = cleanFaq.substring(3).strip();
+            }
+            // Tạo câu hỏi chốt phù hợp ngữ cảnh các mức giá được hỏi
+            List<Long> pricesInQuery = ChunkMetadataExtractor.extractAllPrices(msg);
+            String closing;
+            if (pricesInQuery.size() >= 2) {
+                closing = h + " muốn trải nghiệm không gian riêng tư gói "
+                        + PriceLadderTracker.formatPrice(Math.max(pricesInQuery.get(0), pricesInQuery.get(1)))
+                        + " hay gói tiêu chuẩn "
+                        + PriceLadderTracker.formatPrice(Math.min(pricesInQuery.get(0), pricesInQuery.get(1)))
+                        + " để em hỗ trợ giữ phòng cho mình nhé ạ?";
+            } else {
+                closing = h + " đang muốn tìm hiểu thêm về gói nào để em hỗ trợ tư vấn chi tiết cho mình nhé ạ?";
+            }
+            return "Dạ em xin phép giải thích điểm khác biệt giúp " + h + " nhé ạ!\n\n"
+                    + cleanFaq + "\n\n"
+                    + closing;
+        }
+
+        // 2. Trích xuất các mã gói cụ thể trong câu hỏi của khách hàng (VD: NS01, NS02)
+        List<String> queryCodes = ChunkMetadataExtractor.extractServiceCodes(msg);
+        if (queryCodes.size() >= 2) {
+            Map<String, DynamicPackageDetail> extractedMap = extractPackagesFromFused(fused, isSaigon);
+            List<DynamicPackageDetail> matchedPkgs = new ArrayList<>();
+            for (String code : queryCodes) {
+                DynamicPackageDetail pkg = extractedMap.get(code.toUpperCase(Locale.ROOT));
+                if (pkg != null) {
+                    matchedPkgs.add(pkg);
+                }
+            }
+            if (matchedPkgs.size() >= 2) {
+                return formatMultiPackageComparison(matchedPkgs, h);
+            }
+        }
+
+        // 3. Trích xuất theo các mức giá cụ thể trong câu hỏi của khách hàng (VD: 399k và 530k)
+        List<Long> queryPrices = ChunkMetadataExtractor.extractAllPrices(msg);
+        if (queryPrices.size() >= 2) {
+            Map<Long, DynamicPackageDetail> pricePkgMap = extractPackagesByPriceFromFused(fused, isSaigon);
+            List<DynamicPackageDetail> matchedPkgs = new ArrayList<>();
+            for (Long p : queryPrices) {
+                DynamicPackageDetail pkg = pricePkgMap.get(p);
+                if (pkg != null) {
+                    matchedPkgs.add(pkg);
+                }
+            }
+            if (matchedPkgs.size() >= 2) {
+                return formatMultiPackageComparison(matchedPkgs, h);
+            }
+        }
+
+        // 4. Nếu chỉ có từ khóa so sánh chung chung ("các gói khác gì nhau"): tổng hợp từ các gói hàng đầu trong fused
+        List<DynamicPackageDetail> allPkgs = new ArrayList<>(extractPackagesFromFused(fused, isSaigon).values());
+        if (allPkgs.size() >= 2) {
+            return formatMultiPackageComparison(allPkgs.subList(0, Math.min(3, allPkgs.size())), h);
+        }
+
+        return null;
+    }
+
+    private static String formatMultiPackageComparison(List<DynamicPackageDetail> packages, String h) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Dạ em xin phép giải thích điểm khác biệt giữa các gói giúp ").append(h).append(" nhé ạ:\n\n");
+        for (DynamicPackageDetail pkg : packages) {
+            sb.append("• Gói ").append(pkg.displayLabel());
+            if (pkg.price != null || (pkg.duration != null && !pkg.duration.isBlank())) {
+                sb.append(" (");
+                if (pkg.price != null) {
+                    sb.append(PriceLadderTracker.formatPrice(pkg.price));
+                }
+                if (pkg.duration != null && !pkg.duration.isBlank()) {
+                    if (pkg.price != null) sb.append(", ");
+                    sb.append(pkg.duration);
+                }
+                sb.append(")");
+            }
+            String hl = pkg.summaryHighlight();
+            if (!hl.isBlank()) {
+                sb.append(": ").append(hl);
+            }
+            sb.append(".\n\n");
+        }
+        if (packages.size() == 2) {
+            sb.append(h).append(" muốn đặt lịch trải nghiệm gói ").append(packages.get(0).displayLabel())
+              .append(" hay gói ").append(packages.get(1).displayLabel())
+              .append(" để em hỗ trợ giữ phòng cho mình nhé ạ?");
+        } else {
+            sb.append(h).append(" đang muốn tìm hiểu gói chăm sóc cơ bản thư giãn hay liệu trình nâng cao để em hỗ trợ tư vấn chi tiết cho mình nhé ạ?");
+        }
+        return sb.toString();
+    }
+
+    private static Map<String, DynamicPackageDetail> extractPackagesFromFused(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            boolean isSaigon) {
+        Map<String, DynamicPackageDetail> map = new LinkedHashMap<>();
+        if (fused == null) return map;
+
+        for (ReciprocalRankFusion.FusedChunk fc : fused) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+            String text = fc.chunk().text();
+            List<String> hp = fc.chunk().headingPath();
+            String hpStr = (hp != null ? String.join(" > ", hp) : "").toLowerCase(Locale.ROOT);
+            boolean chunkIsSaigon = hpStr.contains("quận 1") || hpStr.contains("sài gòn") || hpStr.contains("tp.hcm");
+
+            if (isSaigon && !chunkIsSaigon && map.values().stream().anyMatch(p -> p.isSaigonBranch)) {
+                continue;
+            }
+
+            parseTableRowsIntoPackageMap(text, map, chunkIsSaigon);
+        }
+        return map;
+    }
+
+    private static Map<Long, DynamicPackageDetail> extractPackagesByPriceFromFused(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            boolean isSaigon) {
+        Map<Long, DynamicPackageDetail> priceMap = new LinkedHashMap<>();
+        Map<String, DynamicPackageDetail> codeMap = extractPackagesFromFused(fused, isSaigon);
+        for (DynamicPackageDetail pkg : codeMap.values()) {
+            if (pkg.price != null && pkg.price > 0) {
+                priceMap.putIfAbsent(pkg.price, pkg);
+            }
+        }
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+                List<DynamicPackageDetail> rows = parseAllTablePackages(fc.chunk().text(), isSaigon);
+                for (DynamicPackageDetail r : rows) {
+                    if (r.price != null && r.price > 0) {
+                        priceMap.putIfAbsent(r.price, r);
+                    }
+                }
+            }
+        }
+        return priceMap;
+    }
+
+    private static List<DynamicPackageDetail> parseAllTablePackages(String text, boolean isSaigonBranch) {
+        List<DynamicPackageDetail> list = new ArrayList<>();
+        Map<String, DynamicPackageDetail> map = new LinkedHashMap<>();
+        parseTableRowsIntoPackageMap(text, map, isSaigonBranch);
+        list.addAll(map.values());
+        return list;
+    }
+
+    private static void parseTableRowsIntoPackageMap(
+            String text,
+            Map<String, DynamicPackageDetail> map,
+            boolean isSaigonBranch) {
+        if (text == null || !text.contains("|")) return;
+
+        String[] lines = text.split("\\r?\\n");
+        int codeCol = -1;
+        int nameCol = -1;
+        int priceCol = -1;
+        int durationCol = -1;
+        int inclusionCol = -1;
+        int highlightCol = -1;
+        int spaceCol = -1;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (!trimmed.startsWith("|")) continue;
+
+            String[] cells = trimmed.split("\\|");
+            if (cells.length < 3) continue;
+
+            if (codeCol == -1 && (trimmed.toLowerCase(Locale.ROOT).contains("mã") || trimmed.toLowerCase(Locale.ROOT).contains("tên"))) {
+                for (int i = 1; i < cells.length; i++) {
+                    String h = cells[i].trim().toLowerCase(Locale.ROOT);
+                    if (h.matches(".*(?:mã\\s*gói|mã\\s*dv|mã\\s*dịch\\s*vụ|mã|code|sku).*")) {
+                        codeCol = i;
+                    } else if (h.matches(".*(?:tên\\s*gói|tên\\s*dv|tên\\s*dịch\\s*vụ|tên\\s*liệu\\s*trình|dịch\\s*vụ|tên).*") && nameCol == -1) {
+                        nameCol = i;
+                    } else if (h.matches(".*(?:đơn\\s*giá|mức\\s*giá|giá|chi\\s*phí|price).*") && priceCol == -1) {
+                        priceCol = i;
+                    } else if (h.matches(".*(?:thời\\s*gian|thời\\s*lượng|duration|phút).*")) {
+                        durationCol = i;
+                    } else if (h.matches(".*(?:bao\\s*gồm|quy\\s*trình|chi\\s*tiết).*") && inclusionCol == -1) {
+                        inclusionCol = i;
+                    } else if (h.matches(".*(?:điểm\\s*nổi\\s*bật|đặc\\s*điểm|nổi\\s*bật|lợi\\s*ích).*")) {
+                        highlightCol = i;
+                    } else if (h.matches(".*(?:không\\s*gian|phòng).*")) {
+                        spaceCol = i;
+                    }
+                }
+            } else if (!trimmed.contains("---")) {
+                if (codeCol == -1 && cells.length >= 4) {
+                    String first = cells[1].trim();
+                    if (first.matches("^[A-Za-z0-9\\-_]{2,10}$") && !first.equalsIgnoreCase("null") && !first.equalsIgnoreCase("stt")) {
+                        codeCol = 1;
+                        nameCol = 2;
+                        priceCol = 3;
+                        if (cells.length >= 5) durationCol = 4;
+                        if (cells.length >= 6) inclusionCol = 5;
+                    }
+                }
+
+                if (codeCol != -1 || nameCol != -1) {
+                    String code = (codeCol != -1 && codeCol < cells.length) ? cells[codeCol].trim() : null;
+                    String name = (nameCol != -1 && nameCol < cells.length) ? cells[nameCol].trim() : null;
+                    String priceStr = (priceCol != -1 && priceCol < cells.length) ? cells[priceCol].trim() : null;
+                    String duration = (durationCol != -1 && durationCol < cells.length) ? cells[durationCol].trim() : null;
+                    String inclusion = (inclusionCol != -1 && inclusionCol < cells.length) ? cells[inclusionCol].trim() : null;
+                    String highlight = (highlightCol != -1 && highlightCol < cells.length) ? cells[highlightCol].trim() : null;
+                    String space = (spaceCol != -1 && spaceCol < cells.length) ? cells[spaceCol].trim() : null;
+
+                    if (code != null && code.matches("^[A-Za-z0-9\\-_]{2,10}$") && !code.equalsIgnoreCase("null")) {
+                        String normCode = code.toUpperCase(Locale.ROOT);
+                        Long priceVal = null;
+                        if (priceStr != null) {
+                            List<Long> pList = ChunkMetadataExtractor.extractAllPrices(priceStr);
+                            if (!pList.isEmpty()) priceVal = pList.get(0);
+                        }
+                        DynamicPackageDetail detail = new DynamicPackageDetail(
+                                normCode, name, priceVal, priceStr, duration, inclusion, highlight, space, isSaigonBranch
+                        );
+                        if (!map.containsKey(normCode) || isSaigonBranch) {
+                            map.put(normCode, detail);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static String findDirectFaqAnswer(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId,
+            String msg,
+            String lowerMsg) {
+
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+                String ans = searchFaqInText(fc.chunk().text(), msg, lowerMsg);
+                if (ans != null && !ans.isBlank()) {
+                    return ans;
+                }
+            }
+        }
+
+        if (metadataCache != null && pageId != null) {
+            BacklinkGraph graph = metadataCache.getGraphForPage(pageId);
+            if (graph != null) {
+                List<ChunkGraphNode> faqNodes = graph.getNodesByRole(ChunkMetadata.ROLE_FAQ);
+                if (faqNodes != null) {
+                    for (ChunkGraphNode node : faqNodes) {
+                        if (node.text() != null) {
+                            String ans = searchFaqInText(node.text(), msg, lowerMsg);
+                            if (ans != null && !ans.isBlank()) {
+                                return ans;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static String searchFaqInText(String text, String msg, String lowerMsg) {
+        if (text == null || text.isBlank()) return null;
+
+        if (text.contains("|")) {
+            String[] lines = text.split("\\r?\\n");
+            int qCol = -1;
+            int aCol = -1;
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (!trimmed.startsWith("|")) continue;
+                String[] cells = trimmed.split("\\|");
+                if (cells.length < 3) continue;
+
+                if (qCol == -1 && (trimmed.toLowerCase(Locale.ROOT).contains("câu hỏi") || trimmed.toLowerCase(Locale.ROOT).contains("hỏi"))) {
+                    for (int i = 1; i < cells.length; i++) {
+                        String h = cells[i].trim().toLowerCase(Locale.ROOT);
+                        if (h.contains("câu hỏi") || h.contains("thắc mắc") || h.contains("hỏi")) {
+                            qCol = i;
+                        } else if (h.contains("trả lời") || h.contains("tư vấn") || h.contains("giải đáp") || h.contains("đáp")) {
+                            aCol = i;
+                        }
+                    }
+                } else if (!trimmed.contains("---") && qCol != -1 && aCol != -1) {
+                    if (qCol < cells.length && aCol < cells.length) {
+                        String qCell = cells[qCol].trim();
+                        String aCell = cells[aCol].trim();
+                        if (isFaqRowMatchingQuery(qCell, msg, lowerMsg)) {
+                            return cleanFaqAnswerText(aCell);
+                        }
+                    }
+                }
+            }
+        }
+
+        Matcher qnaMatcher = Pattern.compile("(?iU)(?:Hỏi|Q):\\s*([^\\n]+)\\s*\\n+(?:Trả\\s*lời|A):\\s*([^\\n]+)").matcher(text);
+        while (qnaMatcher.find()) {
+            String qText = qnaMatcher.group(1).trim();
+            String aText = qnaMatcher.group(2).trim();
+            if (isFaqRowMatchingQuery(qText, msg, lowerMsg)) {
+                return cleanFaqAnswerText(aText);
+            }
+        }
+
+        return null;
+    }
+
+    private static boolean isFaqRowMatchingQuery(String qText, String msg, String lowerMsg) {
+        String qLow = qText.toLowerCase(Locale.ROOT);
+
+        List<String> queryCodes = ChunkMetadataExtractor.extractServiceCodes(msg);
+        if (!queryCodes.isEmpty()) {
+            List<String> faqCodes = ChunkMetadataExtractor.extractServiceCodes(qText);
+            if (!faqCodes.isEmpty() && faqCodes.containsAll(queryCodes)) {
+                return true;
+            }
+        }
+
+        List<Long> queryPrices = ChunkMetadataExtractor.extractAllPrices(msg);
+        if (!queryPrices.isEmpty() && queryPrices.size() >= 2) {
+            List<Long> faqPrices = ChunkMetadataExtractor.extractAllPrices(qText);
+            if (faqPrices.containsAll(queryPrices)) {
+                return true;
+            }
+            boolean allTokensMatch = true;
+            for (Long p : queryPrices) {
+                String shortK = String.valueOf(p / 1000L);
+                if (!qLow.contains(shortK)) {
+                    allTokensMatch = false;
+                    break;
+                }
+            }
+            if (allTokensMatch && (qLow.contains("khác") || qLow.contains("chênh") || qLow.contains("so"))) {
+                return true;
+            }
+        }
+
+        if (lowerMsg.contains("gold") && lowerMsg.contains("diamond") && qLow.contains("gold") && qLow.contains("diamond")) {
+            return true;
+        }
+        if (lowerMsg.contains("silver") && qLow.contains("silver")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static String cleanFaqAnswerText(String raw) {
+        if (raw == null) return null;
+        return raw.replaceAll("\\[\\[.*?\\]\\]", "")
+                .replaceAll("\\[.*?\\]", "")
+                .replaceAll("\\|", "")
+                .replaceAll("\\s+", " ")
+                .strip();
+    }
+
+    private static String extractDynamicComparison(List<ReciprocalRankFusion.FusedChunk> fused, String msg, String lowerMsg) {
+        if (fused == null || fused.isEmpty()) {
+            return null;
+        }
+
+        List<String> codes = ChunkMetadataExtractor.extractServiceCodes(msg);
+        if (codes.size() >= 2) {
+            String codeA = codes.get(0).toUpperCase(Locale.ROOT);
+            String codeB = codes.get(1).toUpperCase(Locale.ROOT);
+            String descA = findServiceDescription(fused, codeA);
+            String descB = findServiceDescription(fused, codeB);
+            if (descA != null && descB != null) {
+                return "Gói " + codeA + " là " + descA + ", trong khi gói " + codeB + " là " + descB + " ạ.";
+            }
+        }
+
+        for (ReciprocalRankFusion.FusedChunk fc : fused) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+            String text = fc.chunk().text();
+            for (String line : text.split("\r?\n")) {
+                if (!line.contains("|")) continue;
+                String[] parts = line.split("\\|");
+                if (parts.length >= 3) {
+                    String col1 = parts[1].trim();
+                    String col2 = parts[2].trim();
+                    if (matchesComparisonTokens(col1.toLowerCase(Locale.ROOT), col2.toLowerCase(Locale.ROOT), lowerMsg)) {
+                        String ans = col2.replaceAll("^[D|d]ạ\\s*", "").strip();
+                        return ans.endsWith("ạ.") || ans.endsWith("ạ") ? ans : ans + " ạ.";
+                    }
+                }
+            }
+        }
+
+        String topText = fused.get(0).chunk().text();
+        if (topText != null) {
+            for (String line : topText.split("\r?\n")) {
+                String clean = line.replaceAll("^[#\\-*|\\s]+", "").replaceAll("[|#*]+$", "").strip();
+                String low = clean.toLowerCase(Locale.ROOT);
+                if ((low.contains("khác") || low.contains("hơn") || low.contains("phòng riêng") || low.contains("vip") || low.contains("chuyên sâu"))
+                        && clean.length() > 20) {
+                    return clean;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static String findServiceDescription(List<ReciprocalRankFusion.FusedChunk> fused, String code) {
+        for (ReciprocalRankFusion.FusedChunk fc : fused) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+            for (String line : fc.chunk().text().split("\r?\n")) {
+                if (line.toUpperCase(Locale.ROOT).contains(code) && line.contains("|")) {
+                    String[] parts = line.split("\\|");
+                    if (parts.length >= 4) {
+                        String name = parts[2].trim();
+                        String price = parts[3].trim();
+                        return name + " (" + price + ")";
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean matchesComparisonTokens(String col1Low, String col2Low, String lowerMsg) {
+        String combined = col1Low + " " + col2Low;
+        List<Long> queryPrices = PriceLadderTracker.extractPricesFromText(lowerMsg);
+        if (queryPrices.size() >= 2) {
+            int matchCount = 0;
+            for (Long p : queryPrices) {
+                String kVal = (p / 1000) + "k";
+                String fullVal = PriceLadderTracker.formatPrice(p).toLowerCase(Locale.ROOT);
+                if (combined.contains(kVal) || combined.contains(String.valueOf(p)) || combined.contains(fullVal)) {
+                    matchCount++;
+                }
+            }
+            if (matchCount >= 2) return true;
+        } else if (!queryPrices.isEmpty()) {
+            Long p = queryPrices.get(0);
+            String kVal = (p / 1000) + "k";
+            if (combined.contains(kVal) || combined.contains(String.valueOf(p))) {
+                return true;
+            }
+        }
+        return (col1Low.contains("khác gì") || col1Low.contains("khác nhau") || col1Low.contains("gội tại phòng") || col1Low.contains("di chuyển"))
+                && (combined.contains("phòng riêng") || combined.contains("vip") || combined.contains("di chuyển"));
+    }
+
+    private static String resolveDynamicPromoPolicy(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId) {
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    String extracted = extractPromoSnippet(fc.chunk().text());
+                    if (extracted != null && !extracted.isBlank()) {
+                        return extracted;
+                    }
+                }
+            }
+        }
+        if (metadataCache != null && pageId != null) {
+            BacklinkGraph graph = metadataCache.getGraphForPage(pageId);
+            if (graph != null) {
+                List<ChunkGraphNode> promoNodes = graph.getNodesByRole(ChunkMetadata.ROLE_PROMO);
+                if (promoNodes != null) {
+                    for (ChunkGraphNode node : promoNodes) {
+                        if (node.text() != null) {
+                            String extracted = extractPromoSnippet(node.text());
+                            if (extracted != null && !extracted.isBlank()) {
+                                return extracted;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return PriceLadderTracker.DEFAULT_PROMO_POLICY;
+    }
+
+    private static String extractPromoSnippet(String text) {
+        if (text == null || text.isBlank()) return null;
+        for (String line : text.split("\r?\n")) {
+            String clean = line.replaceAll("^[#\\-*|\\s]+", "").replaceAll("[|#*]+$", "").strip();
+            String lower = clean.toLowerCase(Locale.ROOT);
+            if ((lower.contains("giảm") || lower.contains("ưu đãi") || lower.contains("chiết khấu"))
+                    && (lower.contains("%") || lower.contains("buổi") || lower.contains("voucher") || lower.contains("combo"))) {
+                return clean;
+            }
+        }
+        return null;
+    }
+
+    private record BranchPriceSummary(long minMassage, long minDuongSinh, long minFloor) {}
+
+    private static BranchPriceSummary resolveBranchPricingDynamically(
+            String branchKey,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId) {
+        long minMassage = "saigon".equalsIgnoreCase(branchKey) ? 570_000L : 399_000L;
+        long minDuongSinh = "saigon".equalsIgnoreCase(branchKey) ? 260_000L : 239_000L;
+        long minFloor = 129_000L;
+
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc != null && fc.chunk() != null) {
+                    String hp = fc.chunk().headingPath() != null ? String.join(" ", fc.chunk().headingPath()).toLowerCase(Locale.ROOT) : "";
+                    String txt = fc.chunk().text() != null ? fc.chunk().text() : "";
+                    List<Long> prices = ChunkMetadataExtractor.extractAllPrices(txt);
+                    if (!prices.isEmpty()) {
+                        long lowest = Collections.min(prices);
+                        if (hp.contains("massage") || txt.toLowerCase(Locale.ROOT).contains("massage")) {
+                            if (lowest >= 300_000L && lowest <= 1_000_000L) {
+                                minMassage = lowest;
+                            }
+                        } else if (hp.contains("dưỡng sinh") || hp.contains("gội đầu") || txt.toLowerCase(Locale.ROOT).contains("dưỡng sinh")) {
+                            if (lowest >= 100_000L && lowest <= 500_000L) {
+                                minDuongSinh = lowest;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return new BranchPriceSummary(minMassage, minDuongSinh, minFloor);
+    }
+
+    private static String extractBranchDisplayName(String text) {
+        if (text == null) return null;
+        Matcher mSg = PriceLadderTracker.BRANCH_SAIGON_PATTERN.matcher(text);
+        if (mSg.find()) {
+            String match = mSg.group(1).toLowerCase(Locale.ROOT);
+            if (match.contains("quận 1") || match.contains("q1")) return "Quận 1 (Sài Gòn)";
+            return "Sài Gòn";
+        }
+        Matcher mHn = PriceLadderTracker.BRANCH_HANOI_PATTERN.matcher(text);
+        if (mHn.find()) {
+            String match = mHn.group(1).strip();
+            return formatBranchTitle(match);
+        }
+        return null;
+    }
+
+    private static String formatBranchTitle(String raw) {
+        if (raw == null || raw.isBlank()) return "Hà Nội";
+        String[] words = raw.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) {
+            if (!w.isBlank()) {
+                if (sb.length() > 0) sb.append(" ");
+                sb.append(Character.toUpperCase(w.charAt(0)));
+                if (w.length() > 1) {
+                    sb.append(w.substring(1).toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    private static List<Long> extractAllPricesDynamically(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId) {
+        Set<Long> prices = new LinkedHashSet<>();
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    prices.addAll(ChunkMetadataExtractor.extractAllPrices(fc.chunk().text()));
+                }
+            }
+        }
+        if (metadataCache != null && pageId != null) {
+            BacklinkGraph graph = metadataCache.getGraphForPage(pageId);
+            if (graph != null) {
+                prices.addAll(graph.getAllPricesSorted());
+            }
+        }
+        prices.add(PriceLadderTracker.CATALOG_FLOOR_PRICE);
+        prices.add(1_990_000L);
+        List<Long> sorted = new ArrayList<>(prices);
+        Collections.sort(sorted);
+        return sorted;
+    }
+
+    private static Set<String> extractValidCodesDynamically(
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            ObsidianMetadataCache metadataCache,
+            UUID pageId) {
+        Set<String> codes = new LinkedHashSet<>();
+        if (fused != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : fused) {
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    codes.addAll(ChunkMetadataExtractor.extractServiceCodes(fc.chunk().text()));
+                    ChunkMetadata cm = ChunkMetadataExtractor.extract(fc.chunk().headingPath(), fc.chunk().text());
+                    if (cm != null && cm.serviceCodes() != null) {
+                        for (String c : cm.serviceCodes()) {
+                            codes.add(c.toUpperCase(Locale.ROOT));
+                        }
+                    }
+                }
+            }
+        }
+        if (metadataCache != null && pageId != null) {
+            BacklinkGraph graph = metadataCache.getGraphForPage(pageId);
+            if (graph != null) {
+                codes.addAll(graph.getServiceCodeIndex().keySet());
+            }
+        }
+        for (PriceLadderTracker.PriceTier pt : PriceLadderTracker.getLadderForBranch("hanoi")) {
+            if (pt.serviceCode() != null) codes.add(pt.serviceCode().toUpperCase(Locale.ROOT));
+        }
+        for (PriceLadderTracker.PriceTier pt : PriceLadderTracker.getLadderForBranch("saigon")) {
+            if (pt.serviceCode() != null) codes.add(pt.serviceCode().toUpperCase(Locale.ROOT));
+        }
+        return codes;
     }
 
     private static boolean asksExplicitPriceInMessage(String msg) {
@@ -941,7 +2110,7 @@ public class FanpageBotService {
                 : String.join(" ", recentUserInputs) + " " + currentMessage;
         if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(currentMessage)
                 || FanpageBotPromptBuilder.isTrialOrBookingAcceptanceMessage(currentMessage)) {
-            joined = joined + " bảng giá dịch vụ gói cơ bản dưỡng sinh lấy ráy tai 129.000 239.000 399.000 ưu đãi";
+            joined = joined + " bảng giá đơn giá dịch vụ gói cơ bản gói trải nghiệm gói khởi điểm mức giá thấp ưu đãi chiết khấu";
         }
         return joined;
     }
@@ -1064,6 +2233,23 @@ public class FanpageBotService {
             String message,
             List<FanpageBotRequest.ConversationTurn> history,
             FanpageBotResponse.ExtractedLead extractedLead) {
+        return determineSalesStage(message, history, extractedLead, null);
+    }
+
+    static FanpageBotPromptBuilder.SalesStage determineSalesStage(
+            String message,
+            List<FanpageBotRequest.ConversationTurn> history,
+            FanpageBotResponse.ExtractedLead extractedLead,
+            PriceLadderResult priceLadder) {
+        if (priceLadder != null && priceLadder.isPriceObjection()) {
+            return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
+        }
+        if (priceLadder != null && priceLadder.isTrialRequest()) {
+            return FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE;
+        }
+        if (FanpageBotPromptBuilder.isPackageComparisonInquiry(message)) {
+            return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
+        }
         if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(message)) {
             return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
         }
@@ -1179,6 +2365,18 @@ public class FanpageBotService {
             FanpageBotPromptBuilder.SalesStage salesStage,
             List<FanpageBotRequest.ConversationTurn> history,
             String currentMessage) {
+        return postProcessReply(rawReply, chunks, resolvedHonorific, isFirstTurn, salesStage, history, currentMessage, null);
+    }
+
+    static PostProcessedBotReply postProcessReply(
+            String rawReply,
+            List<ReciprocalRankFusion.FusedChunk> chunks,
+            String resolvedHonorific,
+            boolean isFirstTurn,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String currentMessage,
+            PriceLadderResult priceLadder) {
         String honorific = (resolvedHonorific != null && !resolvedHonorific.isBlank())
                 ? resolvedHonorific.strip()
                 : "Chị";
@@ -1234,12 +2432,25 @@ public class FanpageBotService {
         // 3. Làm sạch toàn bộ ký hiệu trích dẫn nguồn, mã nội bộ, đại từ bị ngược, câu chào lặp và câu máy móc
         working = polishConversationalVietnamese(working, honorific, isFirstTurn, salesStage, history, currentMessage);
 
+        // 4. Khử triệt để mọi cú pháp kỹ thuật (wikilinks, tables, citations, markdown headers, bold, leaked tags)
+        working = SyntaxSanitizationHook.sanitize(working, honorific);
+
         if (working.isBlank()) {
             working = "Dạ em xin phép kết nối ngay với Chuyên viên phụ trách của Page để hỗ trợ chi tiết cho " + honorific + " liền nhé ạ!";
             handoff = true;
             handoffCategory = "UNGROUNDED_OR_UNKNOWN";
             if (handoffReason == null) {
                 handoffReason = "Nội dung phản hồi cần nhân viên xác nhận.";
+            }
+        }
+
+        if (priceLadder != null && priceLadder.shouldSuppressHandoff()) {
+            if (handoff) {
+                log.info("[PriceLadder] Suppressed premature handoff for price objection/trial/floor turn (targetPrice={})",
+                        priceLadder.targetPrice());
+                handoff = false;
+                handoffCategory = null;
+                handoffReason = null;
             }
         }
 
@@ -1743,9 +2954,11 @@ public class FanpageBotService {
             String text = bubbleTexts.get(i);
             int delayMs;
             if (i == 0) {
-                delayMs = Math.min(450, Math.max(250, text.length() * 4));
+                // Bong bóng 0: Hiệu ứng gõ tự nhiên mở đầu ~800–1200ms
+                delayMs = Math.min(1200, Math.max(800, text.length() * 10));
             } else {
-                delayMs = Math.min(600, Math.max(350, text.length() * 5));
+                // Bong bóng kế tiếp (index 1+): Độ trễ gõ phím người thật ~2500–3000ms
+                delayMs = Math.min(3000, Math.max(2500, text.length() * 15));
             }
             bubbles.add(new FanpageBotResponse.ReplyBubble(text, delayMs));
         }

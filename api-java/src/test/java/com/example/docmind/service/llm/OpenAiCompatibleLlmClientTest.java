@@ -612,4 +612,172 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(answer).isEqualTo("Dạ gói Detox Oxy có giá 650.000 VNĐ/buổi ạ.");
         server.verify();
     }
+
+    @Test
+    void testCompleteWithReasoningBudgetSimpleSerializesParameters() {
+        LlmProperties props = new LlmProperties();
+        props.setProvider("openai");
+        props.setApiKey("sk-test-simple-budget");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, objectMapper, builder.build());
+
+        ReasoningBudget simpleBudget = ReasoningBudget.simple();
+
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer sk-test-simple-budget"))
+                .andExpect(jsonPath("$.model").value("gpt-4o-mini"))
+                .andExpect(jsonPath("$.messages[0].content").value("Câu hỏi: Giờ mở cửa spa?"))
+                .andExpect(jsonPath("$.temperature").value(0.1))
+                .andExpect(jsonPath("$.reasoning_effort").value("low"))
+                .andExpect(jsonPath("$.max_tokens").value(600))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "role": "assistant",
+                                "content": "Dạ spa mở cửa từ 9h đến 21h hàng ngày ạ."
+                              }
+                            }
+                          ]
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String answer = client.complete("Câu hỏi: Giờ mở cửa spa?", simpleBudget);
+        assertThat(answer).isEqualTo("Dạ spa mở cửa từ 9h đến 21h hàng ngày ạ.");
+        server.verify();
+    }
+
+    @Test
+    void testCompleteWithReasoningBudgetDeepSerializesParameters() {
+        LlmProperties props = new LlmProperties();
+        props.setProvider("deepseek");
+        props.setModel("deepseek-reasoner");
+        props.setApiKey("sk-deep-budget");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, objectMapper, builder.build());
+
+        ReasoningBudget deepBudget = ReasoningBudget.deepReasoning();
+
+        server.expect(requestTo("https://api.deepseek.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer sk-deep-budget"))
+                .andExpect(jsonPath("$.model").value("deepseek-reasoner"))
+                .andExpect(jsonPath("$.messages[0].content").value("Câu hỏi: So sánh gói 670k và 780k?"))
+                .andExpect(jsonPath("$.temperature").value(0.2))
+                .andExpect(jsonPath("$.reasoning_effort").value("medium"))
+                .andExpect(jsonPath("$.max_tokens").value(2000))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "role": "assistant",
+                                "content": "Dạ gói 780k có thêm bước trị liệu chuyên sâu và tinh dầu thảo dược ạ."
+                              }
+                            }
+                          ]
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String answer = client.complete("Câu hỏi: So sánh gói 670k và 780k?", deepBudget);
+        assertThat(answer).isEqualTo("Dạ gói 780k có thêm bước trị liệu chuyên sâu và tinh dầu thảo dược ạ.");
+        server.verify();
+    }
+
+    @Test
+    void testCompleteWithReasoningBudget_400BadRequestFallbackRetriesWithoutReasoningParameters() {
+        LlmProperties props = new LlmProperties();
+        props.setProvider("openai");
+        props.setModel("gpt-4o-mini");
+        props.setApiKey("sk-fallback-test");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, objectMapper, builder.build());
+
+        ReasoningBudget deepBudget = ReasoningBudget.deepReasoning();
+
+        // Attempt 1: Sends reasoning_effort and max_tokens -> Provider rejects with 400 Bad Request
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").value("medium"))
+                .andExpect(jsonPath("$.max_tokens").value(2000))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "error": {
+                                    "message": "Unsupported parameter: 'reasoning_effort' is not supported by this model",
+                                    "type": "invalid_request_error",
+                                    "param": "reasoning_effort",
+                                    "code": "unsupported_parameter"
+                                  }
+                                }
+                                """));
+
+        // Attempt 2: Fallback retry automatically removes reasoning_effort and max_tokens -> Succeeds with 200 OK
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andExpect(jsonPath("$.max_tokens").doesNotExist())
+                .andExpect(jsonPath("$.temperature").value(0.2))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "role": "assistant",
+                                "content": "Dạ gói 780k được nâng cấp thêm bước xông đá muối Himalaya ạ."
+                              }
+                            }
+                          ]
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String answer = client.complete("Câu hỏi: So sánh gói 670k và 780k?", deepBudget);
+        assertThat(answer).isEqualTo("Dạ gói 780k được nâng cấp thêm bước xông đá muối Himalaya ạ.");
+        server.verify();
+    }
+
+    @Test
+    void testCompleteWithoutReasoningParameters_400BadRequestDoesNotRetryAndReturnsFallback() {
+        LlmProperties props = new LlmProperties();
+        props.setProvider("openai");
+        props.setModel("gpt-4o-mini");
+        props.setApiKey("sk-fallback-test-no-reasoning");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, objectMapper, builder.build());
+
+        // When standard request without reasoning parameters receives 400 Bad Request,
+        // it should not trigger reasoning fallback retry, but immediately return graceful fallback message
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andExpect(jsonPath("$.max_tokens").doesNotExist())
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\": {\"message\": \"Malformed prompt or token limit exceeded\"}}"));
+
+        String answer = client.complete("Câu hỏi: Test standard 400 bad request?");
+        assertThat(answer).contains("[openai-error]");
+        assertThat(answer).contains("400 Bad Request");
+        server.verify();
+    }
 }

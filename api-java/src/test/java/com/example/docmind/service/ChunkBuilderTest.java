@@ -153,4 +153,77 @@ class ChunkBuilderTest {
             assertThat(c.sourceBlockIds()).containsExactly(UUID.fromString(bId));
         }
     }
+
+    @Test
+    void splitTableTextWithLeadingEmptyLinesPreservesHeaders() {
+        StringBuilder md = new StringBuilder("\n\n| Mã SP | Tên Sản Phẩm | Giá Niêm Yết |\n|---|---|---|\n");
+        for (int i = 1; i <= 60; i++) {
+            md.append("| SP").append(String.format("%03d", i)).append(" | Gói dịch vụ cao cấp số ").append(i)
+              .append(" | ").append(500000 + i * 10000).append(" VNĐ |\n");
+        }
+        String tableText = md.toString();
+        List<String> parts = ChunkBuilder.splitTableText(tableText, ChunkBuilder.MAX_CHUNK_CHARS);
+
+        assertThat(parts.size()).isGreaterThanOrEqualTo(2);
+        for (String part : parts) {
+            assertThat(part).startsWith("| Mã SP | Tên Sản Phẩm | Giá Niêm Yết |\n|---|---|---|");
+            assertThat(part.length()).isLessThanOrEqualTo(ChunkBuilder.MAX_CHUNK_CHARS);
+        }
+    }
+
+    @Test
+    void splitTableTextWithAlignmentDelimitersPreservesHeaders() {
+        StringBuilder md = new StringBuilder("| Mã SP | Tên Sản Phẩm | Giá Niêm Yết |\n| :--- | :---: | ---: |\n");
+        for (int i = 1; i <= 60; i++) {
+            md.append("| SP").append(String.format("%03d", i)).append(" | Gói dịch vụ căn bản số ").append(i)
+              .append(" | ").append(300000 + i * 5000).append(" VNĐ |\n");
+        }
+        String tableText = md.toString();
+        List<String> parts = ChunkBuilder.splitTableText(tableText, ChunkBuilder.MAX_CHUNK_CHARS);
+
+        assertThat(parts.size()).isGreaterThanOrEqualTo(2);
+        for (String part : parts) {
+            assertThat(part).startsWith("| Mã SP | Tên Sản Phẩm | Giá Niêm Yết |\n| :--- | :---: | ---: |");
+            assertThat(part.length()).isLessThanOrEqualTo(ChunkBuilder.MAX_CHUNK_CHARS);
+        }
+    }
+
+    @Test
+    void isMarkdownTableHeaderAndDelimiterRejectsTextWithHyphens() {
+        // Line 1 is data containing a hyphen, NOT a delimiter
+        boolean result = ChunkBuilder.isMarkdownTableHeaderAndDelimiter(
+                "| Mã Gói | Tên Dịch Vụ |",
+                "| NS-01 | Liệu trình Non-destructive |"
+        );
+        assertThat(result).isFalse();
+
+        // Valid markdown delimiter
+        boolean valid = ChunkBuilder.isMarkdownTableHeaderAndDelimiter(
+                "| Mã Gói | Tên Dịch Vụ |",
+                "|---|---|"
+        );
+        assertThat(valid).isTrue();
+    }
+
+    @Test
+    void splitsSingleOversizedParagraphContainingMarkdownTableWithHeaders() {
+        UUID docId = UUID.randomUUID();
+        StringBuilder md = new StringBuilder("| Danh mục | Tên gói | Giá |\n|---|---|---|\n");
+        for (int i = 1; i <= 60; i++) {
+            md.append("| Massage | Gói massage body toàn thân ").append(i)
+              .append(" | ").append(500000 + i * 10000).append(" VNĐ |\n");
+        }
+        String text = md.toString();
+        String bId = UUID.randomUUID().toString();
+        // Block is marked as "paragraph" but content is a Markdown table
+        CanonicalBlock pBlock = block(bId, 1, 0, List.of("Bảng Giá"), 0, 0, 100, 100, text);
+
+        List<ChunkBuilder.BuiltChunk> chunks = ChunkBuilder.build(docId, List.of(pBlock));
+        assertThat(chunks.size()).isGreaterThanOrEqualTo(2);
+
+        for (ChunkBuilder.BuiltChunk c : chunks) {
+            assertThat(c.text()).startsWith("| Danh mục | Tên gói | Giá |\n|---|---|---|");
+            assertThat(c.text().length()).isLessThanOrEqualTo(ChunkBuilder.MAX_CHUNK_CHARS);
+        }
+    }
 }

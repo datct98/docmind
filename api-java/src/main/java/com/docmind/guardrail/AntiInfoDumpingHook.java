@@ -54,6 +54,26 @@ public class AntiInfoDumpingHook implements GuardrailHook {
     }
 
     @Override
+    public boolean isApplicable(GuardrailContext context, GuardrailDraft draft) {
+        if (context == null || !context.isDiscoveryStage()) {
+            return false;
+        }
+        if (draft == null || draft.getText() == null || draft.getText().isBlank()) {
+            return false;
+        }
+        if (!hasDigit(draft.getText())) {
+            return false;
+        }
+        String query = context.getCustomerMessage();
+        if (query == null) {
+            return false;
+        }
+        String qLower = query.toLowerCase(Locale.ROOT);
+        return qLower.contains("giá") || qLower.contains("chi phí")
+                || qLower.contains("báo giá") || qLower.contains("bao nhiêu");
+    }
+
+    @Override
     public boolean apply(GuardrailContext context, GuardrailDraft draft) {
         if (!context.isDiscoveryStage()) {
             return false;
@@ -65,9 +85,12 @@ public class AntiInfoDumpingHook implements GuardrailHook {
         }
 
         // Kiểm tra xem draft có xả nhiều mức giá hoặc nhiều gói combo không
-        Set<Long> distinctPrices = extractDistinctPrices(text);
-
         String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("chưa có gói") || lower.contains("không có mã gói") || lower.contains("không có gói")) {
+            return false;
+        }
+
+        Set<Long> distinctPrices = extractDistinctPrices(text);
         boolean dumpsCombos = (lower.contains("combo tiết kiệm") && lower.contains("combo toàn diện"))
                 || (lower.contains("3-4 buổi") && lower.contains("5-9 buổi"))
                 || (lower.contains("giảm 10%") && lower.contains("giảm 15%"));
@@ -89,12 +112,7 @@ public class AntiInfoDumpingHook implements GuardrailHook {
         String combinedChunksLower = context.getKnowledgeChunks() != null
                 ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
                 : "";
-        boolean isDermatologyDoc = combinedChunksLower.contains("soi da") || combinedChunksLower.contains("nám") || combinedChunksLower.contains("mụn");
-
-        // Nếu là tài liệu ngành khác (VD: Massage / Gội đầu dưỡng sinh Nàng Sen), chỉ can thiệp khi xả quá 3 mức giá
-        if (!isDermatologyDoc && distinctPrices.size() < 3) {
-            return false;
-        }
+        boolean isMassageDoc = combinedChunksLower.contains("dưỡng sinh") || combinedChunksLower.contains("gội đầu");
 
         String honorific = context.getCustomerHonorific();
         boolean isFirstTurn = context.isFirstTurn();
@@ -104,14 +122,13 @@ public class AntiInfoDumpingHook implements GuardrailHook {
                 : "Dạ ";
 
         String rewritten;
-        if (isDermatologyDoc) {
+        if (isMassageDoc) {
+            rewritten = opening + "Bên em có gói Massage cơ bản khởi điểm từ 399.000 VNĐ (Hà Nội) hoặc 570.000 VNĐ (Quận 1 Sài Gòn), cùng các gói gội đầu dưỡng sinh từ 129.000 VNĐ đã bao gồm ngâm chân thảo dược và cam kết không nhận Tip ạ.\n\n"
+                    + "Không biết hiện tại " + honorific + " đang quan tâm trải nghiệm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh để em tư vấn gói phù hợp nhất cho mình ạ?";
+        } else {
             rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
                     + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"
                     + "Hiện tại " + honorific + " đang muốn ưu tiên xử lý mụn, mờ nám tàn nhang hay dưỡng căng bóng trẻ hóa để em báo đúng gói hợp nhất cho mình ạ?";
-        } else {
-            rewritten = opening + "Hiện các liệu trình bên em dao động chỉ từ " + startingPrice
-                    + " tùy gói dịch vụ và thời lượng chăm sóc phục hồi ạ.\n\n"
-                    + "Không biết hiện tại " + honorific + " đang quan tâm trải nghiệm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh để em tư vấn gói phù hợp nhất cho mình ạ?";
         }
 
         if (!rewritten.equals(text)) {

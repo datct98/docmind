@@ -309,8 +309,8 @@ public class CustomerInsightEngine {
             momentum = "COOLING_HALF_HEARTED";
             decayReason = "COOLING_HALF_HEARTED";
         } else if (isPriceHesitation && !hasBookingLead) {
-            temp = Math.max(38, effectivePrevTemp - 8);
-            momentum = "PRICE_HESITATION";
+            temp = Math.max(0, effectivePrevTemp - 8);
+            momentum = "COOLING_HALF_HEARTED";
             decayReason = "PRICE_HESITATION";
         } else {
             int calculatedTemp = 36;
@@ -595,7 +595,7 @@ public class CustomerInsightEngine {
             boolean isCooling = (insight != null) && (
                     insight.momentum() != null && insight.momentum().startsWith("COOLING")
             );
-            boolean isPriceHesitationTurn = (insight != null && "PRICE_HESITATION".equals(insight.momentum()))
+            boolean isPriceHesitationTurn = (insight != null && ("PRICE_HESITATION".equals(insight.decayReason()) || "PRICE_HESITATION".equals(insight.momentum())))
                     || PRICE_HESITATION_PATTERN.matcher(msg).find();
 
             if (isPriceHesitationTurn) {
