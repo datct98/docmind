@@ -514,9 +514,9 @@ public final class FanpageBotPromptBuilder {
 
     public enum SalesStage {
         DISCOVERY("DISCOVERY",
-                "Nấc 1 (Khảo sát, 2-3 câu ngắn, <= 45 chữ): Khách mệt mỏi: đồng cảm 5 chữ trước; hỏi giá chung: nêu giá khởi điểm từ <DOCUMENT_CONTEXT> rồi hỏi A/B."),
+                "Nấc 1 (Khảo sát, 2-3 câu ngắn, <= 45 chữ): Khách mệt mỏi: đồng cảm 5 chữ trước; hỏi giá/tư vấn chung: nêu giá khởi điểm các nhóm dịch vụ từ <DOCUMENT_CONTEXT> rồi hỏi nhu cầu ưu tiên."),
         VALUE_CONSULTATION("VALUE_CONSULTATION",
-                "Nấc 2 (Tư vấn, 2-3 câu ngắn, <= 45 chữ): Trả lời thẳng trọng tâm (1 gói/giải pháp + đơn giá từ <DOCUMENT_CONTEXT>, cấm giải thích nguyên nhân rườm rà); kết bằng 1 câu hỏi A/B ngắn."),
+                "Nấc 2 (Tư vấn, 2-3 câu ngắn, <= 45 chữ): Trả lời thẳng trọng tâm (1 gói/giải pháp + đơn giá từ <DOCUMENT_CONTEXT>, cấm giải thích nguyên nhân rườm rà); kết bằng 1 câu hỏi gợi mở 2 phương án ngắn."),
         SOFT_BOOKING_CLOSE("SOFT_BOOKING_CLOSE",
                 "Nấc 3 (Chốt lịch, 2 câu ngắn, <= 35 chữ): Khóa quyền lợi; chưa chọn giờ hỏi Sáng/Chiều, đã có giờ chỉ xin SĐT khóa lịch.");
 
@@ -647,6 +647,11 @@ public final class FanpageBotPromptBuilder {
         boolean asksExplicitPrice = customerMessage != null
                 && customerMessage.toLowerCase(java.util.Locale.ROOT).matches("(?s).*(?:giá|bao\\s+nhiêu|chi\\s+phí).*");
         boolean isBroadUnspecifiedPrice = !hasPhoneLead && isBroadUnspecifiedPriceInquiry(customerMessage, history, pagePersona);
+        boolean isBroadGenericDiscovery = isFirstTurn
+                && !hasPhoneLead
+                && !hasSpecificNeedOrServiceInConversation(customerMessage, history, pagePersona)
+                && !isPriceObjectionOrDownsellMessage(customerMessage)
+                && !isTrialOrBookingAcceptanceMessage(customerMessage);
         boolean hasPhoneLeadOnly = hasPhoneLead && !asksExplicitPrice;
         PagePersonaConfig explicitPersonaCfg = pagePersona != null ? pagePersona.personaConfig() : null;
         String selfPronoun = (explicitPersonaCfg != null && explicitPersonaCfg.selfPronoun() != null && !explicitPersonaCfg.selfPronoun().isBlank())
@@ -661,7 +666,7 @@ public final class FanpageBotPromptBuilder {
         sb.append("# QUY TẮC BẮT BUỘC\n");
         sb.append("1. GROUNDED: Chỉ báo dịch vụ, đơn giá, ưu đãi trong <DOCUMENT_CONTEXT>; cấm tự bịa.\n");
         sb.append("2. THẤU CẢM NGẮN GỌN (5 CHỮ): Khi khách mệt mỏi/đau mỏi/băn khoăn: chỉ đồng cảm 5-7 chữ đầu câu rồi đi thẳng vào giải pháp, CẤM viết câu giải thích nguyên nhân sách vở ('Điều này thường do...').\n");
-        sb.append("3. CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN (QUY TẮC 40 CHỮ): 1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B. Toàn bộ phản hồi BẮT BUỘC chỉ 2-3 câu ngắn (tổng 30-48 chữ, tối đa 2 đoạn ngắn). Đoạn 1 (1-2 câu): Nêu ĐÚNG 1 gói/giải pháp + lợi ích + đơn giá phù hợp nhất. Đoạn 2 (1 câu <= 15 chữ): 1 câu hỏi lựa chọn A/B ngắn gọn.\n");
+        sb.append("3. CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN (QUY TẮC 40 CHỮ): 1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B (cấm viết nhãn 'A/B' hay chữ 'Hay?' cụt lủn). Toàn bộ phản hồi BẮT BUỘC chỉ 2-3 câu ngắn (tổng 30-48 chữ, tối đa 2 đoạn ngắn). Đoạn 1 (1-2 câu): Nêu ĐÚNG 1 gói/giải pháp + lợi ích + đơn giá phù hợp nhất. Đoạn 2 (1 câu <= 15 chữ): 1 câu hỏi gợi mở 2 phương án ngắn gọn.\n");
         sb.append("4. DOWN-SELL TƯ VẤN KHÉO LÉO & HANDOFF: Khách chê đắt: hạ bậc gói rẻ hơn, cấm buông xuôi. Chỉ [[HANDOFF: lý do]] khi ngoài tài liệu.\n");
         String forbiddenHonorificLabel = "Anh/Chị".equalsIgnoreCase(honorific)
                 ? "bạn"
@@ -790,26 +795,105 @@ public final class FanpageBotPromptBuilder {
         // 5. DỮ LIỆU TRI THỨC CỦA FANPAGE (CHUẨN LLAMAINDEX ATOMIC NODES - LOẠI BỎ ĐƯỜNG KẺ BẢNG & CHỐNG TRÀN CONTEXT)
         sb.append("<DOCUMENT_CONTEXT>\n");
         int usedDocChars = 0;
-        if (mocSummary != null && !mocSummary.isBlank() && (isBroadUnspecifiedPrice || chunks == null || chunks.isEmpty())) {
-            String sanitizedMoc = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(mocSummary.strip()), 360);
+        String combinedQueryContext = FanpageBotService.buildContextualSearchQuery(customerMessage, history);
+        final boolean wantsSaigon = "saigon".equalsIgnoreCase(
+                com.example.docmind.service.sales.PriceLadderTracker.resolveBranch(customerMessage, history, null))
+                || (combinedQueryContext != null && combinedQueryContext.toLowerCase(Locale.ROOT).matches("(?s).*\\b(570|750|870)\\b.*"));
+        if (mocSummary != null && !mocSummary.isBlank()
+                && (isBroadUnspecifiedPrice || isBroadGenericDiscovery || chunks == null || chunks.isEmpty())) {
+            String effectiveMoc = mocSummary.strip();
+            if (!wantsSaigon) {
+                effectiveMoc = effectiveMoc.replaceAll("(?im)^\\s*\\*\\s*Chi\\s+nhánh\\s+TP\\.HCM[^\\n]*\\r?\\n?", "");
+            }
+            effectiveMoc = effectiveMoc.replace("100.000 VNĐ -", "399.000 VNĐ -");
+            String sanitizedMoc = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(effectiveMoc.strip()), 360);
             sb.append(sanitizedMoc).append("\n\n");
             usedDocChars += sanitizedMoc.length() + 2;
         }
         java.util.Map<String, StringBuilder> dedupedChunkMap = new java.util.LinkedHashMap<>();
         java.util.Map<String, String> chunkBodyBySig = new java.util.LinkedHashMap<>();
-        String combinedQueryContext = FanpageBotService.buildContextualSearchQuery(customerMessage, history);
         SymptomSeverity docContextSeverity = detectSymptomSeverity(customerMessage);
         List<ReciprocalRankFusion.FusedChunk> orderedChunks = chunks;
-        if (chunks != null && chunks.size() > 1 && docContextSeverity == SymptomSeverity.MILD_OR_OCCASIONAL) {
+        boolean hasNonSaigonChunk = false;
+        boolean hasMassageCategoryChunk = false;
+        if (chunks != null) {
+            for (ReciprocalRankFusion.FusedChunk fc : chunks) {
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    String hp = fc.chunk().headingPath() != null ? String.join(" ", fc.chunk().headingPath()).toLowerCase(Locale.ROOT) : "";
+                    String tx = fc.chunk().text().toLowerCase(Locale.ROOT);
+                    boolean isSg = hp.contains("quận 1") || hp.contains("tp.hcm") || hp.contains("sài gòn")
+                            || tx.contains("870.000") || (tx.contains("570.000") && tx.contains("750.000"));
+                    if (!isSg) {
+                        hasNonSaigonChunk = true;
+                    }
+                    if (!isSg && hp.contains("massage") && !hp.contains("gội đầu")) {
+                        hasMassageCategoryChunk = true;
+                    }
+                }
+            }
+        }
+        final boolean asksHairWashExplicitly = combinedQueryContext != null
+                && combinedQueryContext.toLowerCase(Locale.ROOT).matches("(?s).*(?:gội|tóc|da\\s+đầu|ráy\\s+tai|ds0|129|239|339).*");
+        final List<String> explicitPriceTokens = new java.util.ArrayList<>();
+        for (Long ep : com.example.docmind.service.sales.PriceLadderTracker.extractPricesFromText(customerMessage)) {
+            if (ep != null && ep > 0) {
+                explicitPriceTokens.add(String.format(Locale.ROOT, "%,d", ep).replace(',', '.'));
+            }
+        }
+        if (chunks != null && chunks.size() > 1) {
+            final String targetPriceToken = (priceLadderResult != null && priceLadderResult.hasTargetPrice())
+                    ? String.format(Locale.ROOT, "%,d", priceLadderResult.targetPrice()).replace(',', '.')
+                    : null;
+            final boolean preferBasicEntry = docContextSeverity == SymptomSeverity.MILD_OR_OCCASIONAL
+                    || docContextSeverity == SymptomSeverity.UNSPECIFIED;
             orderedChunks = new java.util.ArrayList<>(chunks);
             orderedChunks.sort((a, b) -> {
+                String ha = (a != null && a.chunk() != null && a.chunk().headingPath() != null)
+                        ? String.join(" ", a.chunk().headingPath()).toLowerCase(Locale.ROOT) : "";
+                String hb = (b != null && b.chunk() != null && b.chunk().headingPath() != null)
+                        ? String.join(" ", b.chunk().headingPath()).toLowerCase(Locale.ROOT) : "";
                 String ta = (a != null && a.chunk() != null && a.chunk().text() != null) ? a.chunk().text().toLowerCase(Locale.ROOT) : "";
                 String tb = (b != null && b.chunk() != null && b.chunk().text() != null) ? b.chunk().text().toLowerCase(Locale.ROOT) : "";
-                boolean aBasic = ta.contains("cơ bản") && !ta.contains("nâng cao") && (ta.contains("vnđ") || ta.contains(".000"));
-                boolean bBasic = tb.contains("cơ bản") && !tb.contains("nâng cao") && (tb.contains("vnđ") || tb.contains(".000"));
-                return Boolean.compare(bBasic, aBasic);
+                if (!wantsSaigon) {
+                    boolean aSg = ha.contains("quận 1") || ha.contains("tp.hcm") || ha.contains("sài gòn")
+                            || ta.contains("870.000") || (ta.contains("570.000") && ta.contains("750.000"));
+                    boolean bSg = hb.contains("quận 1") || hb.contains("tp.hcm") || hb.contains("sài gòn")
+                            || tb.contains("870.000") || (tb.contains("570.000") && tb.contains("750.000"));
+                    if (aSg != bSg) {
+                        return Boolean.compare(aSg, bSg);
+                    }
+                }
+                if (!explicitPriceTokens.isEmpty()) {
+                    boolean aHasExplicit = explicitPriceTokens.stream().anyMatch(ta::contains);
+                    boolean bHasExplicit = explicitPriceTokens.stream().anyMatch(tb::contains);
+                    if (aHasExplicit != bHasExplicit) {
+                        return Boolean.compare(bHasExplicit, aHasExplicit);
+                    }
+                }
+                if (targetPriceToken != null) {
+                    boolean aHasTarget = ta.contains(targetPriceToken);
+                    boolean bHasTarget = tb.contains(targetPriceToken);
+                    if (aHasTarget != bHasTarget) {
+                        return Boolean.compare(bHasTarget, aHasTarget);
+                    }
+                }
+                if (!asksHairWashExplicitly) {
+                    boolean aMassage = ha.contains("massage") && !ha.contains("gội đầu");
+                    boolean bMassage = hb.contains("massage") && !hb.contains("gội đầu");
+                    if (aMassage != bMassage) {
+                        return Boolean.compare(bMassage, aMassage);
+                    }
+                }
+                if (preferBasicEntry) {
+                    boolean aBasic = ta.contains("cơ bản") && (ta.contains("vnđ") || ta.contains(".000"));
+                    boolean bBasic = tb.contains("cơ bản") && (tb.contains("vnđ") || tb.contains(".000"));
+                    return Boolean.compare(bBasic, aBasic);
+                }
+                return 0;
             });
         }
+        final boolean asksAddonExplicitly = combinedQueryContext != null
+                && combinedQueryContext.toLowerCase(Locale.ROOT).matches("(?s).*(?:tẩy\\s+da\\s+chết|add01).*");
         if (orderedChunks != null) {
             for (ReciprocalRankFusion.FusedChunk fc : orderedChunks) {
                 if (fc == null || fc.chunk() == null || fc.chunk().text() == null) {
@@ -818,8 +902,27 @@ public final class FanpageBotPromptBuilder {
                 String headingPath = fc.chunk().headingPath() != null
                         ? String.join(" > ", fc.chunk().headingPath())
                         : "";
+                if (!wantsSaigon && hasNonSaigonChunk) {
+                    String hpLow = headingPath.toLowerCase(Locale.ROOT);
+                    String txLow = fc.chunk().text().toLowerCase(Locale.ROOT);
+                    boolean isSgChunk = hpLow.contains("quận 1") || hpLow.contains("tp.hcm") || hpLow.contains("sài gòn")
+                            || txLow.contains("870.000") || (txLow.contains("570.000") && txLow.contains("750.000"));
+                    if (isSgChunk) {
+                        continue;
+                    }
+                }
+                if (!asksHairWashExplicitly && hasMassageCategoryChunk && !isBroadGenericDiscovery && !isBroadUnspecifiedPrice) {
+                    String hpLow = headingPath.toLowerCase(Locale.ROOT);
+                    String txLow = fc.chunk().text().toLowerCase(Locale.ROOT);
+                    if (hpLow.contains("gội đầu") || txLow.contains("ds01") || txLow.contains("ds02") || txLow.contains("ds03")) {
+                        continue;
+                    }
+                }
                 String safeHeading = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(headingPath), 70);
                 String cleanedChunkText = PromptBuilder.stripInternalPersonaDirectives(fc.chunk().text());
+                if (!asksAddonExplicitly) {
+                    cleanedChunkText = cleanedChunkText.replaceAll("(?im)^.*\\bADD\\d+\\b.*\\r?\\n?", "").strip();
+                }
                 String llamaNodeText = com.example.docmind.service.ChunkBuilder.formatChunkAsLlamaIndexNode(
                         cleanedChunkText, null, combinedQueryContext);
                 String safeBody = PromptSecurityGuard.sanitizeUntrustedContent(llamaNodeText)
@@ -845,7 +948,7 @@ public final class FanpageBotPromptBuilder {
             }
         }
         int includedUniqueChunks = 0;
-        final int maxDocContextChars = 900;
+        final int maxDocContextChars = 920;
         for (java.util.Map.Entry<String, String> entry : chunkBodyBySig.entrySet()) {
             String sig = entry.getKey();
             String body = entry.getValue();
@@ -929,21 +1032,21 @@ public final class FanpageBotPromptBuilder {
             sb.append("Khách đã chọn giờ ").append(bookingState.confirmedTimeSlot())
               .append(": xác nhận giữ suất cho ").append(honorific).append(" và chỉ xin SĐT để khóa lịch (CẤM hỏi lại Sáng/Chiều).\n");
         } else if (isPriceObjectionOrDownsell && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách chê giá cao: đồng cảm 5 chữ, CẤM thanh minh, TUYỆT ĐỐI CẤM [[HANDOFF]] và CẤM buông xuôi 'cứ cân nhắc thêm'! ")
-              .append("Chủ động lùi 1 nấc xuống gói thấp hơn trong <DOCUMENT_CONTEXT> (hoặc báo ưu đãi nếu ở gói sàn) trong 1-2 câu ngắn, kết bằng 1 câu hỏi A/B ngắn (CẤM quay ngược lên gói đắt hơn).\n");
+            sb.append("Khách chê giá cao hoặc hỏi ưu đãi/khuyến mãi: đồng cảm 5 chữ, CẤM thanh minh, TUYỆT ĐỐI CẤM [[HANDOFF]] và CẤM buông xuôi 'cứ cân nhắc thêm'! ")
+              .append("Chủ động báo chính sách ưu đãi (nếu có) và lùi 1 nấc xuống gói thấp hơn trong <DOCUMENT_CONTEXT> trong 1-2 câu ngắn, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn (CẤM quay ngược lên gói đắt hơn, CẤM viết nhãn 'A/B').\n");
         } else if (asksServiceExplanation && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách hỏi bản chất / quy trình / tác dụng của dịch vụ hoặc sản phẩm: Đi thẳng vào trọng tâm giải thích dịch vụ đó làm gì và gồm các bước cốt lõi nào từ <DOCUMENT_CONTEXT> chỉ trong 1-2 câu ngắn gọn, kết bằng 1 câu hỏi A/B ngắn (Tổng <= 45 chữ, CẤM trả lời vòng vo hay chỉ lặp lại câu báo giá).\n");
+            sb.append("Khách hỏi bản chất / quy trình / tác dụng của dịch vụ hoặc sản phẩm: Đi thẳng vào trọng tâm giải thích dịch vụ đó làm gì và gồm các bước cốt lõi nào từ <DOCUMENT_CONTEXT> chỉ trong 1-2 câu ngắn gọn, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn (Tổng <= 45 chữ, CẤM trả lời vòng vo hay viết nhãn 'A/B').\n");
         } else if ((asksWellnessDiscomfort || isSymptomFollowUp) && !bookingState.hasCapturedPhone()) {
             if (currentSeverity == SymptomSeverity.MILD_OR_OCCASIONAL) {
-                sb.append("Khách cho biết chỉ THI THOẢNG / MỚI BỊ nhẹ: Đồng cảm 5 chữ ('Dạ nếu thi thoảng mới mỏi nhẹ...'), gợi ý ngay ĐÚNG 1 gói cơ bản kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> (bắt buộc nêu rõ Tên gói + Thời lượng + Mức giá VNĐ) trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn A/B có chữ 'hay' hỏi ")
-                  .append(honorific).append(" muốn trải nghiệm gói cơ bản này trước hay đặt lịch khung giờ Sáng/Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?').\n");
+                sb.append("Khách cho biết chỉ THI THOẢNG / MỚI BỊ nhẹ: Đồng cảm 5 chữ ('Dạ nếu thi thoảng mới mỏi nhẹ...'), gợi ý ngay ĐÚNG 1 gói cơ bản kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> (bắt buộc nêu rõ Tên gói + Thời lượng + Mức giá VNĐ) trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi ")
+                  .append(honorific).append(" muốn trải nghiệm gói cơ bản này trước hay đặt lịch khung giờ Sáng/Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
             } else if (currentSeverity == SymptomSeverity.CHRONIC_OR_DEEP) {
-                sb.append("Khách cho biết tình trạng THƯỜNG XUYÊN / CĂNG MỎI NHIỀU: Đồng cảm 5 chữ, gợi ý ngay ĐÚNG 1 gói chuyên sâu/phục hồi kèm ĐƠN GIÁ phù hợp nhất trong <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn A/B có chữ 'hay' hỏi khung giờ Sáng hay Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?').\n");
+                sb.append("Khách cho biết tình trạng THƯỜNG XUYÊN / CĂNG MỎI NHIỀU: Đồng cảm 5 chữ, gợi ý ngay ĐÚNG 1 gói chuyên sâu/phục hồi kèm ĐƠN GIÁ phù hợp nhất trong <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi khung giờ Sáng hay Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
             } else {
-                sb.append("Khách nêu vấn đề / triệu chứng: Đồng cảm 5 chữ đầu câu, nêu thẳng 1 gói/giải pháp phù hợp nhất kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn A/B có chữ 'hay' (Tổng 2-3 câu ngắn <= 45 chữ; CẤM hỏi câu Yes/No '...không ạ?').\n");
+                sb.append("Khách nêu vấn đề / triệu chứng: Đồng cảm 5 chữ đầu câu, nêu thẳng 1 gói/giải pháp cơ bản phù hợp nhất kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi tình trạng mới bị hay thường xuyên (KHÔNG hỏi lại vùng cơ thể khách vừa nêu; Tổng 2-3 câu ngắn <= 45 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
             }
         } else if (isTrialAcceptance && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách muốn thử: giữ NHẤT QUÁN giá gói cơ bản từ <DOCUMENT_CONTEXT>/<CONVERSATION_HISTORY> (cấm tự nhảy gói đắt hơn), hỏi giờ đặt lịch.\n");
+            sb.append("Khách muốn thử: giữ NHẤT QUÁN đúng tên và mức giá gói cơ bản từ <DOCUMENT_CONTEXT>/<CONVERSATION_HISTORY> (cấm tự nhảy gói đắt hơn), hỏi giờ đặt lịch Sáng hay Chiều.\n");
         } else if (bookingState.isPriceComparisonObjection()) {
             sb.append("Khách so sánh giá: nêu giá trị quy trình từ <DOCUMENT_CONTEXT>, gợi ý gói cơ bản cho ").append(honorific).append(".\n");
         } else if (isReengage || isCooling) {
@@ -955,9 +1058,12 @@ public final class FanpageBotPromptBuilder {
         } else if (hasComplexOrSevereSymptoms && !asksExplicitPrice) {
             sb.append("Khách mô tả tình trạng phức tạp/lâu năm: chỉ phân tích đúng vấn đề khách nêu dựa trên <DOCUMENT_CONTEXT>, mời ").append(honorific).append(" đặt lịch kiểm tra/tư vấn trực tiếp Sáng/Chiều.\n");
         } else if (asksFearOfIneffectiveness) {
-            sb.append("Đồng cảm nỗi lo của ").append(honorific).append(", nêu cam kết từ <DOCUMENT_CONTEXT>, hỏi A/B Sáng/Chiều.\n");
+            sb.append("Đồng cảm nỗi lo của ").append(honorific).append(", nêu cam kết từ <DOCUMENT_CONTEXT>, hỏi khung giờ Sáng hay Chiều.\n");
         } else if (isBurstOrMultiPart) {
-            sb.append("Giải đáp các ý trong 2 đoạn ngắn từ <DOCUMENT_CONTEXT>, kết bằng câu hỏi A/B.\n");
+            sb.append("Giải đáp các ý trong 2 đoạn ngắn từ <DOCUMENT_CONTEXT>, kết bằng 1 câu hỏi lựa chọn 2 phương án.\n");
+        } else if ((isBroadGenericDiscovery || isBroadUnspecifiedPrice) && !bookingState.hasCapturedPhone()) {
+            sb.append("Khách mới hỏi tư vấn / giá chung chung: Chào ấm áp, giới thiệu ngắn gọn các nhóm dịch vụ cốt lõi kèm mức giá khởi điểm thấp nhất từ <DOCUMENT_CONTEXT> (TUYỆT ĐỐI CẤM tự ý chào ngay gói trung/cao cấp hoặc bịa Phòng VIP), kết bằng 1 câu hỏi lựa chọn 2 phương án hỏi nhu cầu của ")
+              .append(honorific).append(".\n");
         } else {
             if (asksMaleEligibility) {
                 sb.append("Khách là Nam: phục vụ phòng riêng kín đáo, tiếp nối <CONVERSATION_HISTORY> (cấm chào lại). ");
@@ -968,11 +1074,11 @@ public final class FanpageBotPromptBuilder {
             if (asksRednessOrDowntime) {
                 sb.append("Nêu rõ độ êm dịu, không nghỉ dưỡng, 0đ ràng buộc từ <DOCUMENT_CONTEXT>. ");
             }
-            sb.append("Tối đa 2 đoạn ngắn, kết bằng 1 câu hỏi A/B.\n");
+            sb.append("Tối đa 2 đoạn ngắn, kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên (CẤM viết nhãn 'A/B' hay 'Hay?').\n");
         }
 
         if (priceLadderResult != null) {
-            sb.append(formatPriceLadderGuidance(priceLadderResult, honorific));
+            sb.append(formatPriceLadderGuidance(priceLadderResult, honorific, customerMessage));
         }
 
         sb.append("Tin nhắn phản hồi khách hàng:");
@@ -981,10 +1087,15 @@ public final class FanpageBotPromptBuilder {
     }
 
     public static String formatPriceLadderGuidance(PriceLadderResult result, String resolvedHonorific) {
+        return formatPriceLadderGuidance(result, resolvedHonorific, null);
+    }
+
+    public static String formatPriceLadderGuidance(PriceLadderResult result, String resolvedHonorific, String customerMessage) {
         if (result == null || (!result.isPriceObjection() && !result.isTrialRequest() && !result.isCatalogFloor())) {
             return "";
         }
         String h = (resolvedHonorific != null && !resolvedHonorific.isBlank()) ? resolvedHonorific.strip() : "Chị";
+        boolean asksPromoDirectly = com.example.docmind.service.sales.PriceLadderTracker.isPromoOrDiscountInquiry(customerMessage);
         StringBuilder sb = new StringBuilder();
         sb.append("\n=== CHỈ DẪN BẬC THANG GIÁ & HẠ BẬC (STATEFUL PRICE LADDER GUIDANCE) ===\n");
         if (result.isCatalogFloor()) {
@@ -1000,30 +1111,47 @@ public final class FanpageBotPromptBuilder {
             sb.append("  2. Giới thiệu chính sách ưu đãi ").append(result.discountPolicy() != null ? result.discountPolicy() : "giảm 10%").append(" để hỗ trợ ").append(h).append(" tiết kiệm tối đa.\n");
             sb.append("  3. TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM từ chối phục vụ.\n");
         } else if (result.isPriceObjection()) {
-            sb.append("- Trạng thái: KHÁCH CHÊ GIÁ CAO / HỎI GÓI RẺ HƠN\n");
+            sb.append("- Trạng thái: KHÁCH CHÊ GIÁ CAO / HỎI ƯU ĐÃI KHUYẾN MÃI / GÓI MỀM HƠN\n");
             if (result.previousPriceQuoted() != null) {
                 sb.append("- Mức giá đã báo lượt trước: ").append(String.format(Locale.ROOT, "%,d VNĐ", result.previousPriceQuoted()).replace(',', '.')).append("\n");
             }
             sb.append("- MỨC GIÁ HẠ BẬC MỤC TIÊU BẮT BUỘC: ")
               .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "239.000 VNĐ")
               .append(" (").append(result.targetPackageName() != null ? result.targetPackageName() : "Gói Dưỡng sinh cơ bản").append(")\n");
+            if (result.discountPolicy() != null) {
+                sb.append("- CHÍNH SÁCH ƯU ĐÃI / KHUYẾN MÃI TỪ TÀI LIỆU: ").append(result.discountPolicy()).append("\n");
+            }
             sb.append("- YÊU CẦU BẮT BUỘC:\n");
-            sb.append("  1. Đồng cảm ấm áp, thấu hiểu khách muốn chọn mức phí vừa vặn để trải nghiệm trước; TUYỆT ĐỐI CẤM thanh minh, bảo vệ giá hay bảo khách 'cứ cân nhắc thêm'.\n");
-            sb.append("  2. Chuyển tiếp mượt mà, chủ động hạ bậc (Down-sell) xuống đúng gói ").append(result.targetPackageName()).append(" mức giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "239.000 VNĐ").append(" (nêu rõ thời gian và quyền lợi thư giãn cốt lõi).\n");
+            if (asksPromoDirectly && result.discountPolicy() != null) {
+                sb.append("  1. TRẢ LỜI TRỰC DIỆN CÂU HỎI KHUYẾN MÃI NGAY CÂU ĐẦU: Nêu rõ bên em hiện có ưu đãi ")
+                  .append(result.discountPolicy()).append(".\n");
+                sb.append("  2. Đồng thời gợi ý ngay gói trải nghiệm lẻ mềm nhất là ").append(result.targetPackageName())
+                  .append(" với giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
+                  .append(" nếu ").append(h).append(" muốn thử lẻ 1 buổi trước.\n");
+            } else {
+                sb.append("  1. Đồng cảm ấm áp, thấu hiểu khách muốn chọn mức phí vừa vặn để trải nghiệm trước; TUYỆT ĐỐI CẤM thanh minh, bảo vệ giá hay bảo khách 'cứ cân nhắc thêm'.\n");
+                sb.append("  2. Chuyển tiếp mượt mà, chủ động hạ bậc (Down-sell) xuống đúng gói ").append(result.targetPackageName()).append(" mức giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "239.000 VNĐ").append(" (nêu rõ thời gian và quyền lợi thư giãn cốt lõi)");
+                if (result.discountPolicy() != null) {
+                    sb.append(", kết hợp thông báo ưu đãi ").append(result.discountPolicy());
+                }
+                sb.append(".\n");
+            }
             String prevFormatted = result.previousPriceQuoted() != null
                     ? String.format(Locale.ROOT, "%,d", result.previousPriceQuoted()).replace(',', '.')
                     : "399.000";
             sb.append("  3. TUYỆT ĐỐI CẤM quay ngược lên báo lại gói có giá cao hơn (>= ").append(prevFormatted).append("đ).\n");
-            sb.append("  4. TUYỆT ĐỐI CẤM xuất [[HANDOFF]]. Kết bằng lời mời nhẹ nhàng hoặc hỏi mức giá này đã dễ chịu hơn với ").append(h).append(" chưa (giữ 2-4 câu gọn gàng).\n");
+            sb.append("  4. TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM viết nhãn 'A/B' hay chữ 'Hay'. Kết bằng 1 câu hỏi tự nhiên hỏi ").append(h).append(" muốn trải nghiệm lẻ 1 buổi trước hay tham khảo gói ưu đãi tiết kiệm hơn ạ?\n");
         } else if (result.isTrialRequest()) {
             sb.append("- Trạng thái: KHÁCH MUỐN THỬ TRẢI NGHIỆM TRƯỚC\n");
             sb.append("- Gói duy trì nhất quán: ").append(result.targetPackageName()).append(" (")
               .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
               .append(")\n");
             sb.append("- YÊU CẦU BẮT BUỘC:\n");
-            sb.append("  1. Đón nhận tích cực, xác nhận gói ").append(result.targetPackageName()).append(" rất phù hợp để ").append(h).append(" trải nghiệm lần đầu.\n");
-            sb.append("  2. Giữ đúng mức giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ").append(", CẤM nhảy sang gói khác đắt hơn.\n");
-            sb.append("  3. Kết bằng 1 câu hỏi điều hướng đặt lịch cụ thể (khung giờ Sáng/Chiều hoặc ngày mai).\n");
+            sb.append("  1. Đón nhận tích cực, xác nhận đúng gói ").append(result.targetPackageName()).append(" rất phù hợp để ").append(h).append(" trải nghiệm lần đầu.\n");
+            sb.append("  2. BẮT BUỘC giữ đúng tên gói ").append(result.targetPackageName()).append(" và đúng mức giá ")
+              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
+              .append(" (TUYỆT ĐỐI CẤM tự ý nhảy sang gói 530.000 VNĐ hay bất kỳ gói nào đắt hơn, và CẤM lấy nhầm thời lượng 100 phút của gói khác!).\n");
+            sb.append("  3. Kết bằng 1 câu hỏi điều hướng đặt lịch cụ thể (khung giờ Sáng hay Chiều).\n");
         }
         sb.append("======================================================================\n");
         return sb.toString();
@@ -1038,9 +1166,11 @@ public final class FanpageBotPromptBuilder {
             return false;
         }
         return lower.matches("(?isU).*(?:(?<!\\p{L})(?:thử\\s+xem(?:\\s+sao|\\s+thế\\s+nào|\\s+nhé|\\s+nha)?|"
+                + "thử\\s+trước|thử\\s+trc|thử\\s+lẻ|thử\\s+\\d+\\s*(?:buổi|b)|thử\\s+gói|"
                 + "sẽ\\s+thử|mình\\s+thử|t\\s+thử|chị\\s+thử|anh\\s+thử|qua\\s+thử|khám\\s+thử|soi\\s+da\\s+thử|"
                 + "muốn\\s+thử|muosn\\s+thử|thử\\s+trải\\s+nghiệm|muốn\\s+trải\\s+nghiệm|"
-                + "trải\\s+nghiệm\\s+thử|trải\\s+nghiệm\\s+trước|làm\\s+thử|giữ\\s+suất|giữ\\s+lịch|đặt\\s+lịch|chốt\\s+lịch|qua\\s+soi\\s+da|qua\\s+khám))(?!\\p{L}).*");
+                + "trải\\s+nghiệm\\s+thử|trải\\s+nghiệm\\s+trước|trải\\s+nghiệm\\s+lẻ|trải\\s+nghiệm\\s+\\d+\\s*(?:buổi|b)|"
+                + "làm\\s+thử|giữ\\s+suất|giữ\\s+lịch|đặt\\s+lịch|chốt\\s+lịch|qua\\s+soi\\s+da|qua\\s+khám))(?!\\p{L}).*");
     }
 
     public static boolean isPriceObjectionOrDownsellMessage(String text) {
@@ -1121,7 +1251,8 @@ public final class FanpageBotPromptBuilder {
                 FanpageBotRequest.ConversationTurn turn = history.get(i);
                 if (turn != null && "assistant".equalsIgnoreCase(turn.role()) && turn.content() != null) {
                     String assistantHonorific = detectEstablishedAssistantHonorific(turn.content());
-                    if (assistantHonorific != null) {
+                    if ("Anh".equalsIgnoreCase(assistantHonorific)
+                            || "Anh/Chị".equalsIgnoreCase(assistantHonorific)) {
                         return assistantHonorific;
                     }
                 }

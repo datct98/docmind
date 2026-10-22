@@ -62,11 +62,20 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "bao\\s+lau", "bao lâu");
         addBoundaryPattern(phrases, "bao\\s+nhieu\\s+tien", "bao nhiêu tiền");
         addBoundaryPattern(phrases, "sdt\\s*:", "số điện thoại:");
+        addBoundaryPattern(phrases, "thử\\s+trc\\s+(\\d+)\\s*b", "thử trước $1 buổi");
+        addBoundaryPattern(phrases, "thử\\s+trước\\s+(\\d+)\\s*b", "thử trước $1 buổi");
+        addBoundaryPattern(phrases, "thử\\s+(\\d+)\\s*b", "thử $1 buổi");
+        addBoundaryPattern(phrases, "trải\\s+nghiệm\\s+(\\d+)\\s*b", "trải nghiệm $1 buổi");
+        addBoundaryPattern(phrases, "lẻ\\s+(\\d+)\\s*b", "lẻ $1 buổi");
         PHRASE_REPLACEMENTS = Collections.unmodifiableMap(phrases);
 
         Map<Pattern, String> words = new LinkedHashMap<>();
 
         // 1. Messenger slang & abbreviations
+        addWord(words, "trc", "trước");
+        addWord(words, "km", "khuyến mãi");
+        addWord(words, "kmai", "khuyến mãi");
+        addWord(words, "j", "gì");
         addWord(words, "ko", "không");
         addWord(words, "k", "không");
         addWord(words, "khg", "không");

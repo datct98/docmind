@@ -384,4 +384,44 @@ class PriceLadderTrackerTest {
         assertThat(step2.isCatalogFloor()).isTrue();
         assertThat(step2.discountPolicy()).contains("Giảm 20% khi đăng ký nhóm từ 2 học viên");
     }
+
+    @Test
+    @DisplayName("Turn 5-7 Live Transcript Regression: Promo inquiry ('Có giảm giá hay KM j k') + Slang trial ('Thử trc 1b cũng được') + Approx price ('T muốn thử gói 390k trước')")
+    void liveTranscriptTurn5To7PriceLadderRegression() {
+        var promo = promoChunk("CHÍNH SÁCH ƯU ĐÃI: Giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher.");
+
+        // Turn 5: Customer asks "Có giảm giá hay KM j k" after 530k/580k comparison
+        List<FanpageBotRequest.ConversationTurn> historyTurn5 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Gói 530 và 580 khác gì nhau"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ Anh/Chị ạ, gói Dưỡng Sinh Thân Thể 530.000VNĐ phù hợp cho Anh/Chị muốn trải nghiệm trước. Gói Massage phục hồi 580.000VNĐ thì chuyên sâu hơn nha.")
+        );
+        var resTurn5 = PriceLadderTracker.evaluate("Có giảm giá hay KM j k", historyTurn5, List.of(promo), "hanoi");
+        assertThat(resTurn5.isPriceObjection()).isTrue();
+        assertThat(resTurn5.targetPrice()).isEqualTo(399_000L);
+        assertThat(resTurn5.targetPackageName()).contains("Massage cơ bản (NS01)");
+        assertThat(resTurn5.discountPolicy()).contains("Giảm 10%");
+
+        // Turn 6: Customer says "Thử trc 1b cũng được" after bot pitched 399.000VNĐ
+        List<FanpageBotRequest.ConversationTurn> historyTurn6 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Có giảm giá hay KM j k"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ Anh/Chị ạ, hiện bên em có ưu đãi giảm 10% khi mua liệu trình từ 5 buổi nha. Nếu muốn trải nghiệm lẻ trước, gói Massage cơ bản NS01 với giá 399.000VNĐ trong 60 phút là mức giá mềm nhất ạ.")
+        );
+        var resTurn6 = PriceLadderTracker.evaluate("Thử trc 1b cũng được", historyTurn6, List.of(promo), "hanoi");
+        assertThat(resTurn6.isTrialRequest()).isTrue();
+        assertThat(resTurn6.targetPrice()).isEqualTo(399_000L);
+        assertThat(resTurn6.targetPackageName()).contains("Massage cơ bản (NS01)");
+
+        // Turn 7: Customer says "T muốn thử gói 390k trước" (approximate price 390k -> matches 399.000 VNĐ within 15%)
+        List<FanpageBotRequest.ConversationTurn> historyTurn7 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Thử trc 1b cũng được"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ Anh/Chị ạ, gói Dưỡng Sinh Thân Thể 530.000VNĐ sẽ giúp Anh/Chị thư giãn toàn thân trong 100 phút.")
+        );
+        var resTurn7 = PriceLadderTracker.evaluate("T muốn thử gói 390k trước", historyTurn7, List.of(promo), "hanoi");
+        assertThat(resTurn7.isTrialRequest()).isTrue();
+        assertThat(resTurn7.targetPrice()).isEqualTo(399_000L);
+        assertThat(resTurn7.targetPackageName()).contains("Massage cơ bản (NS01)");
+    }
 }

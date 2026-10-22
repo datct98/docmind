@@ -212,6 +212,10 @@ public class HonorificConsistencyHook implements GuardrailHook {
                 working = BAN1_PATTERN.matcher(working).replaceAll(mr -> mr.group(1) + " Anh/Chị");
                 working = BAN2_PATTERN.matcher(working).replaceAll("Anh/Chị");
             }
+            if (lower.contains("chị")) {
+                working = CHI_REPLACEMENT_PATTERN.matcher(working).replaceAll("Anh/Chị");
+                working = working.replaceAll("(?iU)(?<!\\p{L})(?:anh\\s*/\\s*)+chị(?!\\p{L})", "Anh/Chị");
+            }
         } else {
             // Nữ giới ("Chị")
             if (lower.contains("chị") || lower.contains("anh") || lower.contains("bạn")) {

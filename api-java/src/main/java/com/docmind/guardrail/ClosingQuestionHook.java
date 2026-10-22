@@ -33,9 +33,9 @@ public class ClosingQuestionHook implements GuardrailHook {
      * Bổ sung negative lookahead loại trừ các thuật ngữ khám/chẩn đoán y khoa (kem chống nắng, dị ứng, mụn...).
      */
     private static final Pattern DRY_PERMISSION_QUESTION_PATTERN = Pattern.compile(
-            "(?iU)(?<=[.!?\\n]|^)\\s*(?:dạ[,\\s]*)?(?:"
+            "(?iU)(?<=[.!?\\n]|^)\\s*(?:(?:dạ|hay\\s+là|hay|hoặc\\s+là|hoặc|vậy|thế|a\\s*/\\s*b\\s*[:.\\-]?)[,\\s]+)*(?:"
             + "em\\s+có\\s+thể\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ|chia\\s+sẻ)[^?]*\\?|"
-            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:muốn|cần)\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|gửi|hỗ\\s+trợ|đặt\\s+lịch|giữ\\s+lịch)(?![^?]*\\bhay\\b)[^?]*\\?|"
+            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:muốn|cần)\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|gửi|hỗ\\s+trợ|đặt\\s+lịch|giữ\\s+lịch|thử|trải\\s+nghiệm|tham\\s+khảo)(?![^?]*\\bhay\\b)[^?]*\\?|"
             + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:thắc\\s+mắc|câu\\s+hỏi)[^?]*\\?|"
             + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:tiện|sẵn\\s+sàng)[^?]*\\?|"
             + "(?:được\\s+không\\s+ạ|có\\s+được\\s+không\\s+ạ|có\\s+tiện\\s+không\\s+ạ)\\s*\\?|"
@@ -414,12 +414,25 @@ public class ClosingQuestionHook implements GuardrailHook {
                 FanpageBotPromptBuilder.detectSymptomSeverity(customerMessage);
         boolean hasStatedFrequency = curSev == FanpageBotPromptBuilder.SymptomSeverity.MILD_OR_OCCASIONAL
                 || curSev == FanpageBotPromptBuilder.SymptomSeverity.CHRONIC_OR_DEEP;
+        String lowerMsg = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
+        boolean hasStatedBodyArea = lowerMsg.matches("(?isU).*\\b(vai|cổ|gáy|lưng|đầu|chân|tay|toàn\\s+thân|body)\\b.*");
         if (isMassageDoc) {
             if (isExplanationOrSymptom) {
-                if (hasStatedFrequency) {
+                if (hasStatedFrequency && hasStatedBodyArea) {
+                    pool = List.of(
+                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
+                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                    );
+                } else if (hasStatedFrequency) {
                     pool = List.of(
                             honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
                             honorific + " đang ưu tiên chăm sóc vùng cổ vai gáy hay thư giãn toàn thân ạ?",
+                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                    );
+                } else if (hasStatedBodyArea) {
+                    pool = List.of(
+                            "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?",
+                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
                             honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
                     );
                 } else {

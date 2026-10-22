@@ -104,15 +104,23 @@ public class PriceLadderTracker {
             + "xin\\s+giảm|xin\\s+giam|được\\s+giảm|duoc\\s+giam|"
             + "(?:có\\s+giảm|co\\s+giam)(?!\\s*(?:đau|mỏi|stress|mụn|thâm|nám|sẹo|béo|cân|mỡ|nhăn|sưng|áp|tải|dau|moi|mun|tham|nam|seo|beo|can|mo|nhan|sung|ap|tai))|"
             + "giảm(?!\\s*(?:đau|mỏi|stress|mụn|thâm|nám|sẹo|béo|cân|mỡ|nhăn|sưng|áp|tải))|"
-            + "giam(?!\\s*(?:dau|moi|stress|mun|tham|nam|seo|beo|can|mo|nhan|sung|ap|tai))"
+            + "giam(?!\\s*(?:dau|moi|stress|mun|tham|nam|seo|beo|can|mo|nhan|sung|ap|tai))|"
+            + "khuyến\\s+mãi|khuyen\\s+mai|chương\\s+trình\\s+ưu\\s+đãi|có\\s+ưu\\s+đãi|co\\s+uu\\s+dai|có\\s+km|hay\\s+km"
             + "))(?!\\p{L}).*"
+    );
+
+    public static final Pattern PROMO_INQUIRY_PATTERN = Pattern.compile(
+            "(?isU).*(?:(?<!\\p{L})(?:giảm\\s+giá|giam\\s+gia|khuyến\\s+mãi|khuyen\\s+mai|"
+            + "ưu\\s+đãi|uu\\s+dai|voucher|chiết\\s+khấu|chiet\\s+khau|chương\\s+trình\\s+giảm|"
+            + "có\\s+giảm|co\\s+giam|xin\\s+giảm|xin\\s+giam|được\\s+giảm|duoc\\s+giam|hay\\s+km|có\\s+km))(?!\\p{L}).*"
     );
 
     public static final Pattern TRIAL_REQUEST_PATTERN = Pattern.compile(
             "(?isU).*(?:(?<!\\p{L})(?:thử\\s+xem(?:\\s+sao|\\s+thế\\s+nào|\\s+nhé|\\s+nha)?|"
-            + "sẽ\\s+thử|mình\\s+thử|t\\s+thử|chị\\s+thử|anh\\s+thử|qua\\s+thử|khám\\s+thử|soi\\s+da\\s+thử|"
+            + "sẽ\\s+thử|mình\\s+thử|t\\s+thử|tôi\\s+thử|em\\s+thử|chị\\s+thử|anh\\s+thử|qua\\s+thử|khám\\s+thử|soi\\s+da\\s+thử|"
             + "muốn\\s+thử|muosn\\s+thử|thử\\s+trải\\s+nghiệm|muốn\\s+trải\\s+nghiệm|"
-            + "trải\\s+nghiệm\\s+thử|trải\\s+nghiệm\\s+trước|làm\\s+thử|thử\\s+trước))(?!\\p{L}).*"
+            + "trải\\s+nghiệm\\s+thử|trải\\s+nghiệm\\s+trước|trải\\s+nghiệm\\s+lẻ|trải\\s+nghiệm\\s+\\d+\\s*(?:buổi|b)|"
+            + "làm\\s+thử|thử\\s+trước|thử\\s+trc|thử\\s+lẻ|thử\\s+\\d+\\s*(?:buổi|b)|thử\\s+gói))(?!\\p{L}).*"
     );
 
     public static final Pattern EXTRACT_VND_PATTERN = Pattern.compile(
@@ -206,7 +214,7 @@ public class PriceLadderTracker {
 
         // 3. Resolve catalog ladder dynamically from chunks first; fallback to default branch ladder when chunks have no price tiers
         List<PriceTier> dynamicLadder = extractDynamicLadderFromChunks(chunks, branch);
-        List<PriceTier> ladder = !dynamicLadder.isEmpty() ? dynamicLadder : getLadderForBranch(branch);
+        List<PriceTier> ladder = mergeBranchFallbackIfApplicable(dynamicLadder, branch);
         long activeFloorPrice = ladder.stream()
                 .mapToLong(PriceTier::price)
                 .min()
@@ -216,17 +224,37 @@ public class PriceLadderTracker {
         // 1. Extract previous price quoted by assistant across conversation history
         Long previousPriceQuoted = extractPreviousQuotedPrice(history, Math.min(CATALOG_FLOOR_PRICE, activeFloorPrice));
 
-        // 4. Case: Trial Request ("tôi muosn thử trải nghiệm trước")
+        // 4. Case: Trial Request ("tôi muosn thử trải nghiệm trước", "thử trc 1b cũng được", "t muốn thử gói 390k trước")
         if (isTrial) {
-            long targetPrice = previousPriceQuoted != null ? previousPriceQuoted : ladder.get(0).price();
-            PriceTier tier = findTierByPrice(ladder, targetPrice);
-            String pkgName = tier != null ? tier.packageName() : (ladder.get(0).packageName() + " (" + formatPrice(targetPrice) + ")");
+            List<Long> customerPrices = extractPricesFromText(msg, 50_000L);
+            Long explicitCustomerPrice = !customerPrices.isEmpty() ? customerPrices.get(0) : null;
+            PriceTier tier = null;
+            long targetPrice;
+            if (explicitCustomerPrice != null) {
+                tier = findClosestTierByPrice(ladder, explicitCustomerPrice, 0.15);
+                if (tier == null) {
+                    tier = findClosestTierByPrice(getLadderForBranch(branch), explicitCustomerPrice, 0.15);
+                }
+                targetPrice = tier != null ? tier.price() : explicitCustomerPrice;
+            } else {
+                targetPrice = previousPriceQuoted != null ? previousPriceQuoted : ladder.get(0).price();
+                tier = findTierByPrice(ladder, targetPrice);
+                if (tier == null) {
+                    tier = findTierByPrice(getLadderForBranch(branch), targetPrice);
+                }
+                if (tier == null) {
+                    tier = findClosestTierByPrice(ladder, targetPrice, 0.15);
+                }
+            }
+            String pkgName = tier != null
+                    ? tier.packageName()
+                    : ("Gói trải nghiệm (" + formatPrice(targetPrice) + ")");
             String rationale = "Khách muốn thử trải nghiệm: duy trì nhất quán mức giá gói " + formatPrice(targetPrice)
-                    + " đã tư vấn ở lượt trước, không nhảy giá, điều hướng chốt lịch hẹn.";
+                    + " (" + pkgName + "), không nhảy sang gói đắt hơn, điều hướng chốt lịch hẹn.";
             return new PriceLadderResult(false, true, previousPriceQuoted, targetPrice, pkgName, null, false, rationale);
         }
 
-        // 5. Case: Price Objection ("cao thế", "nhưng hơi đắt", "có gói nào rẻ hơn không")
+        // 5. Case: Price Objection ("cao thế", "nhưng hơi đắt", "có gói nào rẻ hơn không", "có giảm giá hay km gì không")
         if (isObjection) {
             // If already at or below catalog floor and customer still objects
             if (previousPriceQuoted != null && previousPriceQuoted <= activeFloorPrice) {
@@ -241,12 +269,20 @@ public class PriceLadderTracker {
 
             // Monotonically step down to the next lower price tier
             PriceTier nextTier = findNextLowerTier(ladder, previousPriceQuoted);
+            boolean isPurePromo = isPromoOrDiscountInquiry(msg)
+                    && !msg.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(rẻ|re|mềm|mem|thấp|thap|đắt|dat|cao|mắc|mac|bớt|bot)\\b.*");
+            if (isPurePromo && nextTier.price() < 399_000L && (previousPriceQuoted == null || previousPriceQuoted >= 399_000L)) {
+                PriceTier massageFloor = findTierByPrice(ladder, 399_000L);
+                if (massageFloor != null) {
+                    nextTier = massageFloor;
+                }
+            }
             boolean isFloor = nextTier.price() <= activeFloorPrice;
-            String promo = isFloor ? resolvePromoPolicy(chunks) : null;
+            String promo = resolvePromoPolicy(chunks);
             String rationale = "Khách chê giá " + (previousPriceQuoted != null ? formatPrice(previousPriceQuoted) : "hiện tại")
-                    + " cao: Hạ bậc (down-sell) xuống " + nextTier.packageName() + " giá " + formatPrice(nextTier.price())
+                    + " cao hoặc hỏi ưu đãi: Hạ bậc (down-sell) xuống " + nextTier.packageName() + " giá " + formatPrice(nextTier.price())
                     + (nextTier.duration() != null ? " (" + nextTier.duration() + ")" : "")
-                    + " tiết kiệm hơn.";
+                    + " kèm chính sách ưu đãi " + promo + ".";
 
             return new PriceLadderResult(true, false, previousPriceQuoted, nextTier.price(), nextTier.packageName(), promo, isFloor, rationale);
         }
@@ -397,6 +433,13 @@ public class PriceLadderTracker {
         return TRIAL_REQUEST_PATTERN.matcher(text).matches();
     }
 
+    public static boolean isPromoOrDiscountInquiry(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        return PROMO_INQUIRY_PATTERN.matcher(text).matches();
+    }
+
     // =========================================================================
     // HISTORY PRICE EXTRACTION & AUXILIARY PRUNING
     // =========================================================================
@@ -462,6 +505,19 @@ public class PriceLadderTracker {
                 }
                 if (val >= 50_000L && val <= 500_000_000L) {
                     if (!isAuxiliaryPriceToken(val, text, m.start(), m.end(), floorPrice)) {
+                        prices.add(val);
+                    }
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        Matcher bareMatcher = Pattern.compile(
+                "(?isU)(?:\\b(?:gói|goi|mức|muc|giá|gia|và|va|với|voi|hay|so\\s+với)\\s+)(\\d{3})(?!\\s*(?:phút|phut|p\\b|buổi|buoi|ngày|ngay|tuần|tuan|tháng|thang|ml\\b|g\\b|kg\\b|%|\\.\\d|\\d))"
+        ).matcher(text);
+        while (bareMatcher.find()) {
+            try {
+                long val = Long.parseLong(bareMatcher.group(1)) * 1000L;
+                if (val >= 100_000L && val <= 999_000L && val >= floorPrice) {
+                    if (!isAuxiliaryPriceToken(val, text, bareMatcher.start(1), bareMatcher.end(1), floorPrice)) {
                         prices.add(val);
                     }
                 }
@@ -607,6 +663,33 @@ public class PriceLadderTracker {
         return HANOI_LADDER;
     }
 
+    private static List<PriceTier> mergeBranchFallbackIfApplicable(List<PriceTier> dynamicLadder, String branch) {
+        if (dynamicLadder == null || dynamicLadder.isEmpty()) {
+            return getLadderForBranch(branch);
+        }
+        boolean isWellnessLadder = dynamicLadder.stream().anyMatch(t -> {
+            String code = t.serviceCode() != null ? t.serviceCode().toUpperCase(Locale.ROOT) : "";
+            String name = t.packageName() != null ? t.packageName().toLowerCase(Locale.ROOT) : "";
+            String cat = t.category() != null ? t.category().toLowerCase(Locale.ROOT) : "";
+            return code.startsWith("NS") || code.startsWith("DS")
+                    || name.contains("massage") || name.contains("dưỡng sinh") || name.contains("ráy tai")
+                    || cat.contains("massage") || cat.contains("dưỡng sinh");
+        });
+        if (!isWellnessLadder) {
+            return dynamicLadder;
+        }
+        java.util.Map<Long, PriceTier> merged = new java.util.LinkedHashMap<>();
+        for (PriceTier t : dynamicLadder) {
+            merged.putIfAbsent(t.price(), t);
+        }
+        for (PriceTier fallbackTier : getLadderForBranch(branch)) {
+            merged.putIfAbsent(fallbackTier.price(), fallbackTier);
+        }
+        List<PriceTier> result = new ArrayList<>(merged.values());
+        result.sort(Comparator.comparingLong(PriceTier::price).reversed());
+        return result;
+    }
+
     public static PriceTier findTierByPrice(List<PriceTier> ladder, long price) {
         if (ladder == null) return null;
         for (PriceTier tier : ladder) {
@@ -615,6 +698,27 @@ public class PriceLadderTracker {
             }
         }
         return null;
+    }
+
+    public static PriceTier findClosestTierByPrice(List<PriceTier> ladder, long requestedPrice, double maxRelativeDiff) {
+        if (ladder == null || ladder.isEmpty() || requestedPrice <= 0) {
+            return null;
+        }
+        PriceTier exact = findTierByPrice(ladder, requestedPrice);
+        if (exact != null) {
+            return exact;
+        }
+        PriceTier best = null;
+        long bestDiff = Long.MAX_VALUE;
+        for (PriceTier tier : ladder) {
+            long diff = Math.abs(tier.price() - requestedPrice);
+            double relDiff = (double) diff / (double) Math.max(1L, tier.price());
+            if (relDiff <= maxRelativeDiff && diff < bestDiff) {
+                bestDiff = diff;
+                best = tier;
+            }
+        }
+        return best;
     }
 
     /**

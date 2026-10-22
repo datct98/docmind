@@ -145,7 +145,11 @@ public class MapOfContentService {
 
             String[] headingPath = chunk.getHeadingPath();
             String text = chunk.getText();
-            ChunkMetadata meta = ChunkMetadataExtractor.extract(headingPath, text);
+            String textWithoutAddons = text.replaceAll("(?im)^.*\\bADD\\d+\\b.*$", "").strip();
+            ChunkMetadata meta = ChunkMetadataExtractor.extract(
+                    headingPath,
+                    textWithoutAddons.isBlank() ? text : textWithoutAddons
+            );
 
             // 1. Phân loại PROMO
             if (meta.isPromo()) {

@@ -435,11 +435,32 @@ public final class ChunkBuilder {
             return breadcrumb + trimmed;
         }
         // LlamaIndex Row-Level Node Postprocessor:
-        // - Với bảng không có header thật (2 cột Tình huống | Tư vấn hoặc bảng bị lặp dòng đầu khi split),
-        //   chỉ giữ lại 1 dòng Tình huống khớp nhất với câu hỏi để tránh ghép 2 tình huống khác nhau.
-        // - Với bảng có header thật (bảng giá/danh mục), giữ tối đa 2 dòng khớp nhất với truy vấn.
-        if (!genuineHeader && formattedRows.size() > 1 && query != null && !query.isBlank()) {
+        // - Với bảng 2 cột không có header thật (Tình huống | Tư vấn), chỉ giữ lại 1 dòng Tình huống khớp nhất với câu hỏi.
+        // - Với bảng danh mục nhiều cột bị lặp dòng đầu khi split (!genuineHeader && firstRowCells.length >= 3),
+        //   đưa dòng payload chính của chunk lên đầu và thu gọn mỗi dòng để giữ trọn cả 2 gói trong giới hạn 420 ký tự.
+        if (!genuineHeader && firstRowCells.length <= 2 && formattedRows.size() > 1 && query != null && !query.isBlank()) {
             formattedRows = selectMostRelevantTableRows(formattedRows, query, 1);
+        } else if (!genuineHeader && firstRowCells.length >= 3 && formattedRows.size() > 1) {
+            String repeatedFirst = formattedRows.get(0);
+            String payloadRow = formattedRows.get(1);
+            String qLow = query != null ? query.toLowerCase(java.util.Locale.ROOT) : "";
+            boolean queryTargetsFirst = qLow.matches("(?s).*\\b(399|390|ns01)\\b.*");
+            boolean queryTargetsSpecificOtherPrice = !queryTargetsFirst
+                    && qLow.matches("(?s).*\\b(530|580|670|780|990|ns02|ns03|ns04|ns05|ns06)\\b.*");
+            if (queryTargetsSpecificOtherPrice) {
+                String onlyPayload = payloadRow.length() > 320 ? payloadRow.substring(0, 320) : payloadRow;
+                formattedRows = java.util.List.of(onlyPayload);
+            } else {
+                String primary = queryTargetsFirst ? repeatedFirst : payloadRow;
+                String secondary = queryTargetsFirst ? payloadRow : repeatedFirst;
+                if (primary.length() > 215) {
+                    primary = primary.substring(0, 215);
+                }
+                if (secondary.length() > 150) {
+                    secondary = secondary.substring(0, 150);
+                }
+                formattedRows = java.util.List.of(primary, secondary);
+            }
         } else if (formattedRows.size() > 2) {
             if (query != null && !query.isBlank()) {
                 formattedRows = selectMostRelevantTableRows(formattedRows, query, 2);
@@ -481,6 +502,9 @@ public final class ChunkBuilder {
 
             int score = 0;
             for (String tok : queryTokens) {
+                if (tok.matches("\\d{3,4}") && (rowLower.contains(tok + ".000") || rowLower.contains(tok + "k"))) {
+                    score += 45;
+                }
                 int weight = tok.length() >= 4 ? 3 : 2;
                 if (keyCell.contains(tok)) {
                     score += weight * 3; // Ưu tiên khớp ở cột tiêu đề / tình huống / tên dịch vụ

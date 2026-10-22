@@ -1443,6 +1443,45 @@ class FanpageBotServiceTest {
         // 2. Prompt stays compact (< 2600 chars) on non-broad-price turns so Ollama CPU evaluates in < 6s
         assertThat(builtPrompt.length()).isLessThan(2600);
     }
+
+    @Test
+    void testPolishAndPriceLadderFixesForLive7TurnTranscript() {
+        // 1. Strips "Hay.", "Hay?", "Hay", and "A/B." artifacts completely
+        String rawWithArtifacts = "Dạ Anh/Chị ạ, bên em hiện đang có gói dịch vụ Massage cơ bản NS01 với giá 399.000VNĐ, giúp giảm đau mỏi trong 60 phút. Đây là mức giá mềm nhất của bên em hiện tại nha. Hay\n\n"
+                + "A/B. Anh/Chị muốn trải nghiệm lẻ 1 buổi trước hay tham khảo gói ưu đãi tiết kiệm hơn ạ?";
+        String cleaned = FanpageBotService.polishConversationalVietnamese(
+                rawWithArtifacts, "Anh/Chị", false, FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION, List.of(), "Có giảm giá hay khuyến mãi gì không");
+        assertThat(cleaned)
+                .doesNotContain("Hay\n")
+                .doesNotContain("Hay.")
+                .doesNotContain("Hay?")
+                .doesNotContain("A/B.")
+                .doesNotContain("A/B:")
+                .contains("399.000VNĐ")
+                .contains("Anh/Chị muốn trải nghiệm lẻ 1 buổi trước hay tham khảo gói ưu đãi tiết kiệm hơn ạ?");
+
+        // 2. Does NOT ask redundant "tập trung vùng cổ vai gáy hay thư giãn toàn thân?" when customer just stated "Tôi bị mỏi vai gáy"
+        String rawTurn2 = "Dạ em hiểu Anh/Chị đang bị mỏi vai gáy. Gói Massage phục hồi 580.000VNĐ sẽ giúp Anh/Chị thư giãn và giảm đau hiệu quả. Hay. Anh/Chị đang muốn tập trung vùng cổ vai gáy hay thư giãn toàn thân để em gợi ý gói phù hợp ạ?";
+        String cleanedTurn2 = FanpageBotService.polishConversationalVietnamese(
+                rawTurn2, "Anh/Chị", false, FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION, List.of(), "Tôi bị mỏi vai gáy");
+        assertThat(cleanedTurn2)
+                .doesNotContain("Hay.")
+                .doesNotContain("tập trung vùng cổ vai gáy hay thư giãn toàn thân")
+                .contains("mới xuất hiện hay bị thường xuyên");
+
+        // 3. Enforces PriceLadderResult consistency when LLM drifts to 530k on "Thử trc 1b cũng được" / "T muốn thử gói 390k trước"
+        var trialLadder = new com.example.docmind.service.sales.PriceLadderTracker.PriceLadderResult(
+                false, true, 399_000L, 399_000L, "Gói Massage cơ bản (NS01)", null, false, "TRIAL_CONSISTENCY");
+        String driftedTrialReply = "Dạ Anh/Chị ạ, gói Dưỡng Sinh Thân Thể 530.000VNĐ sẽ giúp Anh/Chị thư giãn toàn thân trong 100 phút.";
+        String fixedTrialReply = FanpageBotService.enforcePriceLadderConsistency(
+                driftedTrialReply, trialLadder, List.of(), "Anh/Chị", "Thử trước 1 buổi cũng được");
+        assertThat(fixedTrialReply)
+                .contains("Gói Massage cơ bản (NS01)")
+                .contains("399.000 VNĐ")
+                .contains("60 phút")
+                .doesNotContain("530.000")
+                .doesNotContain("100 phút");
+    }
 }
 
 
