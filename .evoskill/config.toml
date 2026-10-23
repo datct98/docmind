@@ -1,0 +1,28 @@
+# EvoSkill project configuration (Local Ollama Q5 + Antigravity Sync)
+
+[harness]
+name = "ollama"
+model = "qwen2.5:14b-instruct-q5_K_M"
+data_dirs = []
+timeout_seconds = 300
+max_retries = 2
+
+[evolution]
+mode = "skill_only"
+iterations = 2
+frontier_size = 3
+concurrency = 2
+no_improvement_limit = 2
+failure_samples = 4
+
+[dataset]
+source = "csv"
+path = ".evoskill/data/sales_and_agent_benchmark.csv"
+question_column = "question"
+ground_truth_column = "ground_truth"
+category_column = "category"
+train_ratio = 0.5
+val_ratio = 0.5
+
+[scorer]
+type = "multi_tolerance"

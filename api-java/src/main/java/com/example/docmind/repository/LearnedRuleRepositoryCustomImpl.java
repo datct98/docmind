@@ -158,6 +158,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                            retrieval_keywords, active, page_id,
                            confidence_score, applied_count, success_count, fail_count,
                            version, previous_rule_text, quarantined_reason, last_applied_at,
+                           dimension, cue_signal, contrastive_evidence, always_on,
+                           review_status, security_audit_notes,
+                           rule_code, title, intent, stage, priority,
+                           do_actions, dont_actions, grounding_policy, handoff_policy, source_format,
                            created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
@@ -182,6 +186,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                            retrieval_keywords, active, page_id,
                            confidence_score, applied_count, success_count, fail_count,
                            version, previous_rule_text, quarantined_reason, last_applied_at,
+                           dimension, cue_signal, contrastive_evidence, always_on,
+                           review_status, security_audit_notes,
+                           rule_code, title, intent, stage, priority,
+                           do_actions, dont_actions, grounding_policy, handoff_policy, source_format,
                            created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
@@ -216,6 +224,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                            retrieval_keywords, active, page_id,
                            confidence_score, applied_count, success_count, fail_count,
                            version, previous_rule_text, quarantined_reason, last_applied_at,
+                           dimension, cue_signal, contrastive_evidence, always_on,
+                           review_status, security_audit_notes,
+                           rule_code, title, intent, stage, priority,
+                           do_actions, dont_actions, grounding_policy, handoff_policy, source_format,
                            created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
@@ -242,6 +254,10 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                            retrieval_keywords, active, page_id,
                            confidence_score, applied_count, success_count, fail_count,
                            version, previous_rule_text, quarantined_reason, last_applied_at,
+                           dimension, cue_signal, contrastive_evidence, always_on,
+                           review_status, security_audit_notes,
+                           rule_code, title, intent, stage, priority,
+                           do_actions, dont_actions, grounding_policy, handoff_policy, source_format,
                            created_at, updated_at,
                            (1 - (embedding <=> CAST(? AS vector))) AS score
                     FROM learned_rules
@@ -403,6 +419,25 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         }
         Timestamp createdAt = rs.getTimestamp("created_at");
         Timestamp updatedAt = rs.getTimestamp("updated_at");
+        String ruleCode = getOptionalString(rs, "rule_code");
+        String title = getOptionalString(rs, "title");
+        String intent = getOptionalString(rs, "intent");
+        String stage = getOptionalString(rs, "stage");
+        Integer priority = getOptionalInt(rs, "priority", 80);
+        String doActions = getOptionalString(rs, "do_actions");
+        String dontActions = getOptionalString(rs, "dont_actions");
+        String groundingPolicy = getOptionalString(rs, "grounding_policy");
+        String handoffPolicy = getOptionalString(rs, "handoff_policy");
+        String sourceFormat = getOptionalString(rs, "source_format");
+        String dimStr = getOptionalString(rs, "dimension");
+        com.example.docmind.entity.HarnessDimension dimension = "INV".equalsIgnoreCase(dimStr)
+                ? com.example.docmind.entity.HarnessDimension.INV
+                : com.example.docmind.entity.HarnessDimension.DOM;
+        String cueSignal = getOptionalString(rs, "cue_signal");
+        String contrastiveEvidence = getOptionalString(rs, "contrastive_evidence");
+        boolean alwaysOn = getOptionalBoolean(rs, "always_on", false);
+        String reviewStatus = getOptionalString(rs, "review_status");
+        String securityAuditNotes = getOptionalString(rs, "security_audit_notes");
 
         return LearnedRuleEntity.builder()
                 .id(id)
@@ -421,9 +456,51 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                 .previousRuleText(previousRuleText)
                 .quarantinedReason(quarantinedReason)
                 .lastAppliedAt(lastAppliedAt != null ? lastAppliedAt.toInstant() : null)
+                .dimension(dimension)
+                .cueSignal(cueSignal)
+                .contrastiveEvidence(contrastiveEvidence)
+                .alwaysOn(alwaysOn)
+                .reviewStatus(reviewStatus != null ? reviewStatus : "APPROVED")
+                .securityAuditNotes(securityAuditNotes)
+                .ruleCode(ruleCode)
+                .title(title)
+                .intent(intent)
+                .stage(stage)
+                .priority(priority)
+                .doActions(doActions)
+                .dontActions(dontActions)
+                .groundingPolicy(groundingPolicy != null ? groundingPolicy : "must_use_kb_document_context")
+                .handoffPolicy(handoffPolicy != null ? handoffPolicy : "none")
+                .sourceFormat(sourceFormat != null ? sourceFormat : "MANUAL")
                 .createdAt(createdAt != null ? createdAt.toInstant() : Instant.now())
                 .updatedAt(updatedAt != null ? updatedAt.toInstant() : Instant.now())
                 .build();
+    }
+
+    private static String getOptionalString(ResultSet rs, String col) {
+        try {
+            return rs.getString(col);
+        } catch (SQLException ignored) {
+            return null;
+        }
+    }
+
+    private static Integer getOptionalInt(ResultSet rs, String col, int defaultVal) {
+        try {
+            int val = rs.getInt(col);
+            return rs.wasNull() ? defaultVal : val;
+        } catch (SQLException ignored) {
+            return defaultVal;
+        }
+    }
+
+    private static boolean getOptionalBoolean(ResultSet rs, String col, boolean defaultVal) {
+        try {
+            boolean val = rs.getBoolean(col);
+            return rs.wasNull() ? defaultVal : val;
+        } catch (SQLException ignored) {
+            return defaultVal;
+        }
     }
 
     private String toVectorLiteral(float[] v) {

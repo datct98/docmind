@@ -13,12 +13,15 @@ import java.util.UUID;
  */
 public record FanpageBotRequest(
         @JsonProperty("page_id")
+        @JsonAlias({"pageId"})
         String pageId,
 
         @JsonProperty("sender_id")
+        @JsonAlias({"senderId"})
         String senderId,
 
         @JsonProperty("customer_name")
+        @JsonAlias({"customerName"})
         String customerName,
 
         @JsonProperty("message")

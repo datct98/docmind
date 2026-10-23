@@ -112,13 +112,21 @@ public class AntiInfoDumpingHook implements GuardrailHook {
         String combinedChunksLower = context.getKnowledgeChunks() != null
                 ? String.join(" ", context.getKnowledgeChunks()).toLowerCase(Locale.ROOT)
                 : "";
-        boolean isMassageDoc = combinedChunksLower.contains("dưỡng sinh") || combinedChunksLower.contains("gội đầu");
-        boolean isDermatologyDoc = combinedChunksLower.isEmpty()
+        boolean isMassageDoc = combinedChunksLower.contains("dưỡng sinh")
+                || combinedChunksLower.contains("gội đầu")
+                || combinedChunksLower.contains("massage body")
+                || combinedChunksLower.contains("nàng sen")
+                || combinedChunksLower.contains("ngâm thảo dược");
+        boolean isDermatologyDoc = !isMassageDoc && (combinedChunksLower.isEmpty()
                 || combinedChunksLower.contains("soi da")
                 || combinedChunksLower.contains("laser")
                 || combinedChunksLower.contains("trị mụn")
                 || combinedChunksLower.contains("trị nám")
-                || combinedChunksLower.contains("650.000");
+                || combinedChunksLower.contains("650.000"));
+
+        if (isMassageDoc && distinctPrices.size() <= 2 && !dumpsCombos) {
+            return false;
+        }
 
         String honorific = context.getCustomerHonorific();
         boolean isFirstTurn = context.isFirstTurn();
@@ -129,8 +137,17 @@ public class AntiInfoDumpingHook implements GuardrailHook {
 
         String rewritten;
         if (isMassageDoc) {
-            rewritten = opening + "Bên em có Gội đầu dưỡng sinh từ 129.000 VNĐ và Massage cơ bản từ 399.000 VNĐ (trọn gói, không nhận Tip) ạ.\n\n"
-                    + "Hiện tại " + honorific + " đang quan tâm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh ạ?";
+            String capHonorific = (honorific != null && !honorific.isBlank())
+                    ? Character.toUpperCase(honorific.charAt(0)) + honorific.substring(1)
+                    : "Mình";
+            if (isFirstTurn) {
+                rewritten = "Dạ An Nhiên chào " + honorific + " ạ, chào mừng " + honorific + " đến với Nàng Sen Spa.\n\n"
+                        + "Dạ giá bên em tùy dịch vụ và thời lượng " + honorific + " chọn ạ. "
+                        + capHonorific + " đang quan tâm massage cổ vai gáy, massage body hay ngâm thảo dược để em gửi đúng mức giá cho " + honorific + " nha?";
+            } else {
+                rewritten = "Dạ giá bên em tùy dịch vụ và thời lượng " + honorific + " chọn ạ. "
+                        + capHonorific + " đang quan tâm massage cổ vai gáy, massage body hay ngâm thảo dược để em gửi đúng mức giá cho " + honorific + " nha?";
+            }
         } else if (isDermatologyDoc) {
             rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice
                     + " tùy tình trạng nền da, đã bao gồm Bác sĩ chuyên khoa soi da AI 3D miễn phí 100% và cam kết trọn gói không phát sinh phụ phí ạ.\n\n"

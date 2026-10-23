@@ -1,0 +1,11 @@
+{
+  "manifest_version": "1.0.0",
+  "agent": "03_qa_blackbox_adversarial",
+  "timestamp_utc": "2026-10-23T08:32:30Z",
+  "target_page_id": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+  "api_base_url": "http://localhost:8090",
+  "brain_base_url": "http://localhost:8095",
+  "scenarios_executed": 3,
+  "total_turns_executed": 14,
+  "overall_verdict": "PASS"
+}

@@ -116,6 +116,7 @@ public class GuardrailPipeline {
         if (count > MAX_SAFE_BUBBLES) {
             safe.add(sanitizeBubble(bubbles.get(0)));
             safe.add(sanitizeBubble(bubbles.get(1)));
+            safe.add(sanitizeBubble(bubbles.get(2)));
             safe.add(sanitizeBubble(bubbles.get(count - 1)));
         } else {
             for (ReplyBubble b : bubbles) {
@@ -223,13 +224,34 @@ public class GuardrailPipeline {
             }
         }
 
-        List<Integer> bubbleDelays = result.bubbles().stream()
-                .map(ReplyBubble::typingDelayMs)
-                .toList();
+        boolean hadPostPriceThinkingDelay = originalResponse.replyBubbles() != null
+                && originalResponse.replyBubbles().stream().anyMatch(b -> b != null && b.typingDelayMs() >= 9000);
+        List<ReplyBubble> finalBubbles = result.bubbles();
+        if (originalResponse.needsHumanHandoff() && finalBubbles != null && finalBubbles.size() > 1) {
+            String singleText = result.text() != null ? result.text().replaceAll("\\n\\s*\\n", " ").strip() : finalBubbles.get(0).text();
+            finalBubbles = List.of(new ReplyBubble(singleText, Math.min(1200, Math.max(800, singleText.length() * 10))));
+        } else if (hadPostPriceThinkingDelay && finalBubbles != null && finalBubbles.size() >= 2
+                && finalBubbles.stream().noneMatch(b -> b != null && b.typingDelayMs() >= 9000)) {
+            List<ReplyBubble> updated = new ArrayList<>(finalBubbles);
+            int targetIdx = 1;
+            for (int i = 0; i < updated.size() - 1; i++) {
+                if (updated.get(i).text() != null
+                        && updated.get(i).text().matches("(?isU).*\\d+(?:[.,]\\d+)?\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b|triệu\\b).*")) {
+                    targetIdx = i + 1;
+                    break;
+                }
+            }
+            updated.set(targetIdx, new ReplyBubble(updated.get(targetIdx).text(), 15_000));
+            finalBubbles = Collections.unmodifiableList(updated);
+        }
+
+        List<Integer> bubbleDelays = finalBubbles != null
+                ? finalBubbles.stream().map(ReplyBubble::typingDelayMs).toList()
+                : List.of();
 
         return new FanpageBotResponse(
                 result.text(),
-                result.bubbles(),
+                finalBubbles,
                 bubbleDelays,
                 originalResponse.salesStage(),
                 originalResponse.confidenceScore(),

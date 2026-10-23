@@ -1,0 +1,532 @@
+{
+  "timestamp_utc": "2026-10-23T08:32:30Z",
+  "scenarios": [
+    {
+      "scenario_id": "RND-HANOI-7TURN",
+      "description": "7-turn chronic shoulder/neck pain -> price -> 2x price objection -> promo -> hesitation -> booking conversion",
+      "status": "PASS",
+      "turns": [
+        {
+          "turn": 1,
+          "user_message": "Dạo này chị đau mỏi vai gáy và mất ngủ quá em ơi",
+          "status_code": 200,
+          "latency_sec": 0.182,
+          "reply_text": "Dạ em chào Chị ạ! Nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy và mất ngủ mà em thương quá — khi bó cơ căng cứng và khí huyết kém lưu thông sẽ khiến người rất mệt mỏi, nặng trĩu.\n\nTại Nàng Sen Spa, liệu trình Massage Trị Liệu sẽ ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy, giúp Chị nhẹ bẫng vùng cổ vai gáy ngay buổi đầu ạ.\n\nHiện Chị muốn tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy trước hay kết hợp ngâm bồn thảo dược thư giãn toàn thân để em chọn gói sát nhất ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em chào Chị ạ! Nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy và mất ngủ mà em thương quá — khi bó cơ căng cứng và khí huyết kém lưu thông sẽ khiến người rất mệt mỏi, nặng trĩu.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Tại Nàng Sen Spa, liệu trình Massage Trị Liệu sẽ ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy, giúp Chị nhẹ bẫng vùng cổ vai gáy ngay buổi đầu ạ.",
+              "typing_delay_ms": 2715
+            },
+            {
+              "text": "Hiện Chị muốn tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy trước hay kết hợp ngâm bồn thảo dược thư giãn toàn thân để em chọn gói sát nhất ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "EXPLORING_CONSULTATION",
+          "buying_temperature": 36,
+          "active_skills": [
+            "spin_micro_diagnostic"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 2,
+          "user_message": "Chị bị suốt mấy tháng nay rồi, giá bên mình thế nào em?",
+          "status_code": 200,
+          "latency_sec": 0.118,
+          "reply_text": "Dạ nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy và mất ngủ mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) và Gói Chuyên Sâu 530.000đ (80 phút) (trọn gói 100% không nhận Tip ạ).\n\nTrong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy (Gói Chuyên Sâu 530.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Chị nhẹ bẫng vùng cổ vai gáy ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.\n\nChị muốn trải nghiệm trước Gói Cơ Bản 399.000đ hay chọn Gói Chuyên Sâu 530.000đ để giải quyết triệt để vùng cổ vai gáy ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy và mất ngủ mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) và Gói Chuyên Sâu 530.000đ (80 phút) (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Trong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy (Gói Chuyên Sâu 530.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Chị nhẹ bẫng vùng cổ vai gáy ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn trải nghiệm trước Gói Cơ Bản 399.000đ hay chọn Gói Chuyên Sâu 530.000đ để giải quyết triệt để vùng cổ vai gáy ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 68,
+          "active_skills": [
+            "SALES_ANTI_INFO_DUMPING_PACING"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 3,
+          "user_message": "530k hơi cao em ơi, có gói nào mềm hơn không?",
+          "status_code": 200,
+          "latency_sec": 0.101,
+          "reply_text": "Dạ em rất hiểu sự cân nhắc của Chị khi mới trải nghiệm lần đầu ạ! Để nhẹ nhàng hơn về chi phí mà vẫn giải tỏa hiệu quả tình trạng đau mỏi cổ vai gáy và mất ngủ, bên em có Gói Massage Trị Liệu Cơ Bản chỉ 399.000đ (60 phút) (trọn gói 100% không nhận Tip ạ).\n\nDù ở mức chi phí tiết kiệm hơn, gói 399.000đ vẫn giữ trọn quy trình ngâm chân thảo dược ấm, ấn huyệt chuyên sâu vùng cổ vai gáy và dùng điểm tâm thực dưỡng sau buổi để Chị yên tâm cảm nhận tay nghề kỹ thuật viên ạ.\n\nChị muốn bên em giữ lịch trải nghiệm gói Cơ Bản 399.000đ vào khung giờ Sáng hay Chiều để em sắp xếp phòng yên tĩnh cho mình ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em rất hiểu sự cân nhắc của Chị khi mới trải nghiệm lần đầu ạ! Để nhẹ nhàng hơn về chi phí mà vẫn giải tỏa hiệu quả tình trạng đau mỏi cổ vai gáy và mất ngủ, bên em có Gói Massage Trị Liệu Cơ Bản chỉ 399.000đ (60 phút) (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Dù ở mức chi phí tiết kiệm hơn, gói 399.000đ vẫn giữ trọn quy trình ngâm chân thảo dược ấm, ấn huyệt chuyên sâu vùng cổ vai gáy và dùng điểm tâm thực dưỡng sau buổi để Chị yên tâm cảm nhận tay nghề kỹ thuật viên ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn bên em giữ lịch trải nghiệm gói Cơ Bản 399.000đ vào khung giờ Sáng hay Chiều để em sắp xếp phòng yên tĩnh cho mình ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 60,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 4,
+          "user_message": "399k chị vẫn thấy đắt quá, còn gói nào rẻ hơn nữa không em?",
+          "status_code": 200,
+          "latency_sec": 0.101,
+          "reply_text": "Dạ em hoàn toàn đồng cảm với cân nhắc về chi phí của Chị ạ! Thực tế với liệu trình xử lý tình trạng đau mỏi cổ vai gáy và mất ngủ, gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) là mức trọn gói tiết kiệm nhất (đã gồm ngâm chân thảo dược, ấn huyệt giải cơ sâu, điểm tâm thực dưỡng & 100% không nhận Tip); hoặc nhẹ nhàng hơn nữa bên em có Gói Dưỡng Sinh Thảo Dược kết hợp massage cổ vai - tay chỉ 239.000đ (60 phút) ạ.\n\nBên em rất hiểu tâm lý lần đầu trải nghiệm muốn thử tay nghề kỹ thuật viên trước nên tuyệt đối không chèo kéo mua thẻ dài hạn; ngoài ra nếu đi theo nhóm hoặc đăng ký từ 5 buổi/voucher sẽ được giảm ngay 10% tổng hóa đơn ạ.\n\nChị muốn trải nghiệm nhẹ nhàng gói Dưỡng sinh 239.000đ trước hay thử 1 buổi lẻ gói Trị liệu 399.000đ để tập trung giải cơ vùng cổ vai gáy ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em hoàn toàn đồng cảm với cân nhắc về chi phí của Chị ạ! Thực tế với liệu trình xử lý tình trạng đau mỏi cổ vai gáy và mất ngủ, gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) là mức trọn gói tiết kiệm nhất (đã gồm ngâm chân thảo dược, ấn huyệt giải cơ sâu, điểm tâm thực dưỡng & 100% không nhận Tip); hoặc nhẹ nhàng hơn nữa bên em có Gói Dưỡng Sinh Thảo Dược kết hợp massage cổ vai - tay chỉ 239.000đ (60 phút) ạ.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Bên em rất hiểu tâm lý lần đầu trải nghiệm muốn thử tay nghề kỹ thuật viên trước nên tuyệt đối không chèo kéo mua thẻ dài hạn; ngoài ra nếu đi theo nhóm hoặc đăng ký từ 5 buổi/voucher sẽ được giảm ngay 10% tổng hóa đơn ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn trải nghiệm nhẹ nhàng gói Dưỡng sinh 239.000đ trước hay thử 1 buổi lẻ gói Trị liệu 399.000đ để tập trung giải cơ vùng cổ vai gáy ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 52,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 5,
+          "user_message": "Có chương trình giảm giá hay ưu đãi gì không em?",
+          "status_code": 200,
+          "latency_sec": 0.108,
+          "reply_text": "Dạ em rất hiểu tâm lý muốn tìm mức ưu đãi tốt nhất để đi chăm sóc định kỳ của Chị ạ! Hiện Nàng Sen Spa giảm ngay 10% tổng hóa đơn khi đăng ký thẻ từ 5 buổi hoặc mua từ 5 voucher trở lên, hoặc Chị có thể thử lẻ 1 buổi Gói Cơ Bản 399.000đ (60 phút) trước ạ.\n\nDù đi lẻ 1 buổi hay đăng ký thẻ ưu đãi, suất chăm sóc của Chị đều đã bao gồm trọn gói ngâm chân thảo dược ấm, ấn huyệt giải cơ vùng cổ vai gáy, trà bánh thực dưỡng và cam kết 100% không nhận Tip ạ.\n\nChị muốn đặt lịch trải nghiệm thử 1 buổi lẻ 399.000đ trước hay đăng ký gói ưu đãi giảm 10% để em giữ suất cho mình ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em rất hiểu tâm lý muốn tìm mức ưu đãi tốt nhất để đi chăm sóc định kỳ của Chị ạ! Hiện Nàng Sen Spa giảm ngay 10% tổng hóa đơn khi đăng ký thẻ từ 5 buổi hoặc mua từ 5 voucher trở lên, hoặc Chị có thể thử lẻ 1 buổi Gói Cơ Bản 399.000đ (60 phút) trước ạ.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Dù đi lẻ 1 buổi hay đăng ký thẻ ưu đãi, suất chăm sóc của Chị đều đã bao gồm trọn gói ngâm chân thảo dược ấm, ấn huyệt giải cơ vùng cổ vai gáy, trà bánh thực dưỡng và cam kết 100% không nhận Tip ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn đặt lịch trải nghiệm thử 1 buổi lẻ 399.000đ trước hay đăng ký gói ưu đãi giảm 10% để em giữ suất cho mình ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 82,
+          "active_skills": [
+            "first_time_perk_lock"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 6,
+          "user_message": "Uk để chị suy nghĩ đã nhé",
+          "status_code": 200,
+          "latency_sec": 0.121,
+          "reply_text": "Dạ vâng Chị cứ thong thả cân nhắc thêm nhé ạ, hoàn toàn không vội đâu ạ! Chăm sóc cơ thể là lúc mình thấy thật sự thoải mái và thư thái nhất.\n\nBất cứ khi nào vùng cổ vai gáy mỏi nhức cần thả lỏng bằng thảo dược ấm và ấn huyệt sâu, Chị cứ nhắn nhẹ cho em là bên em hỗ trợ giữ phòng riêng yên tĩnh cho Chị ngay nha ạ.",
+          "bubble_count": 2,
+          "bubbles": [
+            {
+              "text": "Dạ vâng Chị cứ thong thả cân nhắc thêm nhé ạ, hoàn toàn không vội đâu ạ! Chăm sóc cơ thể là lúc mình thấy thật sự thoải mái và thư thái nhất.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Bất cứ khi nào vùng cổ vai gáy mỏi nhức cần thả lỏng bằng thảo dược ấm và ấn huyệt sâu, Chị cứ nhắn nhẹ cho em là bên em hỗ trợ giữ phòng riêng yên tĩnh cho Chị ngay nha ạ.",
+              "typing_delay_ms": 10000
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "EXPLORING_CONSULTATION",
+          "buying_temperature": 62,
+          "active_skills": [
+            "spin_micro_diagnostic"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 7,
+          "user_message": "Thôi chiều nay mệt quá, đặt cho chị gói 399k lúc 17h30 nhé, sđt 0987654321",
+          "status_code": 200,
+          "latency_sec": 0.158,
+          "reply_text": "Dạ vâng, em đã ghi nhận số điện thoại 0987654321 và khung giờ hẹn chiều nay của Chị rồi ạ! Chuyên viên tư vấn bên em sẽ liên hệ sớm qua điện thoại/Zalo để xác nhận và hỗ trợ Chị chu đáo nhất nhé ạ.",
+          "bubble_count": 1,
+          "bubbles": [
+            {
+              "text": "Dạ vâng, em đã ghi nhận số điện thoại 0987654321 và khung giờ hẹn chiều nay của Chị rồi ạ! Chuyên viên tư vấn bên em sẽ liên hệ sớm qua điện thoại/Zalo để xác nhận và hỗ trợ Chị chu đáo nhất nhé ạ.",
+              "typing_delay_ms": 1200
+            }
+          ],
+          "sales_stage": "SOFT_BOOKING_CLOSE",
+          "needs_human_handoff": true,
+          "handoff_category": "BOOKING_LEAD_CAPTURED",
+          "extracted_lead": {
+            "has_buying_or_booking_signal": true,
+            "phone_number": "0987654321",
+            "preferred_time": "chiều nay",
+            "summary_note": "SĐT: 0987654321 · Khung giờ hẹn: chiều nay"
+          },
+          "buyer_archetype": "READY_TO_BOOK",
+          "buying_temperature": 100,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        }
+      ]
+    },
+    {
+      "scenario_id": "RND-SAIGON-3TURN",
+      "description": "3-turn Saigon Quận 1 branch price & downsell verification (670.000đ -> 570.000đ)",
+      "status": "PASS",
+      "turns": [
+        {
+          "turn": 1,
+          "user_message": "Chào shop, chị ở Quận 1 Sài Gòn đang mỏi vai gáy quá",
+          "status_code": 200,
+          "latency_sec": 0.139,
+          "reply_text": "Dạ em chào Chị ạ! Nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy mà em thương quá — khi bó cơ căng cứng và khí huyết kém lưu thông sẽ khiến người rất mệt mỏi, nặng trĩu.\n\nTại Nàng Sen Spa, liệu trình Massage Trị Liệu sẽ ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy, giúp Chị nhẹ bẫng vùng cổ vai gáy ngay buổi đầu ạ.\n\nHiện Chị muốn tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy trước hay kết hợp ngâm bồn thảo dược thư giãn toàn thân để em chọn gói sát nhất ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em chào Chị ạ! Nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy mà em thương quá — khi bó cơ căng cứng và khí huyết kém lưu thông sẽ khiến người rất mệt mỏi, nặng trĩu.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Tại Nàng Sen Spa, liệu trình Massage Trị Liệu sẽ ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy, giúp Chị nhẹ bẫng vùng cổ vai gáy ngay buổi đầu ạ.",
+              "typing_delay_ms": 2715
+            },
+            {
+              "text": "Hiện Chị muốn tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy trước hay kết hợp ngâm bồn thảo dược thư giãn toàn thân để em chọn gói sát nhất ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "EXPLORING_CONSULTATION",
+          "buying_temperature": 36,
+          "active_skills": [
+            "spin_micro_diagnostic"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 2,
+          "user_message": "Chi phí gói massage ở Quận 1 Sài Gòn giá sao em?",
+          "status_code": 200,
+          "latency_sec": 0.178,
+          "reply_text": "Dạ nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 570.000đ (70 phút) và Gói Chuyên Sâu 670.000đ (90 phút) (trọn gói 100% không nhận Tip ạ).\n\nTrong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy (Gói Chuyên Sâu 670.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Chị nhẹ bẫng vùng cổ vai gáy ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.\n\nChị muốn trải nghiệm trước Gói Cơ Bản 570.000đ hay chọn Gói Chuyên Sâu 670.000đ để giải quyết triệt để vùng cổ vai gáy ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ nghe Chị chia sẻ tình trạng đau mỏi cổ vai gáy mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 570.000đ (70 phút) và Gói Chuyên Sâu 670.000đ (90 phút) (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Trong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, đá nóng bazan và ấn huyệt đả thông kinh lạc vùng cổ vai gáy (Gói Chuyên Sâu 670.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Chị nhẹ bẫng vùng cổ vai gáy ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn trải nghiệm trước Gói Cơ Bản 570.000đ hay chọn Gói Chuyên Sâu 670.000đ để giải quyết triệt để vùng cổ vai gáy ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 68,
+          "active_skills": [
+            "SALES_ANTI_INFO_DUMPING_PACING"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 3,
+          "user_message": "Gói 570k với 670k khác gì nhau vậy em?",
+          "status_code": 200,
+          "latency_sec": 0.094,
+          "reply_text": "Dạ câu hỏi của Chị rất thực tế ạ! Gói Cơ Bản 570.000đ (70 phút) tập trung ấn huyệt làm mềm bó cơ vùng cổ vai gáy và ngâm chân thảo dược; còn Gói Chuyên Sâu 670.000đ (90 phút) có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân và chườm ngải cứu sâu (trọn gói 100% không nhận Tip ạ).\n\nNếu Chị muốn thử tay nghề kỹ thuật viên buổi đầu thì Gói Cơ Bản 570.000đ đã rất êm ái, còn nếu vùng cổ vai gáy đang căng mỏi nhiều thì Gói Chuyên Sâu 670.000đ sẽ giúp giãn cơ nhanh và ngủ sâu hơn hẳn ạ.\n\nChị muốn trải nghiệm thử Gói Cơ Bản 570.000đ trước hay chọn Gói Chuyên Sâu 670.000đ vào khung giờ Sáng hay Chiều ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ câu hỏi của Chị rất thực tế ạ! Gói Cơ Bản 570.000đ (70 phút) tập trung ấn huyệt làm mềm bó cơ vùng cổ vai gáy và ngâm chân thảo dược; còn Gói Chuyên Sâu 670.000đ (90 phút) có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân và chườm ngải cứu sâu (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Nếu Chị muốn thử tay nghề kỹ thuật viên buổi đầu thì Gói Cơ Bản 570.000đ đã rất êm ái, còn nếu vùng cổ vai gáy đang căng mỏi nhiều thì Gói Chuyên Sâu 670.000đ sẽ giúp giãn cơ nhanh và ngủ sâu hơn hẳn ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn trải nghiệm thử Gói Cơ Bản 570.000đ trước hay chọn Gói Chuyên Sâu 670.000đ vào khung giờ Sáng hay Chiều ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "EXPLORING_CONSULTATION",
+          "buying_temperature": 78,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 4,
+          "user_message": "670k hơi cao em ơi, có gói nào mềm hơn ở Quận 1 không?",
+          "status_code": 200,
+          "latency_sec": 0.094,
+          "reply_text": "Dạ em rất hiểu sự cân nhắc của Chị khi mới trải nghiệm lần đầu ạ! Để nhẹ nhàng hơn về chi phí mà vẫn giải tỏa hiệu quả tình trạng đau mỏi cổ vai gáy, bên em có Gói Massage Trị Liệu Cơ Bản chỉ 570.000đ (70 phút) (trọn gói 100% không nhận Tip ạ).\n\nDù ở mức chi phí tiết kiệm hơn, gói 570.000đ vẫn giữ trọn quy trình ngâm chân thảo dược ấm, ấn huyệt chuyên sâu vùng cổ vai gáy và dùng điểm tâm thực dưỡng sau buổi để Chị yên tâm cảm nhận tay nghề kỹ thuật viên ạ.\n\nChị muốn bên em giữ lịch trải nghiệm gói Cơ Bản 570.000đ vào khung giờ Sáng hay Chiều để em sắp xếp phòng yên tĩnh cho mình ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em rất hiểu sự cân nhắc của Chị khi mới trải nghiệm lần đầu ạ! Để nhẹ nhàng hơn về chi phí mà vẫn giải tỏa hiệu quả tình trạng đau mỏi cổ vai gáy, bên em có Gói Massage Trị Liệu Cơ Bản chỉ 570.000đ (70 phút) (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Dù ở mức chi phí tiết kiệm hơn, gói 570.000đ vẫn giữ trọn quy trình ngâm chân thảo dược ấm, ấn huyệt chuyên sâu vùng cổ vai gáy và dùng điểm tâm thực dưỡng sau buổi để Chị yên tâm cảm nhận tay nghề kỹ thuật viên ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Chị muốn bên em giữ lịch trải nghiệm gói Cơ Bản 570.000đ vào khung giờ Sáng hay Chiều để em sắp xếp phòng yên tĩnh cho mình ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 70,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        }
+      ]
+    },
+    {
+      "scenario_id": "RND-USER-CRITIQUE-3TURN",
+      "description": "User 3-turn critique: Tư vấn -> T bị đưng lưng mỏi gối tê tay -> Đắt thế",
+      "status": "PASS",
+      "turns": [
+        {
+          "turn": 1,
+          "user_message": "Tư vấn",
+          "status_code": 200,
+          "latency_sec": 0.053,
+          "reply_text": "Dạ em chào Anh ạ! Rất vui được đón Anh ghé thăm không gian trị liệu thảo dược ấm áp của Nàng Sen Spa.\n\nBên em chuyên sâu Massage Trị Liệu Cổ Vai Gáy - Thắt Lưng và Gội Đầu Dưỡng Sinh Thảo Dược (cam kết 100% không nhận Tip, không chèo kéo mỹ phẩm) giúp phục hồi năng lượng sâu ạ.\n\nHôm nay Anh đang gặp tình trạng đau mỏi vùng nào trên cơ thể hay muốn thư giãn gội đầu dưỡng sinh để em tư vấn liệu trình êm ái nhất cho mình ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em chào Anh ạ! Rất vui được đón Anh ghé thăm không gian trị liệu thảo dược ấm áp của Nàng Sen Spa.",
+              "typing_delay_ms": 1010
+            },
+            {
+              "text": "Bên em chuyên sâu Massage Trị Liệu Cổ Vai Gáy - Thắt Lưng và Gội Đầu Dưỡng Sinh Thảo Dược (cam kết 100% không nhận Tip, không chèo kéo mỹ phẩm) giúp phục hồi năng lượng sâu ạ.",
+              "typing_delay_ms": 2625
+            },
+            {
+              "text": "Hôm nay Anh đang gặp tình trạng đau mỏi vùng nào trên cơ thể hay muốn thư giãn gội đầu dưỡng sinh để em tư vấn liệu trình êm ái nhất cho mình ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "DISCOVERY",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "DISCREET_DECISIVE",
+          "buying_temperature": 36,
+          "active_skills": [
+            "spin_micro_diagnostic"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 2,
+          "user_message": "T bị đưng lưng mỏi gối tê tay",
+          "status_code": 200,
+          "latency_sec": 0.123,
+          "reply_text": "Dạ nghe Anh chia sẻ tình trạng đau lưng, mỏi gối và tê bì tay mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) và Gói Chuyên Sâu 530.000đ (80 phút) (trọn gói 100% không nhận Tip ạ).\n\nTrong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, chườm ngải cứu dọc vùng lưng - khớp gối - cánh tay và ấn huyệt đả thông kinh lạc sâu (Gói Chuyên Sâu 530.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Anh nhẹ bẫng vùng lưng - khớp gối - cánh tay ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.\n\nTình trạng đau lưng, mỏi gối và tê bì tay của Anh là mới xuất hiện gần đây hay đã kéo dài thường xuyên để em cân đối lực ấn huyệt và gói phù hợp nhất cho mình ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ nghe Anh chia sẻ tình trạng đau lưng, mỏi gối và tê bì tay mà em thương quá — khi khí huyết kém lưu thông và bó cơ căng cứng như vậy rất cần ấn huyệt giải phóng điểm tắc nghẽn ạ. Hiện bên em có Gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) và Gói Chuyên Sâu 530.000đ (80 phút) (trọn gói 100% không nhận Tip ạ).",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Trong suốt buổi trị liệu, kỹ thuật viên tay nghề cao sẽ kết hợp ủ ấm thảo dược tươi, chườm ngải cứu dọc vùng lưng - khớp gối - cánh tay và ấn huyệt đả thông kinh lạc sâu (Gói Chuyên Sâu 530.000đ có thêm 20 phút ngâm bồn gỗ thảo dược ấm toàn thân), giúp Anh nhẹ bẫng vùng lưng - khớp gối - cánh tay ngay từ buổi đầu kèm điểm tâm thực dưỡng ấm bụng ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Tình trạng đau lưng, mỏi gối và tê bì tay của Anh là mới xuất hiện gần đây hay đã kéo dài thường xuyên để em cân đối lực ấn huyệt và gói phù hợp nhất cho mình ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "EXPLORING_CONSULTATION",
+          "buying_temperature": 58,
+          "active_skills": [
+            "spin_micro_diagnostic"
+          ],
+          "triggered_guardrail_hooks": []
+        },
+        {
+          "turn": 3,
+          "user_message": "Đắt thế",
+          "status_code": 200,
+          "latency_sec": 0.2,
+          "reply_text": "Dạ em hoàn toàn đồng cảm với cân nhắc về chi phí của Anh ạ! Thực tế với liệu trình xử lý tình trạng đau lưng, mỏi gối và tê bì tay, gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) là mức trọn gói tiết kiệm nhất (đã gồm ngâm chân thảo dược, ấn huyệt giải cơ sâu, điểm tâm thực dưỡng & 100% không nhận Tip); hoặc nhẹ nhàng hơn nữa bên em có Gói Dưỡng Sinh Thảo Dược kết hợp massage cổ vai - tay chỉ 239.000đ (60 phút) ạ.\n\nBên em rất hiểu tâm lý lần đầu trải nghiệm muốn thử tay nghề kỹ thuật viên trước nên tuyệt đối không chèo kéo mua thẻ dài hạn; ngoài ra nếu đi theo nhóm hoặc đăng ký từ 5 buổi/voucher sẽ được giảm ngay 10% tổng hóa đơn ạ.\n\nAnh muốn trải nghiệm nhẹ nhàng gói Dưỡng sinh 239.000đ trước hay thử 1 buổi lẻ gói Trị liệu 399.000đ để tập trung giải cơ vùng lưng - khớp gối - cánh tay ạ?",
+          "bubble_count": 3,
+          "bubbles": [
+            {
+              "text": "Dạ em hoàn toàn đồng cảm với cân nhắc về chi phí của Anh ạ! Thực tế với liệu trình xử lý tình trạng đau lưng, mỏi gối và tê bì tay, gói Massage Trị Liệu Cơ Bản 399.000đ (60 phút) là mức trọn gói tiết kiệm nhất (đã gồm ngâm chân thảo dược, ấn huyệt giải cơ sâu, điểm tâm thực dưỡng & 100% không nhận Tip); hoặc nhẹ nhàng hơn nữa bên em có Gói Dưỡng Sinh Thảo Dược kết hợp massage cổ vai - tay chỉ 239.000đ (60 phút) ạ.",
+              "typing_delay_ms": 1200
+            },
+            {
+              "text": "Bên em rất hiểu tâm lý lần đầu trải nghiệm muốn thử tay nghề kỹ thuật viên trước nên tuyệt đối không chèo kéo mua thẻ dài hạn; ngoài ra nếu đi theo nhóm hoặc đăng ký từ 5 buổi/voucher sẽ được giảm ngay 10% tổng hóa đơn ạ.",
+              "typing_delay_ms": 10000
+            },
+            {
+              "text": "Anh muốn trải nghiệm nhẹ nhàng gói Dưỡng sinh 239.000đ trước hay thử 1 buổi lẻ gói Trị liệu 399.000đ để tập trung giải cơ vùng lưng - khớp gối - cánh tay ạ?",
+              "typing_delay_ms": 2500
+            }
+          ],
+          "sales_stage": "VALUE_CONSULTATION",
+          "needs_human_handoff": false,
+          "handoff_category": null,
+          "extracted_lead": {
+            "has_buying_or_booking_signal": false,
+            "phone_number": null,
+            "preferred_time": null,
+            "summary_note": null
+          },
+          "buyer_archetype": "PRICE_CONSCIOUS",
+          "buying_temperature": 50,
+          "active_skills": [
+            "behavioral_value_reframing"
+          ],
+          "triggered_guardrail_hooks": []
+        }
+      ]
+    }
+  ]
+}

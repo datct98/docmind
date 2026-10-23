@@ -2,6 +2,7 @@
 # DocMind — Full-Stack Docker Compose (1-Command Ubuntu & Dev Deploy)
 #   postgres        : PostgreSQL 16 + pgvector (host 5433 -> 5432)
 #   doc-service-py  : FastAPI document parser + embedding engine (host 8091 -> 8091)
+#   agent-brain     : Hindsight Memory + Tactical Sales Brain Engine (host 8095 -> 8095)
 #   api-java        : Spring Boot 4 orchestrator + RAG + Fanpage Bot (host 8090 -> 8090)
 #   frontend        : Vue 3 SPA + Nginx Reverse Proxy /api -> api-java:8090 (host 3000 -> 80)
 #   tunnel          : Cloudflare Quick Tunnel (Tự động cấp link https://*.trycloudflare.com
@@ -53,6 +54,23 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  agent-brain:
+    build: ./agent-brain
+    container_name: docmind-agent-brain
+    ports:
+      - "8095:8095"
+    environment:
+      - AGENT_BRAIN_SQLITE_PATH=/data/agent_brain.db
+    volumes:
+      - docmind-braindata:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
   api-java:
     build: ./api-java
     container_name: docmind-api
@@ -62,6 +80,8 @@ services:
       postgres:
         condition: service_healthy
       doc-service-py:
+        condition: service_started
+      agent-brain:
         condition: service_started
     env_file:
       - path: ./.env
@@ -74,6 +94,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-docmind}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD:-docmind}}
       - DOC_SERVICE_BASE_URL=http://doc-service-py:8091
+      - AGENT_BRAIN_BASE_URL=${AGENT_BRAIN_BASE_URL:-http://agent-brain:8095}
       - DOC_SERVICE_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
       - DOCMIND_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
       # Unified Multi-Provider LLM Configuration (R4)
@@ -81,15 +102,22 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
+      - LLM_TOP_P=${LLM_TOP_P:-}
       - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-120}
       - LLM_REASONING_EFFORT=${LLM_REASONING_EFFORT:-}
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-0}
-      # Legacy fallbacks
+      # Legacy & Ollama-specific tuning
       - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b-instruct-q5_K_M}
+      - OLLAMA_FALLBACK_MODEL=${OLLAMA_FALLBACK_MODEL:-}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0.2}
+      - OLLAMA_TOP_P=${OLLAMA_TOP_P:-0.9}
+      - OLLAMA_REPEAT_PENALTY=${OLLAMA_REPEAT_PENALTY:-1.08}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-4096}
+      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-600}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
     volumes:
       # Mount trực tiếp ./api-java/.env (thư mục Spring Boot) vào /app/.env để khi sửa api-java/.env và bấm Restart container,
@@ -134,3 +162,4 @@ services:
 
 volumes:
   docmind-pgdata:
+  docmind-braindata:

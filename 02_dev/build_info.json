@@ -1,0 +1,33 @@
+{
+  "pipeline_version": "ANTIGRAVITY_MULTI_AGENT_TEAM_V1.0",
+  "timestamp_utc": "2026-10-23T08:32:30Z",
+  "services": {
+    "api_java": {
+      "url": "http://localhost:8090",
+      "healthy": true
+    },
+    "agent_brain": {
+      "url": "http://localhost:8095",
+      "healthy": true
+    }
+  },
+  "maven_test_suite": {
+    "command": "mvn test -Dtest=CustomerInsightEngineTest,FanpageBotServiceTest,FanpageBotPromptBuilderToneTest,GuardrailPipelineTest,GuardrailAdversarialStressTest,SlimPromptAntiBloatingTest,FanpageBotUpgradeE2eTest,PlaybookUploadServiceTest -B",
+    "tests_run": 109,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "status": "PASS"
+  },
+  "modified_components": [
+    "api-java/src/main/java/com/example/docmind/service/bot/CustomerInsightEngine.java",
+    "api-java/src/main/java/com/example/docmind/service/bot/FanpageBotPromptBuilder.java",
+    "api-java/src/main/java/com/example/docmind/service/bot/FanpageBotService.java",
+    "api-java/src/main/java/com/docmind/guardrail/BubbleCapHook.java",
+    "api-java/src/main/java/com/docmind/guardrail/GuardrailPipeline.java",
+    "api-java/src/main/java/com/docmind/guardrail/ClosingQuestionHook.java",
+    "api-java/src/main/java/com/example/docmind/service/bot/AgentBrainService.java",
+    "api-java/src/main/java/com/example/docmind/client/AgentBrainClient.java",
+    "agent-brain/app/main.py"
+  ]
+}

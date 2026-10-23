@@ -520,6 +520,21 @@ public class CustomerInsightEngine {
                 .filter(s -> s.pageId() != null && !s.pageId().isBlank())
                 .toList();
         if (!pageScopedSkills.isEmpty()) {
+            boolean hasMicroSkills = pageScopedSkills.stream()
+                    .anyMatch(s -> s.code() != null && (
+                            "greeting_warm_intro".equalsIgnoreCase(s.code())
+                            || "discovery_ask_one_need".equalsIgnoreCase(s.code())
+                            || "price_answer_from_docs".equalsIgnoreCase(s.code())
+                            || "price_clarify_service_duration".equalsIgnoreCase(s.code())
+                            || "price_objection_soft_anchor".equalsIgnoreCase(s.code())
+                    ));
+            if (hasMicroSkills) {
+                AgentSkillDto matchedMicro = selectDeterministicMicroSkill(
+                        pageScopedSkills, msg, currentMessage, history, isBroadUnspecifiedPrice);
+                if (matchedMicro != null) {
+                    return List.of(matchedMicro);
+                }
+            }
             pool = pool.stream()
                     .filter(candidate -> {
                         if (candidate.pageId() != null && !candidate.pageId().isBlank()) {
@@ -662,33 +677,52 @@ public class CustomerInsightEngine {
 
         scored.sort(Comparator.comparingInt(ScoredSkill::score).reversed());
 
-        // Chọn Top 3 Kỹ năng nhưng giới hạn tối đa 2 kỹ năng cùng 1 Category (nếu có Category khác khả dụng)
-        // để đảm bảo sự cân bằng giữa Tâm lý học (PSYCHOLOGY) - Chiến thuật Sale (SALES_STRATEGY) - Giao tiếp (COMMUNICATION).
-        List<AgentSkillDto> selected = new ArrayList<>(3);
-        java.util.Map<String, Integer> categoryCount = new java.util.HashMap<>();
-        List<AgentSkillDto> deferredSameCategory = new ArrayList<>();
+        // Mỗi câu trả lời chỉ kích hoạt tối đa 1 kỹ năng duy nhất (MAX_ACTIVE_SKILLS = 1)
+        // có điểm phù hợp cao nhất với ngữ cảnh để tránh xung đột chiến thuật trong prompt.
+        if (scored.isEmpty()) {
+            return List.of();
+        }
+        return List.of(scored.get(0).skill());
+    }
 
-        for (ScoredSkill s : scored) {
-            if (selected.size() >= 3) {
-                break;
-            }
-            String cat = s.skill().category() != null ? s.skill().category().toUpperCase(Locale.ROOT) : "SALES_STRATEGY";
-            int currentCatCount = categoryCount.getOrDefault(cat, 0);
-            if (currentCatCount >= 2) {
-                deferredSameCategory.add(s.skill());
-                continue;
-            }
-            selected.add(s.skill());
-            categoryCount.put(cat, currentCatCount + 1);
+    private AgentSkillDto selectDeterministicMicroSkill(
+            List<AgentSkillDto> pageScopedSkills,
+            String lowerMsg,
+            String rawMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            boolean isBroadUnspecifiedPrice) {
+        String targetCode;
+        if (lowerMsg.matches("(?isU).*(?:\\b(đau\\s+quá|tệ\\s+thật|tệ\\s+quá|quá\\s+tệ|khiếu\\s+nại|bức\\s+xúc|hoàn\\s+tiền|gặp\\s+quản\\s+lý|gặp\\s+nhân\\s+viên|gặp\\s+người\\s+thật)\\b|hôm\\s+qua.*làm.*\\bđau\\b).*")) {
+            targetCode = "complaint_immediate_handoff";
+        } else if (lowerMsg.matches("(?isU).*(?:\\b(mang\\s+thai|đang\\s+bầu|có\\s+bầu|bầu\\s+\\d+|thai\\s+kỳ|mới\\s+sinh|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|sốt\\s+cao|huyết\\s+áp\\s+cao|cao\\s+huyết\\s+áp|tim\\s+mạch|giãn\\s+tĩnh\\s+mạch|thoát\\s+vị|gãy\\s+xương|trật\\s+khớp|đau\\s+tai|ù\\s+tai|viêm\\s+tai|chảy\\s+dịch\\s+tai)\\b|\\btai\\b[^.!?\\n]{0,30}\\b(đau|ù|viêm|chảy)\\b).*")) {
+            targetCode = "safety_handoff_high_risk";
+        } else if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(rawMessage)
+                || lowerMsg.matches("(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+thế|cao\\s+vậy|đắt\\s+vậy|rẻ\\s+hơn|mềm\\s+hơn|vượt\\s+ngân\\s+sách)\\b.*")) {
+            targetCode = "price_objection_soft_anchor";
+        } else if (isBroadUnspecifiedPrice
+                || (lowerMsg.matches("(?isU).*\\b(giá|bảng\\s+giá|bao\\s+nhiêu|chi\\s+phí|rổ\\s+giá|mấy\\s+tiền)\\b.*")
+                    && !lowerMsg.matches("(?isU).*\\b(massage\\s+body|toàn\\s+thân|cổ\\s+vai\\s+gáy|vai\\s+gáy|đá\\s+nóng|ngâm\\s+chân|ngâm\\s+thảo\\s+dược|ráy\\s+tai|vệ\\s+sinh\\s+tai|60\\s*phút|90\\s*phút|45\\s*phút|30\\s*phút|20\\s*phút)\\b.*"))) {
+            targetCode = "price_clarify_service_duration";
+        } else if (lowerMsg.matches("(?isU).*\\b(giá|bao\\s+nhiêu|chi\\s+phí|mấy\\s+tiền)\\b.*")) {
+            targetCode = "price_answer_from_docs";
+        } else if (lowerMsg.matches("(?isU).*\\b(đặt\\s+lịch|giữ\\s+lịch|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|ghé\\s+lúc|qua\\s+lúc|0\\d{8,10})\\b.*")) {
+            targetCode = "booking_soft_confirm";
+        } else if (lowerMsg.matches("(?isU).*\\b(chốt\\s+gói|lấy\\s+gói|chọn\\s+gói|thêm\\s+gì|kèm\\s+gì)\\b.*")
+                && history != null && !history.isEmpty()) {
+            targetCode = "upsell_one_addon";
+        } else if (FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(rawMessage)
+                || lowerMsg.matches("(?isU).*\\b(mỏi|đau|nhức|căng|mất\\s+ngủ|stress|thư\\s+giãn|cổ\\s+vai\\s+gáy|massage|ngâm)\\b.*")) {
+            targetCode = "discovery_ask_one_need";
+        } else {
+            targetCode = (history == null || history.isEmpty()) ? "greeting_warm_intro" : "discovery_ask_one_need";
         }
 
-        for (AgentSkillDto fallback : deferredSameCategory) {
-            if (selected.size() >= 3) {
-                break;
+        for (AgentSkillDto s : pageScopedSkills) {
+            if (s.code() != null && s.code().equalsIgnoreCase(targetCode)) {
+                return s;
             }
-            selected.add(fallback);
         }
-        return selected;
+        return null;
     }
 
     private static List<AgentSkillDto> createDefaultBuiltInSkills() {

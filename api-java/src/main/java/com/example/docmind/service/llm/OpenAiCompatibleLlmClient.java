@@ -174,6 +174,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             if (maxToks > 0) {
                 body.put("max_tokens", maxToks);
             }
+            Double effectiveTopP = (budget != null && budget.topP() != null)
+                    ? budget.topP()
+                    : props.getTopP();
+            if (effectiveTopP != null && effectiveTopP > 0.0 && effectiveTopP <= 1.0) {
+                body.put("top_p", effectiveTopP);
+            }
         }
         return body;
     }

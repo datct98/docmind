@@ -1,0 +1,13 @@
+question,ground_truth,category
+"Trong quy chuẩn hội thoại Nàng Sen Spa, khi báo giá dịch vụ ở Bong bóng 1 thì thời gian chờ (typing_delay_ms) trước khi hiển thị Bong bóng 2 là bao nhiêu mili-giây?","10000","pacing"
+"Theo quy chuẩn hội thoại Nàng Sen Spa, sau khi báo giá ở Bong bóng 1, bot phải suy nghĩ bao nhiêu giây trước khi gửi Bong bóng 2 để giữ nhịp cảm xúc khách hàng?","10 giây","pacing"
+"Theo quy chuẩn hội thoại Nàng Sen Spa, số lượng bong bóng chat tối đa được phép hiển thị trong 1 lượt phản hồi là bao nhiêu?","3","pacing"
+"Giới hạn tối đa số bong bóng chat (max_bubbles) trong mỗi câu trả lời của AI Sale Nàng Sen Spa là mấy bong bóng?","3","pacing"
+"Khi khách hàng mới nhắn câu mở đầu chung chung như 'Tư vấn' ở Lượt 1, số lượng mức giá cụ thể được phép báo ngay trong Lượt 1 là bao nhiêu?","0","consultation"
+"Ở lượt hội thoại đầu tiên khi khách chưa nêu triệu chứng mà chỉ nhắn 'Tư vấn', bot được phép liệt kê bao nhiêu mức giá dịch vụ?","0","consultation"
+"Giá niêm yết trọn gói (không nhận Tip) của Gói Massage Trị Liệu Cơ Bản 60 phút tại Nàng Sen Spa là bao nhiêu đồng?","399.000đ","pricing"
+"Khi khách bị đau lưng mỏi gối tê tay, Gói Massage Trị Liệu Cơ Bản 60 phút của Nàng Sen Spa có mức giá trọn gói là bao nhiêu?","399.000đ","pricing"
+"Khi khách hàng chê đắt ở gói 399.000đ, gói Thư Giãn Thảo Dược 60 phút mềm hơn để gợi ý thay thế tại Nàng Sen Spa có giá bao nhiêu?","239.000đ","pricing"
+"Mức giá của Gói Thư Giãn Thảo Dược 60 phút dùng để tháo gỡ rào cản chi phí khi khách chê gói 399.000đ đắt là bao nhiêu?","239.000đ","pricing"
+"Tại Nàng Sen Spa, khi khách đăng ký combo 5 buổi hoặc đi theo nhóm thì được giảm thêm bao nhiêu phần trăm chi phí?","10%","policy"
+"Mức ưu đãi giảm giá khi khách hàng mua thẻ liệu trình combo 5 buổi tại Nàng Sen Spa là bao nhiêu phần trăm?","10%","policy"

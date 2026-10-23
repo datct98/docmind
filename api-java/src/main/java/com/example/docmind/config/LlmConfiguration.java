@@ -61,7 +61,10 @@ public class LlmConfiguration {
                 fallbackOllamaProps.setEnabled(ollamaProps.isEnabled());
                 fallbackOllamaProps.setBaseUrl(ollamaProps.getBaseUrl());
                 fallbackOllamaProps.setModel(ollamaProps.getModel());
+                fallbackOllamaProps.setFallbackModel(ollamaProps.getFallbackModel());
                 fallbackOllamaProps.setTemperature(ollamaProps.getTemperature());
+                fallbackOllamaProps.setTopP(ollamaProps.getTopP());
+                fallbackOllamaProps.setRepeatPenalty(ollamaProps.getRepeatPenalty());
                 fallbackOllamaProps.setNumCtx(ollamaProps.getNumCtx());
                 fallbackOllamaProps.setNumPredict(ollamaProps.getNumPredict());
                 fallbackOllamaProps.setReadTimeoutMs(ollamaProps.getReadTimeoutMs());
@@ -123,11 +126,13 @@ public class LlmConfiguration {
             if (llmProps.getModel() != null && !llmProps.getModel().isBlank()) {
                 ollamaProps.setModel(llmProps.getModel().trim());
             }
-            if (llmProps.getTemperature() > 0) {
+            if (ollamaProps.getTemperature() <= 0 && llmProps.getTemperature() > 0) {
                 ollamaProps.setTemperature(llmProps.getTemperature());
             }
-            log.info("[LLM] Active LlmClient: provider=ollama, model={}, baseUrl={}",
-                    ollamaProps.getModel(), ollamaProps.getBaseUrl());
+            log.info("[LLM] Active LlmClient: provider=ollama, model={}, fallbackModel={}, baseUrl={}, temp={}, topP={}, repeatPenalty={}, numCtx={}, numPredict={}",
+                    ollamaProps.getModel(), ollamaProps.getFallbackModel(), ollamaProps.getBaseUrl(),
+                    ollamaProps.getTemperature(), ollamaProps.getTopP(), ollamaProps.getRepeatPenalty(),
+                    ollamaProps.getNumCtx(), ollamaProps.getNumPredict());
             return new OllamaLlmClient(ollamaProps);
         }
 

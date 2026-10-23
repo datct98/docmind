@@ -534,6 +534,98 @@ export const api = {
   },
 
   /**
+   * Nạp nhanh Playbook Rules (PB-*) & Sample Dialogues (FD-*) bằng nội dung văn bản (.yaml, .md, .json)
+   * Kích hoạt ACTIVE ngay lập tức (bỏ bước duyệt thủ công) sau khi qua cổng kiểm định an toàn.
+   * POST /api/rules/upload-playbook
+   */
+  async uploadPlaybookRaw({ content, format = '', pageId = null, replaceExisting = true }) {
+    const payload = {
+      content,
+      format: format || undefined,
+      page_id: pageId || null,
+      replace_existing: replaceExisting
+    }
+    const res = await fetch(`${API_BASE}/rules/upload-playbook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+    if (!res.ok) {
+      let errorMsg = `Lỗi nạp Playbook (HTTP ${res.status})`
+      try {
+        const errJson = await res.json()
+        if (errJson.message) errorMsg = errJson.message
+        else if (errJson.detail) errorMsg = errJson.detail
+      } catch {
+        // ignore
+      }
+      throw new Error(errorMsg)
+    }
+    return await res.json()
+  },
+
+  /**
+   * Nạp file Playbook (.yaml, .yml, .md, .markdown, .json) trực tiếp theo từng Page
+   * Kích hoạt ACTIVE ngay lập tức (bỏ bước duyệt thủ công) sau khi qua cổng kiểm định an toàn.
+   * POST /api/rules/upload-playbook-file
+   */
+  async uploadPlaybookFile(file, pageId = null, replaceExisting = true) {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (pageId) {
+      formData.append('page_id', pageId)
+    }
+    formData.append('replace_existing', String(replaceExisting))
+    const res = await fetch(`${API_BASE}/rules/upload-playbook-file`, {
+      method: 'POST',
+      body: formData
+    })
+    if (!res.ok) {
+      let errorMsg = `Lỗi tải file Playbook (HTTP ${res.status})`
+      try {
+        const errJson = await res.json()
+        if (errJson.message) errorMsg = errJson.message
+        else if (errJson.detail) errorMsg = errJson.detail
+      } catch {
+        // ignore
+      }
+      throw new Error(errorMsg)
+    }
+    return await res.json()
+  },
+
+  /**
+   * Lấy danh sách Hội thoại mẫu (Sample Dialogues FD-*) theo Page
+   * GET /api/rules/sample-dialogues?page_id=&active=&include_global=&review_status=
+   */
+  async getSampleDialogues(params = {}) {
+    const searchParams = new URLSearchParams()
+    if (params.pageId) searchParams.set('page_id', params.pageId)
+    if (params.active !== undefined && params.active !== null && params.active !== '') {
+      searchParams.set('active', params.active)
+    }
+    if (params.includeGlobal !== undefined) {
+      searchParams.set('include_global', params.includeGlobal)
+    }
+    if (params.reviewStatus) {
+      searchParams.set('review_status', params.reviewStatus)
+    }
+    const qs = searchParams.toString()
+    const url = qs ? `${API_BASE}/rules/sample-dialogues?${qs}` : `${API_BASE}/rules/sample-dialogues`
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể tải danh sách Hội thoại mẫu (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
    * Xóa tài liệu và toàn bộ blocks, vector embeddings liên quan
    * DELETE /api/documents/:id
    */

@@ -1,0 +1,21 @@
+{
+  "agent": "03_qa",
+  "timestamp_utc": "2026-10-23T08:32:30Z",
+  "verdict": "PASS",
+  "contract_checks": {
+    "AC-01_turn1_fast_and_empathetic": true,
+    "AC-02_post_price_deliberate_10s_pacing": true,
+    "AC-03_price_ladder_530k_to_399k_floor": true,
+    "AC-04_promo_inquiry_grounded_10_percent_and_trial": true,
+    "AC-05_hesitation_drop_the_rope_no_pushy_question": true,
+    "AC-06_booking_lead_captured_on_phone_and_time": true,
+    "AC-07_security_and_distress_handoff_gates": true,
+    "AC-08_multi_branch_saigon_pricing_grounded": true,
+    "AC-09_playbook_yaml_md_json_auto_active_and_bad_quarantined": true,
+    "AC-10_single_skill_per_turn_enforced": true,
+    "AC-11_concise_3_bubble_split_enforced": true,
+    "AC-12_playbook_and_skill_self_improvement_scoring": true
+  },
+  "unit_and_e2e_tests_passed": 109,
+  "open_defects": 0
+}

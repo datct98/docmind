@@ -64,6 +64,11 @@ public class LlmProperties {
     private int maxTokens = 0;
 
     /**
+     * Tham số Top-P sampling cho các API tương thích OpenAI (tùy chọn; null hoặc <= 0 nghĩa là dùng mặc định của provider).
+     */
+    private Double topP;
+
+    /**
      * Nhà cung cấp LLM dự phòng (fallback) khi primary gặp lỗi / timeout / offline / load-shedding:
      * ollama | deepseek | grok | openai | gemini | openrouter | custom.
      */
@@ -104,6 +109,7 @@ public class LlmProperties {
         fb.setTimeoutSeconds(this.timeoutSeconds);
         fb.setReasoningEffort(this.reasoningEffort);
         fb.setMaxTokens(this.maxTokens);
+        fb.setTopP(this.topP);
         return fb;
     }
 
@@ -184,7 +190,7 @@ public class LlmProperties {
 
     /**
      * Tự động phân giải Model name theo preset nếu người dùng chưa chỉ định rõ ràng,
-     * hoặc nếu người dùng đổi sang cloud provider nhưng vẫn để sót model Ollama mặc định (qwen2.5:7b).
+     * hoặc nếu người dùng đổi sang cloud provider nhưng vẫn để sót model Ollama mặc định (qwen2.5:14b-instruct-q5_K_M).
      */
     public String resolveModel() {
         String normProvider = getNormalizedProvider();
@@ -194,9 +200,9 @@ public class LlmProperties {
             case "openai" -> "gpt-4o-mini";
             case "gemini" -> "gemini-2.5-flash";
             case "openrouter" -> "openai/gpt-4o-mini";
-            case "ollama" -> "qwen2.5:7b";
+            case "ollama" -> "qwen2.5:14b-instruct-q5_K_M";
             case "stub" -> "stub-model";
-            default -> "qwen2.5:7b";
+            default -> "qwen2.5:14b-instruct-q5_K_M";
         };
         if (model != null && !model.isBlank()) {
             String trimmed = model.trim();
@@ -222,8 +228,7 @@ public class LlmProperties {
 
     private static boolean isDefaultOllamaModel(String modelName) {
         String lower = modelName.toLowerCase();
-        return lower.equals("qwen2.5:7b")
-                || lower.startsWith("qwen")
+        return lower.startsWith("qwen")
                 || lower.startsWith("llama")
                 || lower.startsWith("mistral:")
                 || lower.startsWith("gemma")

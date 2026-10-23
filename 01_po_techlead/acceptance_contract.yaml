@@ -1,0 +1,96 @@
+contract_version: "1.0.0"
+project_name: "DocMind Fanpage Emotional Sales & Consultation Engine"
+target_page_id: "b23cd382-4f7a-4829-8c54-1d410da14bf8"
+api_base_url: "http://localhost:8090"
+
+invariants:
+  max_bubbles_per_turn: 3
+  min_bubbles_for_consultative_turn: 2
+  forbidden_internal_codes_in_customer_reply:
+    - "[[HANDOFF"
+    - "ROLE_PRICE"
+    - "ROLE_PROMO"
+    - "SKILL_0"
+  forbidden_robotic_phrases:
+    - "căng thẳng tích tụ khiến chúng ta quan tâm nhiều hơn đến chi phí"
+    - "Em hiểu câu hỏi của"
+    - "chúng tôi"
+  honorific_consistency:
+    female_default: "Chị"
+    male_explicit: "Anh"
+    self_reference: "em"
+  catalog_price_truth_hanoi:
+    ear_cleansing_floor: 129000
+    herbal_hair_wash_neck_shoulder_floor: 239000
+    basic_therapeutic_massage: 399000
+    advanced_herbal_bath_massage: 530000
+    vip_recovery_massage: 580000
+  catalog_price_truth_saigon:
+    ear_cleansing_floor: 170000
+    herbal_hair_wash_neck_shoulder_floor: 260000
+    basic_therapeutic_massage: 570000
+    advanced_herbal_bath_massage: 670000
+    vip_recovery_massage: 870000
+
+emotional_and_sales_rubric:
+  min_passing_score_per_dimension: 8.0
+  min_overall_average_score: 8.5
+  dimensions:
+    - id: "EMOTIONAL_EMPATHY"
+      name: "Độ chạm cảm xúc & Thấu cảm triệu chứng"
+      weight: 0.25
+      criteria: "Mở đầu bằng sự đồng cảm chân thành, dùng từ ngữ giàu hình ảnh xúc giác (thảo dược ấm, nhẹ bẫng vai, thả lỏng bó cơ), không trả lời cụt lủn hay hành chính."
+    - id: "MOOD_PRESERVATION"
+      name: "Khả năng giữ nhịp cảm xúc (Không làm khách tụt mood)"
+      weight: 0.25
+      criteria: "Khi khách hỏi giá, chê đắt hoặc lưỡng lự, tuyệt đối không tranh cãi, không đổ lỗi, không cắt ngang cảm xúc bằng văn mẫu lạnh lùng."
+    - id: "NATURAL_MESSENGER_PACING"
+      name: "Nhịp điệu hội thoại tự nhiên trên Messenger"
+      weight: 0.20
+      criteria: "Chia 2-3 bong bóng chat ngắn gọn (<= 3 bubbles), mỗi bong bóng dễ đọc trên màn hình điện thoại, chuyển ý mượt mà."
+    - id: "VALUE_AND_TRUST_ANCHORING"
+      name: "Neo giá trị & Sự an tâm (0đ rủi ro / Trọn gói 0 Tip)"
+      weight: 0.15
+      criteria: "Giải thích tinh tế lý do gói dịch vụ xứng đáng (ngâm bồn thảo dược, chườm ngải cứu, trà dưỡng nhan, trọn gói không nhận Tip) trước khi báo giá hoặc hạ bậc."
+    - id: "CONSULTATIVE_CLOSING_PROGRESSION"
+      name: "Dẫn dắt chốt sale tự nhiên & Tôn trọng khách hàng"
+      weight: 0.15
+      criteria: "Đặt câu hỏi gợi mở nhẹ nhàng để tiến tới đặt lịch/xin SĐT khi khách ấm lên; biết lùi 1 bước ấm áp (0 câu hỏi ép buộc) khi khách xin suy nghĩ thêm."
+
+acceptance_gates:
+  gate_1_po_contract:
+    required_files:
+      - "00_user_brief/brief.md"
+      - "01_po_techlead/prd.md"
+      - "01_po_techlead/architecture_plan.md"
+      - "01_po_techlead/acceptance_contract.yaml"
+      - "01_po_techlead/test_strategy.md"
+      - "01_po_techlead/risk_register.md"
+  gate_2_dev_verification:
+    required_files:
+      - "02_dev/implementation_notes.md"
+      - "02_dev/unit_test_report.md"
+      - "02_dev/happy_path_report.md"
+      - "02_dev/dev_handoff_package.md"
+      - "02_dev/build_info.json"
+    zero_unit_test_failures: true
+  gate_3_blackbox_qa:
+    required_files:
+      - "03_qa/qa_run_manifest.json"
+      - "03_qa/deterministic_policy_report.json"
+      - "03_qa/random_scenario_report.json"
+      - "03_qa/adversarial_report.json"
+      - "03_qa/llm_judge_report.json"
+      - "03_qa/qa_final_report.md"
+    zero_open_critical_defects: true
+    deterministic_pass_rate: 1.0
+    adversarial_pass_rate: 1.0
+  gate_4_product_uat:
+    required_files:
+      - "04_product_uat/uat_report.md"
+      - "04_product_uat/business_acceptance.yaml"
+      - "04_product_uat/release_notes.md"
+      - "04_product_uat/user_test_package.md"
+      - "99_pipeline/orchestrator_state.json"
+      - "99_pipeline/handoff_log.md"
+      - "99_pipeline/version_lock.json"

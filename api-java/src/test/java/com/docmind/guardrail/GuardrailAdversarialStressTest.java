@@ -177,7 +177,7 @@ class GuardrailAdversarialStressTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Bubble Cap Stress: 15+ raw bubbles capped strictly at <= 2 with valid typing delays")
+    @DisplayName("Bubble Cap Stress: 15+ raw bubbles capped strictly at <= 3 with valid typing delays")
     void testBubbleCap_15RawBubbles_cappedAtMaxTwo() {
         GuardrailContext ctx = GuardrailContext.builder()
                 .customerHonorific("Anh")
@@ -192,13 +192,15 @@ class GuardrailAdversarialStressTest {
 
         GuardrailResult result = pipeline.process(ctx, null, rawBubbles);
 
-        assertThat(result.bubbles()).hasSize(2);
+        assertThat(result.bubbles()).hasSize(3);
         assertThat(result.bubbles().get(0).text()).contains("Bong bóng số 1");
-        assertThat(result.bubbles().get(1).text())
-                .contains("Bong bóng số 2")
+        assertThat(result.bubbles().get(1).text()).contains("Bong bóng số 2");
+        assertThat(result.bubbles().get(2).text())
+                .contains("Bong bóng số 3")
                 .contains("Bong bóng số 15");
         assertThat(result.bubbles().get(0).typingDelayMs()).isBetween(800, 1200);
         assertThat(result.bubbles().get(1).typingDelayMs()).isBetween(2500, 3000);
+        assertThat(result.bubbles().get(2).typingDelayMs()).isBetween(2500, 3000);
         assertThat(result.hasTriggered(BubbleCapHook.HOOK_CODE)).isTrue();
     }
 
@@ -218,11 +220,11 @@ class GuardrailAdversarialStressTest {
 
         GuardrailResult result = pipeline.process(ctx, "", rawBubbles);
 
-        assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(2);
+        assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(3);
     }
 
     @Test
-    @DisplayName("Bubble Cap Stress: 10 raw bubbles with only emojis capped at 2")
+    @DisplayName("Bubble Cap Stress: 10 raw bubbles with only emojis capped at 3")
     void testBubbleCap_10EmojiBubbles_cappedAtTwo() {
         GuardrailContext ctx = GuardrailContext.builder()
                 .customerHonorific("Anh")
@@ -238,14 +240,15 @@ class GuardrailAdversarialStressTest {
 
         GuardrailResult result = pipeline.process(ctx, null, rawBubbles);
 
-        assertThat(result.bubbles()).hasSize(2);
+        assertThat(result.bubbles()).hasSize(3);
         assertThat(result.bubbles().get(0).text()).isEqualTo("👋");
-        assertThat(result.bubbles().get(1).text()).contains("✨").contains("⭐");
+        assertThat(result.bubbles().get(1).text()).isEqualTo("✨");
+        assertThat(result.bubbles().get(2).text()).contains("🩺").contains("⭐");
         assertThat(result.hasTriggered(BubbleCapHook.HOOK_CODE)).isTrue();
     }
 
     @Test
-    @DisplayName("Bubble Cap Stress: Mixed bubbles (whitespace, greetings, content, emojis) capped at 2")
+    @DisplayName("Bubble Cap Stress: Mixed bubbles (whitespace, greetings, content, emojis) capped at 3")
     void testBubbleCap_mixedBubbles_cappedAtTwo() {
         GuardrailContext ctx = GuardrailContext.builder()
                 .customerHonorific("Chị")
@@ -264,7 +267,7 @@ class GuardrailAdversarialStressTest {
 
         GuardrailResult result = pipeline.process(ctx, null, rawBubbles);
 
-        assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(2);
+        assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(3);
         assertThat(result.bubbles().get(0).text()).contains("Dạ em chào Chị ạ!");
     }
 

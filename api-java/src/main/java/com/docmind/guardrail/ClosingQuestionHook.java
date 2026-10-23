@@ -96,7 +96,17 @@ public class ClosingQuestionHook implements GuardrailHook {
             return false;
         }
         String stage = context.getSalesStage();
-        return !"HUMAN_HANDOFF".equalsIgnoreCase(stage) && !"BOOKING_LEAD_CAPTURED".equalsIgnoreCase(stage);
+        if (stage == null) {
+            return true;
+        }
+        String upperStage = stage.toUpperCase(Locale.ROOT);
+        return !upperStage.equals("HUMAN_HANDOFF")
+                && !upperStage.equals("BOOKING_LEAD_CAPTURED")
+                && !upperStage.equals("SECURITY_BLOCK")
+                && !upperStage.equals("COMPLAINT_OR_DISTRESS")
+                && !upperStage.equals("EXPLICIT_HUMAN_REQUEST")
+                && !upperStage.equals("COMPLEX_NEGOTIATION")
+                && !upperStage.equals("UNGROUNDED_OR_UNKNOWN");
     }
 
     @Override
@@ -157,17 +167,45 @@ public class ClosingQuestionHook implements GuardrailHook {
         String lowerText = text != null ? text.toLowerCase(Locale.ROOT) : "";
         if ("HUMAN_HANDOFF".equalsIgnoreCase(salesStage)
                 || "BOOKING_LEAD_CAPTURED".equalsIgnoreCase(salesStage)
+                || (salesStage != null && salesStage.toUpperCase(Locale.ROOT).contains("HANDOFF"))
                 || (lowerText.contains("chuyên viên") && (
                         lowerText.contains("liên hệ")
                         || lowerText.contains("kết nối")
-                        || lowerText.contains("hỗ trợ chi tiết")
+                        || lowerText.contains("hỗ trợ")
+                        || lowerText.contains("kiểm tra")
                         || lowerText.contains("phụ trách")
-                        || lowerText.contains("nhắn phản hồi")))) {
+                        || lowerText.contains("nhắn phản hồi")))
+                || lowerText.contains("chuyển người hỗ trợ")
+                || lowerText.contains("quản lý")
+                || lowerText.contains("kỹ thuật viên trưởng")
+                || lowerText.contains("tư vấn viên")
+                || lowerText.contains("nhắn em tư vấn nha")
+                || lowerText.contains("em hiểu mình đang cân nhắc về chi phí")
+                || lowerText.contains("vừa ngân sách hơn")
+                || lowerText.contains("cần hỗ trợ về dịch vụ spa hay đặt lịch")) {
             return text;
         }
 
         FanpageBotPromptBuilder.ConversationBookingState bookingState =
                 FanpageBotPromptBuilder.analyzeConversationBookingStateFromStrings(customerMessage, history);
+
+        String lowerCustomer = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
+        boolean isExplicitHesitation = lowerCustomer.matches(
+                "(?isU).*(?:để\\s+(?:chị\\s+|anh\\s+|mình\\s+|em\\s+)?suy\\s+nghĩ|suy\\s+nghĩ\\s+(?:đã|thêm)|cân\\s+nhắc\\s+(?:đã|thêm)|để\\s+xem\\s+đã|chưa\\s+quyết\\s+định).*"
+        );
+        if (isExplicitHesitation) {
+            String strippedQ = text.replaceAll("(?isU)(?:\\n\\s*\\n|(?<=[.!?])\\s+)[^.!?\\n]*\\?\\s*$", "").strip();
+            if (strippedQ.endsWith("?")) {
+                return text;
+            }
+            String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "Chị";
+            if (!strippedQ.toLowerCase(Locale.ROOT).contains("thong thả cân nhắc")) {
+                return (strippedQ.isEmpty() ? "" : strippedQ + "\n\n")
+                        + "Dạ vâng " + h + " cứ thong thả cân nhắc thêm nhé ạ! Bất cứ khi nào vùng cổ vai gáy mỏi nhức cần thả lỏng bằng thảo dược ấm, "
+                        + h + " cứ nhắn em hỗ trợ giữ lịch ưu tiên ngay nha ạ.";
+            }
+            return strippedQ;
+        }
 
         String working = text;
         boolean changed = false;

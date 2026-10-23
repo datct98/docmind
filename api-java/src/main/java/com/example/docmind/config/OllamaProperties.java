@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Cấu hình kết nối Ollama chạy local (CPU / 16GB RAM).
- * Mặc định ưu tiên model {@code qwen2.5:7b} (hoặc {@code qwen2.5:3b} cho máy CPU yếu).
+ * Cấu hình kết nối Ollama chạy local.
+ * Mặc định ưu tiên model {@code qwen2.5:14b-instruct-q5_K_M}.
  */
 @Getter
 @Setter
@@ -21,17 +21,26 @@ public class OllamaProperties {
     /** Địa chỉ máy chủ Ollama local. */
     private String baseUrl = "http://localhost:11434";
 
-    /** Tên model trong Ollama (khuyến nghị: qwen2.5:7b hoặc qwen2.5:3b). */
-    private String model = "qwen2.5:7b";
+    /** Tên model trong Ollama (mặc định: qwen2.5:14b-instruct-q5_K_M). */
+    private String model = "qwen2.5:14b-instruct-q5_K_M";
 
-    /** Nhiệt độ sinh văn bản thấp (0.1) để đảm bảo tính bám sát tài liệu RAG & chống bịa. */
-    private double temperature = 0.1;
+    /** Nhiệt độ sinh văn bản (0.25 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh RAG). */
+    private double temperature = 0.25;
 
     /** Giới hạn cửa sổ ngữ cảnh vừa đủ (4096 tokens) để tiết kiệm RAM trên máy 16GB CPU. */
     private int numCtx = 4096;
 
-    /** Giới hạn số token sinh ra tối đa (480 tokens ~ 350 từ tiếng Việt) để tăng tốc CPU và tránh lan man. */
-    private int numPredict = 480;
+    /** Giới hạn số token sinh ra tối đa (700 tokens cho tư vấn bán hàng Fanpage) để cân bằng tốc độ và độ chi tiết. */
+    private int numPredict = 700;
+
+    /** Top-P sampling (mặc định 0.9 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh). */
+    private double topP = 0.9;
+
+    /** Hệ số phạt lặp từ (repeat_penalty = 1.08 theo khuyến nghị cho Qwen2.5 14B Q5_K_M). */
+    private double repeatPenalty = 1.08;
+
+    /** Model dự phòng tùy chọn (mặc định để trống, không dùng fallback 7B). */
+    private String fallbackModel = "";
 
     /** Timeout đọc kết quả từ Ollama (ms) — chạy CPU + nạp model lần đầu cần khoảng 120-240s. */
     private int readTimeoutMs = 240000;

@@ -464,7 +464,9 @@
                   ? `Nhập tin nhắn tư vấn / chốt đơn gửi cho ${activeSession.customer_name} (Tư cách Nhân viên Sale)...`
                   : `Giả lập ${activeSession.customer_name} nhắn tin mới vào Fanpage...`
               "
-              @keydown.enter.exact.prevent="handleSendComposerMessage(false)"
+              @compositionstart="isImeComposing = true"
+              @compositionend="handleImeCompositionEnd($event)"
+              @keydown.enter.exact="handleComposerEnter($event)"
             ></textarea>
 
             <div class="composer-send-btns">
@@ -728,7 +730,34 @@ const getShortCustomerName = (fullName) => {
 // Composer state
 const composerMode = ref('HUMAN_SALE') // 'HUMAN_SALE' | 'CUSTOMER'
 const composerText = ref('')
+const isImeComposing = ref(false)
 const messagesScrollRef = ref(null)
+
+const handleImeCompositionEnd = (event) => {
+  isImeComposing.value = false
+  if (event && event.target && typeof event.target.value === 'string') {
+    composerText.value = event.target.value
+  }
+}
+
+const handleComposerEnter = (event) => {
+  if (!event) return
+  event.preventDefault()
+  const domVal = (event.target && typeof event.target.value === 'string')
+    ? event.target.value
+    : composerText.value
+  if (event.isComposing || event.keyCode === 229 || isImeComposing.value) {
+    setTimeout(() => {
+      if (event.target && typeof event.target.value === 'string') {
+        composerText.value = event.target.value
+      }
+      handleSendComposerMessage(false)
+    }, 35)
+    return
+  }
+  composerText.value = domVal
+  handleSendComposerMessage(false)
+}
 
 // New customer simulation form
 const showNewCustomerForm = ref(false)

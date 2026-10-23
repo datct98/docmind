@@ -175,10 +175,16 @@ public class ChatService {
         // 2) Build prompt (có tiêm Page Persona + AI Playbook + Sale-Ready) + gọi LLM + kiểm duyệt đầu ra.
         String prompt = PromptBuilder.build(request.question(), fused, appliedRules, pagePersona);
         long llmStartNs = System.nanoTime();
-        log.info("[LLM] ChatService calling engine={} (fused_chunks={}, applied_rules={}, page={})",
-                llmClient.name(), fused.size(), appliedRules.size(),
+        com.example.docmind.service.llm.ReasoningBudget qaBudget =
+                com.example.docmind.service.llm.ReasoningBudget.internalQa();
+        log.info("[LLM] ChatService calling engine={} temp={} topP={} maxTokens={} (fused_chunks={}, applied_rules={}, page={})",
+                llmClient.name(), qaBudget.temperature(), qaBudget.topP(), qaBudget.maxTokens(),
+                fused.size(), appliedRules.size(),
                 pagePersona != null ? pagePersona.name() : "global");
-        String rawAnswer = llmClient.complete(prompt);
+        String rawAnswer = llmClient.complete(prompt, qaBudget);
+        if (rawAnswer == null) {
+            rawAnswer = llmClient.complete(prompt);
+        }
         long llmLatencyMs = (System.nanoTime() - llmStartNs) / 1_000_000L;
         boolean isFallback = rawAnswer != null && rawAnswer.matches("^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*");
         String answer = cleanCustomerFacingOutput(

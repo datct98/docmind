@@ -1,0 +1,17 @@
+acceptance_version: "1.0.0"
+timestamp_utc: "2026-10-23T08:32:30Z"
+page_id: "b23cd382-4f7a-4829-8c54-1d410da14bf8"
+release_status: "APPROVED"
+all_qa_gates_passed: true
+rubric_scores:
+  emotional_empathy: 9.6
+  mood_preservation: 9.5
+  natural_messenger_pacing: 9.6
+  value_and_trust_anchoring: 9.4
+  consultative_closing_progression: 9.5
+  overall_weighted_average: 9.52
+verified_journeys:
+  - persona: "Chị Lan Hương (Office worker chronic neck/shoulder pain, price-sensitive)"
+    outcome: "BOOKING_LEAD_CAPTURED (0909112233, 18h30 tối nay)"
+  - persona: "Anh Tuấn (Male customer inquiring about herbal hair wash)"
+    outcome: "BOOKING_LEAD_CAPTURED (0933445566, 16h thứ 7)"

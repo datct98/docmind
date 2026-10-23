@@ -145,6 +145,10 @@ public final class PromptSecurityGuard {
                 .replace("</rule_text>", "[/rule_text]")
                 .replace("<contrastive_evidence>", "[contrastive_evidence]")
                 .replace("</contrastive_evidence>", "[/contrastive_evidence]")
+                .replace("<SAMPLE_DIALOGUES>", "[SAMPLE_DIALOGUES]")
+                .replace("</SAMPLE_DIALOGUES>", "[/SAMPLE_DIALOGUES]")
+                .replace("<sample_dialogue>", "[sample_dialogue]")
+                .replace("</sample_dialogue>", "[/sample_dialogue]")
                 .replace("<script>", "[script]")
                 .replace("</script>", "[/script]");
     }

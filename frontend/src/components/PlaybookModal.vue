@@ -30,15 +30,34 @@
         <button class="btn-close" @click="handleClose">×</button>
       </div>
 
-      <!-- Main Navigation Tabs: Rules Library -->
+      <!-- Main Navigation Tabs: Rules Library & Sample Dialogues -->
       <div class="modal-tab-nav">
         <button 
-          class="tab-nav-btn active" 
+          class="tab-nav-btn"
+          :class="{ active: activeMainTab === 'rules' }"
           @click="activeMainTab = 'rules'"
         >
           <span class="tab-icon">📚</span>
-          <span>Kho Thư viện Kinh nghiệm (Playbook)</span>
+          <span>Kho Quy tắc Kinh nghiệm (PB-*)</span>
           <span class="tab-counter">{{ rules.length }}</span>
+        </button>
+        <button 
+          class="tab-nav-btn"
+          :class="{ active: activeMainTab === 'dialogues' }"
+          @click="switchTabToDialogues"
+        >
+          <span class="tab-icon">💬</span>
+          <span>Hội thoại Mẫu (FD-*)</span>
+          <span class="tab-counter">{{ sampleDialogues.length }}</span>
+        </button>
+        <button 
+          class="tab-nav-btn"
+          :class="{ active: activeMainTab === 'upload' }"
+          @click="activeMainTab = 'upload'"
+        >
+          <span class="tab-icon">📤</span>
+          <span>Nạp Playbook (.yaml / .md / .json)</span>
+          <span class="badge badge-accent" style="margin-left: 4px; background: #DCFCE7; color: #166534; border-color: #86EFAC;">Auto-ACTIVE</span>
         </button>
       </div>
 
@@ -102,6 +121,15 @@
               />
               <button v-if="searchQuery" class="btn-clear-search" @click="searchQuery = ''; handleSearch()">×</button>
             </div>
+
+            <button 
+              class="btn btn-secondary btn-sm" 
+              style="border-color: #86EFAC; background: #F0FDF4; color: #166534;"
+              title="Nạp file Playbook & Hội thoại mẫu (.yaml, .md, .json) — Kích hoạt ACTIVE ngay không cần duyệt tay"
+              @click="activeMainTab = 'upload'"
+            >
+              <span>📤 Nạp Playbook (.yaml/.md/.json)</span>
+            </button>
 
             <button 
               class="btn btn-secondary btn-sm" 
@@ -637,7 +665,214 @@
       </template>
 
       <!-- ================================================================= -->
-      <!-- TAB 2: HARNESS² SELF-EVOLUTION RUN HISTORY VIEW                   -->
+      <!-- TAB 2: SAMPLE DIALOGUES (FD-*) VIEW                               -->
+      <!-- ================================================================= -->
+      <template v-else-if="activeMainTab === 'dialogues'">
+        <div class="toolbar-section">
+          <div class="filter-chips-row">
+            <div class="filter-group">
+              <span class="filter-group-label">Trạng thái Hội thoại mẫu:</span>
+              <button
+                class="pill-filter"
+                :class="{ active: dialogueStatusFilter === 'ALL' }"
+                @click="dialogueStatusFilter = 'ALL'"
+              >
+                Tất cả ({{ sampleDialogues.length }})
+              </button>
+              <button
+                class="pill-filter pill-emerald"
+                :class="{ active: dialogueStatusFilter === 'APPROVED' }"
+                @click="dialogueStatusFilter = 'APPROVED'"
+              >
+                ✅ Đang ACTIVE ({{ activeDialoguesCount }})
+              </button>
+              <button
+                class="pill-filter pill-dim"
+                :class="{ active: dialogueStatusFilter === 'REJECTED' }"
+                @click="dialogueStatusFilter = 'REJECTED'"
+              >
+                🚫 Bị chặn / Quarantine ({{ rejectedDialoguesCount }})
+              </button>
+            </div>
+            <button class="btn btn-secondary btn-sm" @click="fetchSampleDialogues">
+              🔄 Làm mới
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-body rules-scroll-list">
+          <div v-if="isLoadingDialogues" class="loading-state">
+            <div class="btn-spinner"></div>
+            <span>Đang tải danh sách hội thoại mẫu (FD-*)...</span>
+          </div>
+          <div v-else-if="filteredSampleDialogues.length === 0" class="empty-rules-state">
+            <p class="empty-title">Chưa có hội thoại mẫu nào phù hợp</p>
+            <span class="empty-desc">Bấm sang tab "📤 Nạp Playbook (.yaml / .md / .json)" để tải lên bộ Playbook & Hội thoại mẫu cho Page.</span>
+          </div>
+          <div v-else class="rules-list-container">
+            <div
+              v-for="dlg in filteredSampleDialogues"
+              :key="dlg.id"
+              class="rule-card experience-library-card"
+              :class="{ 'is-inactive': !dlg.active }"
+            >
+              <div class="card-header-bar">
+                <div class="header-left-group">
+                  <span class="harness-dim-badge" :class="dlg.active ? 'dim-inv' : 'dim-dom'">
+                    💬 {{ dlg.dialogue_code || 'FD-SAMPLE' }}
+                  </span>
+                  <span
+                    class="always-on-pill"
+                    :class="dlg.active ? 'pill-is-always-on' : 'pill-is-on-demand'"
+                  >
+                    {{ dlg.active ? '✅ ACTIVE (Tự động kích hoạt)' : '🚫 QUARANTINED / REJECTED' }}
+                  </span>
+                  <span v-if="dlg.intent" class="category-badge cat-policy">
+                    {{ dlg.intent }}
+                  </span>
+                  <span v-if="dlg.stage" class="version-badge">
+                    Stage: {{ dlg.stage }}
+                  </span>
+                  <span class="page-scope-badge" :class="{ 'is-global': !dlg.page_id }">
+                    {{ getPageLabel(dlg.page_id) }}
+                  </span>
+                  <span v-if="dlg.source_format" class="telemetry-pill">
+                    📄 {{ dlg.source_format }}
+                  </span>
+                </div>
+              </div>
+
+              <div v-if="dlg.quarantined_reason" class="quarantine-banner">
+                <span class="quarantine-icon">🛡️</span>
+                <div class="quarantine-body">
+                  <strong>Đã chặn tự động khi Upload (Auto-Quarantine):</strong> {{ dlg.quarantined_reason }}
+                </div>
+              </div>
+
+              <div class="cue-signal-box">
+                <div class="cue-signal-header">
+                  <span class="cue-icon">👤</span>
+                  <span class="cue-label">Khách hàng (User Turn):</span>
+                </div>
+                <p class="cue-text">"{{ dlg.user_summary }}"</p>
+              </div>
+
+              <div class="lesson-content-block">
+                <span class="block-label">🤖 Phản hồi Mẫu Chuẩn (Assistant Reference — Chỉ học phong cách, không sao chép máy móc):</span>
+                <p class="lesson-body-text" style="white-space: pre-line;">{{ dlg.expected_bot_answer }}</p>
+              </div>
+
+              <div v-if="dlg.why_good" class="card-footer-meta">
+                <div class="footprint-pill">
+                  💡 Lý do chuẩn: {{ dlg.why_good }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ================================================================= -->
+      <!-- TAB 3: UPLOAD PLAYBOOK (.YAML / .MD / .JSON) VIEW                 -->
+      <!-- ================================================================= -->
+      <template v-else-if="activeMainTab === 'upload'">
+        <div class="modal-body rules-scroll-list" style="padding: 20px 24px;">
+          <div class="rule-form-container" style="margin: 0; border-radius: 16px;">
+            <div class="form-header">
+              <h4 class="form-title">📤 Nạp Playbook & Hội thoại Mẫu theo Page (.yaml, .md, .json)</h4>
+              <span class="badge badge-accent" style="background: #DCFCE7; color: #166534; border-color: #86EFAC;">
+                ⚡ Kích hoạt ACTIVE ngay (Bỏ bước duyệt tay)
+              </span>
+            </div>
+
+            <p style="font-size: 0.85rem; color: #444746; margin-bottom: 14px;">
+              Hệ thống tự động phân tích <strong>Playbook Rules (PB-*)</strong> và <strong>Sample Dialogues (FD-*)</strong> từ file <code>.yaml/.yml</code>, <code>.md/.markdown</code> hoặc <code>.json</code>. Các mục hợp lệ sẽ được <strong>kích hoạt ACTIVE ngay lập tức</strong> cho Page được chọn; các mục vi phạm PII, cam kết chữa khỏi bệnh 100% hoặc Prompt Injection (như <code>FD-SPA-BAD-*</code>) sẽ tự động bị cách ly.
+            </p>
+
+            <div class="form-grid">
+              <div class="form-field">
+                <label class="field-label required">1. Chọn Page áp dụng Playbook:</label>
+                <select v-model="uploadTargetPageId" class="form-select">
+                  <option value="">🌐 Toàn hệ thống (Mọi Page)</option>
+                  <option v-for="p in pages" :key="p.id" :value="p.id">
+                    📂 Theo Trang: {{ p.name }} ({{ p.industry }})
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label class="field-label">2. Chọn định dạng (Tự động nhận diện theo đuôi file):</label>
+                <select v-model="uploadFormatHint" class="form-select">
+                  <option value="">✨ Tự động nhận diện (YAML / Markdown / JSON)</option>
+                  <option value="YAML">YAML (.yaml / .yml)</option>
+                  <option value="MARKDOWN">Markdown (.md / .markdown)</option>
+                  <option value="JSON">JSON (.json)</option>
+                </select>
+              </div>
+
+              <div class="form-field full-width">
+                <label class="field-label">3. Tải file trực tiếp từ máy (.yaml, .yml, .md, .json):</label>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <input
+                    type="file"
+                    accept=".yaml,.yml,.md,.markdown,.json,.txt"
+                    class="form-input"
+                    style="max-width: 420px;"
+                    @change="handlePlaybookFileSelected"
+                  />
+                  <button
+                    v-if="selectedPlaybookFile"
+                    class="btn btn-primary btn-sm"
+                    :disabled="isUploadingPlaybook"
+                    @click="submitPlaybookFileUpload"
+                  >
+                    {{ isUploadingPlaybook ? '⏳ Đang nạp file...' : `🚀 Nạp file "${selectedPlaybookFile.name}" & Kích hoạt ngay` }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-field full-width">
+                <label class="field-label">Hoặc dán trực tiếp nội dung Playbook (YAML / Markdown / JSON):</label>
+                <textarea
+                  v-model="uploadRawContent"
+                  class="form-textarea"
+                  rows="9"
+                  placeholder="Dán nội dung Playbook YAML (playbook_items / sample_dialogues), Markdown (### [PB-...] / ### [FD-...]) hoặc JSON vào đây..."
+                ></textarea>
+              </div>
+            </div>
+
+            <div v-if="uploadResultBanner" class="quarantine-banner" style="background: #F0FDF4; border-color: #86EFAC; color: #166534; margin-top: 12px;">
+              <span>✅</span>
+              <div>
+                <strong>Kết quả nạp Playbook ({{ uploadResultBanner.format }}):</strong>
+                Đã kích hoạt ngay <strong>{{ uploadResultBanner.activePlaybookRulesSaved ?? uploadResultBanner.active_playbook_rules_saved }}/{{ uploadResultBanner.totalPlaybookRulesParsed ?? uploadResultBanner.total_playbook_rules_parsed }}</strong> quy tắc Playbook (PB-*) và
+                <strong>{{ uploadResultBanner.activeSampleDialoguesSaved ?? uploadResultBanner.active_sample_dialogues_saved }}/{{ uploadResultBanner.totalSampleDialoguesParsed ?? uploadResultBanner.total_sample_dialogues_parsed }}</strong> hội thoại mẫu (FD-*).
+                <span v-if="(uploadResultBanner.rejectedSampleDialoguesCount ?? uploadResultBanner.rejected_sample_dialogues_count ?? 0) > 0 || (uploadResultBanner.rejectedPlaybookRulesCount ?? uploadResultBanner.rejected_playbook_rules_count ?? 0) > 0">
+                  (Đã tự động chặn/quarantine <strong>{{ (uploadResultBanner.rejectedPlaybookRulesCount ?? uploadResultBanner.rejected_playbook_rules_count ?? 0) + (uploadResultBanner.rejectedSampleDialoguesCount ?? uploadResultBanner.rejected_sample_dialogues_count ?? 0) }}</strong> mẫu vi phạm an toàn/PII/Injection).
+                </span>
+              </div>
+            </div>
+
+            <p v-if="uploadError" class="form-error-banner" style="margin-top: 12px;">
+              ⚠️ {{ uploadError }}
+            </p>
+
+            <div class="form-footer" style="margin-top: 14px;">
+              <button
+                class="btn btn-primary btn-sm"
+                :disabled="!uploadRawContent.trim() || isUploadingPlaybook"
+                @click="submitPlaybookRawUpload"
+              >
+                <span>{{ isUploadingPlaybook ? '⏳ Đang phân tích & kích hoạt...' : '⚡ Nạp Nội dung & Kích hoạt ACTIVE ngay' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ================================================================= -->
+      <!-- TAB 4: HARNESS² SELF-EVOLUTION RUN HISTORY VIEW                   -->
       <!-- ================================================================= -->
       <template v-else-if="activeMainTab === 'evolution'">
         <!-- Evolution Runs Header Summary & Filters -->
@@ -1420,12 +1655,119 @@ const viewAdoptedInPlaybook = (run) => {
   }
 }
 
+// =========================================================================
+// SAMPLE DIALOGUES & PLAYBOOK UPLOAD (.YAML / .MD / .JSON)
+// =========================================================================
+const sampleDialogues = ref([])
+const isLoadingDialogues = ref(false)
+const dialogueStatusFilter = ref('ALL') // 'ALL' | 'APPROVED' | 'REJECTED'
+
+const uploadTargetPageId = ref(props.activePageId || '')
+const uploadFormatHint = ref('')
+const uploadRawContent = ref('')
+const selectedPlaybookFile = ref(null)
+const isUploadingPlaybook = ref(false)
+const uploadResultBanner = ref(null)
+const uploadError = ref('')
+
+const activeDialoguesCount = computed(() =>
+  sampleDialogues.value.filter(d => d.active && (d.review_status || 'APPROVED').toUpperCase() === 'APPROVED').length
+)
+const rejectedDialoguesCount = computed(() =>
+  sampleDialogues.value.filter(d => !d.active || (d.review_status || '').toUpperCase() === 'REJECTED').length
+)
+
+const filteredSampleDialogues = computed(() => {
+  return sampleDialogues.value.filter(d => {
+    if (dialogueStatusFilter.value === 'APPROVED') {
+      return d.active && (d.review_status || 'APPROVED').toUpperCase() === 'APPROVED'
+    }
+    if (dialogueStatusFilter.value === 'REJECTED') {
+      return !d.active || (d.review_status || '').toUpperCase() === 'REJECTED'
+    }
+    return true
+  })
+})
+
+const fetchSampleDialogues = async () => {
+  isLoadingDialogues.value = true
+  try {
+    const list = await api.getSampleDialogues({
+      pageId: selectedPageFilter.value !== 'ALL' && selectedPageFilter.value !== 'GLOBAL'
+        ? selectedPageFilter.value
+        : (props.activePageId || null),
+      includeGlobal: true
+    })
+    sampleDialogues.value = Array.isArray(list) ? list : []
+  } catch (err) {
+    console.error('Fetch sample dialogues error:', err)
+    sampleDialogues.value = []
+  } finally {
+    isLoadingDialogues.value = false
+  }
+}
+
+const switchTabToDialogues = () => {
+  activeMainTab.value = 'dialogues'
+  fetchSampleDialogues()
+}
+
+const handlePlaybookFileSelected = (event) => {
+  const file = event?.target?.files?.[0] || null
+  selectedPlaybookFile.value = file
+  uploadError.value = ''
+}
+
+const submitPlaybookFileUpload = async () => {
+  if (!selectedPlaybookFile.value || isUploadingPlaybook.value) return
+  isUploadingPlaybook.value = true
+  uploadError.value = ''
+  uploadResultBanner.value = null
+  try {
+    const res = await api.uploadPlaybookFile(
+      selectedPlaybookFile.value,
+      uploadTargetPageId.value || null
+    )
+    uploadResultBanner.value = res
+    await Promise.all([fetchRules(), fetchSampleDialogues()])
+    emit('rules-changed', { rules: rules.value })
+  } catch (err) {
+    console.error('Playbook file upload error:', err)
+    uploadError.value = err?.message || 'Không thể tải file Playbook lên.'
+  } finally {
+    isUploadingPlaybook.value = false
+  }
+}
+
+const submitPlaybookRawUpload = async () => {
+  if (!uploadRawContent.value.trim() || isUploadingPlaybook.value) return
+  isUploadingPlaybook.value = true
+  uploadError.value = ''
+  uploadResultBanner.value = null
+  try {
+    const res = await api.uploadPlaybookRaw({
+      content: uploadRawContent.value,
+      format: uploadFormatHint.value,
+      pageId: uploadTargetPageId.value || null
+    })
+    uploadResultBanner.value = res
+    await Promise.all([fetchRules(), fetchSampleDialogues()])
+    emit('rules-changed', { rules: rules.value })
+  } catch (err) {
+    console.error('Playbook raw upload error:', err)
+    uploadError.value = err?.message || 'Không thể phân tích nội dung Playbook.'
+  } finally {
+    isUploadingPlaybook.value = false
+  }
+}
+
 const handleClose = () => {
   emit('close')
 }
 
 onMounted(() => {
   fetchRules()
+  fetchSampleDialogues()
   fetchHarnessRuns()
 })
 </script>

@@ -67,6 +67,13 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "thử\\s+(\\d+)\\s*b", "thử $1 buổi");
         addBoundaryPattern(phrases, "trải\\s+nghiệm\\s+(\\d+)\\s*b", "trải nghiệm $1 buổi");
         addBoundaryPattern(phrases, "lẻ\\s+(\\d+)\\s*b", "lẻ $1 buổi");
+        addBoundaryPattern(phrases, "đưng\\s+lưng", "đau lưng");
+        addBoundaryPattern(phrases, "dưng\\s+lưng", "đau lưng");
+        addBoundaryPattern(phrases, "đưng\\s+gối", "đau gối");
+        addBoundaryPattern(phrases, "đưng\\s+vai", "đau vai");
+        addBoundaryPattern(phrases, "đưng\\s+cổ", "đau cổ");
+        addBoundaryPattern(phrases, "mỏi\\s+goi", "mỏi gối");
+        addBoundaryPattern(phrases, "te\\s+tay", "tê tay");
         PHRASE_REPLACEMENTS = Collections.unmodifiableMap(phrases);
 
         Map<Pattern, String> words = new LinkedHashMap<>();

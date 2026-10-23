@@ -39,7 +39,17 @@ public record LearnedRuleDto(
         @JsonProperty("contrastive_evidence") String contrastiveEvidence,
         @JsonProperty("always_on") boolean alwaysOn,
         @JsonProperty("review_status") String reviewStatus,
-        @JsonProperty("security_audit_notes") String securityAuditNotes
+        @JsonProperty("security_audit_notes") String securityAuditNotes,
+        @JsonProperty("rule_code") String ruleCode,
+        @JsonProperty("title") String title,
+        @JsonProperty("intent") String intent,
+        @JsonProperty("stage") String stage,
+        @JsonProperty("priority") Integer priority,
+        @JsonProperty("do_actions") String doActions,
+        @JsonProperty("dont_actions") String dontActions,
+        @JsonProperty("grounding_policy") String groundingPolicy,
+        @JsonProperty("handoff_policy") String handoffPolicy,
+        @JsonProperty("source_format") String sourceFormat
 ) {
     public LearnedRuleDto {
         if (confidenceScore <= 0.0) {
@@ -54,6 +64,49 @@ public record LearnedRuleDto(
         if (reviewStatus == null || reviewStatus.isBlank()) {
             reviewStatus = "APPROVED";
         }
+        if (priority == null || priority <= 0) {
+            priority = 80;
+        }
+        if (groundingPolicy == null || groundingPolicy.isBlank()) {
+            groundingPolicy = "must_use_kb_document_context";
+        }
+        if (handoffPolicy == null || handoffPolicy.isBlank()) {
+            handoffPolicy = "none";
+        }
+        if (sourceFormat == null || sourceFormat.isBlank()) {
+            sourceFormat = "MANUAL";
+        }
+    }
+
+    public LearnedRuleDto(UUID id,
+                          String category,
+                          String triggerCondition,
+                          String rootCause,
+                          String generalizedRule,
+                          List<String> retrievalKeywords,
+                          boolean active,
+                          String pageId,
+                          double confidenceScore,
+                          int appliedCount,
+                          int successCount,
+                          int failCount,
+                          int version,
+                          String previousRuleText,
+                          String quarantinedReason,
+                          Instant lastAppliedAt,
+                          Instant createdAt,
+                          Instant updatedAt,
+                          String dimension,
+                          String cueSignal,
+                          String contrastiveEvidence,
+                          boolean alwaysOn,
+                          String reviewStatus,
+                          String securityAuditNotes) {
+        this(id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, pageId,
+                confidenceScore, appliedCount, successCount, failCount, version, previousRuleText,
+                quarantinedReason, lastAppliedAt, createdAt, updatedAt, dimension, cueSignal,
+                contrastiveEvidence, alwaysOn, reviewStatus, securityAuditNotes,
+                null, null, null, null, 80, null, null, "must_use_kb_document_context", "none", "MANUAL");
     }
 
     public LearnedRuleDto(UUID id,
@@ -197,7 +250,17 @@ public record LearnedRuleDto(
                 entity.getContrastiveEvidence(),
                 entity.isAlwaysOn(),
                 entity.getReviewStatus() != null ? entity.getReviewStatus() : "APPROVED",
-                entity.getSecurityAuditNotes()
+                entity.getSecurityAuditNotes(),
+                entity.getRuleCode(),
+                entity.getTitle(),
+                entity.getIntent(),
+                entity.getStage(),
+                entity.getPriority() != null ? entity.getPriority() : 80,
+                entity.getDoActions(),
+                entity.getDontActions(),
+                entity.getGroundingPolicy(),
+                entity.getHandoffPolicy(),
+                entity.getSourceFormat()
         );
     }
 
@@ -240,6 +303,16 @@ public record LearnedRuleDto(
                 .alwaysOn(alwaysOn)
                 .reviewStatus(reviewStatus != null && !reviewStatus.isBlank() ? reviewStatus : "APPROVED")
                 .securityAuditNotes(securityAuditNotes)
+                .ruleCode(ruleCode)
+                .title(title)
+                .intent(intent)
+                .stage(stage)
+                .priority(priority != null ? priority : 80)
+                .doActions(doActions)
+                .dontActions(dontActions)
+                .groundingPolicy(groundingPolicy != null ? groundingPolicy : "must_use_kb_document_context")
+                .handoffPolicy(handoffPolicy != null ? handoffPolicy : "none")
+                .sourceFormat(sourceFormat != null ? sourceFormat : "MANUAL")
                 .build();
     }
 

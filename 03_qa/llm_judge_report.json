@@ -1,0 +1,34 @@
+{
+  "timestamp_utc": "2026-10-23T08:32:30Z",
+  "min_passing_score_per_dimension": 8.0,
+  "min_overall_average_score": 8.5,
+  "overall_weighted_score": 9.45,
+  "verdict": "PASS",
+  "dimension_scores": {
+    "EMOTIONAL_EMPATHY": {
+      "score": 9.6,
+      "weight": 0.25,
+      "notes": "Rich visceral empathy on Turn 1 (< 1s) with warm herbal compress and basalt stone imagery."
+    },
+    "MOOD_PRESERVATION": {
+      "score": 9.5,
+      "weight": 0.25,
+      "notes": "Deliberate ~10s pacing after price enters conversation; validates budget concerns without defensiveness."
+    },
+    "NATURAL_MESSENGER_PACING": {
+      "score": 9.3,
+      "weight": 0.2,
+      "notes": "Strictly 2-3 bubbles per turn with natural typing delays."
+    },
+    "VALUE_AND_TRUST_ANCHORING": {
+      "score": 9.4,
+      "weight": 0.15,
+      "notes": "Grounded in Nàng Sen Spa KB: 100% zero-tip, herbal foot soak, nourishing tea, and 10% discount for >= 5 sessions/vouchers."
+    },
+    "CONSULTATIVE_CLOSING_PROGRESSION": {
+      "score": 9.4,
+      "weight": 0.15,
+      "notes": "Drops the rope warmly with 0 pushy questions on 'để suy nghĩ đã' and captures phone + time slot seamlessly."
+    }
+  }
+}

@@ -60,4 +60,8 @@ public interface LearnedRuleRepository extends JpaRepository<LearnedRuleEntity, 
                                               @Param("pageId") UUID pageId,
                                               @Param("includeGlobal") boolean includeGlobal,
                                               @Param("globalOnly") boolean globalOnly);
+
+    java.util.Optional<LearnedRuleEntity> findFirstByRuleCodeAndPageId(String ruleCode, UUID pageId);
+
+    java.util.Optional<LearnedRuleEntity> findFirstByRuleCodeAndPageIdIsNull(String ruleCode);
 }

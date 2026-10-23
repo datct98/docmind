@@ -227,6 +227,9 @@
               </div>
               <div class="msg-bubble assistant typing-indicator">
                 <span></span><span></span><span></span>
+                <small v-if="thinkingRemainingSec > 0" style="margin-left: 8px; font-size: 12px; color: #b45309; font-weight: 600;">
+                  🧠 Đang suy nghĩ giữ nhịp cảm xúc ({{ thinkingRemainingSec }}s)...
+                </small>
               </div>
             </div>
           </div>
@@ -243,12 +246,14 @@
                 type="text"
                 class="messenger-input"
                 placeholder="Nhập tin nhắn trong vai khách hàng nhắn cho Fanpage..."
-                :disabled="isDeliveringBubbles || isSending"
-                @keydown.enter="sendCustomerMessage(customerInput)"
+                :disabled="isSending"
+                @compositionstart="isImeComposing = true"
+                @compositionend="handleImeCompositionEnd($event)"
+                @keydown.enter="handleInputEnter($event)"
               />
               <button
                 class="btn-send-fb"
-                :disabled="!customerInput.trim() || isDeliveringBubbles || isSending"
+                :disabled="!customerInput.trim() || isSending"
                 @click="sendCustomerMessage(customerInput)"
               >
                 Gửi
@@ -995,8 +1000,12 @@ const scrollToBottom = () => {
 }
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+const thinkingRemainingSec = ref(0)
+
+let bubbleDeliveryGeneration = 0
 
 const deliverBubbles = async (response) => {
+  const myGen = ++bubbleDeliveryGeneration
   const bubbles = response.reply_bubbles && response.reply_bubbles.length > 0
     ? response.reply_bubbles
     : [{ text: response.reply_text, typing_delay_ms: 1000 }]
@@ -1008,13 +1017,29 @@ const deliverBubbles = async (response) => {
   isDeliveringBubbles.value = true
   try {
     for (let i = 0; i < bubbles.length; i++) {
+      if (myGen !== bubbleDeliveryGeneration) return
       if (i > 0) {
         isTyping.value = true
         scrollToBottom()
-        const delay = Math.max(350, Math.min(600, bubbles[i].typing_delay_ms || 450))
-        await sleep(delay)
+        const rawDelay = bubbles[i].typing_delay_ms || 450
+        if (rawDelay >= 5000) {
+          const totalSec = Math.round(rawDelay / 1000)
+          for (let sec = totalSec; sec >= 1; sec--) {
+            if (myGen !== bubbleDeliveryGeneration) return
+            thinkingRemainingSec.value = sec
+            scrollToBottom()
+            await sleep(1000)
+          }
+          thinkingRemainingSec.value = 0
+        } else {
+          thinkingRemainingSec.value = 0
+          const delay = Math.max(450, Math.min(900, rawDelay))
+          await sleep(delay)
+        }
       }
+      if (myGen !== bubbleDeliveryGeneration) return
       isTyping.value = false
+      thinkingRemainingSec.value = 0
       chatItems.value.push({
         role: 'assistant',
         text: bubbles[i].text,
@@ -1026,16 +1051,93 @@ const deliverBubbles = async (response) => {
       scrollToBottom()
     }
   } finally {
-    isDeliveringBubbles.value = false
-    isTyping.value = false
+    if (myGen === bubbleDeliveryGeneration) {
+      isDeliveringBubbles.value = false
+      isTyping.value = false
+      thinkingRemainingSec.value = 0
+    }
   }
+}
+
+const isImeComposing = ref(false)
+let lastEnterHandledAt = 0
+
+const handleImeCompositionEnd = (event) => {
+  isImeComposing.value = false
+  if (event && event.target && typeof event.target.value === 'string') {
+    customerInput.value = event.target.value
+  }
+}
+
+const handleInputEnter = (event) => {
+  if (!event) return
+  event.preventDefault()
+  const now = Date.now()
+  if (now - lastEnterHandledAt < 80) {
+    return
+  }
+  // Khi bộ gõ tiếng Việt (macOS Telex / EVKey / OpenKey) đang compose từ cuối (VD: "tư vấn", "k hiểu"),
+  // chờ 35ms để bộ gõ commit xong chữ có dấu vào input.value rồi mới gửi 1 lần duy nhất.
+  if (event.isComposing || event.keyCode === 229 || isImeComposing.value) {
+    const targetEl = event.target
+    setTimeout(() => {
+      isImeComposing.value = false
+      const committedText = (targetEl && typeof targetEl.value === 'string' ? targetEl.value : customerInput.value) || ''
+      if (committedText.trim()) {
+        lastEnterHandledAt = Date.now()
+        sendCustomerMessage(committedText)
+        if (targetEl) targetEl.value = ''
+      }
+    }, 35)
+    return
+  }
+  lastEnterHandledAt = now
+  const liveVal = (event.target && typeof event.target.value === 'string' ? event.target.value : customerInput.value) || ''
+  sendCustomerMessage(liveVal)
 }
 
 const sendCustomerMessage = (rawText) => {
   const text = (rawText || '').trim()
-  if (!text || isDeliveringBubbles.value || isSending.value) return
+  if (!text || isSending.value) return
+  if (isDeliveringBubbles.value) {
+    // cancel_pending_if_customer_replies = true: hủy ngay các bong bóng đang chờ của lượt cũ khi khách nhắn tiếp
+    bubbleDeliveryGeneration++
+    isDeliveringBubbles.value = false
+    isTyping.value = false
+    thinkingRemainingSec.value = 0
+  }
 
   customerInput.value = ''
+
+  // Chống tách đôi tin nhắn do bộ gõ tiếng Việt (VD: gửi "k" rồi 20ms sau gửi "k hiểu", hoặc "tư" rồi "tư vấn")
+  if (pendingBurstBuffer.value.length > 0) {
+    const lastBurstIdx = pendingBurstBuffer.value.length - 1
+    const prevText = (pendingBurstBuffer.value[lastBurstIdx] || '').trim()
+    const prevLower = prevText.toLowerCase()
+    const curLower = text.toLowerCase()
+
+    if (curLower === prevLower || prevLower.startsWith(curLower + ' ')) {
+      return
+    }
+    if (curLower.startsWith(prevLower + ' ') || (prevLower.length <= 4 && curLower.startsWith(prevLower))) {
+      pendingBurstBuffer.value[lastBurstIdx] = text
+      for (let i = chatItems.value.length - 1; i >= 0; i--) {
+        if (chatItems.value[i].role === 'user' && chatItems.value[i].text === prevText) {
+          chatItems.value[i].text = text
+          break
+        }
+      }
+      if (burstDebounceTimer) {
+        clearTimeout(burstDebounceTimer)
+      }
+      burstDebounceTimer = setTimeout(() => {
+        burstDebounceTimer = null
+        flushBurst()
+      }, 350)
+      return
+    }
+  }
+
   chatItems.value.push({ role: 'user', text })
   scrollToBottom()
 

@@ -89,7 +89,12 @@ public class LlmHealthController {
         res.put("api_key_configured", keyConfigured);
         res.put("api_key_masked", maskedKey);
         res.put("reasoning_effort", reasoningEffort != null ? reasoningEffort : "default");
-        res.put("temperature", llmProps.getTemperature());
+        res.put("temperature", "ollama".equals(provider) ? ollamaProps.getTemperature() : llmProps.getTemperature());
+        res.put("top_p", "ollama".equals(provider) ? ollamaProps.getTopP() : (llmProps.getTopP() != null ? llmProps.getTopP() : 0.9));
+        res.put("repeat_penalty", "ollama".equals(provider) ? ollamaProps.getRepeatPenalty() : 1.08);
+        res.put("num_ctx", "ollama".equals(provider) ? ollamaProps.getNumCtx() : 4096);
+        res.put("num_predict", "ollama".equals(provider) ? ollamaProps.getNumPredict() : (llmProps.getMaxTokens() > 0 ? llmProps.getMaxTokens() : 600));
+        res.put("fallback_model", "ollama".equals(provider) ? ollamaProps.getFallbackModel() : llmProps.getFallbackModel());
         res.put("timeout_seconds", llmProps.getTimeoutSeconds());
 
         boolean needsApiKey = !"ollama".equals(provider) && !"stub".equals(provider);
@@ -140,7 +145,12 @@ public class LlmHealthController {
         res.put("api_key_configured", keyConfigured);
         res.put("api_key_masked", maskedKey);
         res.put("reasoning_effort", reasoningEffort != null ? reasoningEffort : "default");
-        res.put("temperature", llmProps.getTemperature());
+        res.put("temperature", "ollama".equals(provider) ? ollamaProps.getTemperature() : llmProps.getTemperature());
+        res.put("top_p", "ollama".equals(provider) ? ollamaProps.getTopP() : (llmProps.getTopP() != null ? llmProps.getTopP() : 0.9));
+        res.put("repeat_penalty", "ollama".equals(provider) ? ollamaProps.getRepeatPenalty() : 1.08);
+        res.put("num_ctx", "ollama".equals(provider) ? ollamaProps.getNumCtx() : 4096);
+        res.put("num_predict", "ollama".equals(provider) ? ollamaProps.getNumPredict() : (llmProps.getMaxTokens() > 0 ? llmProps.getMaxTokens() : 600));
+        res.put("fallback_model", "ollama".equals(provider) ? ollamaProps.getFallbackModel() : llmProps.getFallbackModel());
         res.put("timeout_seconds", llmProps.getTimeoutSeconds());
         res.put("checked_at", Instant.now().toString());
 
@@ -181,13 +191,46 @@ public class LlmHealthController {
                 if (code >= 200 && code < 300) {
                     res.put("status", "HEALTHY");
                     res.put("healthy", true);
-                    res.put("status_message", "Kết nối Ollama hoạt động tốt (" + latencyMs + "ms)");
+                    res.put("active_runtime_model", model);
+                    res.put("status_message", "Kết nối Ollama (" + model + ") hoạt động tốt (" + latencyMs + "ms)");
                     res.put("sample_reply", "OK");
                 } else {
-                    res.put("status", "ENDPOINT_ERROR");
-                    res.put("healthy", false);
-                    res.put("status_message", "Ollama trả về mã lỗi HTTP " + code);
-                    res.put("error_detail", truncateError(httpRes.body()));
+                    String fbModel = ollamaProps.getFallbackModel();
+                    if ((code == 404 || code >= 500) && fbModel != null && !fbModel.isBlank() && !fbModel.equals(model)) {
+                        Map<String, Object> fbBody = Map.of(
+                                "model", fbModel.trim(),
+                                "prompt", "Reply OK",
+                                "stream", false,
+                                "options", Map.of("num_predict", 8, "temperature", 0.0)
+                        );
+                        HttpRequest fbReq = HttpRequest.newBuilder()
+                                .uri(URI.create(endpoint))
+                                .timeout(Duration.ofSeconds(15))
+                                .header("Content-Type", "application/json")
+                                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(fbBody), StandardCharsets.UTF_8))
+                                .build();
+                        HttpResponse<String> fbRes = httpClient.send(fbReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                        long fbLatency = (System.nanoTime() - startNs) / 1_000_000L;
+                        if (fbRes.statusCode() >= 200 && fbRes.statusCode() < 300) {
+                            res.put("http_status", fbRes.statusCode());
+                            res.put("latency_ms", fbLatency);
+                            res.put("status", "HEALTHY");
+                            res.put("healthy", true);
+                            res.put("active_runtime_model", fbModel.trim());
+                            res.put("status_message", "Kết nối Ollama hoạt động tốt qua Fallback Model '" + fbModel.trim() + "' (Model chính '" + model + "' chưa pull, " + fbLatency + "ms)");
+                            res.put("sample_reply", "OK");
+                        } else {
+                            res.put("status", "ENDPOINT_ERROR");
+                            res.put("healthy", false);
+                            res.put("status_message", "Ollama trả về mã lỗi HTTP " + code);
+                            res.put("error_detail", truncateError(httpRes.body()));
+                        }
+                    } else {
+                        res.put("status", "ENDPOINT_ERROR");
+                        res.put("healthy", false);
+                        res.put("status_message", "Ollama trả về mã lỗi HTTP " + code);
+                        res.put("error_detail", truncateError(httpRes.body()));
+                    }
                 }
             } else {
                 Map<String, Object> body = new LinkedHashMap<>();

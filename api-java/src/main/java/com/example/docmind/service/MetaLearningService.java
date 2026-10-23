@@ -249,8 +249,14 @@ public class MetaLearningService {
         );
 
         long llmStartNs = System.nanoTime();
-        log.info("[LLM] MetaLearningService calling engine={}", llmClient.name());
-        String rawResponse = llmClient.complete(prompt);
+        com.example.docmind.service.llm.ReasoningBudget extractBudget =
+                com.example.docmind.service.llm.ReasoningBudget.extractionOrJudge();
+        log.info("[LLM] MetaLearningService calling engine={} temp={} topP={}",
+                llmClient.name(), extractBudget.temperature(), extractBudget.topP());
+        String rawResponse = llmClient.complete(prompt, extractBudget);
+        if (rawResponse == null) {
+            rawResponse = llmClient.complete(prompt);
+        }
         long llmLatencyMs = (System.nanoTime() - llmStartNs) / 1_000_000L;
         if (rawResponse == null || rawResponse.isBlank() || rawResponse.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*")) {
             log.warn("[LLM] MetaLearningService response from engine={} latencyMs={} status=fallback", llmClient.name(), llmLatencyMs);

@@ -15,7 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Map;
 
 /**
- * Client gọi Ollama chạy local (mặc định http://localhost:11434, model qwen2.5:7b hoặc qwen2.5:3b).
+ * Client gọi Ollama chạy local (mặc định http://localhost:11434, model qwen2.5:14b-instruct-q5_K_M).
  * Tối ưu cho máy chạy CPU 16GB RAM (giới hạn num_ctx=4096, temperature=0.1, readTimeout=120s).
  * Nếu Ollama chưa bật hoặc chưa pull model, tự động fallback an toàn để ứng dụng không bị treo/lỗi.
  */
@@ -32,6 +32,7 @@ public class OllamaLlmClient implements LlmClient {
     private final boolean enableTimeoutCooldown;
     private final java.util.concurrent.Semaphore concurrencyGate = new java.util.concurrent.Semaphore(1);
     private volatile long cooldownUntilEpochMs = 0L;
+    private volatile String activeRuntimeModel = null;
 
     @Autowired
     public OllamaLlmClient(OllamaProperties props) {
@@ -39,7 +40,7 @@ public class OllamaLlmClient implements LlmClient {
         this.enableTimeoutCooldown = true;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(3000);
-        int readTimeoutMs = 30000;
+        int readTimeoutMs = 45000;
         factory.setReadTimeout(readTimeoutMs);
         this.http = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
@@ -66,17 +67,25 @@ public class OllamaLlmClient implements LlmClient {
         long startNs = System.nanoTime();
         String base = props.getBaseUrl() != null ? props.getBaseUrl().replaceAll("/+$", "") : "http://localhost:11434";
         String endpoint = base + "/api/generate";
-        int maxPredictCap = 135;
+        int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 600;
         int numPredict = (budget != null && budget.maxTokens() > 0)
-                ? Math.min(budget.maxTokens(), maxPredictCap)
-                : Math.min(props.getNumPredict(), maxPredictCap);
-        double temp = (budget != null && budget.temperature() > 0)
+                ? (budget.maxTokens() <= 900 ? budget.maxTokens() : Math.max(configuredPredict, 700))
+                : configuredPredict;
+        double temp = (budget != null && budget.temperature() >= 0)
                 ? budget.temperature()
-                : props.getTemperature();
-        int effectiveNumCtx = 2048;
+                : (props.getTemperature() > 0 ? props.getTemperature() : 0.2);
+        double topP = (budget != null && budget.topP() != null && budget.topP() > 0.0 && budget.topP() <= 1.0)
+                ? budget.topP()
+                : (props.getTopP() > 0 ? props.getTopP() : 0.9);
+        double repeatPenalty = (budget != null && budget.repeatPenalty() != null && budget.repeatPenalty() > 0.0)
+                ? budget.repeatPenalty()
+                : (props.getRepeatPenalty() > 0 ? props.getRepeatPenalty() : 1.08);
+        int effectiveNumCtx = props.getNumCtx() > 0 ? props.getNumCtx() : 4096;
 
-        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, numPredict={}, numCtx={}, budgetTier={}",
-                props.getModel(), endpoint, numPredict, effectiveNumCtx,
+        String effectiveModel = activeRuntimeModel != null ? activeRuntimeModel : props.getModel();
+
+        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, numPredict={}, numCtx={}, temp={}, topP={}, repeatPenalty={}, budgetTier={}",
+                effectiveModel, endpoint, numPredict, effectiveNumCtx, temp, topP, repeatPenalty,
                 budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT");
 
         if (enableTimeoutCooldown && System.currentTimeMillis() < cooldownUntilEpochMs) {
@@ -89,12 +98,14 @@ public class OllamaLlmClient implements LlmClient {
         }
         try {
             Map<String, Object> body = Map.of(
-                    "model", props.getModel(),
+                    "model", effectiveModel,
                     "prompt", prompt != null ? prompt : "",
                     "stream", false,
-                    "keep_alive", "2h",
+                    "keep_alive", -1,
                     "options", Map.of(
                             "temperature", temp,
+                            "top_p", topP,
+                            "repeat_penalty", repeatPenalty,
                             "num_ctx", effectiveNumCtx,
                             "num_predict", numPredict
                     )
@@ -111,15 +122,60 @@ public class OllamaLlmClient implements LlmClient {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             boolean isFallback = result != null && result.startsWith("[ollama-offline]");
             log.info("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status={}",
-                    props.getModel(), latencyMs, isFallback ? "fallback" : "ok");
+                    effectiveModel, latencyMs, isFallback ? "fallback" : "ok");
             return result;
         } catch (Exception e) {
+            String errMsg = e.getMessage() != null ? e.getMessage() : "";
+            boolean isModelNotFound = errMsg.contains("404")
+                    || errMsg.toLowerCase(java.util.Locale.ROOT).contains("not found");
+            boolean isOomOrModelKilled = errMsg.contains("signal: killed")
+                    || errMsg.contains("llama-server process has terminated")
+                    || errMsg.contains("more system memory");
+            String fallbackCandidate = (props.getFallbackModel() != null
+                    && !props.getFallbackModel().isBlank()
+                    && !props.getFallbackModel().equalsIgnoreCase(effectiveModel))
+                    ? props.getFallbackModel().strip()
+                    : null;
+            if ((isModelNotFound || isOomOrModelKilled) && fallbackCandidate != null) {
+                log.warn("[LLM] Model {} unavailable or OOM ({}) -> switching runtime model to {} and retrying immediately",
+                        effectiveModel, errMsg, fallbackCandidate);
+                activeRuntimeModel = fallbackCandidate;
+                try {
+                    Map<String, Object> retryBody = Map.of(
+                            "model", fallbackCandidate,
+                            "prompt", prompt != null ? prompt : "",
+                            "stream", false,
+                            "keep_alive", "2h",
+                            "options", Map.of(
+                                    "temperature", temp,
+                                    "top_p", topP,
+                                    "repeat_penalty", repeatPenalty,
+                                    "num_ctx", effectiveNumCtx,
+                                    "num_predict", numPredict
+                            )
+                    );
+                    String retryJson = http.post()
+                            .uri("/api/generate")
+                            .body(retryBody)
+                            .retrieve()
+                            .body(String.class);
+                    Map<String, Object> retryResp = (retryJson != null && !retryJson.isBlank())
+                            ? MAPPER.readValue(retryJson, Map.class)
+                            : null;
+                    String retryResult = extractResponseText(retryResp, prompt);
+                    long totalMs = (System.nanoTime() - startNs) / 1_000_000L;
+                    log.info("[LLM] Auto-recovery succeeded with model={} in {} ms", fallbackCandidate, totalMs);
+                    return retryResult;
+                } catch (Exception retryEx) {
+                    log.warn("[LLM] Auto-recovery retry with {} failed: {}", fallbackCandidate, retryEx.getMessage());
+                }
+            }
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
-            if (enableTimeoutCooldown && latencyMs >= 28_500) {
+            if (enableTimeoutCooldown && latencyMs >= 43_500) {
                 cooldownUntilEpochMs = System.currentTimeMillis() + 15_000L;
             }
             log.warn("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status=fallback (error={})",
-                    props.getModel(), latencyMs, e.getMessage());
+                    effectiveModel, latencyMs, e.getMessage());
             return buildFallbackAnswer(prompt, e.getMessage());
         } finally {
             concurrencyGate.release();

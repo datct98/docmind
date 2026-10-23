@@ -155,10 +155,10 @@ class CustomerInsightEngineTest {
                 builtinSkills
         );
 
-        assertThat(topSkills).hasSize(3);
+        assertThat(topSkills).hasSize(1);
         assertThat(topSkills)
                 .extracting(AgentSkillDto::code)
-                .contains("PSYCH_CHRONIC_EMPATHY", "PSYCH_ZERO_RISK_REVERSAL");
+                .containsExactly("PSYCH_CHRONIC_EMPATHY");
 
         String pageId = UUID.randomUUID().toString();
         AgentSkillDto customPageSkill = new AgentSkillDto(
@@ -190,12 +190,13 @@ class CustomerInsightEngineTest {
         );
 
         assertThat(topWithCustom)
+                .hasSize(1)
                 .extracting(AgentSkillDto::code)
-                .contains("CUSTOM_PAGE_VIP_CARE", "PSYCH_CHRONIC_EMPATHY");
+                .containsExactly("CUSTOM_PAGE_VIP_CARE");
         long psychCount = topWithCustom.stream()
                 .filter(s -> "PSYCHOLOGY".equalsIgnoreCase(s.category()))
                 .count();
-        assertThat(psychCount).isLessThanOrEqualTo(2);
+        assertThat(psychCount).isLessThanOrEqualTo(1);
     }
 
     @Test
@@ -471,7 +472,7 @@ class CustomerInsightEngineTest {
                 CustomerInsightEngine.builtInDefaultSkills()
         );
 
-        assertThat(activeSkills).hasSize(3);
+        assertThat(activeSkills).hasSize(1);
         assertThat(activeSkills)
                 .extracting(AgentSkillDto::code)
                 .containsAnyOf(

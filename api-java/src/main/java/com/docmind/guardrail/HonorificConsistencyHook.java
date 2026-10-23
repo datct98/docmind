@@ -78,10 +78,16 @@ public class HonorificConsistencyHook implements GuardrailHook {
         }
         String lower = text.toLowerCase(Locale.ROOT);
         boolean isNeutralAnhChi = "Anh/Chị".equalsIgnoreCase(context.getCustomerHonorific());
+        boolean isNeutralMinh = "mình".equalsIgnoreCase(context.getCustomerHonorific());
         if (context.isMale()) {
             return lower.contains("chị") || lower.contains("bạn") || lower.contains("em có thể")
                     || lower.contains("em nên") || lower.contains("em sẽ") || lower.contains("anh anh")
                     || lower.contains("anh/chị") || lower.contains("anh chị");
+        } else if (isNeutralMinh) {
+            return lower.contains("bạn") || lower.contains("em có thể")
+                    || lower.contains("em nên") || lower.contains("em sẽ")
+                    || lower.contains("anh/chị") || lower.contains("anh chị")
+                    || lower.contains("/chị") || lower.contains("/anh");
         } else if (isNeutralAnhChi) {
             return lower.contains("bạn") || lower.contains("em có thể")
                     || lower.contains("em nên") || lower.contains("em sẽ")
@@ -175,6 +181,7 @@ public class HonorificConsistencyHook implements GuardrailHook {
         working = working.replaceAll("(?iU)(?<=^|\\b(?:dạ|chào)\\s+)/\\s*(?:chị|anh)(?:\\s+ạ)?[!.,~]*\\s*", "");
 
         boolean isNeutralAnhChi = "Anh/Chị".equalsIgnoreCase(honorific);
+        boolean isNeutralMinh = "mình".equalsIgnoreCase(honorific);
         if (isMale) {
             if (lower.contains("chị") || lower.contains("anh") || lower.contains("bạn")) {
                 // Chuẩn hóa Anh/Chị và anh chị (không slash) -> Anh
@@ -206,6 +213,14 @@ public class HonorificConsistencyHook implements GuardrailHook {
                 if (working.toLowerCase(Locale.ROOT).contains("anh")) {
                     working = REPEATED_ANH_PATTERN.matcher(working).replaceAll("Anh");
                 }
+            }
+        } else if (isNeutralMinh) {
+            if (lower.contains("anh") && lower.contains("chị")) {
+                working = ANH_CHI_PATTERN.matcher(working).replaceAll("mình");
+            }
+            if (lower.contains("bạn")) {
+                working = BAN1_PATTERN.matcher(working).replaceAll(mr -> mr.group(1) + " mình");
+                working = BAN2_PATTERN.matcher(working).replaceAll("mình");
             }
         } else if (isNeutralAnhChi) {
             if (lower.contains("bạn")) {

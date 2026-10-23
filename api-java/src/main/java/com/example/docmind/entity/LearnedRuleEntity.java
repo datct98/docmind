@@ -109,6 +109,40 @@ public class LearnedRuleEntity {
     @Column(name = "security_audit_notes", columnDefinition = "TEXT")
     private String securityAuditNotes;
 
+    @Column(name = "rule_code", length = 100)
+    private String ruleCode;
+
+    @Column(name = "title")
+    private String title;
+
+    @Column(name = "intent", length = 100)
+    private String intent;
+
+    @Column(name = "stage", length = 100)
+    private String stage;
+
+    @Builder.Default
+    @Column(name = "priority")
+    private Integer priority = 80;
+
+    @Column(name = "do_actions", columnDefinition = "TEXT")
+    private String doActions;
+
+    @Column(name = "dont_actions", columnDefinition = "TEXT")
+    private String dontActions;
+
+    @Builder.Default
+    @Column(name = "grounding_policy", length = 100)
+    private String groundingPolicy = "must_use_kb_document_context";
+
+    @Builder.Default
+    @Column(name = "handoff_policy", length = 100)
+    private String handoffPolicy = "none";
+
+    @Builder.Default
+    @Column(name = "source_format", length = 32)
+    private String sourceFormat = "MANUAL";
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

@@ -2,6 +2,7 @@ package com.example.docmind.service.bot;
 
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.PagePersonaConfig;
+import com.example.docmind.dto.SampleDialogueDto;
 import com.example.docmind.entity.HarnessDimension;
 import com.example.docmind.dto.bot.AgentSkillDto;
 import com.example.docmind.dto.bot.CustomerInsightDto;
@@ -35,9 +36,10 @@ public final class FanpageBotPromptBuilder {
     }
 
     public static final int ALWAYS_ON_MAX_CHARS = 1200; // strictly max 1200 characters (~300 tokens)
-    public static final int ACTIVE_SKILLS_MAX_CHARS = 360; // strictly max 360 chars across injected skills
-    public static final int SINGLE_SKILL_INSTRUCTION_MAX_CHARS = 95;
-    public static final int RECOMMENDED_STRATEGY_MAX_CHARS = 95;
+    public static final int ACTIVE_SKILLS_MAX_CHARS = 260; // strictly max 260 chars across injected skills
+    public static final int SINGLE_SKILL_INSTRUCTION_MAX_CHARS = 60;
+    public static final int RECOMMENDED_STRATEGY_MAX_CHARS = 65;
+    public static final int SAMPLE_DIALOGUES_MAX_CHARS = 380;
 
     public record BudgetAllocation(
             List<LearnedRuleDto> alwaysOnRules,
@@ -169,7 +171,7 @@ public final class FanpageBotPromptBuilder {
             + "serum|sữa\\s+rửa\\s+mặt|khóa\\s+học|học\\s+viên|phần\\s+mềm|doanh\\s+nghiệp|enterprise|standard|pro|"
             + "căn\\s+hộ|biệt\\s+thự|dự\\s+án|xe\\s+máy|vision|vario|sh\\b|combo|"
             + "vai\\s+gáy|mỏi\\s+vai|đau\\s+vai|mỏi\\s+cổ|đau\\s+cổ|mỏi\\s+gáy|đau\\s+gáy|căng\\s+cơ|bó\\s+cơ|nặng\\s+đầu|nặng\\s+người|mỏi\\s+người|"
-            + "đau\\s+mỏi|nhức\\s+mỏi|đau\\s+lưng|mỏi\\s+lưng|đau\\s+đầu|mất\\s+ngủ|khó\\s+ngủ|stress|căng\\s+thẳng|"
+            + "đau\\s+mỏi|nhức\\s+mỏi|đau\\s+lưng|mỏi\\s+lưng|mỏi\\s+gối|đau\\s+gối|khớp\\s+gối|tê\\s+tay|tê\\s+chân|tê\\s+bì|đau\\s+đầu|mất\\s+ngủ|khó\\s+ngủ|stress|căng\\s+thẳng|"
             + "váy|đầm|áo\\s+sơ\\s+mi|áo\\s+khoác|áo\\s+blazer|quần\\s+âu|quần\\s+jean|set\\s+đồ|bảng\\s+size|size\\s+[smlx]|chất\\s+vải|"
             + "sofa|bàn\\s+ăn|bàn\\s+trà|ghế|tủ|giường|đệm|kích\\s+thước|chất\\s+liệu|lắp\\s+đặt|"
             + "gói\\s+cước|bản\\s+quyền|tích\\s+hợp|dùng\\s+thử|demo|"
@@ -178,8 +180,8 @@ public final class FanpageBotPromptBuilder {
 
     public static final java.util.regex.Pattern WELLNESS_DISCOMFORT_PATTERN = java.util.regex.Pattern.compile(
             "(?isU).*(?:đau\\s+mỏi|nhức\\s+mỏi|mỏi\\s+mệt|mệt\\s+mỏi|uể\\s+oải|kiệt\\s+sức|cổ\\s+vai\\s+gáy|vai\\s+gáy|"
-            + "(?:đau|mỏi|nhức|căng|cứng|tê|nặng)\\s+(?:cổ|vai|gáy|lưng|đầu|người|cơ|chân|tay|thắt\\s+lưng)|"
-            + "(?:cổ|vai|gáy|lưng|đầu|người)\\s+(?:bị\\s+|đang\\s+|hơi\\s+)?(?:đau|mỏi|nhức|căng|cứng|nặng)|"
+            + "(?:đau|mỏi|nhức|căng|cứng|tê|nặng)\\s+(?:cổ|vai|gáy|lưng|đầu|người|cơ|chân|tay|gối|khớp\\s+gối|thắt\\s+lưng)|"
+            + "(?:cổ|vai|gáy|lưng|đầu|người|gối|tay|chân)\\s+(?:bị\\s+|đang\\s+|hơi\\s+)?(?:đau|mỏi|nhức|căng|cứng|tê|nặng)|"
             + "(?:hơi|khá|rất)\\s+(?:đau\\s+nhức|nhức\\s+mỏi|mỏi|đau)|"
             + "căng\\s+cơ|bó\\s+cơ|mất\\s+ngủ|khó\\s+ngủ|ngủ\\s+không\\s+sâu|ngủ\\s+chập\\s+chờn|"
             + "stress|căng\\s+thẳng|áp\\s+lực|ngồi\\s+nhiều|ngồi\\s+máy\\s+tính|văn\\s+phòng|khí\\s+huyết|lưu\\s+thông\\s+máu|tê\\s+bì).*"
@@ -514,11 +516,11 @@ public final class FanpageBotPromptBuilder {
 
     public enum SalesStage {
         DISCOVERY("DISCOVERY",
-                "Nấc 1 (Khảo sát, 2-3 câu ngắn, <= 45 chữ): Khách mệt mỏi: đồng cảm 5 chữ trước; hỏi giá/tư vấn chung: nêu giá khởi điểm các nhóm dịch vụ từ <DOCUMENT_CONTEXT> rồi hỏi nhu cầu ưu tiên."),
+                "Nấc 1 (Khảo sát, 2-3 câu ngắn): Đồng cảm trước, nêu giá khởi điểm từ <DOCUMENT_CONTEXT>, hỏi nhu cầu ưu tiên."),
         VALUE_CONSULTATION("VALUE_CONSULTATION",
-                "Nấc 2 (Tư vấn, 2-3 câu ngắn, <= 45 chữ): Trả lời thẳng trọng tâm (1 gói/giải pháp + đơn giá từ <DOCUMENT_CONTEXT>, cấm giải thích nguyên nhân rườm rà); kết bằng 1 câu hỏi gợi mở 2 phương án ngắn."),
+                "Nấc 2 (Tư vấn, 2-3 câu ngắn): Trả lời thẳng 1 gói + đơn giá từ <DOCUMENT_CONTEXT>, kết câu hỏi 2 phương án."),
         SOFT_BOOKING_CLOSE("SOFT_BOOKING_CLOSE",
-                "Nấc 3 (Chốt lịch, 2 câu ngắn, <= 35 chữ): Khóa quyền lợi; chưa chọn giờ hỏi Sáng/Chiều, đã có giờ chỉ xin SĐT khóa lịch.");
+                "Nấc 3 (Chốt lịch, 2-3 câu ngắn): Khóa quyền lợi; chưa chọn giờ hỏi Sáng/Chiều, đã có giờ chỉ xin SĐT.");
 
         private final String code;
         private final String guidance;
@@ -633,6 +635,42 @@ public final class FanpageBotPromptBuilder {
                                List<AgentSkillDto> activeSkills,
                                String mocSummary,
                                PriceLadderResult priceLadderResult) {
+        return build(customerMessage, customerName, history, chunks, appliedRules, pagePersona,
+                salesStage, resolvedHonorific, customerInsight, activeSkills, mocSummary, priceLadderResult, List.of());
+    }
+
+    public static String formatSampleDialogueCard(SampleDialogueDto dialogue, String honorific) {
+        if (dialogue == null || !dialogue.active()) {
+            return "";
+        }
+        String code = dialogue.dialogueCode() != null ? dialogue.dialogueCode() : "FD";
+        String userText = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(dialogue.userSummary()), 80);
+        String botText = compactPromptText(
+                adaptHonorificInSkillText(PromptSecurityGuard.sanitizeUntrustedContent(dialogue.expectedBotAnswer()), honorific),
+                145
+        );
+        return String.format(
+                "<sample_dialogue id=\"%s\" do_not_copy_literally=\"%s\">Khách: %s -> Tư vấn mẫu: %s</sample_dialogue>",
+                PromptSecurityGuard.sanitizeUntrustedContent(code),
+                dialogue.doNotCopyLiterally(),
+                userText,
+                botText
+        );
+    }
+
+    public static String build(String customerMessage,
+                               String customerName,
+                               List<FanpageBotRequest.ConversationTurn> history,
+                               List<ReciprocalRankFusion.FusedChunk> chunks,
+                               List<LearnedRuleDto> appliedRules,
+                               PromptBuilder.PagePersona pagePersona,
+                               SalesStage salesStage,
+                               String resolvedHonorific,
+                               CustomerInsightDto customerInsight,
+                               List<AgentSkillDto> activeSkills,
+                               String mocSummary,
+                               PriceLadderResult priceLadderResult,
+                               List<SampleDialogueDto> sampleDialogues) {
         StringBuilder sb = new StringBuilder();
 
         String pageName = (pagePersona != null && pagePersona.name() != null && !pagePersona.name().isBlank())
@@ -660,25 +698,24 @@ public final class FanpageBotPromptBuilder {
         String selfPronounLabel = selfPronoun.contains("/") ? selfPronoun : (selfPronoun + " / bên em");
 
         // 1. VAI TRÒ & QUY TẮC BẮT BUỘC (TINH GỌN, PHI ĐẶC THÙ NGÀNH, KHÔNG LẶP LẠI)
-        sb.append("# VAI TRÒ: Tư vấn viên Fanpage ").append(pageName)
-          .append(", chat Messenger tiếng Việt tự nhiên, ấm áp, ngắn gọn.\n\n");
+        sb.append("# VAI TRÒ: Tư vấn viên ").append(pageName).append(", tiếng Việt tự nhiên, ấm áp.\n\n");
 
         sb.append("# QUY TẮC BẮT BUỘC\n");
-        sb.append("1. GROUNDED: Chỉ báo dịch vụ, đơn giá, ưu đãi trong <DOCUMENT_CONTEXT>; cấm tự bịa.\n");
-        sb.append("2. THẤU CẢM NGẮN GỌN (5 CHỮ): Khi khách mệt mỏi/đau mỏi/băn khoăn: chỉ đồng cảm 5-7 chữ đầu câu rồi đi thẳng vào giải pháp, CẤM viết câu giải thích nguyên nhân sách vở ('Điều này thường do...').\n");
-        sb.append("3. CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN (QUY TẮC 40 CHỮ): 1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B (cấm viết nhãn 'A/B' hay chữ 'Hay?' cụt lủn). Toàn bộ phản hồi BẮT BUỘC chỉ 2-3 câu ngắn (tổng 30-48 chữ, tối đa 2 đoạn ngắn). Đoạn 1 (1-2 câu): Nêu ĐÚNG 1 gói/giải pháp + lợi ích + đơn giá phù hợp nhất. Đoạn 2 (1 câu <= 15 chữ): 1 câu hỏi gợi mở 2 phương án ngắn gọn.\n");
-        sb.append("4. DOWN-SELL TƯ VẤN KHÉO LÉO & HANDOFF: Khách chê đắt: hạ bậc gói rẻ hơn, cấm buông xuôi. Chỉ [[HANDOFF: lý do]] khi ngoài tài liệu.\n");
+        sb.append("1. GROUNDED: Chỉ báo dịch vụ, giá, ưu đãi trong <DOCUMENT_CONTEXT>; cấm tự bịa.\n");
+        sb.append("2. THẤU CẢM TRIỆU CHỨNG (EMPATHY FIRST): Khách đang gặp triệu chứng mệt mỏi thể chất (đau mỏi vai gáy, mất ngủ, stress, đau lưng...): BẮT BUỘC dành câu đầu tiên để đồng cảm chân thành và công nhận sự khó chịu; CẤM xả thông tin dồn dập hay chốt lịch ép buộc.\n");
+        sb.append("3. CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN: 1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B. Mỗi lượt phản hồi BẮT BUỘC chỉ từ 2 đến 4 câu văn ngắn gọn, súc tích (tối đa 2 đoạn ngắn). Tuyệt đối không viết thành bài văn dài.\n");
+        sb.append("4. DOWN-SELL TƯ VẤN KHÉO LÉO & HANDOFF: Khách chê đắt: thấu hiểu tâm lý giá, CẤM thanh minh hay tranh cãi; TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM buông xuôi 'cứ cân nhắc thêm'. Quy tắc chuyển tiếp hạ bậc (Consultative Down-sell Transition): xác nhận lần đầu thử dịch vụ thì chọn gói vừa vặn để trải nghiệm tay nghề trước là hoàn toàn hợp lý. Chỉ [[HANDOFF: lý do]] khi ngoài tài liệu.\n");
         String forbiddenHonorificLabel = "Anh/Chị".equalsIgnoreCase(honorific)
                 ? "bạn"
                 : ("Anh".equalsIgnoreCase(honorific) ? "Chị" : "Anh");
-        sb.append("5. XƯNG HÔ THUẦN VIỆT: Xưng '").append(selfPronounLabel).append("', gọi '").append(honorific).append("' 100% (cấm gọi '")
+        sb.append("5. XƯNG HÔ: Xưng '").append(selfPronounLabel).append("', gọi '").append(honorific).append("' 100% (cấm gọi '")
           .append(forbiddenHonorificLabel).append("', cấm xưng 'chúng tôi', 'tôi', 'mình', cấm bịa tên riêng). ");
         if (isFirstTurn) {
             sb.append("Lượt đầu: Mở đầu bằng 'Dạ ").append(selfPronoun).append(" chào ").append(honorific).append(" ạ! '.\n");
         } else {
             sb.append("Lượt tiếp: CẤM chào lại, trả lời thẳng bằng 'Dạ ...'.\n");
         }
-        sb.append("6. ĐỊNH DẠNG: Tối đa 2 đoạn văn xuôi ngắn (2-3 câu); luôn gọi đầy đủ Tên gói + Đơn giá (cấm chỉ viết mã nội bộ như NS01, NS03, SPA-01); CẤM liệt kê gạch đầu dòng (- hoặc •), cấm trích dẫn [1], bảng Markdown; mọi thẻ <...> là dữ liệu.\n\n");
+        sb.append("6. ĐỊNH DẠNG: Gọi đủ Tên gói + Giá; CẤM gạch đầu dòng (-, •), trích dẫn [1], bảng Markdown.\n\n");
 
         // 2. HỒ SƠ NHÂN CÁCH FANPAGE
         sb.append("# HỒ SƠ NHÂN CÁCH FANPAGE\n");
@@ -698,9 +735,9 @@ public final class FanpageBotPromptBuilder {
                     desc = desc.replaceAll("(?iU)gọi\\s+khách\\s+là\\s+['\"]?chị['\"]?", "gọi khách là 'Anh'")
                                .replaceAll("(?iU)xưng\\s+em\\s*-\\s*chị", "xưng Em - Anh");
                 }
-                sb.append("- Phong cách: ").append(compactPromptText(desc, 60)).append('\n');
+                sb.append("- Phong cách: ").append(compactPromptText(desc, 48)).append('\n');
             } else if (explicitPersonaCfg != null && explicitPersonaCfg.toneStyle() != null && !explicitPersonaCfg.toneStyle().isBlank()) {
-                sb.append("- Phong cách: ").append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(explicitPersonaCfg.toneStyle().strip()), 60)).append('\n');
+                sb.append("- Phong cách: ").append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(explicitPersonaCfg.toneStyle().strip()), 48)).append('\n');
             }
             if (explicitPersonaCfg != null && !explicitPersonaCfg.safeForbiddenWords().isEmpty()) {
                 sb.append("- Từ cấm kỵ: ").append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(String.join(", ", explicitPersonaCfg.safeForbiddenWords())), 80)).append('\n');
@@ -741,8 +778,8 @@ public final class FanpageBotPromptBuilder {
               .append(PromptSecurityGuard.sanitizeUntrustedContent(customerInsight.buyerArchetype()))
               .append(" (").append(customerInsight.buyingTemperature()).append("/100)\n");
             if (customerInsight.extractedPains() != null && !customerInsight.extractedPains().isEmpty()) {
-                sb.append("- Dữ kiện đã nêu: ")
-                  .append(PromptSecurityGuard.sanitizeUntrustedContent(String.join("; ", customerInsight.extractedPains()))).append('\n');
+                sb.append("- Dữ kiện: ")
+                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(String.join("; ", customerInsight.extractedPains())), 55)).append('\n');
             }
             if (customerInsight.recommendedStrategy() != null && !customerInsight.recommendedStrategy().isBlank()) {
                 sb.append("- Chiến thuật: ")
@@ -779,17 +816,42 @@ public final class FanpageBotPromptBuilder {
         }
 
         // 4. BỘ QUY TẮC NGHIỆP VỤ & TRẢI NGHIỆM HARNESS² (AI PLAYBOOK - ALWAYS-ON <= 1200 CHARS)
-        if (appliedRules != null && !appliedRules.isEmpty()) {
+        boolean hasRules = appliedRules != null && !appliedRules.isEmpty();
+        boolean hasDialogues = sampleDialogues != null && !sampleDialogues.isEmpty();
+        if (hasRules || hasDialogues) {
             sb.append("# LƯU Ý NGHIỆP VỤ QUAN TRỌNG (AI PLAYBOOK)\n");
-            BudgetAllocation alloc = packAlwaysOnRules(appliedRules);
-            sb.append("<EXPERIENCE_LIBRARY>\n");
-            List<LearnedRuleDto> rulesToInject = alloc.alwaysOnRules();
-            for (LearnedRuleDto rule : rulesToInject) {
-                if (rule != null && rule.generalizedRule() != null && !rule.generalizedRule().isBlank()) {
-                    sb.append(formatExperienceCard(rule)).append('\n');
+            if (hasRules) {
+                BudgetAllocation alloc = packAlwaysOnRules(appliedRules);
+                sb.append("<EXPERIENCE_LIBRARY>\n");
+                List<LearnedRuleDto> rulesToInject = alloc.alwaysOnRules();
+                for (LearnedRuleDto rule : rulesToInject) {
+                    if (rule != null && rule.generalizedRule() != null && !rule.generalizedRule().isBlank()) {
+                        sb.append(formatExperienceCard(rule)).append('\n');
+                    }
                 }
+                sb.append("</EXPERIENCE_LIBRARY>\n");
             }
-            sb.append("</EXPERIENCE_LIBRARY>\n\n");
+            if (hasDialogues) {
+                sb.append("<SAMPLE_DIALOGUES note=\"Chỉ học cấu trúc & giọng điệu, CẤM chép nguyên văn\">\n");
+                int usedDialogueChars = 0;
+                int dCount = 0;
+                for (SampleDialogueDto d : sampleDialogues) {
+                    if (d == null || !d.active()) continue;
+                    String card = formatSampleDialogueCard(d, honorific);
+                    if (card.isBlank()) continue;
+                    if (dCount >= 1 && usedDialogueChars + card.length() > SAMPLE_DIALOGUES_MAX_CHARS) {
+                        break;
+                    }
+                    if (dCount >= 2) {
+                        break;
+                    }
+                    sb.append(card).append('\n');
+                    usedDialogueChars += card.length();
+                    dCount++;
+                }
+                sb.append("</SAMPLE_DIALOGUES>\n");
+            }
+            sb.append('\n');
         }
 
         // 5. DỮ LIỆU TRI THỨC CỦA FANPAGE (CHUẨN LLAMAINDEX ATOMIC NODES - LOẠI BỎ ĐƯỜNG KẺ BẢNG & CHỐNG TRÀN CONTEXT)
@@ -1032,18 +1094,16 @@ public final class FanpageBotPromptBuilder {
             sb.append("Khách đã chọn giờ ").append(bookingState.confirmedTimeSlot())
               .append(": xác nhận giữ suất cho ").append(honorific).append(" và chỉ xin SĐT để khóa lịch (CẤM hỏi lại Sáng/Chiều).\n");
         } else if (isPriceObjectionOrDownsell && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách chê giá cao hoặc hỏi ưu đãi/khuyến mãi: đồng cảm 5 chữ, CẤM thanh minh, TUYỆT ĐỐI CẤM [[HANDOFF]] và CẤM buông xuôi 'cứ cân nhắc thêm'! ")
-              .append("Chủ động báo chính sách ưu đãi (nếu có) và lùi 1 nấc xuống gói thấp hơn trong <DOCUMENT_CONTEXT> trong 1-2 câu ngắn, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn (CẤM quay ngược lên gói đắt hơn, CẤM viết nhãn 'A/B').\n");
+            sb.append("Khách chê giá cao / hỏi ưu đãi: đồng cảm ấm áp, CẤM thanh minh hay [[HANDOFF]]; chủ động báo ưu đãi (nếu có) và hạ 1 nấc xuống gói thấp hơn trong <DOCUMENT_CONTEXT>, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn.\n");
         } else if (asksServiceExplanation && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách hỏi bản chất / quy trình / tác dụng của dịch vụ hoặc sản phẩm: Đi thẳng vào trọng tâm giải thích dịch vụ đó làm gì và gồm các bước cốt lõi nào từ <DOCUMENT_CONTEXT> chỉ trong 1-2 câu ngắn gọn, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn (Tổng <= 45 chữ, CẤM trả lời vòng vo hay viết nhãn 'A/B').\n");
+            sb.append("Khách hỏi quy trình / tác dụng: giải thích trọng tâm dịch vụ gồm các bước cốt lõi nào từ <DOCUMENT_CONTEXT> trong 1-2 câu ngắn, kết bằng 1 câu hỏi lựa chọn 2 phương án ngắn.\n");
         } else if ((asksWellnessDiscomfort || isSymptomFollowUp) && !bookingState.hasCapturedPhone()) {
             if (currentSeverity == SymptomSeverity.MILD_OR_OCCASIONAL) {
-                sb.append("Khách cho biết chỉ THI THOẢNG / MỚI BỊ nhẹ: Đồng cảm 5 chữ ('Dạ nếu thi thoảng mới mỏi nhẹ...'), gợi ý ngay ĐÚNG 1 gói cơ bản kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> (bắt buộc nêu rõ Tên gói + Thời lượng + Mức giá VNĐ) trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi ")
-                  .append(honorific).append(" muốn trải nghiệm gói cơ bản này trước hay đặt lịch khung giờ Sáng/Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
+                sb.append("Khách THI THOẢNG / MỚI BỊ nhẹ: Đồng cảm ấm áp, gợi ý ĐÚNG 1 gói cơ bản kèm Tên gói + Thời lượng + Đơn giá VNĐ từ <DOCUMENT_CONTEXT>, kết bằng câu hỏi lựa chọn 2 phương án.\n");
             } else if (currentSeverity == SymptomSeverity.CHRONIC_OR_DEEP) {
-                sb.append("Khách cho biết tình trạng THƯỜNG XUYÊN / CĂNG MỎI NHIỀU: Đồng cảm 5 chữ, gợi ý ngay ĐÚNG 1 gói chuyên sâu/phục hồi kèm ĐƠN GIÁ phù hợp nhất trong <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi khung giờ Sáng hay Chiều (Tổng 2 câu ngắn <= 42 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
+                sb.append("Khách THƯỜNG XUYÊN / CĂNG MỎI NHIỀU: Đồng cảm sâu sắc, gợi ý ĐÚNG 1 gói chuyên sâu/phục hồi kèm Đơn giá từ <DOCUMENT_CONTEXT>, kết bằng câu hỏi khung giờ Sáng hay Chiều.\n");
             } else {
-                sb.append("Khách nêu vấn đề / triệu chứng: Đồng cảm 5 chữ đầu câu, nêu thẳng 1 gói/giải pháp cơ bản phù hợp nhất kèm ĐƠN GIÁ từ <DOCUMENT_CONTEXT> trong 1 câu ngắn, và kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên hỏi tình trạng mới bị hay thường xuyên (KHÔNG hỏi lại vùng cơ thể khách vừa nêu; Tổng 2-3 câu ngắn <= 45 chữ; CẤM hỏi câu Yes/No '...không ạ?', CẤM viết chữ 'Hay?' cụt lủn).\n");
+                sb.append("Khách nêu triệu chứng: Đồng cảm chân thành đầu câu, nêu 1 gói giải pháp phù hợp kèm Đơn giá từ <DOCUMENT_CONTEXT>, kết bằng câu hỏi tình trạng mới bị hay thường xuyên.\n");
             }
         } else if (isTrialAcceptance && !bookingState.hasCapturedPhone()) {
             sb.append("Khách muốn thử: giữ NHẤT QUÁN đúng tên và mức giá gói cơ bản từ <DOCUMENT_CONTEXT>/<CONVERSATION_HISTORY> (cấm tự nhảy gói đắt hơn), hỏi giờ đặt lịch Sáng hay Chiều.\n");
@@ -1061,20 +1121,23 @@ public final class FanpageBotPromptBuilder {
             sb.append("Đồng cảm nỗi lo của ").append(honorific).append(", nêu cam kết từ <DOCUMENT_CONTEXT>, hỏi khung giờ Sáng hay Chiều.\n");
         } else if (isBurstOrMultiPart) {
             sb.append("Giải đáp các ý trong 2 đoạn ngắn từ <DOCUMENT_CONTEXT>, kết bằng 1 câu hỏi lựa chọn 2 phương án.\n");
-        } else if ((isBroadGenericDiscovery || isBroadUnspecifiedPrice) && !bookingState.hasCapturedPhone()) {
-            sb.append("Khách mới hỏi tư vấn / giá chung chung: Chào ấm áp, giới thiệu ngắn gọn các nhóm dịch vụ cốt lõi kèm mức giá khởi điểm thấp nhất từ <DOCUMENT_CONTEXT> (TUYỆT ĐỐI CẤM tự ý chào ngay gói trung/cao cấp hoặc bịa Phòng VIP), kết bằng 1 câu hỏi lựa chọn 2 phương án hỏi nhu cầu của ")
-              .append(honorific).append(".\n");
+        } else if (isBroadGenericDiscovery && !bookingState.hasCapturedPhone()) {
+            sb.append("Khách mới chào hỏi / nhờ tư vấn chung chung (chưa hỏi giá): Chào ấm áp kèm tên Spa, hỏi 1 câu mở nhẹ nhàng để biết khu vực đang mỏi hoặc dịch vụ ")
+              .append(honorific).append(" quan tâm (TUYỆT ĐỐI CẤM báo giá ở lượt chào hỏi và CẤM xin SĐT/giờ hẹn sớm).\n");
+        } else if (isBroadUnspecifiedPrice && !bookingState.hasCapturedPhone()) {
+            sb.append("Khách hỏi giá chung chung chưa rõ dịch vụ: Giải thích nhẹ nhàng giá tùy dịch vụ và thời lượng, hỏi 1 câu làm rõ nhóm dịch vụ ")
+              .append(honorific).append(" quan tâm (massage cổ vai gáy, massage body hay ngâm thảo dược) để gửi đúng mức giá (TUYỆT ĐỐI CẤM đổ cả bảng giá).\n");
         } else {
             if (asksMaleEligibility) {
-                sb.append("Khách là Nam: phục vụ phòng riêng kín đáo, tiếp nối <CONVERSATION_HISTORY> (cấm chào lại). ");
+                sb.append("Khách Nam: phòng riêng kín đáo, tiếp nối <CONVERSATION_HISTORY>. ");
             }
             if (asksTimeToResult) {
-                sb.append("Nêu rõ thời gian hiệu quả từ <DOCUMENT_CONTEXT>. ");
+                sb.append("Nêu thời gian hiệu quả từ <DOCUMENT_CONTEXT>. ");
             }
             if (asksRednessOrDowntime) {
-                sb.append("Nêu rõ độ êm dịu, không nghỉ dưỡng, 0đ ràng buộc từ <DOCUMENT_CONTEXT>. ");
+                sb.append("Nêu độ êm dịu, 0đ ràng buộc từ <DOCUMENT_CONTEXT>. ");
             }
-            sb.append("Tối đa 2 đoạn ngắn, kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên (CẤM viết nhãn 'A/B' hay 'Hay?').\n");
+            sb.append("Kết bằng 1 câu hỏi lựa chọn 2 phương án tự nhiên.\n");
         }
 
         if (priceLadderResult != null) {
@@ -1111,7 +1174,7 @@ public final class FanpageBotPromptBuilder {
             sb.append("  2. Giới thiệu chính sách ưu đãi ").append(result.discountPolicy() != null ? result.discountPolicy() : "giảm 10%").append(" để hỗ trợ ").append(h).append(" tiết kiệm tối đa.\n");
             sb.append("  3. TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM từ chối phục vụ.\n");
         } else if (result.isPriceObjection()) {
-            sb.append("- Trạng thái: KHÁCH CHÊ GIÁ CAO / HỎI ƯU ĐÃI KHUYẾN MÃI / GÓI MỀM HƠN\n");
+            sb.append("- Trạng thái: KHÁCH CHÊ GIÁ CAO / HỎI GÓI RẺ HƠN\n");
             if (result.previousPriceQuoted() != null) {
                 sb.append("- Mức giá đã báo lượt trước: ").append(String.format(Locale.ROOT, "%,d VNĐ", result.previousPriceQuoted()).replace(',', '.')).append("\n");
             }
@@ -1330,7 +1393,7 @@ public final class FanpageBotPromptBuilder {
                 + "(?<!\\p{L})(?:nữ\\s+giới|nu\\s+gioi|phụ\\s+nữ|phu\\s+nu)|"
                 + "(?<!\\p{L})(?:cho\\s+chị(?:\\s+xin|\\s+hỏi|\\s+xem|\\s+đặt)?|chị\\s+(?:muốn|cần|đang|định|hỏi|sợ|lo|bị|thấy|tính|ở|làm|mua|dùng|có|chưa|mới|qua|ghé|ngại|nghĩ|xin|xem)|da\\s+(?:của\\s+)?chị|mặt\\s+chị|sđt\\s+(?:của\\s+)?chị|số\\s+(?:của\\s+)?chị|"
                 + "(?:gọi|alo|nhắn|liên\\s+hệ|báo\\s+giá|gửi|tư\\s+vấn|hỗ\\s+trợ|giữ\\s+suất|giữ\\s+lịch)(?:\\s+lại|\\s+thêm)?\\s+(?:cho\\s+chị|giúp\\s+chị|hộ\\s+chị|chị)|"
-                + "gần\\s+nhà\\s+chị|bạn\\s+chị|cho\\s+bé\\s+bú|mang\\s+thai|bầu\\s+bí)(?!\\p{L})|"
+                + "gần\\s+nhà\\s+chị|bạn\\s+chị)(?!\\p{L})|"
                 + "(?:^|[.!?\\n,;:\\s])c\\s+(?:sợ|lo|bị|muốn|cần|đang|định|hỏi|thấy|tính|ở|làm|mua|dùng|chưa|mới|qua|ghé|ngại|nghĩ|xin)(?!\\p{L})).*")) {
             return "Chị";
         }

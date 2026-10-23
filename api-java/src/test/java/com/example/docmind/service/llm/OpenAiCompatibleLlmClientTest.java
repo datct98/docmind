@@ -409,7 +409,7 @@ class OpenAiCompatibleLlmClientTest {
 
         props.setProvider("ollama");
         assertThat(props.resolveBaseUrl()).isEqualTo("http://localhost:11434");
-        assertThat(props.resolveModel()).isEqualTo("qwen2.5:7b");
+        assertThat(props.resolveModel()).isEqualTo("qwen2.5:14b-instruct-q5_K_M");
 
         // Custom override
         props.setProvider("custom");
@@ -778,6 +778,70 @@ class OpenAiCompatibleLlmClientTest {
         String answer = client.complete("Câu hỏi: Test standard 400 bad request?");
         assertThat(answer).contains("[openai-error]");
         assertThat(answer).contains("400 Bad Request");
+        server.verify();
+    }
+
+    @Test
+    void testTaskSpecificReasoningBudgetProfilesAndSerialization() {
+        // 1. Sales Chat profile: temp=0.2, top_p=0.9, repeat_penalty=1.08, max_tokens=600 (SIMPLE) / 2000 (DEEP)
+        ReasoningBudget salesSimple = ReasoningBudget.salesChat(com.example.docmind.service.reasoning.QueryComplexity.SIMPLE);
+        assertThat(salesSimple.temperature()).isEqualTo(0.2);
+        assertThat(salesSimple.topP()).isEqualTo(0.9);
+        assertThat(salesSimple.repeatPenalty()).isEqualTo(1.08);
+        assertThat(salesSimple.maxTokens()).isEqualTo(600);
+
+        ReasoningBudget salesDeep = ReasoningBudget.salesChat(com.example.docmind.service.reasoning.QueryComplexity.DEEP_REASONING);
+        assertThat(salesDeep.temperature()).isEqualTo(0.2);
+        assertThat(salesDeep.topP()).isEqualTo(0.9);
+        assertThat(salesDeep.repeatPenalty()).isEqualTo(1.08);
+        assertThat(salesDeep.maxTokens()).isEqualTo(2000);
+
+        // 2. Internal Knowledge QA profile: temp=0.1, top_p=0.85, repeat_penalty=1.05, max_tokens=900
+        ReasoningBudget qaBudget = ReasoningBudget.internalQa();
+        assertThat(qaBudget.temperature()).isEqualTo(0.1);
+        assertThat(qaBudget.topP()).isEqualTo(0.85);
+        assertThat(qaBudget.repeatPenalty()).isEqualTo(1.05);
+        assertThat(qaBudget.maxTokens()).isEqualTo(900);
+
+        // 3. Extraction / QA Judge profile: temp=0.0, top_p=0.8, repeat_penalty=1.05, max_tokens=700
+        ReasoningBudget judgeBudget = ReasoningBudget.extractionOrJudge();
+        assertThat(judgeBudget.temperature()).isEqualTo(0.0);
+        assertThat(judgeBudget.topP()).isEqualTo(0.8);
+        assertThat(judgeBudget.repeatPenalty()).isEqualTo(1.05);
+        assertThat(judgeBudget.maxTokens()).isEqualTo(700);
+
+        // Verify OpenAiCompatibleLlmClient serializes top_p, temperature, and max_tokens when internalQa() is passed
+        LlmProperties props = new LlmProperties();
+        props.setProvider("openai");
+        props.setApiKey("sk-test-qa-budget");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, objectMapper, builder.build());
+
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.temperature").value(0.1))
+                .andExpect(jsonPath("$.top_p").value(0.85))
+                .andExpect(jsonPath("$.max_tokens").value(900))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "role": "assistant",
+                                "content": "Nội dung QA nội bộ chính xác [1]."
+                              }
+                            }
+                          ]
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String answer = client.complete("Câu hỏi nội bộ?", qaBudget);
+        assertThat(answer).isEqualTo("Nội dung QA nội bộ chính xác [1].");
         server.verify();
     }
 }

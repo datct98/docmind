@@ -1,0 +1,14 @@
+{
+  "pipeline_version": "1.0.0",
+  "contract_version": "1.0.0",
+  "locked_at_utc": "2026-10-23T08:32:30Z",
+  "page_id": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+  "services": {
+    "docmind_api": "8090",
+    "docmind_agent_brain": "8095",
+    "docmind_doc_service": "8091",
+    "docmind_frontend": "3000"
+  },
+  "maven_tests_passed": 109,
+  "qa_gates_passed": true
+}

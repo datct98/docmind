@@ -108,7 +108,7 @@ class GuardrailPipelineTest {
     // =========================================================================
 
     @Test
-    @DisplayName("BubbleCap: Merges excess bubbles when raw reply has 3+ bubbles into exactly <= 2")
+    @DisplayName("BubbleCap: Merges excess bubbles when raw reply has 4+ bubbles into at most 3")
     void testBubbleCap_excessBubbles_mergedToMaxTwo() {
         GuardrailContext ctx = GuardrailContext.builder()
                 .customerHonorific("Anh")
@@ -128,16 +128,17 @@ class GuardrailPipelineTest {
         boolean triggered = hook.apply(ctx, draft);
 
         assertThat(triggered).isTrue();
-        assertThat(draft.getBubbles()).hasSize(2);
+        assertThat(draft.getBubbles()).hasSize(3);
         assertThat(draft.getBubbles().get(0).text()).contains("Đoạn 1");
-        assertThat(draft.getBubbles().get(1).text())
-                .contains("Đoạn 2")
+        assertThat(draft.getBubbles().get(1).text()).contains("Đoạn 2");
+        assertThat(draft.getBubbles().get(2).text())
                 .contains("Đoạn 3")
                 .contains("Đoạn 4");
 
         // Verify typing delay metadata
         assertThat(draft.getBubbles().get(0).typingDelayMs()).isBetween(800, 1200);
         assertThat(draft.getBubbles().get(1).typingDelayMs()).isBetween(2500, 3000);
+        assertThat(draft.getBubbles().get(2).typingDelayMs()).isBetween(2500, 3000);
         assertThat(draft.hasTriggered(BubbleCapHook.HOOK_CODE)).isTrue();
     }
 

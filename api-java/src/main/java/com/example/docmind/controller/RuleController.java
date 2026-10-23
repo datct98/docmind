@@ -37,6 +37,7 @@ public class RuleController {
     private final EmbeddingClient embeddingClient;
     private final com.example.docmind.service.MetaLearningService metaLearningService;
     private final com.example.docmind.service.bot.FastApiAgentService fastApiAgentService;
+    private final com.example.docmind.service.playbook.PlaybookUploadService playbookUploadService;
 
     @org.springframework.beans.factory.annotation.Autowired
     public RuleController(LearnedRuleRepository learnedRuleRepository,
@@ -44,21 +45,44 @@ public class RuleController {
                           @org.springframework.beans.factory.annotation.Autowired(required = false)
                           com.example.docmind.service.MetaLearningService metaLearningService,
                           @org.springframework.beans.factory.annotation.Autowired(required = false)
-                          com.example.docmind.service.bot.FastApiAgentService fastApiAgentService) {
+                          com.example.docmind.service.bot.FastApiAgentService fastApiAgentService,
+                          @org.springframework.beans.factory.annotation.Autowired(required = false)
+                          com.example.docmind.service.playbook.PlaybookUploadService playbookUploadService,
+                          @org.springframework.beans.factory.annotation.Autowired(required = false)
+                          com.example.docmind.repository.SampleDialogueRepository sampleDialogueRepository) {
         this.learnedRuleRepository = learnedRuleRepository;
         this.embeddingClient = embeddingClient;
         this.metaLearningService = metaLearningService;
         this.fastApiAgentService = fastApiAgentService;
+        this.playbookUploadService = playbookUploadService != null
+                ? playbookUploadService
+                : new com.example.docmind.service.playbook.PlaybookUploadService(
+                        learnedRuleRepository, sampleDialogueRepository, embeddingClient, null);
+    }
+
+    public RuleController(LearnedRuleRepository learnedRuleRepository,
+                          EmbeddingClient embeddingClient,
+                          com.example.docmind.service.MetaLearningService metaLearningService,
+                          com.example.docmind.service.bot.FastApiAgentService fastApiAgentService,
+                          com.example.docmind.service.playbook.PlaybookUploadService playbookUploadService) {
+        this(learnedRuleRepository, embeddingClient, metaLearningService, fastApiAgentService, playbookUploadService, null);
+    }
+
+    public RuleController(LearnedRuleRepository learnedRuleRepository,
+                          EmbeddingClient embeddingClient,
+                          com.example.docmind.service.MetaLearningService metaLearningService,
+                          com.example.docmind.service.bot.FastApiAgentService fastApiAgentService) {
+        this(learnedRuleRepository, embeddingClient, metaLearningService, fastApiAgentService, null);
     }
 
     public RuleController(LearnedRuleRepository learnedRuleRepository,
                           EmbeddingClient embeddingClient,
                           com.example.docmind.service.MetaLearningService metaLearningService) {
-        this(learnedRuleRepository, embeddingClient, metaLearningService, null);
+        this(learnedRuleRepository, embeddingClient, metaLearningService, null, null);
     }
 
     public RuleController(LearnedRuleRepository learnedRuleRepository, EmbeddingClient embeddingClient) {
-        this(learnedRuleRepository, embeddingClient, null, null);
+        this(learnedRuleRepository, embeddingClient, null, null, null);
     }
 
     @GetMapping
@@ -487,6 +511,65 @@ public class RuleController {
         }
         learnedRuleRepository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    public record PlaybookRawUploadRequest(
+            String content,
+            String format,
+            @com.fasterxml.jackson.annotation.JsonProperty("page_id") String pageId,
+            @com.fasterxml.jackson.annotation.JsonProperty("replace_existing") Boolean replaceExisting
+    ) {}
+
+    @PostMapping("/upload-playbook")
+    public ResponseEntity<com.example.docmind.service.playbook.PlaybookUploadService.PlaybookUploadResult> uploadPlaybookRaw(
+            @RequestBody PlaybookRawUploadRequest request
+    ) {
+        if (request == null || request.content() == null || request.content().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nội dung Playbook tải lên không được để trống.");
+        }
+        try {
+            var res = playbookUploadService.uploadPlaybookContent(
+                    request.content(),
+                    request.format(),
+                    request.pageId(),
+                    Boolean.TRUE.equals(request.replaceExisting())
+            );
+            return ResponseEntity.ok(res);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        }
+    }
+
+    @PostMapping(value = "/upload-playbook-file", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<com.example.docmind.service.playbook.PlaybookUploadService.PlaybookUploadResult> uploadPlaybookFile(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(name = "page_id", required = false) String pageId,
+            @RequestParam(name = "format", required = false) String format,
+            @RequestParam(name = "replace_existing", required = false, defaultValue = "false") boolean replaceExisting
+    ) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File Playbook tải lên không được để trống.");
+        }
+        try {
+            String content = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String hint = (format != null && !format.isBlank()) ? format : file.getOriginalFilename();
+            var res = playbookUploadService.uploadPlaybookContent(content, hint, pageId, replaceExisting);
+            return ResponseEntity.ok(res);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể đọc file Playbook: " + e.getMessage(), e);
+        }
+    }
+
+    @GetMapping("/sample-dialogues")
+    public ResponseEntity<List<com.example.docmind.dto.SampleDialogueDto>> getSampleDialogues(
+            @RequestParam(name = "page_id", required = false) String pageId,
+            @RequestParam(name = "active", required = false) Boolean active,
+            @RequestParam(name = "include_global", required = false, defaultValue = "true") boolean includeGlobal,
+            @RequestParam(name = "review_status", required = false) String reviewStatus
+    ) {
+        return ResponseEntity.ok(playbookUploadService.getSampleDialogues(pageId, active, includeGlobal, reviewStatus));
     }
 
     private static UUID parsePageId(String pageIdRaw) {

@@ -56,10 +56,10 @@ public class BubbleCapHook implements GuardrailHook {
         int initialCount = rawParagraphs.size();
         boolean modified = false;
 
-        // 1. Ở lượt đầu tiên (isFirstTurn): nếu bong bóng đầu chỉ là câu chào ngắn (<= 50 ký tự), gộp vào bong bóng kế tiếp
+        // 1. Ở lượt đầu tiên (isFirstTurn): nếu bong bóng đầu chỉ là câu chào rất ngắn (<= 35 ký tự), gộp vào bong bóng kế tiếp
         if (context.isFirstTurn() && rawParagraphs.size() >= 2) {
             String first = rawParagraphs.get(0);
-            if (first.length() <= 50 && SHORT_GREETING_PATTERN.matcher(first).matches()) {
+            if (first.length() <= 35 && SHORT_GREETING_PATTERN.matcher(first).matches()) {
                 rawParagraphs.remove(0);
                 rawParagraphs.set(0, first + " " + rawParagraphs.get(0));
                 modified = true;
@@ -80,28 +80,72 @@ public class BubbleCapHook implements GuardrailHook {
             }
         }
 
-        // 3. Khống chế cứng <= 2 bong bóng (gộp tất cả các bong bóng từ index 1 trở đi vào bong bóng 2)
-        if (rawParagraphs.size() > 2) {
-            StringBuilder mergedSecond = new StringBuilder(rawParagraphs.get(1));
-            for (int i = 2; i < rawParagraphs.size(); i++) {
-                mergedSecond.append("\n\n").append(rawParagraphs.get(i));
+        // 2b. Nếu có 2 đoạn văn mà đoạn 2 dài (> 180 ký tự) và kết thúc bằng câu hỏi chốt sau dấu chấm câu / danh sách,
+        // tách câu hỏi chốt thành bong bóng 3 để tạo nhịp 3 bong bóng dễ đọc (1: Đồng cảm, 2: Giải pháp/Giá, 3: Câu hỏi chốt)
+        if (rawParagraphs.size() == 2 && rawParagraphs.get(1).length() > 180) {
+            String second = rawParagraphs.get(1);
+            int splitIdx = findSentenceBoundaryBeforeQuestion(second);
+            if (splitIdx > 50 && splitIdx < second.length() - 20) {
+                String p2 = second.substring(0, splitIdx).strip();
+                String p3 = second.substring(splitIdx).strip();
+                rawParagraphs.set(1, p2);
+                rawParagraphs.add(p3);
+                modified = true;
+            }
+        }
+
+        // 3. Khống chế cứng <= 3 bong bóng (gộp tất cả các bong bóng từ index 2 trở đi vào bong bóng 3)
+        if (rawParagraphs.size() > 3) {
+            StringBuilder mergedThird = new StringBuilder(rawParagraphs.get(2));
+            for (int i = 3; i < rawParagraphs.size(); i++) {
+                mergedThird.append("\n\n").append(rawParagraphs.get(i));
             }
             String first = rawParagraphs.get(0);
+            String second = rawParagraphs.get(1);
             rawParagraphs.clear();
             rawParagraphs.add(first);
-            rawParagraphs.add(mergedSecond.toString().strip());
+            rawParagraphs.add(second);
+            rawParagraphs.add(mergedThird.toString().strip());
             modified = true;
-        } else if (initialCount > 2) {
+        } else if (initialCount > 3) {
             modified = true;
         }
 
         // Tạo danh sách ReplyBubble chuẩn với độ trễ gõ phím người thật
+        // Nếu phản hồi có chứa báo giá sản phẩm/dịch vụ (được đánh dấu hasPostPriceThinkingDelay >= 9000ms),
+        // bong bóng ngay sau bong bóng chứa giá được giữ nguyên nhịp chờ 15.000ms (15s) theo SPA AGENT RUNTIME POLICY v2.0.
+        boolean hasPostPriceThinkingDelay = currentBubbles != null
+                && currentBubbles.stream().anyMatch(b -> b != null && b.typingDelayMs() >= 9000);
+        int targetPostPriceBubbleIndex = -1;
+        if (hasPostPriceThinkingDelay) {
+            if (currentBubbles.size() == rawParagraphs.size()) {
+                for (int i = 1; i < currentBubbles.size(); i++) {
+                    if (currentBubbles.get(i) != null && currentBubbles.get(i).typingDelayMs() >= 9000) {
+                        targetPostPriceBubbleIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (targetPostPriceBubbleIndex < 0 && rawParagraphs.size() >= 2) {
+                for (int i = 0; i < rawParagraphs.size() - 1; i++) {
+                    if (rawParagraphs.get(i).matches("(?isU).*\\d+(?:[.,]\\d+)?\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b|triệu\\b).*")) {
+                        targetPostPriceBubbleIndex = i + 1;
+                        break;
+                    }
+                }
+                if (targetPostPriceBubbleIndex < 0) {
+                    targetPostPriceBubbleIndex = 1;
+                }
+            }
+        }
         List<ReplyBubble> finalBubbles = new ArrayList<>(rawParagraphs.size());
         for (int i = 0; i < rawParagraphs.size(); i++) {
             String text = rawParagraphs.get(i);
             int delayMs;
             if (i == 0) {
                 delayMs = Math.min(1200, Math.max(800, text.length() * 10));
+            } else if (i == targetPostPriceBubbleIndex && hasPostPriceThinkingDelay) {
+                delayMs = 15_000;
             } else {
                 delayMs = Math.min(3000, Math.max(2500, text.length() * 15));
             }
@@ -111,7 +155,9 @@ public class BubbleCapHook implements GuardrailHook {
         draft.setBubbles(finalBubbles);
         draft.setText(String.join("\n\n", rawParagraphs));
 
-        if (modified || initialCount > 2 || (currentBubbles != null && currentBubbles.size() > 2) || draft.getOriginalBubbleCount() > 2) {
+        if (modified || initialCount > 3 || (currentBubbles != null && currentBubbles.size() > 3)
+                || draft.getOriginalBubbleCount() > 3
+                || (draft.getOriginalBubbleCount() >= 3 && draft.getOriginalBubbleCount() != finalBubbles.size())) {
             draft.addTriggeredHook(HOOK_CODE);
             return true;
         }
@@ -124,6 +170,8 @@ public class BubbleCapHook implements GuardrailHook {
             return -1;
         }
         int lastDot = Math.max(text.lastIndexOf(". "), text.lastIndexOf("! "));
-        return lastDot > 0 ? lastDot + 2 : -1;
+        int lastNewline = text.lastIndexOf("\n");
+        int boundary = Math.max(lastDot > 0 ? lastDot + 2 : -1, lastNewline > 0 ? lastNewline + 1 : -1);
+        return boundary > 0 ? boundary : -1;
     }
 }
