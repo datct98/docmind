@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # Supports both DOCMIND_INTERNAL_TOKEN and INTERNAL_API_TOKEN environment variables.
     docmind_internal_token: str = "docmind-internal-secret-token-2026"
 
+    # Unified Multi-Provider LLM Configuration from .env
+    llm_provider: str = "ollama"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_temperature: float = 0.2
+
     @model_validator(mode="before")
     @classmethod
     def resolve_internal_token(cls, values: Any) -> Any:
@@ -60,6 +67,16 @@ class Settings(BaseSettings):
             )
             if token:
                 values["docmind_internal_token"] = token
+            for env_key, field_name in (
+                ("LLM_PROVIDER", "llm_provider"),
+                ("LLM_BASE_URL", "llm_base_url"),
+                ("LLM_API_KEY", "llm_api_key"),
+                ("LLM_MODEL", "llm_model"),
+                ("LLM_TEMPERATURE", "llm_temperature"),
+            ):
+                env_val = os.environ.get(env_key)
+                if env_val is not None and str(env_val).strip() != "":
+                    values[field_name] = str(env_val).strip()
         return values
 
 

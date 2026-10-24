@@ -23,7 +23,7 @@ import java.util.UUID;
 
 /**
  * Service thực thi làm giàu dữ liệu động (non-destructive backfill) cho các chunk theo chuẩn Obsidian.
- * Feature F10: Bổ sung chunk_metadata JSONB và weighted tsv_content cho toàn bộ 65 chunk của Page "Nàng sen",
+ * Feature F10: Bổ sung chunk_metadata JSONB và weighted tsv_content cho toàn bộ 65 chunk của Page mặc định,
  * cam kết 100% bảo tồn số lượng bản ghi (trước = 65, sau = 65), tuyệt đối không xóa dữ liệu.
  */
 @Service
@@ -84,7 +84,7 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
     }
 
     /**
-     * Làm giàu dữ liệu cho một Page cụ thể (mặc định Page "Nàng sen").
+     * Làm giàu dữ liệu cho một Page cụ thể.
      */
     @Transactional
     public BackfillReport backfillPage(UUID pageId, boolean force) {
@@ -101,7 +101,7 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
             return new BackfillReport(pageId, 0, 0, 0, 0, 0, 0, 0, true, 0, "SKIPPED_EMPTY_PAGE");
         }
 
-        // Kiểm tra cứng pre-flight cho Page "Nàng sen"
+        // Kiểm tra cứng pre-flight cho Page mặc định
         if (NANG_SEN_PAGE_ID.equals(pageId) && beforeCount != EXPECTED_NANG_SEN_CHUNK_COUNT) {
             String errMsg = String.format("NANG_SEN_PAGE_ID preflight chunk count mismatch! Expected=%d, Actual=%d",
                     EXPECTED_NANG_SEN_CHUNK_COUNT, beforeCount);
@@ -191,7 +191,7 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
             throw new IllegalStateException(errMsg);
         }
 
-        // Đối với Page "Nàng sen", kiểm tra cứng 65 chunk
+        // Đối với Page mặc định, kiểm tra cứng 65 chunk
         if (NANG_SEN_PAGE_ID.equals(pageId) && afterCount != EXPECTED_NANG_SEN_CHUNK_COUNT) {
             String errMsg = String.format("NANG_SEN_PAGE_ID chunk count mismatch! Expected=%d, Actual=%d",
                     EXPECTED_NANG_SEN_CHUNK_COUNT, afterCount);

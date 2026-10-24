@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Cấu hình kết nối Ollama chạy local.
- * Mặc định ưu tiên model {@code qwen2.5:14b-instruct-q5_K_M}.
+ * Mặc định phân giải qua {@link LlmProperties}.
  */
 @Getter
 @Setter
@@ -19,10 +19,10 @@ public class OllamaProperties {
     private boolean enabled = true;
 
     /** Địa chỉ máy chủ Ollama local. */
-    private String baseUrl = "http://localhost:11434";
+    private String baseUrl = new LlmProperties().resolveBaseUrl();
 
-    /** Tên model trong Ollama (mặc định: qwen2.5:14b-instruct-q5_K_M). */
-    private String model = "qwen2.5:14b-instruct-q5_K_M";
+    /** Tên model trong Ollama (kế thừa từ LlmProperties). */
+    private String model = new LlmProperties().resolveModel();
 
     /** Nhiệt độ sinh văn bản (0.25 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh RAG). */
     private double temperature = 0.25;
@@ -36,7 +36,7 @@ public class OllamaProperties {
     /** Top-P sampling (mặc định 0.9 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh). */
     private double topP = 0.9;
 
-    /** Hệ số phạt lặp từ (repeat_penalty = 1.08 theo khuyến nghị cho Qwen2.5 14B Q5_K_M). */
+    /** Hệ số phạt lặp từ (repeat_penalty = 1.08). */
     private double repeatPenalty = 1.08;
 
     /** Model dự phòng tùy chọn (mặc định để trống, không dùng fallback 7B). */

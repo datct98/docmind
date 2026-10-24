@@ -1621,4 +1621,55 @@ class FanpageBotServiceTest {
                 .doesNotContain("mỏi nhức vai gáy");
         assertThat(turn3Bubbles.get(1).typingDelayMs()).isEqualTo(15_000);
     }
+
+    @Test
+    void structuredJsonOutputParser_stripsMarkdownCodeFencesAndCapitalizesEveryBubbleWithoutTailTruncation() {
+        String fencedJson = """
+                ```json
+                {
+                  "reply_bubbles": [
+                    {"text": "dạ với mỏi cổ vai gáy do ngồi lâu, mình có thể tham khảo gói Massage cổ vai gáy 60 phút giá 350k ạ.", "typing_delay_ms": 0},
+                    {"text": "liệu trình kết hợp ngâm thảo dược ấm giúp giãn cơ nhẹ nhàng, mình muốn ghé buổi chiều hay tối ạ?", "typing_delay_ms": 1200}
+                  ],
+                  "should_handoff": false,
+                  "state_updates": {
+                    "sales_stage": "VALUE_CONSULTATION"
+                  }
+                }
+                ```
+                """;
+        FanpageBotService.StructuredLlmOutput parsed = FanpageBotService.parseStructuredLlmJsonOutput(fencedJson, 10_000);
+        assertThat(parsed.parsedFromJson()).isTrue();
+        assertThat(parsed.shouldHandoff()).isFalse();
+        assertThat(parsed.updatedSalesStage()).isEqualTo("VALUE_CONSULTATION");
+        assertThat(parsed.bubbles()).hasSize(2);
+        // Every bubble must start with an uppercase letter
+        assertThat(parsed.bubbles().get(0).text()).startsWith("Dạ với mỏi cổ vai gáy");
+        assertThat(parsed.bubbles().get(1).text()).startsWith("Liệu trình kết hợp ngâm thảo dược ấm");
+        // Bubble immediately after price bubble must enforce post-price delay >= 10000ms
+        assertThat(parsed.bubbles().get(1).typingDelayMs()).isGreaterThanOrEqualTo(10_000);
+
+        // Verify GuardrailPipeline & ClosingQuestionHook do not chop sentence tails and always capitalize first letter of every bubble
+        String naturalTail = "dạ mình muốn đặt lịch vào buổi sáng hay buổi chiều để";
+        com.docmind.guardrail.GuardrailContext ctx = com.docmind.guardrail.GuardrailContext.builder()
+                .customerHonorific("Chị")
+                .salesStage("VALUE_CONSULTATION")
+                .build();
+        FanpageBotResponse rawResp = new FanpageBotResponse(
+                naturalTail,
+                List.of(new FanpageBotResponse.ReplyBubble(naturalTail, 800)),
+                "VALUE_CONSULTATION",
+                0.9,
+                false,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                List.of()
+        );
+        FanpageBotResponse guarded = new com.docmind.guardrail.GuardrailPipeline().process(ctx, rawResp);
+        assertThat(guarded.replyBubbles().get(0).text())
+                .startsWith("Dạ mình muốn đặt lịch vào buổi sáng hay buổi chiều để");
+    }
 }

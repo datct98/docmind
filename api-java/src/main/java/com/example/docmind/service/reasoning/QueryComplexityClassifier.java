@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  * 2. DEEP_REASONING (15-30s target latency, reasoningEffort = "medium"):
  *    - So sánh các gói dịch vụ (Package Comparisons, e.g. "gói 670k và 780k khác gì nhau")
  *    - Phản đối giá / bậc thang hạ giá (Down-sell Price Objections, e.g. "cao thế", "nhưng hơi đắt", "có gói nào rẻ hơn không")
- *    - Tư vấn đa triệu chứng (Multi-symptom Consultations, e.g. "vừa mụn vừa thâm", "mụn ẩn kèm sẹo rỗ", "đau vai gáy và mất ngủ")
+ *    - Tư vấn đa triệu chứng (Multi-symptom Consultations, e.g. "vừa mụn vừa thâm", "mụn ẩn kèm sẹo rỗ", "đau lưng và mất ngủ")
  *    - Câu hỏi dịch vụ phức tạp, điều kiện khuyến mãi nhiều nấc (Complex Inquiries)
  */
 @Service

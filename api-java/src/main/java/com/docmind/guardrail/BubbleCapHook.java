@@ -56,8 +56,11 @@ public class BubbleCapHook implements GuardrailHook {
         int initialCount = rawParagraphs.size();
         boolean modified = false;
 
-        // 1. Ở lượt đầu tiên (isFirstTurn): nếu bong bóng đầu chỉ là câu chào rất ngắn (<= 35 ký tự), gộp vào bong bóng kế tiếp
-        if (context.isFirstTurn() && rawParagraphs.size() >= 2) {
+        boolean hasCodeInjectedOpening = currentBubbles != null && !currentBubbles.isEmpty()
+                && currentBubbles.get(0) != null && currentBubbles.get(0).typingDelayMs() == 0;
+
+        // 1. Ở lượt đầu tiên (isFirstTurn): nếu bong bóng đầu chỉ là câu chào rất ngắn (<= 35 ký tự) và không phải code-injected opening, gộp vào bong bóng kế tiếp
+        if (context.isFirstTurn() && !hasCodeInjectedOpening && rawParagraphs.size() >= 2) {
             String first = rawParagraphs.get(0);
             if (first.length() <= 35 && SHORT_GREETING_PATTERN.matcher(first).matches()) {
                 rawParagraphs.remove(0);
@@ -66,8 +69,10 @@ public class BubbleCapHook implements GuardrailHook {
             }
         }
 
-        // 2. Nếu chỉ có 1 đoạn văn rất dài (> 220 ký tự), tách nhẹ câu hỏi chốt ở cuối thành bong bóng 2
-        if (rawParagraphs.size() == 1 && rawParagraphs.get(0).length() > 220) {
+        boolean hasStructuredBubbles = currentBubbles != null && !currentBubbles.isEmpty();
+
+        // 2. Nếu chỉ có 1 đoạn văn rất dài (> 220 ký tự) từ văn bản thô chưa chia bubble, tách nhẹ câu hỏi chốt ở cuối thành bong bóng 2
+        if (!hasStructuredBubbles && rawParagraphs.size() == 1 && rawParagraphs.get(0).length() > 220) {
             String single = rawParagraphs.get(0);
             int splitIdx = findSentenceBoundaryBeforeQuestion(single);
             if (splitIdx > 60 && splitIdx < single.length() - 25) {
@@ -80,9 +85,9 @@ public class BubbleCapHook implements GuardrailHook {
             }
         }
 
-        // 2b. Nếu có 2 đoạn văn mà đoạn 2 dài (> 180 ký tự) và kết thúc bằng câu hỏi chốt sau dấu chấm câu / danh sách,
-        // tách câu hỏi chốt thành bong bóng 3 để tạo nhịp 3 bong bóng dễ đọc (1: Đồng cảm, 2: Giải pháp/Giá, 3: Câu hỏi chốt)
-        if (rawParagraphs.size() == 2 && rawParagraphs.get(1).length() > 180) {
+        // 2b. Nếu văn bản thô chưa chia bubble có 2 đoạn văn mà đoạn 2 dài (> 180 ký tự) và kết thúc bằng câu hỏi chốt sau dấu chấm câu / danh sách,
+        // tách câu hỏi chốt thành bong bóng 3 để tạo nhịp 3 bong bóng dễ đọc
+        if (!hasStructuredBubbles && rawParagraphs.size() == 2 && rawParagraphs.get(1).length() > 180) {
             String second = rawParagraphs.get(1);
             int splitIdx = findSentenceBoundaryBeforeQuestion(second);
             if (splitIdx > 50 && splitIdx < second.length() - 20) {
@@ -113,11 +118,18 @@ public class BubbleCapHook implements GuardrailHook {
 
         // Tạo danh sách ReplyBubble chuẩn với độ trễ gõ phím người thật
         // Nếu phản hồi có chứa báo giá sản phẩm/dịch vụ (được đánh dấu hasPostPriceThinkingDelay >= 9000ms),
-        // bong bóng ngay sau bong bóng chứa giá được giữ nguyên nhịp chờ 15.000ms (15s) theo SPA AGENT RUNTIME POLICY v2.0.
+        // bong bóng ngay sau bong bóng chứa giá được giữ nguyên nhịp chờ >= 10.000ms.
         boolean hasPostPriceThinkingDelay = currentBubbles != null
                 && currentBubbles.stream().anyMatch(b -> b != null && b.typingDelayMs() >= 9000);
+        int configuredPostPriceDelayMs = 15_000;
         int targetPostPriceBubbleIndex = -1;
         if (hasPostPriceThinkingDelay) {
+            for (ReplyBubble b : currentBubbles) {
+                if (b != null && b.typingDelayMs() >= 9000) {
+                    configuredPostPriceDelayMs = b.typingDelayMs();
+                    break;
+                }
+            }
             if (currentBubbles.size() == rawParagraphs.size()) {
                 for (int i = 1; i < currentBubbles.size(); i++) {
                     if (currentBubbles.get(i) != null && currentBubbles.get(i).typingDelayMs() >= 9000) {
@@ -140,12 +152,20 @@ public class BubbleCapHook implements GuardrailHook {
         }
         List<ReplyBubble> finalBubbles = new ArrayList<>(rawParagraphs.size());
         for (int i = 0; i < rawParagraphs.size(); i++) {
-            String text = rawParagraphs.get(i);
+            String text = capitalizeFirstLetter(rawParagraphs.get(i));
+            rawParagraphs.set(i, text);
             int delayMs;
-            if (i == 0) {
+            if (hasStructuredBubbles && !modified && currentBubbles.size() == rawParagraphs.size() && currentBubbles.get(i) != null) {
+                delayMs = (i == targetPostPriceBubbleIndex && hasPostPriceThinkingDelay)
+                        ? configuredPostPriceDelayMs
+                        : currentBubbles.get(i).typingDelayMs();
+            } else if (i == 0) {
                 delayMs = Math.min(1200, Math.max(800, text.length() * 10));
             } else if (i == targetPostPriceBubbleIndex && hasPostPriceThinkingDelay) {
-                delayMs = 15_000;
+                delayMs = configuredPostPriceDelayMs;
+            } else if (currentBubbles != null && currentBubbles.size() == rawParagraphs.size()
+                    && currentBubbles.get(i) != null && currentBubbles.get(i).typingDelayMs() == 2000) {
+                delayMs = 2000;
             } else {
                 delayMs = Math.min(3000, Math.max(2500, text.length() * 15));
             }
@@ -163,6 +183,23 @@ public class BubbleCapHook implements GuardrailHook {
         }
 
         return false;
+    }
+
+    public static String capitalizeFirstLetter(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String trimmed = text.strip();
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (Character.isLetter(c)) {
+                if (Character.isLowerCase(c)) {
+                    return trimmed.substring(0, i) + Character.toUpperCase(c) + trimmed.substring(i + 1);
+                }
+                return trimmed;
+            }
+        }
+        return trimmed;
     }
 
     private static int findSentenceBoundaryBeforeQuestion(String text) {

@@ -261,4 +261,47 @@ class PlaybookUploadServiceTest {
         assertTrue(priceDialogue.expectedBotAnswer().contains("350k cho 60 phút và 480k cho 90 phút"));
         assertTrue(priceDialogue.expectedBotAnswer().contains("Liệu trình tập trung thả lỏng cơ lưng"));
     }
+
+    @Test
+    void uploadUnifiedV301PlaybookWithReplaceExisting_activatesSafeNeuro001AndAllV301RulesAndQuarantinesBadSamples() throws Exception {
+        String yamlContent = Files.readString(Path.of("../docs/playbooks/nang_sen_spa_playbook.yaml"));
+        String jsonContent = Files.readString(Path.of("../docs/playbooks/nang_sen_spa_playbook.json"));
+        assertFalse(jsonContent.contains("recommended_ollama_model"), "nang_sen_spa_playbook.json must not hardcode recommended_ollama_model");
+        assertTrue(yamlContent.contains("SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED"));
+        assertTrue(jsonContent.contains("SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED"));
+
+        PlaybookUploadService.PlaybookUploadResult result = playbookUploadService.uploadPlaybookContent(
+                yamlContent,
+                "nang_sen_spa_playbook.yaml",
+                "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+                true
+        );
+
+        assertEquals(12, result.activePlaybookRulesSaved());
+        Set<String> activeRuleCodes = result.activeRules().stream()
+                .filter(r -> r.active() && "APPROVED".equals(r.reviewStatus()))
+                .map(LearnedRuleDto::ruleCode)
+                .collect(java.util.stream.Collectors.toSet());
+        assertTrue(activeRuleCodes.containsAll(Set.of(
+                "SAFE-NEURO-001",
+                "PB-SPA-OPEN-001",
+                "PB-SPA-DISCOVER-001",
+                "PB-SPA-MATCH-001",
+                "PB-SPA-PRICE-OBJECTION-001",
+                "PB-SPA-PRICE-OBJECTION-002",
+                "PB-SPA-TRIAL-ACCEPT-001",
+                "PB-SPA-CORRECTION-001"
+        )));
+
+        for (SampleDialogueDto good : result.activeDialogues()) {
+            assertTrue(good.active());
+            assertEquals("APPROVED", good.reviewStatus());
+            assertEquals("APPROVED_GOOD", good.qualityLabel());
+        }
+        for (SampleDialogueDto bad : result.rejectedDialogues()) {
+            assertFalse(bad.active());
+            assertEquals("REJECTED", bad.reviewStatus());
+            assertEquals("QUARANTINED_BAD", bad.qualityLabel());
+        }
+    }
 }

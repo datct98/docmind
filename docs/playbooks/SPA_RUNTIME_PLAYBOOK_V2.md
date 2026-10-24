@@ -1,8 +1,9 @@
-# SPA_RUNTIME_PLAYBOOK_V2.md
+# SPA_RUNTIME_PLAYBOOK_V2.md (Synced with `SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED` v3.0.1)
 
-> File này dành cho AI runtime. Không phải code backend.  
-> Backend cần parse `bubbles`, gửi từng bong bóng và enforce `delay_before_ms`.  
-> Nếu chưa có parser, chỉ dùng phần rule/example và bỏ phần output JSON.
+> File này dành cho AI runtime (`SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED`, `version: "3.0.1"`).  
+> Cấu hình LLM đọc 100% từ `.env` (`LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TEMPERATURE`), thực thi động từ DB (`learned_rules`, `agent_skills`, `sample_dialogues`, `chunks`).  
+> Backend parse `reply_bubbles` / `bubbles`, viết hoa chữ cái đầu mỗi bong bóng, gửi từng bong bóng và enforce `delay_before_ms` / `typing_delay_ms`.  
+> Bổ sung quy tắc an toàn thần kinh - cột sống (`SAFE-NEURO-001`), khám phá tình trạng trước khi hỏi lực (`PB-SPA-DISCOVER-001`), xử lý chê giá 2 tầng (`PB-SPA-PRICE-OBJECTION-001`, `PB-SPA-PRICE-OBJECTION-002`), chốt thử gói ngắn (`PB-SPA-TRIAL-ACCEPT-001`) và sửa lỗi khi khách phàn nàn bot lặp ý (`PB-SPA-CORRECTION-001`).
 
 ---
 
@@ -126,19 +127,16 @@ Khi khách nói:
 - "Để chị suy nghĩ."
 - "Em thấy hơi cao."
 
-Bot phải:
-1. Thừa nhận cảm giác của khách.
-2. Nhấn mạnh giá trị chăm sóc, không gian, dụng cụ, kỹ thuật viên.
-3. Không cãi.
-4. Không nói chỗ khác kém.
-5. Không tự giảm giá.
-6. Có thể gợi ý gói ngắn hơn nếu product knowledge có.
+Bot phải xử lý theo 2 bước:
+1. Bước 1 (Chê đắt lần 1): Giữ nguyên gói đang tư vấn, thừa nhận cảm giác của khách, nhấn mạnh giá trị chăm sóc (không gian riêng tư, dụng cụ vệ sinh, trọn gói không nhận tip) và mời trải nghiệm thử 1 buổi lẻ kèm icon 🥰 (`typing_delay_ms = 2000`), không tự ý hạ gói ngay lần 1.
+2. Bước 2 (Chê đắt lần 2): Không lặp lại câu đồng cảm của lần 1, hạ bậc 1 nấc sang gói ngắn hơn trong KB (như gói 30 phút 200k) với `typing_delay_ms >= 10000` sau khi báo giá mới.
+3. Không cãi, không nói chỗ khác kém, không tự giảm giá ngoài KB.
 
-Mẫu:
-"Dạ em hiểu mình đang cân nhắc về chi phí ạ. Bên em tập trung không gian riêng tư, dụng cụ vệ sinh và kỹ thuật viên hỏi cảm giác của mình trong lúc làm."
+Mẫu Bước 1 (Chê đắt lần 1):
+"Dạ em hiểu mình đang cân nhắc về chi phí ạ. Bên em tập trung không gian riêng tư, dụng cụ vệ sinh và trọn gói không phát sinh tiền tip."
 
-Bong bóng tiếp:
-"Nếu mình muốn gói nhẹ nhàng hơn, em có thể gợi ý thời lượng ngắn phù hợp với nhu cầu thư giãn ạ."
+Bong bóng tiếp (nhịp 2000ms):
+"Mình thử trải nghiệm 1 buổi lẻ trước để cảm nhận trực tiếp tay nghề kỹ thuật viên bên em nha 🥰?"
 
 Không chuyển người trong ca này trừ khi khách khiếu nại hoặc yêu cầu gặp người thật.
 
@@ -291,6 +289,9 @@ Input:
 Output chuẩn:
 Bong bóng 1:
 "Dạ với mỏi cổ vai gáy do ngồi nhiều, mình thích lực nhẹ thư giãn hay lực vừa để giảm mỏi ạ?"
+
+Bong bóng 2:
+"Liệu trình tập trung thả lỏng cơ lưng và vùng mỏi, hiện có mức 350k cho 60 phút và 480k cho 90 phút ạ."
 
 Chỉ hỏi 1 câu. Không chốt lịch ngay.
 

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * In-Loop Deterministic Guardrail Pipeline.
@@ -227,8 +228,80 @@ public class GuardrailPipeline {
         boolean hadPostPriceThinkingDelay = originalResponse.replyBubbles() != null
                 && originalResponse.replyBubbles().stream().anyMatch(b -> b != null && b.typingDelayMs() >= 9000);
         List<ReplyBubble> finalBubbles = result.bubbles();
+        String finalText = result.text();
+
+        com.example.docmind.dto.bot.AgentSkillDto primaryMicroSkill = (originalResponse.activeSkills() != null && !originalResponse.activeSkills().isEmpty())
+                ? originalResponse.activeSkills().get(0)
+                : null;
+        boolean isMicroSkill = primaryMicroSkill != null && primaryMicroSkill.code() != null
+                && primaryMicroSkill.code().equals(primaryMicroSkill.code().toLowerCase(java.util.Locale.ROOT));
+
+        if (isMicroSkill) {
+            com.example.docmind.dto.bot.AgentSkillDto.SkillOutputContract oc = primaryMicroSkill.resolvedOutputContract();
+            String honorific = (context != null && context.getCustomerHonorific() != null && !context.getCustomerHonorific().isBlank())
+                    ? context.getCustomerHonorific()
+                    : "mình";
+
+            boolean leakedInternal = finalText != null && finalText.toLowerCase(java.util.Locale.ROOT)
+                    .matches("(?s).*(?:system\\s+prompt|chunk_id|document_id|<document_context>|<experience_library>).*");
+            if (finalText == null || finalText.isBlank() || finalBubbles == null || finalBubbles.isEmpty() || leakedInternal) {
+                finalText = primaryMicroSkill.resolvedFallbackReply(honorific);
+                String[] parts = finalText.split("\\n\\s*\\n");
+                List<ReplyBubble> fbBubbles = new ArrayList<>();
+                for (int i = 0; i < parts.length && i < oc.replyMaxBubbles(); i++) {
+                    fbBubbles.add(new ReplyBubble(parts[i].strip(), i == 0 ? 1200 : 2500));
+                }
+                finalBubbles = fbBubbles;
+                if (!combinedHooks.contains("HOOK_SKILL_CONTRACT_FALLBACK")) {
+                    combinedHooks.add("HOOK_SKILL_CONTRACT_FALLBACK");
+                }
+            }
+
+            if (oc.maxQuestions() == 0 && finalBubbles != null) {
+                List<ReplyBubble> noQuestionBubbles = new ArrayList<>();
+                for (ReplyBubble b : finalBubbles) {
+                    if (b == null || b.text() == null) continue;
+                    String t = b.text().strip();
+                    if (t.contains("?")) {
+                        t = t.replaceAll("(?isU)(?<=[.!])\\s+[^.!?]*\\?\\s*$", "").strip();
+                    }
+                    if (!t.isBlank()) {
+                        noQuestionBubbles.add(new ReplyBubble(t, b.typingDelayMs()));
+                    }
+                }
+                if (!noQuestionBubbles.isEmpty()) {
+                    finalBubbles = noQuestionBubbles;
+                    finalText = String.join("\n\n", finalBubbles.stream().map(ReplyBubble::text).toList());
+                }
+            }
+
+            boolean hasCodeInjectedOpening = originalResponse.replyBubbles() != null
+                    && !originalResponse.replyBubbles().isEmpty()
+                    && originalResponse.replyBubbles().get(0) != null
+                    && originalResponse.replyBubbles().get(0).typingDelayMs() == 0;
+            int effectiveMaxBubbles = (hasCodeInjectedOpening || (context != null && context.isFirstTurn()))
+                    ? Math.max(3, oc.replyMaxBubbles())
+                    : Math.min(2, oc.replyMaxBubbles());
+            if (effectiveMaxBubbles > 0 && finalBubbles != null && finalBubbles.size() > effectiveMaxBubbles) {
+                int maxB = effectiveMaxBubbles;
+                List<ReplyBubble> merged = new ArrayList<>(finalBubbles.subList(0, maxB - 1));
+                StringBuilder lastText = new StringBuilder(finalBubbles.get(maxB - 1).text().strip());
+                int maxDelay = finalBubbles.get(maxB - 1).typingDelayMs();
+                for (int i = maxB; i < finalBubbles.size(); i++) {
+                    lastText.append(" ").append(finalBubbles.get(i).text().strip());
+                    maxDelay = Math.max(maxDelay, finalBubbles.get(i).typingDelayMs());
+                }
+                if (hadPostPriceThinkingDelay && maxDelay < 10_000) {
+                    maxDelay = 10_000;
+                }
+                merged.add(new ReplyBubble(lastText.toString().strip(), maxDelay));
+                finalBubbles = merged;
+                finalText = String.join("\n\n", finalBubbles.stream().map(ReplyBubble::text).toList());
+            }
+        }
+
         if (originalResponse.needsHumanHandoff() && finalBubbles != null && finalBubbles.size() > 1) {
-            String singleText = result.text() != null ? result.text().replaceAll("\\n\\s*\\n", " ").strip() : finalBubbles.get(0).text();
+            String singleText = finalText != null ? finalText.replaceAll("\\n\\s*\\n", " ").strip() : finalBubbles.get(0).text();
             finalBubbles = List.of(new ReplyBubble(singleText, Math.min(1200, Math.max(800, singleText.length() * 10))));
         } else if (hadPostPriceThinkingDelay && finalBubbles != null && finalBubbles.size() >= 2
                 && finalBubbles.stream().noneMatch(b -> b != null && b.typingDelayMs() >= 9000)) {
@@ -245,12 +318,25 @@ public class GuardrailPipeline {
             finalBubbles = Collections.unmodifiableList(updated);
         }
 
+        if (finalBubbles != null && !finalBubbles.isEmpty()) {
+            List<ReplyBubble> capitalizedBubbles = new ArrayList<>(finalBubbles.size());
+            for (ReplyBubble b : finalBubbles) {
+                if (b == null || b.text() == null) {
+                    capitalizedBubbles.add(b);
+                } else {
+                    capitalizedBubbles.add(new ReplyBubble(BubbleCapHook.capitalizeFirstLetter(b.text()), b.typingDelayMs()));
+                }
+            }
+            finalBubbles = Collections.unmodifiableList(capitalizedBubbles);
+            finalText = String.join("\n\n", finalBubbles.stream().filter(java.util.Objects::nonNull).map(ReplyBubble::text).toList());
+        }
+
         List<Integer> bubbleDelays = finalBubbles != null
                 ? finalBubbles.stream().map(ReplyBubble::typingDelayMs).toList()
                 : List.of();
 
         return new FanpageBotResponse(
-                result.text(),
+                finalText,
                 finalBubbles,
                 bubbleDelays,
                 originalResponse.salesStage(),

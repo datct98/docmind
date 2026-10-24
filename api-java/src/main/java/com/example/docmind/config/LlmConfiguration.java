@@ -28,7 +28,7 @@ public class LlmConfiguration {
     private static final Logger log = LoggerFactory.getLogger(LlmConfiguration.class);
 
     private static final Set<String> OPENAI_COMPATIBLE_PROVIDERS = Set.of(
-            "deepseek", "grok", "openai", "gemini", "openrouter", "custom"
+            "deepseek", "grok", "openai", "openai_compatible", "gemini", "anthropic", "qwen", "openrouter", "custom"
     );
 
     /**
@@ -108,7 +108,7 @@ public class LlmConfiguration {
             return new StubLlmClient();
         }
 
-        // 2. Chế độ OpenAI-compatible (DeepSeek, Grok, OpenAI, Gemini OpenAI-mode, OpenRouter, Custom)
+        // 2. Chế độ OpenAI-compatible (DeepSeek, Grok, OpenAI, OpenAI-Compatible, Gemini, Anthropic, Qwen, OpenRouter, Custom)
         if (OPENAI_COMPATIBLE_PROVIDERS.contains(provider)) {
             String resolvedModel = llmProps.resolveModel();
             String resolvedBaseUrl = llmProps.resolveBaseUrl();
@@ -126,8 +126,11 @@ public class LlmConfiguration {
             if (llmProps.getModel() != null && !llmProps.getModel().isBlank()) {
                 ollamaProps.setModel(llmProps.getModel().trim());
             }
-            if (ollamaProps.getTemperature() <= 0 && llmProps.getTemperature() > 0) {
+            if (llmProps.getTemperature() >= 0) {
                 ollamaProps.setTemperature(llmProps.getTemperature());
+            }
+            if (llmProps.getTopP() != null && llmProps.getTopP() > 0) {
+                ollamaProps.setTopP(llmProps.getTopP());
             }
             log.info("[LLM] Active LlmClient: provider=ollama, model={}, fallbackModel={}, baseUrl={}, temp={}, topP={}, repeatPenalty={}, numCtx={}, numPredict={}",
                     ollamaProps.getModel(), ollamaProps.getFallbackModel(), ollamaProps.getBaseUrl(),

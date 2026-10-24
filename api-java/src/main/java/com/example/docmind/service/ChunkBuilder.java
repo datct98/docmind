@@ -439,7 +439,9 @@ public final class ChunkBuilder {
         // - Với bảng danh mục nhiều cột bị lặp dòng đầu khi split (!genuineHeader && firstRowCells.length >= 3),
         //   đưa dòng payload chính của chunk lên đầu và thu gọn mỗi dòng để giữ trọn cả 2 gói trong giới hạn 420 ký tự.
         if (!genuineHeader && firstRowCells.length <= 2 && formattedRows.size() > 1 && query != null && !query.isBlank()) {
-            formattedRows = selectMostRelevantTableRows(formattedRows, query, 1);
+            String qLowForFaq = query.toLowerCase(java.util.Locale.ROOT);
+            int faqMaxRows = qLowForFaq.matches("(?isU).*\\b(thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|nước\\s+ép|thực\\s+đơn)\\b.*") ? 2 : 1;
+            formattedRows = selectMostRelevantTableRows(formattedRows, query, faqMaxRows);
         } else if (!genuineHeader && firstRowCells.length >= 3 && formattedRows.size() > 1) {
             String repeatedFirst = formattedRows.get(0);
             String payloadRow = formattedRows.get(1);
@@ -463,7 +465,8 @@ public final class ChunkBuilder {
             }
         } else if (formattedRows.size() > 2) {
             if (query != null && !query.isBlank()) {
-                formattedRows = selectMostRelevantTableRows(formattedRows, query, 2);
+                int targetMax = firstRowCells.length <= 2 ? 3 : 2;
+                formattedRows = selectMostRelevantTableRows(formattedRows, query, targetMax);
             } else {
                 formattedRows = formattedRows.subList(0, 2);
             }
@@ -486,6 +489,20 @@ public final class ChunkBuilder {
         List<String> queryBigrams = new ArrayList<>();
         for (int i = 0; i + 1 < queryTokens.size(); i++) {
             queryBigrams.add(queryTokens.get(i) + " " + queryTokens.get(i + 1));
+        }
+
+        boolean asksRefreshmentOrMenu = lowerQuery.matches("(?isU).*\\b(thực\\s+dưỡng|dinh\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|thực\\s+đơn|món\\s+gì|ăn\\s+gì|nước\\s+ép|trái\\s+cây|hoa\\s+quả)\\b.*");
+        if (asksRefreshmentOrMenu) {
+            for (String synBg : List.of("ăn nhẹ", "điểm tâm", "dinh dưỡng", "thực dưỡng", "nước ép", "trái cây", "hoa quả", "thực đơn")) {
+                if (!queryBigrams.contains(synBg)) {
+                    queryBigrams.add(synBg);
+                }
+            }
+            for (String synTok : List.of("ăn", "điểm", "tâm", "dưỡng", "nước", "ép", "trái", "cây", "quả", "món", "buffet")) {
+                if (!queryTokens.contains(synTok)) {
+                    queryTokens.add(synTok);
+                }
+            }
         }
 
         boolean prefersBasicTier = lowerQuery.matches("(?isU).*\\b(thi\\s+thoảng|thỉnh\\s+thoảng|mới\\s+bị|hơi\\s+mỏi|hơi\\s+đau|nhẹ|cơ\\s+bản|khởi\\s+điểm|rẻ\\s+hơn|đắt)\\b.*");

@@ -181,6 +181,9 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 body.put("top_p", effectiveTopP);
             }
         }
+        if (endpoint != null && endpoint.toLowerCase().endsWith("/messages") && !body.containsKey("max_tokens")) {
+            body.put("max_tokens", props.getMaxTokens() > 0 ? props.getMaxTokens() : 1024);
+        }
         return body;
     }
 
@@ -224,7 +227,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
         String apiKey = props.getApiKey();
         if (apiKey != null && !apiKey.isBlank()) {
-            requestSpec.header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey.trim());
+            String trimmedKey = apiKey.trim();
+            requestSpec.header(HttpHeaders.AUTHORIZATION, "Bearer " + trimmedKey);
+            if ("anthropic".equalsIgnoreCase(provider)) {
+                requestSpec.header("x-api-key", trimmedKey);
+                requestSpec.header("anthropic-version", "2023-06-01");
+            }
         }
 
         return requestSpec
@@ -261,7 +269,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     }
 
     /**
-     * Bóc tách câu trả lời và thông số token từ JSON phản hồi OpenAI Chat Completion.
+     * Bóc tách câu trả lời và thông số token từ JSON phản hồi OpenAI Chat Completion (hoặc Anthropic Messages / Gemini API).
      */
     private ParsedCompletion parseCompletion(String rawJson, String prompt) {
         if (rawJson == null || rawJson.isBlank()) {
@@ -271,10 +279,43 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         try {
             JsonNode root = objectMapper.readTree(rawJson);
             JsonNode usage = root.path("usage");
-            int promptTokens = usage.path("prompt_tokens").asInt(0);
-            int completionTokens = usage.path("completion_tokens").asInt(0);
+            int promptTokens = usage.path("prompt_tokens").asInt(usage.path("input_tokens").asInt(0));
+            int completionTokens = usage.path("completion_tokens").asInt(usage.path("output_tokens").asInt(0));
             int reasoningTokens = usage.path("completion_tokens_details").path("reasoning_tokens").asInt(0);
             int cachedTokens = usage.path("prompt_tokens_details").path("cached_tokens").asInt(0);
+
+            // Hỗ trợ cả cấu trúc phản hồi native của Anthropic (/v1/messages -> content[0].text)
+            JsonNode anthropicContent = root.path("content");
+            if (anthropicContent.isArray() && !anthropicContent.isEmpty() && !root.has("choices")) {
+                StringBuilder anthropicText = new StringBuilder();
+                for (JsonNode block : anthropicContent) {
+                    if (block.hasNonNull("text")) {
+                        anthropicText.append(block.get("text").asText());
+                    }
+                }
+                String cleaned = anthropicText.toString().replaceAll("(?s)<think>.*?</think>", "").strip();
+                if (!cleaned.isEmpty()) {
+                    return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                }
+            }
+
+            // Hỗ trợ cả cấu trúc phản hồi native của Gemini (:generateContent -> candidates[0].content.parts[0].text)
+            JsonNode geminiCandidates = root.path("candidates");
+            if (geminiCandidates.isArray() && !geminiCandidates.isEmpty() && !root.has("choices")) {
+                JsonNode parts = geminiCandidates.get(0).path("content").path("parts");
+                if (parts.isArray() && !parts.isEmpty()) {
+                    StringBuilder geminiText = new StringBuilder();
+                    for (JsonNode part : parts) {
+                        if (part.hasNonNull("text")) {
+                            geminiText.append(part.get("text").asText());
+                        }
+                    }
+                    String cleaned = geminiText.toString().replaceAll("(?s)<think>.*?</think>", "").strip();
+                    if (!cleaned.isEmpty()) {
+                        return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                    }
+                }
+            }
 
             JsonNode choices = root.path("choices");
             if (!choices.isArray() || choices.isEmpty()) {
@@ -342,17 +383,20 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     }
 
     /**
-     * Chuẩn hóa URL endpoint cho chuẩn OpenAI chat completion.
+     * Chuẩn hóa URL endpoint cho chuẩn OpenAI chat completion (hoặc giữ nguyên /messages cho Anthropic, :generateContent cho Gemini).
      */
     public static String normalizeEndpoint(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) {
-            return "http://localhost:11434/chat/completions";
+            return new LlmProperties().resolveBaseUrl() + "/chat/completions";
         }
         String url = baseUrl.trim();
         while (url.endsWith("/")) {
             url = url.substring(0, url.length() - 1).trim();
         }
-        if (!url.toLowerCase().endsWith("/chat/completions")) {
+        String lower = url.toLowerCase();
+        if (!lower.endsWith("/chat/completions")
+                && !lower.endsWith("/messages")
+                && !lower.contains(":generatecontent")) {
             url += "/chat/completions";
         }
         return url;

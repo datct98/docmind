@@ -532,4 +532,34 @@ class GuardrailPipelineTest {
                 .doesNotContain("ngâm chân");
         assertThat(result.bubbles()).hasSizeLessThanOrEqualTo(2);
     }
+
+    @Test
+    @DisplayName("Structured Multi-Bubble: Preserves typing_delay_ms (10000ms/2000ms), skips ClosingQuestionHook for Anh/Chị/mình, and capitalizes first letter")
+    void testStructuredMultiBubblePreservationAndCapitalization() {
+        for (String honorific : List.of("Anh", "Chị", "mình")) {
+            GuardrailContext ctx = GuardrailContext.builder()
+                    .customerHonorific(honorific)
+                    .isFirstTurn(false)
+                    .salesStage("VALUE_CONSULTATION")
+                    .customerMessage("giá gói 60 phút bao nhiêu")
+                    .build();
+
+            List<ReplyBubble> structuredBubbles = List.of(
+                    new ReplyBubble("dạ gói Massage Cổ Vai Gáy 60 phút có giá 350k trọn gói không nhận tip ạ.", 0),
+                    new ReplyBubble("bên em ưu tiên không gian yên tĩnh và chỉnh lực vừa vặn theo cảm nhận thực tế ạ.", 10000)
+            );
+            String joinedText = "dạ gói Massage Cổ Vai Gáy 60 phút có giá 350k trọn gói không nhận tip ạ.\n\nbên em ưu tiên không gian yên tĩnh và chỉnh lực vừa vặn theo cảm nhận thực tế ạ.";
+
+            GuardrailResult result = pipeline.process(ctx, joinedText, structuredBubbles);
+
+            assertThat(result.triggeredHooks()).doesNotContain(ClosingQuestionHook.HOOK_CODE);
+            assertThat(result.bubbles()).hasSize(2);
+            assertThat(result.bubbles().get(0).text()).startsWith("Dạ gói Massage Cổ Vai Gáy");
+            assertThat(result.bubbles().get(0).typingDelayMs()).isEqualTo(0);
+            assertThat(result.bubbles().get(1).text()).startsWith("Bên em ưu tiên không gian yên tĩnh");
+            assertThat(result.bubbles().get(1).typingDelayMs()).isEqualTo(10000);
+            assertThat(result.text()).doesNotContain("có cần hỗ trợ gì thêm không ạ");
+            assertThat(result.text()).doesNotContain("tư vấn chi tiết hơn về phần nào");
+        }
+    }
 }

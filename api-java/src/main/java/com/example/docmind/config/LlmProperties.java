@@ -42,9 +42,9 @@ public class LlmProperties {
     private String model;
 
     /**
-     * Nhiệt độ sinh văn bản (mặc định 0.1 để chống bịa và bám sát ngữ cảnh tài liệu RAG).
+     * Nhiệt độ sinh văn bản (mặc định 0.2 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh RAG).
      */
-    private double temperature = 0.1;
+    private double temperature = 0.2;
 
     /**
      * Thời gian timeout đọc kết quả tính bằng giây (mặc định 120 giây).
@@ -144,10 +144,14 @@ public class LlmProperties {
             return "ollama";
         }
         String norm = provider.trim().toLowerCase();
-        if ("xai".equals(norm) || "x.ai".equals(norm)) {
-            return "grok";
-        }
-        return norm;
+        return switch (norm) {
+            case "xai", "x.ai" -> "grok";
+            case "dashscope" -> "qwen";
+            case "claude" -> "anthropic";
+            case "openai-compatible" -> "openai_compatible";
+            case "google" -> "gemini";
+            default -> norm;
+        };
     }
 
     /**
@@ -155,14 +159,14 @@ public class LlmProperties {
      */
     public boolean isCloudProvider() {
         return switch (getNormalizedProvider()) {
-            case "deepseek", "grok", "openai", "gemini", "openrouter" -> true;
+            case "deepseek", "grok", "openai", "openai_compatible", "gemini", "anthropic", "qwen", "openrouter" -> true;
             default -> false;
         };
     }
 
     /**
      * Tự động phân giải Base URL theo preset nếu người dùng chưa chỉ định rõ ràng,
-     * hoặc nếu người dùng đổi sang cloud provider (grok, deepseek, openai, gemini, openrouter)
+     * hoặc nếu người dùng đổi sang cloud provider (grok, deepseek, openai, gemini, anthropic, qwen, openrouter)
      * nhưng vẫn để sót URL của Ollama local (:11434 / host.docker.internal / localhost).
      */
     public String resolveBaseUrl() {
@@ -170,8 +174,10 @@ public class LlmProperties {
         String defaultUrl = switch (normProvider) {
             case "deepseek" -> "https://api.deepseek.com/v1";
             case "grok" -> "https://api.x.ai/v1";
-            case "openai" -> "https://api.openai.com/v1";
+            case "openai", "openai_compatible" -> "https://api.openai.com/v1";
             case "gemini" -> "https://generativelanguage.googleapis.com/v1beta/openai";
+            case "anthropic" -> "https://api.anthropic.com/v1";
+            case "qwen" -> "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
             case "openrouter" -> "https://openrouter.ai/api/v1";
             case "ollama", "stub" -> "http://localhost:11434";
             default -> "http://localhost:11434";
@@ -197,8 +203,10 @@ public class LlmProperties {
         String defaultModel = switch (normProvider) {
             case "deepseek" -> "deepseek-chat";
             case "grok" -> "grok-2-latest";
-            case "openai" -> "gpt-4o-mini";
+            case "openai", "openai_compatible" -> "gpt-4o-mini";
             case "gemini" -> "gemini-2.5-flash";
+            case "anthropic" -> "claude-3-5-sonnet-latest";
+            case "qwen" -> "qwen-plus";
             case "openrouter" -> "openai/gpt-4o-mini";
             case "ollama" -> "qwen2.5:14b-instruct-q5_K_M";
             case "stub" -> "stub-model";
@@ -228,10 +236,11 @@ public class LlmProperties {
 
     private static boolean isDefaultOllamaModel(String modelName) {
         String lower = modelName.toLowerCase();
-        return lower.startsWith("qwen")
+        return lower.startsWith("qwen2.5:")
+                || lower.startsWith("qwen2.5-")
                 || lower.startsWith("llama")
                 || lower.startsWith("mistral:")
-                || lower.startsWith("gemma")
+                || lower.startsWith("gemma:")
                 || lower.startsWith("phi3:")
                 || lower.startsWith("phi4:");
     }

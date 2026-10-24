@@ -175,8 +175,20 @@ public class CustomerInsightEngine {
                 || lowerCombined.contains("nhăn") || lowerCombined.contains("da khô") || lowerCombined.contains("meso")) {
             pains.add("Quan tâm phục hồi, căng bóng & chống lão hóa da");
         }
-        if (lowerCombined.contains("gội đầu") || lowerCombined.contains("cổ vai gáy") || lowerCombined.contains("thư giãn") || lowerCombined.contains("mỏi")) {
-            pains.add("Nhu cầu thư giãn dưỡng sinh & giảm đau mỏi cổ vai gáy");
+        if (lowerCombined.contains("gội đầu") || lowerCombined.contains("cổ") || lowerCombined.contains("thư giãn") || lowerCombined.contains("mỏi")) {
+            Set<String> wellnessScopes = new LinkedHashSet<>();
+            for (String uMsg : allUserMessages) {
+                String uLower = uMsg.toLowerCase(Locale.ROOT);
+                if (uLower.contains("gội đầu") || uLower.contains("cổ") || uLower.contains("thư giãn") || uLower.contains("mỏi")) {
+                    for (String sc : ConversationState.extractTargetScopes(uLower, List.of())) {
+                        if (!Set.of("da", "mụn", "nám", "sẹo").contains(sc)) {
+                            wellnessScopes.add(sc);
+                        }
+                    }
+                }
+            }
+            String scopeLabel = !wellnessScopes.isEmpty() ? String.join(" ", wellnessScopes) : "cơ thể";
+            pains.add("Nhu cầu thư giãn dưỡng sinh & giảm đau mỏi " + scopeLabel);
         }
         if (lowerCombined.contains("khóa học") || lowerCombined.contains("lộ trình học") || lowerCombined.contains("học viên")) {
             pains.add("Quan tâm lộ trình khóa học & cam kết chất lượng đầu ra");
@@ -685,6 +697,27 @@ public class CustomerInsightEngine {
         return List.of(scored.get(0).skill());
     }
 
+    public static boolean hasComplaintSignal(String lowerMsg) {
+        if (lowerMsg == null || lowerMsg.isBlank()) {
+            return false;
+        }
+        return lowerMsg.matches("(?isU).*(?:\\b(đau\\s+quá|tệ\\s+thật|tệ\\s+quá|quá\\s+tệ|khiếu\\s+nại|bức\\s+xúc|hoàn\\s+tiền|gặp\\s+quản\\s+lý|gặp\\s+nhân\\s+viên|gặp\\s+người\\s+thật)\\b|hôm\\s+qua.*làm.*\\bđau\\b).*");
+    }
+
+    public static boolean hasHighRiskHealthSignal(String lowerMsg) {
+        if (lowerMsg == null || lowerMsg.isBlank()) {
+            return false;
+        }
+        return lowerMsg.matches("(?isU).*(?:\\b(mang\\s+thai|đang\\s+bầu|có\\s+bầu|bầu\\s+\\d+|thai\\s+kỳ|mới\\s+sinh|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|sốt\\s+cao|huyết\\s+áp\\s+cao|cao\\s+huyết\\s+áp|tim\\s+mạch|giãn\\s+tĩnh\\s+mạch|thoát\\s+vị|gãy\\s+xương|trật\\s+khớp|tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|chóng\\s+mặt\\s+nhiều|teo\\s+cơ|tê\\s+lan\\s+xuống\\s+tay|đau\\s+tai|ù\\s+tai|viêm\\s+tai|chảy\\s+dịch\\s+tai)\\b|\\btai\\b[^.!?\\n]{0,30}\\b(đau|ù|viêm|chảy)\\b).*");
+    }
+
+    public static boolean isPureGreetingOrOpening(String lowerMsg, boolean isFirstTurn) {
+        if (lowerMsg == null || lowerMsg.isBlank()) {
+            return isFirstTurn;
+        }
+        return lowerMsg.matches("(?isU)^\\s*(?:chào|xin\\s+chào|hi|hello|alo|shop\\s+ơi|em\\s+ơi|bên\\s+mình\\s+ơi|tư\\s+vấn|tư\\s+vấn\\s+giúp|cho\\s+mình\\s+hỏi|cho\\s+chị\\s+hỏi|cho\\s+anh\\s+hỏi)(?:\\s+(?:shop|em|bạn|ad|nhé|nha|ạ|với))?\\s*[.!,?~]*$");
+    }
+
     private AgentSkillDto selectDeterministicMicroSkill(
             List<AgentSkillDto> pageScopedSkills,
             String lowerMsg,
@@ -692,16 +725,17 @@ public class CustomerInsightEngine {
             List<FanpageBotRequest.ConversationTurn> history,
             boolean isBroadUnspecifiedPrice) {
         String targetCode;
-        if (lowerMsg.matches("(?isU).*(?:\\b(đau\\s+quá|tệ\\s+thật|tệ\\s+quá|quá\\s+tệ|khiếu\\s+nại|bức\\s+xúc|hoàn\\s+tiền|gặp\\s+quản\\s+lý|gặp\\s+nhân\\s+viên|gặp\\s+người\\s+thật)\\b|hôm\\s+qua.*làm.*\\bđau\\b).*")) {
+        if (hasComplaintSignal(lowerMsg)) {
             targetCode = "complaint_immediate_handoff";
-        } else if (lowerMsg.matches("(?isU).*(?:\\b(mang\\s+thai|đang\\s+bầu|có\\s+bầu|bầu\\s+\\d+|thai\\s+kỳ|mới\\s+sinh|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|sốt\\s+cao|huyết\\s+áp\\s+cao|cao\\s+huyết\\s+áp|tim\\s+mạch|giãn\\s+tĩnh\\s+mạch|thoát\\s+vị|gãy\\s+xương|trật\\s+khớp|đau\\s+tai|ù\\s+tai|viêm\\s+tai|chảy\\s+dịch\\s+tai)\\b|\\btai\\b[^.!?\\n]{0,30}\\b(đau|ù|viêm|chảy)\\b).*")) {
+        } else if (hasHighRiskHealthSignal(lowerMsg)) {
             targetCode = "safety_handoff_high_risk";
         } else if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(rawMessage)
                 || lowerMsg.matches("(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+thế|cao\\s+vậy|đắt\\s+vậy|rẻ\\s+hơn|mềm\\s+hơn|vượt\\s+ngân\\s+sách)\\b.*")) {
             targetCode = "price_objection_soft_anchor";
         } else if (isBroadUnspecifiedPrice
                 || (lowerMsg.matches("(?isU).*\\b(giá|bảng\\s+giá|bao\\s+nhiêu|chi\\s+phí|rổ\\s+giá|mấy\\s+tiền)\\b.*")
-                    && !lowerMsg.matches("(?isU).*\\b(massage\\s+body|toàn\\s+thân|cổ\\s+vai\\s+gáy|vai\\s+gáy|đá\\s+nóng|ngâm\\s+chân|ngâm\\s+thảo\\s+dược|ráy\\s+tai|vệ\\s+sinh\\s+tai|60\\s*phút|90\\s*phút|45\\s*phút|30\\s*phút|20\\s*phút)\\b.*"))) {
+                    && ConversationState.extractDurationFromText(lowerMsg) == null
+                    && ConversationState.extractTargetScopes(lowerMsg, List.of()).isEmpty())) {
             targetCode = "price_clarify_service_duration";
         } else if (lowerMsg.matches("(?isU).*\\b(giá|bao\\s+nhiêu|chi\\s+phí|mấy\\s+tiền)\\b.*")) {
             targetCode = "price_answer_from_docs";
@@ -711,7 +745,8 @@ public class CustomerInsightEngine {
                 && history != null && !history.isEmpty()) {
             targetCode = "upsell_one_addon";
         } else if (FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(rawMessage)
-                || lowerMsg.matches("(?isU).*\\b(mỏi|đau|nhức|căng|mất\\s+ngủ|stress|thư\\s+giãn|cổ\\s+vai\\s+gáy|massage|ngâm)\\b.*")) {
+                || !ConversationState.extractAllNeeds(lowerMsg, List.of()).isEmpty()
+                || lowerMsg.matches("(?isU).*\\b(mỏi|đau|nhức|căng|mất\\s+ngủ|stress|thư\\s+giãn|massage|chăm\\s+sóc)\\b.*")) {
             targetCode = "discovery_ask_one_need";
         } else {
             targetCode = (history == null || history.isEmpty()) ? "greeting_warm_intro" : "discovery_ask_one_need";
@@ -736,7 +771,7 @@ public class CustomerInsightEngine {
                         "Áp dụng kỹ thuật Tactical Empathy & Labeling của FBI (Chris Voss) khi khách nêu triệu chứng, nỗi đau kéo dài hoặc sự mệt mỏi, đa nghi.",
                         "lâu năm, nhiều năm, 5 năm, 10 năm, chữa nhiều nơi, không khỏi, tái phát, sẹo rỗ, nặng, mãn tính, mất niềm tin, mỏi, đau nhức, căng cứng, mất ngủ, stress",
                         "1. Gắn nhãn cảm xúc cực gọn trong 5-8 chữ đầu câu (VD: 'Dạ bị mỏi vậy khó chịu lắm ạ,'), CẤM viết câu giải thích nguyên nhân sách vở dài dòng. 2. Đi thẳng vào ĐÚNG 1 gói/giải pháp sát nhất trong <DOCUMENT_CONTEXT> kèm lợi ích cốt lõi và đơn giá trong 1 câu ngắn. 3. Tổng phản hồi tối đa 2-3 câu ngắn (30-45 chữ).",
-                        "Dạ bị căng mỏi vai gáy vậy khó chịu lắm ạ, gói Massage cơ bản (60 phút, 399.000 VNĐ) bên em sẽ ấn huyệt và chườm ngải cứu giúp nhẹ vai ngay buổi đầu.\n\nAnh/Chị muốn trải nghiệm gói 60 phút này trước hay gói chuyên sâu 90 phút ạ?",
+                        "Dạ bị căng mỏi vùng vai vậy khó chịu lắm ạ, gói Massage cơ bản (60 phút, 399.000 VNĐ) bên em sẽ ấn huyệt và chườm ngải cứu giúp nhẹ vai ngay buổi đầu.\n\nAnh/Chị muốn trải nghiệm gói 60 phút này trước hay gói chuyên sâu 90 phút ạ?",
                         "CẤM viết câu giải thích nguyên nhân dài dòng ('Điều này thường do căng thẳng...'); CẤM nổ quá đà trái với <DOCUMENT_CONTEXT>.",
                         95,
                         true,

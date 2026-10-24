@@ -29,7 +29,7 @@ public final class IndustryPersonaTemplates {
             "BEAUTY_SPA",
             "Spa / Dưỡng sinh / Thẩm mỹ viện",
             "Spa & Chăm sóc sức khỏe - Làm đẹp",
-            "Khách hàng 22-50 tuổi có nhu cầu thư giãn, trị liệu cổ vai gáy, chăm sóc da",
+            "Khách hàng 22-50 tuổi có nhu cầu thư giãn, trị liệu dưỡng sinh, chăm sóc da",
             "Xưng Em - gọi khách là Chị/Anh. Giọng văn dịu dàng, tận tâm, thấu cảm triệu chứng mệt mỏi trước khi báo giá.",
             new PagePersonaConfig(
                     "BEAUTY_SPA",
@@ -39,7 +39,7 @@ public final class IndustryPersonaTemplates {
                     "Dịu dàng, ân cần, thấu cảm sâu sắc và tạo sự an tâm tuyệt đối",
                     "LOW",
                     List.of("cam kết khỏi 100%", "chữa bách bệnh", "rẻ nhất thị trường"),
-                    List.of("gội đầu", "dưỡng sinh", "massage", "cổ vai gáy", "trị mụn", "nám", "sẹo", "liệu trình", "thư giãn", "đá muối")
+                    List.of("gội đầu", "dưỡng sinh", "massage", "cổ vai", "trị mụn", "nám", "sẹo", "liệu trình", "thư giãn", "đá muối")
             )
     );
 
@@ -191,7 +191,43 @@ public final class IndustryPersonaTemplates {
                             : baseCfg.forbiddenWords(),
                     explicitConfig.domainKeywords() != null && !explicitConfig.domainKeywords().isEmpty()
                             ? explicitConfig.domainKeywords()
-                            : baseCfg.domainKeywords()
+                            : baseCfg.domainKeywords(),
+                    explicitConfig.closingAction() != null && !explicitConfig.closingAction().isBlank()
+                            ? explicitConfig.closingAction().strip()
+                            : baseCfg.closingAction(),
+                    explicitConfig.ctaTemplate() != null && !explicitConfig.ctaTemplate().isBlank()
+                            ? explicitConfig.ctaTemplate().strip()
+                            : baseCfg.ctaTemplate(),
+                    explicitConfig.openingBubbles() != null && !explicitConfig.openingBubbles().isEmpty()
+                            ? explicitConfig.openingBubbles()
+                            : baseCfg.openingBubbles(),
+                    explicitConfig.postPriceDelayMs() != null
+                            ? explicitConfig.postPriceDelayMs()
+                            : baseCfg.postPriceDelayMs(),
+                    explicitConfig.preferenceDiscoveryPrompt() != null && !explicitConfig.preferenceDiscoveryPrompt().isBlank()
+                            ? explicitConfig.preferenceDiscoveryPrompt().strip()
+                            : baseCfg.preferenceDiscoveryPrompt(),
+                    explicitConfig.conditionDiscoveryPrompt() != null && !explicitConfig.conditionDiscoveryPrompt().isBlank()
+                            ? explicitConfig.conditionDiscoveryPrompt().strip()
+                            : baseCfg.conditionDiscoveryPrompt(),
+                    explicitConfig.conditionDiscoveryPromptAlt() != null && !explicitConfig.conditionDiscoveryPromptAlt().isBlank()
+                            ? explicitConfig.conditionDiscoveryPromptAlt().strip()
+                            : baseCfg.conditionDiscoveryPromptAlt(),
+                    explicitConfig.activePromptCompact() != null && !explicitConfig.activePromptCompact().isBlank()
+                            ? explicitConfig.activePromptCompact().strip()
+                            : baseCfg.activePromptCompact(),
+                    explicitConfig.symptomKeywords() != null && !explicitConfig.symptomKeywords().isEmpty()
+                            ? explicitConfig.symptomKeywords()
+                            : baseCfg.symptomKeywords(),
+                    explicitConfig.bodyAreaKeywords() != null && !explicitConfig.bodyAreaKeywords().isEmpty()
+                            ? explicitConfig.bodyAreaKeywords()
+                            : baseCfg.bodyAreaKeywords(),
+                    explicitConfig.serviceFamilyKeywords() != null && !explicitConfig.serviceFamilyKeywords().isEmpty()
+                            ? explicitConfig.serviceFamilyKeywords()
+                            : baseCfg.serviceFamilyKeywords(),
+                    explicitConfig.emotionSignals() != null && !explicitConfig.emotionSignals().isEmpty()
+                            ? explicitConfig.emotionSignals()
+                            : baseCfg.emotionSignals()
             );
         }
 
@@ -217,7 +253,7 @@ public final class IndustryPersonaTemplates {
             return TECH_B2B.personaConfig();
         }
         if (combined.contains("spa") || combined.contains("làm đẹp") || combined.contains("thẩm mỹ")
-                || combined.contains("dưỡng sinh") || combined.contains("nàng sen") || combined.contains("mụn")) {
+                || combined.contains("dưỡng sinh") || combined.contains("massage") || combined.contains("mụn")) {
             return BEAUTY_SPA.personaConfig();
         }
         return GENERAL_SERVICE.personaConfig();

@@ -35,11 +35,10 @@ public class ClosingQuestionHook implements GuardrailHook {
     private static final Pattern DRY_PERMISSION_QUESTION_PATTERN = Pattern.compile(
             "(?iU)(?<=[.!?\\n]|^)\\s*(?:(?:dạ|hay\\s+là|hay|hoặc\\s+là|hoặc|vậy|thế|a\\s*/\\s*b\\s*[:.\\-]?)[,\\s]+)*(?:"
             + "em\\s+có\\s+thể\\s+(?:tư\\s+vấn|giải\\s+thích|hỗ\\s+trợ|chia\\s+sẻ)[^?]*\\?|"
-            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:muốn|cần)\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|gửi|hỗ\\s+trợ|đặt\\s+lịch|giữ\\s+lịch|thử|trải\\s+nghiệm|tham\\s+khảo)(?![^?]*\\bhay\\b)[^?]*\\?|"
-            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:thắc\\s+mắc|câu\\s+hỏi)[^?]*\\?|"
-            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:tiện|sẵn\\s+sàng)[^?]*\\?|"
-            + "(?:được\\s+không\\s+ạ|có\\s+được\\s+không\\s+ạ|có\\s+tiện\\s+không\\s+ạ)\\s*\\?|"
-            + "(?:có\\s+)?không\\s+ạ\\s*\\?"
+            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:muốn|cần)\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|hỗ\\s+trợ)\\s+thêm(?![^?]*\\b(?:hay|nào|mấy\\s+giờ)\\b)[^?]*\\?|"
+            + "(?:chị|anh|anh/chị|bạn)\\s+(?:có\\s+)?(?:muốn|cần)\\s+(?:(?:bên\\s+)?em\\s+)?(?:tư\\s+vấn|giải\\s+thích|chia\\s+sẻ|hỗ\\s+trợ)(?![^?]*\\b(?:hay|nào|mấy\\s+giờ)\\b)[^?]*\\?|"
+            + "(?:chị|anh|anh/chị|bạn|mình)\\s+(?:có\\s+)?(?:thắc\\s+mắc|câu\\s+hỏi)\\s+(?:nào\\s+|gì\\s+)?(?:thêm\\s+)?không\\s+ạ\\s*\\?|"
+            + "(?:được\\s+không\\s+ạ|có\\s+được\\s+không\\s+ạ|có\\s+tiện\\s+không\\s+ạ|không\\s+ạ)\\s*\\?"
             + ")"
     );
 
@@ -92,6 +91,9 @@ public class ClosingQuestionHook implements GuardrailHook {
         if (draft == null || draft.getText() == null || draft.getText().isBlank()) {
             return false;
         }
+        if (draft.getBubbles() != null && !draft.getBubbles().isEmpty()) {
+            return false;
+        }
         if (context == null) {
             return false;
         }
@@ -139,7 +141,7 @@ public class ClosingQuestionHook implements GuardrailHook {
                 || combinedChunksLower.contains("massage")
                 || combinedChunksLower.contains("ngâm chân")
                 || lowerDraft.contains("massage")
-                || lowerDraft.contains("vai gáy")
+                || lowerDraft.contains("cổ vai")
         );
 
         String polished = polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, customerMessage, isDermatologyDoc, isMassageDoc);
@@ -180,7 +182,12 @@ public class ClosingQuestionHook implements GuardrailHook {
                 || lowerText.contains("kỹ thuật viên trưởng")
                 || lowerText.contains("tư vấn viên")
                 || lowerText.contains("nhắn em tư vấn nha")
+                || lowerText.contains("khi nào mình cần thư giãn")
+                || lowerText.contains("cần thư giãn vùng")
+                || lowerText.contains("không có gói ngắn hơn mức này")
                 || lowerText.contains("em hiểu mình đang cân nhắc về chi phí")
+                || lowerText.contains("em hiểu mình đang cân nhắc chi phí")
+                || (lowerText.contains("trải nghiệm thử 1 buổi") && (lowerText.contains("xem sao ha") || lowerText.contains("🥰")))
                 || lowerText.contains("vừa ngân sách hơn")
                 || lowerText.contains("cần hỗ trợ về dịch vụ spa hay đặt lịch")) {
             return text;
@@ -201,7 +208,7 @@ public class ClosingQuestionHook implements GuardrailHook {
             String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "Chị";
             if (!strippedQ.toLowerCase(Locale.ROOT).contains("thong thả cân nhắc")) {
                 return (strippedQ.isEmpty() ? "" : strippedQ + "\n\n")
-                        + "Dạ vâng " + h + " cứ thong thả cân nhắc thêm nhé ạ! Bất cứ khi nào vùng cổ vai gáy mỏi nhức cần thả lỏng bằng thảo dược ấm, "
+                        + "Dạ vâng " + h + " cứ thong thả cân nhắc thêm nhé ạ! Bất cứ khi nào cơ thể mỏi nhức cần thả lỏng bằng thảo dược ấm, "
                         + h + " cứ nhắn em hỗ trợ giữ lịch ưu tiên ngay nha ạ.";
             }
             return strippedQ;
@@ -366,12 +373,12 @@ public class ClosingQuestionHook implements GuardrailHook {
             changed = true;
         }
 
-        // 4. Nếu câu cuối bị cắt cụt giữa chừng (do giới hạn max_tokens/num_predict, không kết thúc bằng ., !, ?, ~, ạ)
-        // thì gọt về câu hoàn chỉnh gần nhất trước khi gắn câu hỏi kết bài.
+        // 4. Đảm bảo dấu chấm câu cuối câu hợp lệ (tuyệt đối KHÔNG dùng regex cắt cụt đuôi câu của LLM)
         working = trimIncompleteTrailingFragment(working);
 
-        // 5. Nếu kết bài hoàn toàn không có câu hỏi nào (thiếu closing question), bổ sung câu hỏi mở phù hợp
-        if (!working.endsWith("?") && !working.endsWith("ạ?")) {
+        // 5. Nếu kết bài hoàn toàn không có câu hỏi nào và không phải chế độ Playbook/Skill động ("mình"), bổ sung câu hỏi mở phù hợp
+        boolean isDynamicMìnhPersona = honorific != null && "mình".equalsIgnoreCase(honorific.strip());
+        if (!isDynamicMìnhPersona && !working.contains("?") && !working.endsWith("?") && !working.endsWith("ạ?")) {
             working = working.strip() + "\n\n" + naturalClosing;
             changed = true;
         }
@@ -384,36 +391,11 @@ public class ClosingQuestionHook implements GuardrailHook {
             return text;
         }
         String trimmed = text.strip();
-        if (trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?") || trimmed.endsWith("~")) {
+        if (trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?")
+                || trimmed.endsWith("~") || trimmed.endsWith(":")) {
             return trimmed;
         }
-        // Nếu kết thúc bằng "ạ" hoặc "nhé" hoặc "nha" nhưng không phải dòng bullet dở dang, thêm dấu chấm câu tự nhiên
-        String lastLine = trimmed.contains("\n") ? trimmed.substring(trimmed.lastIndexOf('\n') + 1).strip() : trimmed;
-        if (!lastLine.startsWith("-") && !lastLine.startsWith("•") && !lastLine.endsWith(":")
-                && lastLine.matches("(?isU).*\\b(ạ|nhé|nha|đó|đấy)\\s*$")) {
-            return trimmed + ".";
-        }
-        int lastSentenceEnd = -1;
-        for (int i = trimmed.length() - 1; i >= 0; i--) {
-            char c = trimmed.charAt(i);
-            if (c == '.' || c == '!' || c == '?') {
-                // Tránh cắt nhầm dấu chấm trong số tiền (VD: 399.000)
-                boolean isThousandSep = (i > 0 && i + 1 < trimmed.length()
-                        && Character.isDigit(trimmed.charAt(i - 1))
-                        && Character.isDigit(trimmed.charAt(i + 1)));
-                if (!isThousandSep) {
-                    lastSentenceEnd = i;
-                    break;
-                }
-            }
-        }
-        if (lastSentenceEnd >= 25) {
-            String candidate = trimmed.substring(0, lastSentenceEnd + 1).strip();
-            // Nếu câu trước dấu chấm cuối cùng lại là câu dẫn vào danh sách kiểu "Gói 670k sẽ bao gồm:" đã bị cắt mất phần sau,
-            // hoặc nếu sau lastSentenceEnd có câu dẫn kết thúc bằng dấu hai chấm ":"
-            return candidate;
-        }
-        return trimmed;
+        return trimmed + ".";
     }
 
     private static boolean containsAbChoice(String q) {
@@ -445,6 +427,9 @@ public class ClosingQuestionHook implements GuardrailHook {
             boolean isDermatologyDoc,
             boolean isMassageDoc
     ) {
+        String capH = (honorific != null && !honorific.isBlank())
+                ? Character.toUpperCase(honorific.strip().charAt(0)) + honorific.strip().substring(1)
+                : "Chị";
         List<String> pool;
         boolean isExplanationOrSymptom = FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(customerMessage)
                 || FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(customerMessage);
@@ -458,43 +443,35 @@ public class ClosingQuestionHook implements GuardrailHook {
             if (isExplanationOrSymptom) {
                 if (hasStatedFrequency && hasStatedBodyArea) {
                     pool = List.of(
-                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
-                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                            capH + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?"
                     );
                 } else if (hasStatedFrequency) {
                     pool = List.of(
-                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
-                            honorific + " đang ưu tiên chăm sóc vùng cổ vai gáy hay thư giãn toàn thân ạ?",
-                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                            capH + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
+                            capH + " đang ưu tiên chăm sóc vùng cổ vai hay thư giãn toàn thân ạ?"
                     );
                 } else if (hasStatedBodyArea) {
                     pool = List.of(
                             "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?",
-                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?",
-                            honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để bên em giữ phòng riêng trước ạ?"
+                            capH + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?"
                     );
                 } else {
                     pool = List.of(
-                            honorific + " đang muốn tập trung vùng cổ vai gáy hay thư giãn toàn thân để em gợi ý gói phù hợp ạ?",
-                            "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?",
-                            honorific + " muốn trải nghiệm gói cơ bản trước hay gói chuyên sâu để em tư vấn chi tiết ạ?"
+                            capH + " đang muốn tập trung vùng đang mỏi hay thư giãn toàn thân để em gợi ý gói phù hợp ạ?",
+                            "Tình trạng này của " + honorific + " là mới xuất hiện hay bị thường xuyên để em chọn gói sát nhất ạ?"
                     );
                 }
             } else if ("SOFT_BOOKING_CLOSE".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều để em giữ phòng riêng trước cho mình ạ?",
-                        honorific + " tiện ghé cơ sở nào gần mình nhất để bên em sắp xếp chu đáo ạ?",
-                        honorific + " cho em xin khung giờ tiện nhất hoặc Số điện thoại để bên em giữ suất ưu đãi trước ạ?"
+                        capH + " tiện ghé cơ sở nào gần mình nhất và khung giờ nào để bên em giữ lịch trước cho mình ạ?"
                 );
             } else if (!isFirstTurn || "VALUE_CONSULTATION".equalsIgnoreCase(salesStage)) {
                 pool = List.of(
-                        honorific + " muốn đặt lịch vào khung giờ Sáng hay Chiều, hay cần em tư vấn thêm về quy trình ạ?",
-                        honorific + " đang tiện ghé cơ sở nào gần mình hơn để em kiểm tra giờ trống cho mình ạ?",
-                        honorific + " muốn bên em giữ lịch hẹn vào hôm nay hay cuối tuần để em sắp xếp phòng ạ?"
+                        capH + " đang tiện ghé cơ sở nào gần mình hơn để em kiểm tra giờ trống cho mình ạ?",
+                        capH + " muốn bên em giữ lịch hẹn vào hôm nay hay ngày mai để em sắp xếp lịch ạ?"
                 );
             } else {
                 pool = List.of(
-                        "Hiện tại " + honorific + " đang quan tâm Massage trị liệu cổ vai gáy hay Gội đầu dưỡng sinh ạ?",
                         "Hôm nay " + honorific + " đang muốn giảm nhức mỏi vùng nào nhất để em gợi ý gói phù hợp ạ?"
                 );
             }

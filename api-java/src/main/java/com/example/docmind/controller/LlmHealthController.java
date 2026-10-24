@@ -332,7 +332,9 @@ public class LlmHealthController {
 
     private static String resolveEndpoint(String provider, String baseUrl) {
         if ("ollama".equals(provider)) {
-            String clean = baseUrl != null ? baseUrl.replaceAll("/+$", "") : "http://localhost:11434";
+            String clean = (baseUrl != null && !baseUrl.isBlank())
+                    ? baseUrl.replaceAll("/+$", "")
+                    : new LlmProperties().resolveBaseUrl();
             return clean + "/api/generate";
         }
         if (baseUrl == null || baseUrl.isBlank()) {

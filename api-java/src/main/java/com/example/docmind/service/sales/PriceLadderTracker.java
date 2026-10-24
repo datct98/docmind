@@ -168,19 +168,21 @@ public class PriceLadderTracker {
     );
 
     // =========================================================================
-    // AUTHORITATIVE CATALOG TIERS (PAGE 'NÀNG SEN')
+    // DEFAULT FALLBACK CATALOG TIERS (WHEN NO DYNAMIC CHUNKS ARE PROVIDED)
     // =========================================================================
+
+    private static final String ENTRY_DS01_NAME = "Gói Vệ sinh tai cơ bản (DS01)";
 
     private static final List<PriceTier> HANOI_LADDER = List.of(
             new PriceTier(399_000L, "Gói Massage cơ bản (NS01)", "60 phút", "hanoi", "NS01", "MASSAGE"),
             new PriceTier(239_000L, "Gói Dưỡng sinh cơ bản (DS02)", "60 phút", "hanoi", "DS02", "DUONG_SINH"),
-            new PriceTier(129_000L, "Gói Lấy ráy tai cơ bản (DS01)", "30 phút", "hanoi", "DS01", "DUONG_SINH")
+            new PriceTier(129_000L, ENTRY_DS01_NAME, "30 phút", "hanoi", "DS01", "DUONG_SINH")
     );
 
     private static final List<PriceTier> SAIGON_LADDER = List.of(
             new PriceTier(570_000L, "Gói Massage cơ bản (NS01)", "70 phút", "saigon", "NS01", "MASSAGE"),
             new PriceTier(260_000L, "Gói Dưỡng sinh cơ bản (DS02)", "60 phút", "saigon", "DS02", "DUONG_SINH"),
-            new PriceTier(129_000L, "Gói Lấy ráy tai cơ bản (DS01)", "30 phút", "saigon", "DS01", "DUONG_SINH")
+            new PriceTier(129_000L, ENTRY_DS01_NAME, "30 phút", "saigon", "DS01", "DUONG_SINH")
     );
 
     public static final long CATALOG_FLOOR_PRICE = 129_000L;
@@ -260,7 +262,7 @@ public class PriceLadderTracker {
             if (previousPriceQuoted != null && previousPriceQuoted <= activeFloorPrice) {
                 String pkgName = floorTier != null
                         ? floorTier.packageName() + (floorTier.duration() != null && !floorTier.duration().isBlank() && !floorTier.packageName().contains(floorTier.duration()) ? " (" + floorTier.duration() + ")" : "")
-                        : "Gói Lấy ráy tai cơ bản (DS01 - 30 phút)";
+                        : ENTRY_DS01_NAME + " - 30 phút";
                 String promo = resolvePromoPolicy(chunks);
                 String rationale = "Khách đã ở mức giá sàn danh mục (" + formatPrice(activeFloorPrice)
                         + ") và tiếp tục hỏi rẻ hơn: Khẳng định đây là gói mềm nhất bên em, áp dụng chính sách ưu đãi " + promo + ".";
@@ -672,7 +674,7 @@ public class PriceLadderTracker {
             String name = t.packageName() != null ? t.packageName().toLowerCase(Locale.ROOT) : "";
             String cat = t.category() != null ? t.category().toLowerCase(Locale.ROOT) : "";
             return code.startsWith("NS") || code.startsWith("DS")
-                    || name.contains("massage") || name.contains("dưỡng sinh") || name.contains("ráy tai")
+                    || name.contains("massage") || name.contains("dưỡng sinh")
                     || cat.contains("massage") || cat.contains("dưỡng sinh");
         });
         if (!isWellnessLadder) {
@@ -727,7 +729,7 @@ public class PriceLadderTracker {
      */
     public static PriceTier findNextLowerTier(List<PriceTier> ladder, Long previousPriceQuoted) {
         if (ladder == null || ladder.isEmpty()) {
-            return new PriceTier(CATALOG_FLOOR_PRICE, "Gói Lấy ráy tai cơ bản (DS01)", "30 phút", "all", "DS01", "DUONG_SINH");
+            return new PriceTier(CATALOG_FLOOR_PRICE, ENTRY_DS01_NAME, "30 phút", "all", "DS01", "DUONG_SINH");
         }
 
         List<PriceTier> sorted = new ArrayList<>(ladder);

@@ -48,7 +48,7 @@ class OpenAiCompatibleLlmClientTest {
                 .andExpect(header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(jsonPath("$.model").value("deepseek-chat"))
                 .andExpect(jsonPath("$.messages[0].content").value("Câu hỏi: Giá liệu trình trị mụn là bao nhiêu?"))
-                .andExpect(jsonPath("$.temperature").value(0.1))
+                .andExpect(jsonPath("$.temperature").value(0.2))
                 .andRespond(withSuccess(
                         """
                         {
@@ -843,5 +843,89 @@ class OpenAiCompatibleLlmClientTest {
         String answer = client.complete("Câu hỏi nội bộ?", qaBudget);
         assertThat(answer).isEqualTo("Nội dung QA nội bộ chính xác [1].");
         server.verify();
+    }
+
+    @Test
+    void testMultiProviderCloudPresets_OpenAiCompatibleAnthropicAndQwen() {
+        // 1. ANTHROPIC preset + headers
+        LlmProperties anthropicProps = new LlmProperties();
+        anthropicProps.setProvider("ANTHROPIC");
+        anthropicProps.setApiKey("sk-ant-test-key");
+        assertThat(anthropicProps.resolveBaseUrl()).isEqualTo("https://api.anthropic.com/v1");
+        assertThat(anthropicProps.resolveModel()).isEqualTo("claude-3-5-sonnet-latest");
+
+        RestClient.Builder antBuilder = RestClient.builder();
+        MockRestServiceServer antServer = MockRestServiceServer.bindTo(antBuilder).build();
+        OpenAiCompatibleLlmClient antClient = new OpenAiCompatibleLlmClient(anthropicProps, objectMapper, antBuilder.build());
+
+        antServer.expect(requestTo("https://api.anthropic.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer sk-ant-test-key"))
+                .andExpect(header("x-api-key", "sk-ant-test-key"))
+                .andExpect(header("anthropic-version", "2023-06-01"))
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Dạ Claude xin chào mình ạ.\"}}]}",
+                        MediaType.APPLICATION_JSON
+                ));
+        assertThat(antClient.complete("Chào shop")).isEqualTo("Dạ Claude xin chào mình ạ.");
+        antServer.verify();
+
+        // 1b. ANTHROPIC native /v1/messages endpoint + content[0].text parsing
+        LlmProperties anthropicNativeProps = new LlmProperties();
+        anthropicNativeProps.setProvider("ANTHROPIC");
+        anthropicNativeProps.setBaseUrl("https://api.anthropic.com/v1/messages");
+        anthropicNativeProps.setApiKey("sk-ant-native-key");
+
+        RestClient.Builder antNativeBuilder = RestClient.builder();
+        MockRestServiceServer antNativeServer = MockRestServiceServer.bindTo(antNativeBuilder).build();
+        OpenAiCompatibleLlmClient antNativeClient = new OpenAiCompatibleLlmClient(anthropicNativeProps, objectMapper, antNativeBuilder.build());
+
+        antNativeServer.expect(requestTo("https://api.anthropic.com/v1/messages"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("x-api-key", "sk-ant-native-key"))
+                .andExpect(header("anthropic-version", "2023-06-01"))
+                .andExpect(jsonPath("$.max_tokens").value(1024))
+                .andRespond(withSuccess(
+                        "{\"content\":[{\"type\":\"text\",\"text\":\"Dạ An Nhiên của Nàng Sen Spa xin chào mình ạ.\"}],\"usage\":{\"input_tokens\":42,\"output_tokens\":14}}",
+                        MediaType.APPLICATION_JSON
+                ));
+        assertThat(antNativeClient.complete("Chào shop")).isEqualTo("Dạ An Nhiên của Nàng Sen Spa xin chào mình ạ.");
+        antNativeServer.verify();
+
+        // 1c. GEMINI native :generateContent endpoint + candidates[0].content.parts[0].text parsing
+        LlmProperties geminiNativeProps = new LlmProperties();
+        geminiNativeProps.setProvider("GEMINI");
+        geminiNativeProps.setBaseUrl("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
+        geminiNativeProps.setApiKey("AIzaSy-native-key");
+
+        RestClient.Builder gemNativeBuilder = RestClient.builder();
+        MockRestServiceServer gemNativeServer = MockRestServiceServer.bindTo(gemNativeBuilder).build();
+        OpenAiCompatibleLlmClient gemNativeClient = new OpenAiCompatibleLlmClient(geminiNativeProps, objectMapper, gemNativeBuilder.build());
+
+        gemNativeServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(
+                        "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Dạ Gemini native xin chào mình ạ.\"}]}}]}",
+                        MediaType.APPLICATION_JSON
+                ));
+        assertThat(gemNativeClient.complete("Chào shop")).isEqualTo("Dạ Gemini native xin chào mình ạ.");
+        gemNativeServer.verify();
+
+        // 2. QWEN / DashScope preset
+        LlmProperties qwenProps = new LlmProperties();
+        qwenProps.setProvider("QWEN");
+        qwenProps.setApiKey("sk-qwen-dashscope");
+        assertThat(qwenProps.resolveBaseUrl()).isEqualTo("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+        assertThat(qwenProps.resolveModel()).isEqualTo("qwen-plus");
+
+        // 3. OPENAI_COMPATIBLE preset
+        LlmProperties compatProps = new LlmProperties();
+        compatProps.setProvider("OPENAI_COMPATIBLE");
+        compatProps.setBaseUrl("https://api.openai.com/v1");
+        compatProps.setModel("gpt-4o-mini");
+        compatProps.setApiKey("sk-compat");
+        assertThat(compatProps.getNormalizedProvider()).isEqualTo("openai_compatible");
+        assertThat(compatProps.resolveBaseUrl()).isEqualTo("https://api.openai.com/v1");
+        assertThat(compatProps.resolveModel()).isEqualTo("gpt-4o-mini");
     }
 }

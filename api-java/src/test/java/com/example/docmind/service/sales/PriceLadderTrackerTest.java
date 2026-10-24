@@ -145,7 +145,7 @@ class PriceLadderTrackerTest {
         assertThat(result.isPriceObjection()).isTrue();
         assertThat(result.previousPriceQuoted()).isEqualTo(239_000L);
         assertThat(result.targetPrice()).isEqualTo(129_000L);
-        assertThat(result.targetPackageName()).contains("Lấy ráy tai cơ bản");
+        assertThat(result.targetPackageName()).contains("Vệ sinh tai cơ bản");
         assertThat(result.isCatalogFloor()).isTrue();
         assertThat(result.shouldSuppressHandoff()).isTrue();
     }

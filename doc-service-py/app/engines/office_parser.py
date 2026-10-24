@@ -626,7 +626,7 @@ def parse_xlsx(payload: bytes, mk: BlockFactory, meta: dict | None = None) -> li
 # --------------------------------------------------------------------------- #
 # HTML & Google Sheets Export (.html / .htm)
 # --------------------------------------------------------------------------- #
-_HTML_PARSER_VERSION = "builtin-html-1.0"
+_HTML_PARSER_VERSION = "builtin-html-2.0"
 
 
 class _GoogleSheetsAndHtmlDomParser(_html.parser.HTMLParser if hasattr(_html, "parser") else object):
@@ -798,8 +798,15 @@ def _is_table_header_row(non_empty_cells: list[str]) -> bool:
     """Detect if a row is the column header of a structured sub-table."""
     if len(non_empty_cells) < 2:
         return False
+    # Data row guards: header cells are concise column labels, never long prose, bullets, questions, or SKU/price cells
+    if any(len(c.strip()) > 45 or "•" in c or "?" in c for c in non_empty_cells):
+        return False
     first = non_empty_cells[0].lower().strip()
     second = non_empty_cells[1].lower().strip()
+    if re.match(r"^[a-z]{2,4}\d{1,4}$", first) or re.match(r"^\d+$", first):
+        return False
+    if any(re.search(r"\b\d+(?:[.,]\d+)?\s*(?:vnđ|vnd|đ|k|phút)\b", c.lower()) for c in non_empty_cells):
+        return False
     header_Firsts = {
         "mã gói",
         "mã dịch vụ",
@@ -1163,12 +1170,145 @@ def _emit_spreadsheet_grid_blocks(
             local_index += 1
 
     strips = _split_grid_by_empty_columns(filtered_rows)
-    for strip in strips:
+
+    # Pre-scan side-by-side detail strips (strip_idx >= 1) so their detail columns (e.g. "Quy trình chi tiết")
+    # can be joined into matching package rows of strip 0 AND emitted under their true section heading.
+    side_detail_header_name: str | None = None
+    side_detail_by_code_and_name: dict[tuple[str, str], str] = {}
+    side_detail_by_name: dict[str, str] = {}
+    side_detail_by_code: dict[str, str] = {}
+    strip0_major_heading_by_row: dict[int, str] = {}
+
+    if strips:
+        current_major: str | None = None
+        for r_i, r in enumerate(strips[0]):
+            ne = [c.strip() for c in r if c.strip()]
+            if len(ne) == 1 and len(ne[0]) <= 95 and "?" not in ne[0]:
+                fl = ne[0].lower()
+                if (ne[0].isupper() and len(ne[0]) >= 3) or fl.startswith((
+                    "massage", "gội đầu", "faq", "khách hỏi", "quy trình",
+                    "lưu_ý", "lưu ý", "ưu đãi", "bài massage", "chính sách",
+                )):
+                    current_major = ne[0]
+            if current_major:
+                strip0_major_heading_by_row[r_i] = current_major
+
+    if len(strips) > 1:
+        for side_strip in strips[1:]:
+            side_hdr: list[str] | None = None
+            for r in side_strip:
+                ne = [c.strip() for c in r if c.strip()]
+                if not ne:
+                    continue
+                if side_hdr is None and _is_table_header_row(ne):
+                    side_hdr = [c.strip() for c in r]
+                    if len(side_hdr) >= 4 and side_hdr[-1]:
+                        side_detail_header_name = side_hdr[-1]
+                    continue
+                if side_hdr is not None and len(ne) >= 2:
+                    code_val = r[0].strip().upper() if len(r) > 0 else ""
+                    name_val = re.sub(r"\s+", " ", r[1].strip().lower()) if len(r) > 1 else ""
+                    detail_val = r[-1].strip() if len(r) >= len(side_hdr) else ne[-1]
+                    if detail_val and (code_val or name_val):
+                        if code_val and name_val:
+                            side_detail_by_code_and_name[(code_val, name_val)] = detail_val
+                        if name_val and name_val not in side_detail_by_name:
+                            side_detail_by_name[name_val] = detail_val
+                        if code_val and code_val not in side_detail_by_code:
+                            side_detail_by_code[code_val] = detail_val
+
+    _VN_FOOD_TOKEN_MAP = {
+        "banh": "bánh",
+        "my": "mì",
+        "mi": "mì",
+        "bo": "bò",
+        "sot": "sốt",
+        "vang": "vang",
+        "trung": "trứng",
+        "ngai": "ngải",
+        "ngại": "ngải",
+        "cuu": "cứu",
+        "che": "chè",
+        "dau": "đậu",
+        "den": "đen",
+        "bun": "bún",
+        "doc": "dọc",
+        "mung": "mùng",
+        "chao": "cháo",
+        "suon": "sườn",
+        "sươn": "sườn",
+        "hoa": "hoa",
+        "qua": "quả",
+        "quả": "quả",
+        "theo": "theo",
+        "mua": "mùa",
+        "mùa": "mùa",
+    }
+
+    def _restore_vietnamese_food_label(raw_item: str) -> str:
+        cleaned = re.sub(r"\s+", " ", (raw_item or "").strip())
+        if not cleaned:
+            return ""
+        words = cleaned.split(" ")
+        restored_words = [_VN_FOOD_TOKEN_MAP.get(w.lower(), w.lower()) for w in words]
+        restored = " ".join(restored_words)
+        if restored:
+            restored = restored[0].upper() + restored[1:]
+        if restored.lower() != cleaned.lower():
+            return f"{restored} ({cleaned})"
+        return restored
+
+    for strip_idx, strip in enumerate(strips):
+        heading_path = list(base_heading_path)
         active_table: list[list[str]] = []
         last_detected_header: list[str] | None = None
+        recent_faq_refreshment_notes: list[str] = []
+
+        if strip_idx > 0:
+            first_non_empty_row_idx = next(
+                (idx for idx, r in enumerate(strip) if any(c.strip() for c in r)),
+                None,
+            )
+            if first_non_empty_row_idx is not None:
+                inherited_major = strip0_major_heading_by_row.get(first_non_empty_row_idx)
+                if inherited_major:
+                    heading_path = _apply_heading(heading_path, base_depth + 1, inherited_major)
+                if side_detail_header_name:
+                    heading_path = _apply_heading(heading_path, base_depth + 2, side_detail_header_name)
+
+        def _enrich_table_with_side_details(tbl: list[list[str]]) -> list[list[str]]:
+            if (
+                strip_idx != 0
+                or not side_detail_header_name
+                or len(tbl) < 2
+            ):
+                return tbl
+            hdr = [c.strip() for c in tbl[0]]
+            hdr_lower = [c.lower() for c in hdr if c]
+            if not hdr_lower or any(side_detail_header_name.lower() in h for h in hdr_lower):
+                return tbl
+            if not any(h in ("mã gói", "mã dịch vụ", "mã sp") for h in hdr_lower[:2]):
+                return tbl
+            matched_any = False
+            enriched_rows: list[list[str]] = [hdr + [side_detail_header_name]]
+            for data_r in tbl[1:]:
+                padded_r = [c.strip() for c in data_r] + [""] * max(0, len(hdr) - len(data_r))
+                padded_r = padded_r[: len(hdr)]
+                c_code = padded_r[0].upper() if len(padded_r) > 0 else ""
+                c_name = re.sub(r"\s+", " ", padded_r[1].lower()) if len(padded_r) > 1 else ""
+                detail = (
+                    side_detail_by_code_and_name.get((c_code, c_name))
+                    or side_detail_by_name.get(c_name)
+                    or side_detail_by_code.get(c_code)
+                    or ""
+                )
+                if detail:
+                    matched_any = True
+                enriched_rows.append(padded_r + [detail])
+            return enriched_rows if matched_any else tbl
 
         def flush_active_table(is_section_break: bool = True) -> None:
-            nonlocal active_table, last_detected_header
+            nonlocal active_table, last_detected_header, heading_path, recent_faq_refreshment_notes
             if not active_table:
                 return
             if is_section_break and len(active_table) == 1:
@@ -1183,7 +1323,56 @@ def _emit_spreadsheet_grid_blocks(
                 hdr_non_empty = [c.strip() for c in active_table[0] if c.strip()]
                 if _is_table_header_row(hdr_non_empty):
                     last_detected_header = list(active_table[0])
-            emit_table(active_table)
+
+            if heading_path and heading_path[-1].strip().upper() == "FAQ":
+                for r in active_table:
+                    cells = [c.strip() for c in r if c.strip()]
+                    if len(cells) >= 2 and any(
+                        kw in " ".join(cells).lower()
+                        for kw in ("ăn nhẹ", "điểm tâm", "nước ép", "thực dưỡng", "dinh dưỡng", "trái cây")
+                    ):
+                        note = f"{cells[0]} -> {cells[1]}"
+                        if note not in recent_faq_refreshment_notes:
+                            recent_faq_refreshment_notes.append(note)
+
+            # Check if a 1-column non-question list appears after FAQ (e.g. post-treatment meal / snack items)
+            active_non_empty_cols = [
+                c_idx
+                for c_idx in range(max((len(r) for r in active_table), default=0))
+                if any(c_idx < len(r) and bool(r[c_idx].strip()) for r in active_table)
+            ]
+            if (
+                len(active_non_empty_cols) == 1
+                and len(active_table) >= 2
+                and heading_path
+                and any(h.strip().upper() == "FAQ" for h in heading_path)
+                and not any("?" in (r[active_non_empty_cols[0]] if active_non_empty_cols[0] < len(r) else "") for r in active_table)
+            ):
+                emit_heading(2, "Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình")
+                col0 = active_non_empty_cols[0]
+                normalized_menu_table: list[list[str]] = [
+                    ["Hạng mục", "Chi tiết thực đơn / Giải thích"]
+                ]
+                if recent_faq_refreshment_notes:
+                    normalized_menu_table.append([
+                        "Giải thích Buffet thực dưỡng / Ăn nhẹ / Điểm tâm phục hồi",
+                        " ; ".join(recent_faq_refreshment_notes),
+                    ])
+                menu_items: list[str] = []
+                for r in active_table:
+                    val = r[col0].strip() if col0 < len(r) else ""
+                    if val:
+                        menu_items.append(_restore_vietnamese_food_label(val))
+                if menu_items:
+                    normalized_menu_table.append([
+                        "Các món trong thực đơn ăn nhẹ / điểm tâm thực dưỡng",
+                        ", ".join(menu_items),
+                    ])
+                emit_table(normalized_menu_table)
+                active_table = []
+                return
+
+            emit_table(_enrich_table_with_side_details(active_table))
             active_table = []
 
         for row in strip:
@@ -1264,8 +1453,7 @@ def _emit_spreadsheet_grid_blocks(
             active_table.append(row)
 
         if active_table:
-            emit_table(active_table)
-            active_table = []
+            flush_active_table(is_section_break=False)
 
     return local_index
 

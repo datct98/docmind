@@ -72,8 +72,23 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "đưng\\s+gối", "đau gối");
         addBoundaryPattern(phrases, "đưng\\s+vai", "đau vai");
         addBoundaryPattern(phrases, "đưng\\s+cổ", "đau cổ");
-        addBoundaryPattern(phrases, "mỏi\\s+goi", "mỏi gối");
+        addBoundaryPattern(phrases, "(mỏi|đau|nhức)\\s+goi", "$1 gối");
         addBoundaryPattern(phrases, "te\\s+tay", "tê tay");
+        addBoundaryPattern(phrases, "thuc\\s+duong", "thực dưỡng");
+        addBoundaryPattern(phrases, "an\\s+nhe", "ăn nhẹ");
+        addBoundaryPattern(phrases, "diem\\s+tam", "điểm tâm");
+        addBoundaryPattern(phrases, "nuoc\\s+ep", "nước ép");
+        addBoundaryPattern(phrases, "no\\s+la\\s+(?:gì|gi|j)", "nó là gì");
+        addBoundaryPattern(phrases, "nó\\s+la\\s+(?:gì|gi|j)", "nó là gì");
+        addBoundaryPattern(phrases, "la\\s+(?:gì|gi|j)", "là gì");
+        addBoundaryPattern(phrases, "co\\s+mon\\s+(?:gì|gi|j)", "có món gì");
+        addBoundaryPattern(phrases, "có\\s+mon\\s+(?:gì|gi|j)", "có món gì");
+        addBoundaryPattern(phrases, "gom\\s+nhung\\s+(?:gì|gi|j)", "gồm những gì");
+        addBoundaryPattern(phrases, "cha\\s+hieu", "chả hiểu");
+        addBoundaryPattern(phrases, "chả\\s+hieu", "chả hiểu");
+        addBoundaryPattern(phrases, "(?:khong|ko|k)\\s+hieu", "không hiểu");
+        addBoundaryPattern(phrases, "khong\\s+can\\s+nua", "không cần nữa");
+        addBoundaryPattern(phrases, "toi\\s+thay", "tôi thấy");
         PHRASE_REPLACEMENTS = Collections.unmodifiableMap(phrases);
 
         Map<Pattern, String> words = new LinkedHashMap<>();
@@ -366,6 +381,16 @@ public final class VietnameseQueryNormalizer {
 
         // Stage 6: Trim cuối cùng
         return result.strip();
+    }
+
+    public static String normalizeForIntentMatching(String text) {
+        String normalized = normalize(text);
+        return normalized != null ? normalized.toLowerCase(Locale.ROOT) : "";
+    }
+
+    public static String normalizeForSearch(String text) {
+        String normalized = normalize(text);
+        return normalized != null ? normalized : "";
     }
 
     private static String normalizePriceK(String text) {

@@ -71,8 +71,23 @@ public class FanpageBotController {
         if (request != null && "REENGAGE".equalsIgnoreCase(request.action())) {
             return ResponseEntity.ok(fanpageBotService.handleReengage(request));
         }
+        java.util.UUID parsedPageId = parseSafeUuid(request != null ? request.pageId() : null);
+        String msgKey = request != null
+                ? com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
+                        parsedPageId,
+                        request.senderId(),
+                        request.message(),
+                        request.history(),
+                        null
+                )
+                : null;
+        boolean duplicateEvent = msgKey != null
+                && com.example.docmind.service.bot.ConversationState.getCachedWebhookResponse(msgKey) != null;
         FanpageBotResponse response = fanpageBotService.handleCustomerMessage(request);
-        if (conversationInboxService != null && request != null) {
+        if (msgKey != null && response != null) {
+            com.example.docmind.service.bot.ConversationState.cacheWebhookResponse(msgKey, response);
+        }
+        if (!duplicateEvent && conversationInboxService != null && request != null) {
             try {
                 conversationInboxService.recordCustomerAndBotTurn(request, response);
             } catch (Exception ignored) {
@@ -132,6 +147,8 @@ public class FanpageBotController {
 
             FanpageBotResponse lastBotResponse = null;
             int processedCount = 0;
+            int deduplicatedCount = 0;
+            java.util.UUID parsedQueryPageId = parseSafeUuid(queryPageId);
             for (JsonNode entry : entries) {
                 JsonNode messagingArr = entry.path("messaging");
                 if (!messagingArr.isArray()) continue;
@@ -150,6 +167,24 @@ public class FanpageBotController {
                     if (senderId == null || text == null || text.isBlank()) {
                         continue;
                     }
+                    String mid = event.path("message").path("mid").asText(null);
+                    String eventTimestamp = event.path("timestamp").asText("");
+                    String explicitEventId = (mid != null && !mid.isBlank())
+                            ? mid.strip()
+                            : (entry.path("id").asText("") + ":" + eventTimestamp + ":" + text.strip());
+                    String dedupKey = com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
+                            parsedQueryPageId,
+                            senderId,
+                            text,
+                            List.of(),
+                            explicitEventId
+                    );
+                    FanpageBotResponse cachedWebhookResp = com.example.docmind.service.bot.ConversationState.getCachedWebhookResponse(dedupKey);
+                    if (cachedWebhookResp != null) {
+                        lastBotResponse = cachedWebhookResp;
+                        deduplicatedCount++;
+                        continue;
+                    }
                     FanpageBotRequest webhookReq = new FanpageBotRequest(
                             queryPageId,
                             senderId,
@@ -161,6 +196,9 @@ public class FanpageBotController {
                             5
                     );
                     lastBotResponse = fanpageBotService.handleCustomerMessage(webhookReq);
+                    if (dedupKey != null && lastBotResponse != null) {
+                        com.example.docmind.service.bot.ConversationState.cacheWebhookResponse(dedupKey, lastBotResponse);
+                    }
                     if (conversationInboxService != null) {
                         try {
                             conversationInboxService.recordCustomerAndBotTurn(webhookReq, lastBotResponse);
@@ -175,6 +213,9 @@ public class FanpageBotController {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("status", "ok");
             out.put("processed_events", processedCount);
+            if (deduplicatedCount > 0) {
+                out.put("deduplicated_events", deduplicatedCount);
+            }
             if (lastBotResponse != null) {
                 out.put("bot_response", lastBotResponse);
             }
@@ -182,6 +223,17 @@ public class FanpageBotController {
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(Map.of("status", "error", "message", e.getMessage() != null ? e.getMessage() : "Invalid payload"));
+        }
+    }
+
+    private static java.util.UUID parseSafeUuid(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return java.util.UUID.fromString(raw.strip());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

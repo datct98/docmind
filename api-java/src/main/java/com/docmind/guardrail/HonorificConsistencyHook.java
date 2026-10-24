@@ -22,9 +22,9 @@ public class HonorificConsistencyHook implements GuardrailHook {
     public static final String HOOK_CODE = "HOOK_HONORIFIC_CONSISTENCY";
     public static final String CODE = HOOK_CODE;
 
-    // Hỗ trợ cả có slash ("anh/chị") lẫn không slash ("anh chị", "chị anh", "anh, chị")
+    // Hỗ trợ cả có slash ("anh/chị") lẫn không slash ("anh chị", "chị anh", "anh, chị"), trừ cụm số nhiều "nhiều anh/chị"
     private static final Pattern ANH_CHI_PATTERN = Pattern.compile(
-            "(?iU)(?<!\\p{L})(?:anh\\s*[/,]?\\s*chị|chị\\s*[/,]?\\s*anh)(?!\\p{L})"
+            "(?iU)(?<!nhiều\\s)(?<!\\p{L})(?:anh\\s*[/,]?\\s*chị|chị\\s*[/,]?\\s*anh)(?!\\p{L})"
     );
     private static final Pattern REPEATED_ANH_PATTERN = Pattern.compile("(?iU)(?<!\\p{L})anh\\s*,?\\s+anh(?!\\p{L})");
     private static final Pattern REPEATED_CHI_PATTERN = Pattern.compile("(?iU)(?<!\\p{L})chị\\s*,?\\s+chị(?!\\p{L})");
@@ -41,8 +41,8 @@ public class HonorificConsistencyHook implements GuardrailHook {
             "(?<!\\p{L})((?i:anh|chị))\\s+(t|(?i:mình|mìn|minh|mk|mik|tui|tớ))(?=[,\\s.!?:;]|$)"
     );
 
-    // Thay thế chính xác giữ nguyên capitalization trong 1 lượt duy nhất
-    private static final Pattern CHI_REPLACEMENT_PATTERN = Pattern.compile("(?iU)(?<!\\p{L})chị(?!\\p{L})");
+    // Thay thế chính xác giữ nguyên capitalization trong 1 lượt duy nhất (bảo vệ cụm "nhiều anh/chị")
+    private static final Pattern CHI_REPLACEMENT_PATTERN = Pattern.compile("(?iU)(?<!nhiều\\sanh/)(?<!\\p{L})chị(?!\\p{L})");
 
     // Thay thế variable-length lookbehind bằng capturing group forward để triệt tiêu ReDoS
     private static final Pattern BAN1_PATTERN = Pattern.compile(

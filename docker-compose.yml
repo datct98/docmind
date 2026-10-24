@@ -40,12 +40,22 @@ services:
     container_name: docmind-doc-service
     ports:
       - "8091:8091"
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
       # false = không ghi artifact debug (ảnh render, JSON trung gian) ra đĩa.
       - DOCMIND_PERSIST_ARTIFACTS=${DOCMIND_PERSIST_ARTIFACTS:-false}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
       - DOCMIND_INTERNAL_TOKEN=${INTERNAL_API_TOKEN:-docmind-internal-secret-token-2026}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"]
       interval: 15s
@@ -107,14 +117,14 @@ services:
       - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-120}
       - LLM_REASONING_EFFORT=${LLM_REASONING_EFFORT:-}
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-0}
-      # Legacy & Ollama-specific tuning
+      # Legacy & Ollama-specific tuning (reads from LLM_* first, falls back to OLLAMA_*)
       - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b-instruct-q5_K_M}
+      - OLLAMA_BASE_URL=${LLM_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      - OLLAMA_MODEL=${LLM_MODEL:-${OLLAMA_MODEL:-}}
       - OLLAMA_FALLBACK_MODEL=${OLLAMA_FALLBACK_MODEL:-}
-      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0.2}
-      - OLLAMA_TOP_P=${OLLAMA_TOP_P:-0.9}
+      - OLLAMA_TEMPERATURE=${LLM_TEMPERATURE:-${OLLAMA_TEMPERATURE:-0.2}}
+      - OLLAMA_TOP_P=${LLM_TOP_P:-${OLLAMA_TOP_P:-0.9}}
       - OLLAMA_REPEAT_PENALTY=${OLLAMA_REPEAT_PENALTY:-1.08}
       - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-4096}
       - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-600}

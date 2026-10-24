@@ -7,6 +7,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Cấu hình "Lớp da Nhân cách" (Configurable Persona Skin) cho từng Page/Tenant.
@@ -34,7 +35,27 @@ public record PagePersonaConfig(
         @JsonProperty("closing_action")
         String closingAction,
         @JsonProperty("cta_template")
-        String ctaTemplate
+        String ctaTemplate,
+        @JsonProperty("opening_bubbles")
+        List<String> openingBubbles,
+        @JsonProperty("post_price_delay_ms")
+        Integer postPriceDelayMs,
+        @JsonProperty("preference_discovery_prompt")
+        String preferenceDiscoveryPrompt,
+        @JsonProperty("condition_discovery_prompt")
+        String conditionDiscoveryPrompt,
+        @JsonProperty("condition_discovery_prompt_alt")
+        String conditionDiscoveryPromptAlt,
+        @JsonProperty("active_prompt_compact")
+        String activePromptCompact,
+        @JsonProperty("symptom_keywords")
+        List<String> symptomKeywords,
+        @JsonProperty("body_area_keywords")
+        List<String> bodyAreaKeywords,
+        @JsonProperty("service_family_keywords")
+        Map<String, List<String>> serviceFamilyKeywords,
+        @JsonProperty("emotion_signals")
+        Map<String, Object> emotionSignals
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -49,12 +70,52 @@ public record PagePersonaConfig(
             List<String> domainKeywords
     ) {
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
-                toneStyle, emojiLevel, forbiddenWords, domainKeywords, null, null);
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, null, null, List.of(), null, null,
+                null, null, null, List.of(), List.of(), Map.of(), Map.of());
+    }
+
+    public PagePersonaConfig(
+            String industryCode,
+            String botName,
+            String selfPronoun,
+            String defaultCustomerPronoun,
+            String toneStyle,
+            String emojiLevel,
+            List<String> forbiddenWords,
+            List<String> domainKeywords,
+            String closingAction,
+            String ctaTemplate
+    ) {
+        this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate, List.of(), null, null,
+                null, null, null, List.of(), List.of(), Map.of(), Map.of());
+    }
+
+    public PagePersonaConfig(
+            String industryCode,
+            String botName,
+            String selfPronoun,
+            String defaultCustomerPronoun,
+            String toneStyle,
+            String emojiLevel,
+            List<String> forbiddenWords,
+            List<String> domainKeywords,
+            String closingAction,
+            String ctaTemplate,
+            List<String> openingBubbles,
+            Integer postPriceDelayMs,
+            String preferenceDiscoveryPrompt
+    ) {
+        this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
+                openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
+                null, null, null, List.of(), List.of(), Map.of(), Map.of());
     }
 
     public static PagePersonaConfig empty() {
         return new PagePersonaConfig(
-                null, null, null, null, null, null, List.of(), List.of(), null, null
+                null, null, null, null, null, null, List.of(), List.of(), null, null, List.of(), null, null,
+                null, null, null, List.of(), List.of(), Map.of(), Map.of()
         );
     }
 
@@ -68,7 +129,68 @@ public record PagePersonaConfig(
                 || (forbiddenWords != null && !forbiddenWords.isEmpty())
                 || (domainKeywords != null && !domainKeywords.isEmpty())
                 || (closingAction != null && !closingAction.isBlank())
-                || (ctaTemplate != null && !ctaTemplate.isBlank());
+                || (ctaTemplate != null && !ctaTemplate.isBlank())
+                || (openingBubbles != null && !openingBubbles.isEmpty())
+                || postPriceDelayMs != null
+                || (preferenceDiscoveryPrompt != null && !preferenceDiscoveryPrompt.isBlank())
+                || (conditionDiscoveryPrompt != null && !conditionDiscoveryPrompt.isBlank())
+                || (activePromptCompact != null && !activePromptCompact.isBlank());
+    }
+
+    public int resolvedPostPriceDelayMs() {
+        if (postPriceDelayMs != null && postPriceDelayMs >= 1000) {
+            return postPriceDelayMs;
+        }
+        return 10_000;
+    }
+
+    public List<String> resolvedOpeningBubbles(String pageName, String pageDescription, String customerHonorific) {
+        String h = (customerHonorific != null && !customerHonorific.isBlank())
+                ? customerHonorific.strip()
+                : resolvedDefaultCustomerPronoun();
+        String selfP = resolvedSelfPronoun();
+        String bName = (botName != null && !botName.isBlank()) ? botName.strip() : "Trợ lý Tư vấn";
+        String sName = (pageName != null && !pageName.isBlank()) ? pageName.strip() : "Shop";
+
+        if (openingBubbles != null && openingBubbles.size() >= 2) {
+            return List.of(
+                    interpolateOpeningPlaceholders(openingBubbles.get(0), h, selfP, bName, sName),
+                    interpolateOpeningPlaceholders(openingBubbles.get(1), h, selfP, bName, sName)
+            );
+        }
+        String bubble1 = "Dạ chào " + h + ", " + selfP + " là " + bName + " của " + sName + " ạ.";
+        String bubble2;
+        if (openingBubbles != null && openingBubbles.size() == 1 && !openingBubbles.get(0).isBlank()) {
+            bubble2 = interpolateOpeningPlaceholders(openingBubbles.get(0), h, selfP, bName, sName);
+        } else if (pageDescription != null && !pageDescription.isBlank()) {
+            String cleanDesc = pageDescription.strip();
+            if (!cleanDesc.endsWith(".")) {
+                cleanDesc = cleanDesc + ".";
+            }
+            bubble2 = cleanDesc;
+        } else {
+            bubble2 = "Bên " + selfP + " chuyên cung cấp sản phẩm và dịch vụ tư vấn tận tâm, chuẩn xác theo nhu cầu của " + h + ".";
+        }
+        return List.of(bubble1, bubble2);
+    }
+
+    private static String interpolateOpeningPlaceholders(
+            String template, String honorific, String selfPronoun, String botName, String shopName) {
+        if (template == null) {
+            return "";
+        }
+        String capH = (honorific != null && !honorific.isBlank())
+                ? Character.toUpperCase(honorific.charAt(0)) + honorific.substring(1)
+                : "Mình";
+        return template
+                .replace("{customer_pronoun}", honorific)
+                .replace("{honorific}", honorific)
+                .replace("{CapHonorific}", capH)
+                .replace("{self_pronoun}", selfPronoun)
+                .replace("{bot_name}", botName)
+                .replace("{shop_name}", shopName)
+                .replace("{page_name}", shopName)
+                .strip();
     }
 
     public String resolvedClosingAction() {
@@ -83,6 +205,47 @@ public record PagePersonaConfig(
             return ctaTemplate.strip();
         }
         return "";
+    }
+
+    public boolean isNonSpaIndustry() {
+        return industryCode != null
+                && !industryCode.isBlank()
+                && !"spa_wellness".equalsIgnoreCase(industryCode)
+                && !"BEAUTY_SPA".equalsIgnoreCase(industryCode);
+    }
+
+    public String resolvedConditionDiscoveryPrompt(String customerHonorific) {
+        String h = (customerHonorific != null && !customerHonorific.isBlank())
+                ? customerHonorific.strip()
+                : resolvedDefaultCustomerPronoun();
+        String capH = Character.toUpperCase(h.charAt(0)) + h.substring(1);
+        if (conditionDiscoveryPrompt != null && !conditionDiscoveryPrompt.isBlank()) {
+            return conditionDiscoveryPrompt.strip()
+                    .replace("{customer_pronoun}", h)
+                    .replace("{honorific}", h)
+                    .replace("{CapHonorific}", capH);
+        }
+        if (isNonSpaIndustry()) {
+            return capH + " gặp tình trạng này lâu chưa hay mới gần đây để " + resolvedSelfPronoun() + " tư vấn gói phù hợp nhất ạ?";
+        }
+        return capH + " bị lâu chưa hay mới gần đây, và thường căng sau ngồi lâu hay vận động nhiều ạ?";
+    }
+
+    public String resolvedPreferenceDiscoveryPrompt(String customerHonorific) {
+        String h = (customerHonorific != null && !customerHonorific.isBlank())
+                ? customerHonorific.strip()
+                : resolvedDefaultCustomerPronoun();
+        String capH = Character.toUpperCase(h.charAt(0)) + h.substring(1);
+        if (preferenceDiscoveryPrompt != null && !preferenceDiscoveryPrompt.isBlank()) {
+            return preferenceDiscoveryPrompt.strip()
+                    .replace("{customer_pronoun}", h)
+                    .replace("{honorific}", h)
+                    .replace("{CapHonorific}", capH);
+        }
+        if (isNonSpaIndustry()) {
+            return capH + " ưu tiên phương án cơ bản tiết kiệm hay chuyên sâu để " + resolvedSelfPronoun() + " báo chi tiết ạ?";
+        }
+        return capH + " thích lực nhẹ thư giãn hay lực vừa để thả lỏng vùng này cho dễ chịu ạ?";
     }
 
     public String resolvedSelfPronoun() {
@@ -110,15 +273,42 @@ public record PagePersonaConfig(
     }
 
     public List<String> safeDomainKeywords() {
-        return domainKeywords != null ? domainKeywords : Collections.emptyList();
+        java.util.Set<String> merged = new java.util.LinkedHashSet<>();
+        if (domainKeywords != null) {
+            for (String kw : domainKeywords) {
+                if (kw != null && !kw.isBlank()) merged.add(kw.strip());
+            }
+        }
+        if (symptomKeywords != null) {
+            for (String kw : symptomKeywords) {
+                if (kw != null && !kw.isBlank()) merged.add(kw.strip());
+            }
+        }
+        if (bodyAreaKeywords != null) {
+            for (String kw : bodyAreaKeywords) {
+                if (kw != null && !kw.isBlank()) merged.add(kw.strip());
+            }
+        }
+        if (serviceFamilyKeywords != null) {
+            for (Map.Entry<String, List<String>> e : serviceFamilyKeywords.entrySet()) {
+                if (e.getKey() != null && !e.getKey().isBlank()) merged.add(e.getKey().strip());
+                if (e.getValue() != null) {
+                    for (String v : e.getValue()) {
+                        if (v != null && !v.isBlank()) merged.add(v.strip());
+                    }
+                }
+            }
+        }
+        return merged.isEmpty() ? Collections.emptyList() : List.copyOf(merged);
     }
 
     public boolean matchesDomainKeyword(String text) {
-        if (text == null || text.isBlank() || domainKeywords == null || domainKeywords.isEmpty()) {
+        List<String> allKw = safeDomainKeywords();
+        if (text == null || text.isBlank() || allKw.isEmpty()) {
             return false;
         }
         String lower = text.toLowerCase(Locale.ROOT);
-        for (String kw : domainKeywords) {
+        for (String kw : allKw) {
             if (kw != null && !kw.isBlank() && lower.contains(kw.strip().toLowerCase(Locale.ROOT))) {
                 return true;
             }
@@ -131,6 +321,28 @@ public record PagePersonaConfig(
             return empty();
         }
         try {
+            tools.jackson.databind.JsonNode node = MAPPER.readTree(json);
+            if (node != null && node.isObject()) {
+                tools.jackson.databind.node.ObjectNode obj = (tools.jackson.databind.node.ObjectNode) node;
+                tools.jackson.databind.JsonNode sfk = obj.get("service_family_keywords");
+                if (sfk != null && sfk.isArray()) {
+                    tools.jackson.databind.node.ObjectNode sfkMap = MAPPER.createObjectNode();
+                    for (tools.jackson.databind.JsonNode item : sfk) {
+                        if (item != null && item.isTextual()) {
+                            tools.jackson.databind.node.ArrayNode arr = MAPPER.createArrayNode();
+                            arr.add(item.asText());
+                            sfkMap.set(item.asText(), arr);
+                        }
+                    }
+                    obj.set("service_family_keywords", sfkMap);
+                }
+                tools.jackson.databind.JsonNode emo = obj.get("emotion_signals");
+                if (emo != null && !emo.isObject()) {
+                    obj.remove("emotion_signals");
+                }
+                PagePersonaConfig parsed = MAPPER.treeToValue(obj, PagePersonaConfig.class);
+                return parsed != null ? parsed : empty();
+            }
             PagePersonaConfig parsed = MAPPER.readValue(json, PagePersonaConfig.class);
             return parsed != null ? parsed : empty();
         } catch (Exception e) {

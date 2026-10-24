@@ -487,7 +487,7 @@ public class DocumentService {
 
     /**
      * Dựng breadcrumb chuỗi từ heading_path để gắn vào đầu văn bản trước khi sinh dense vector embedding.
-     * Ví dụ: ["MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM)"] -> "[MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM)]"
+     * Ví dụ: ["DANH MỤC", "Cơ sở Quận 1 (TP.HCM)"] -> "[DANH MỤC > Cơ sở Quận 1 (TP.HCM)]"
      */
     public static String formatHeadingPrefix(String[] headingPath) {
         if (headingPath == null || headingPath.length == 0) {

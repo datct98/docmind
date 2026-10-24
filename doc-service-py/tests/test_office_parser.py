@@ -159,3 +159,53 @@ def test_single_row_header_table_preserved_in_grid_blocks():
     assert blocks[0].type == BlockType.TABLE
     assert "| Mã dịch vụ | Tên dịch vụ | Đơn giá | Thời lượng |" in blocks[0].markdown
     assert "<th>Mã dịch vụ</th>" in blocks[0].html
+
+
+def test_side_by_side_detail_strip_joined_and_post_faq_menu_heading():
+    """Verify side-by-side 'Quy trình chi tiết' strip is joined into main package rows and post-FAQ menu gets its own heading."""
+    rows = [
+        ["MASSAGE", "", "", "", "", "", "", ""],
+        ["Cơ sở Nàng Sen Bích Câu", "Địa chỉ: 6 Bích Câu - Hà Nội", "", "", "", "", "", ""],
+        ["Mã gói", "Tên gói dịch vụ", "Thời gian", "Giá (VNĐ)", "", "Mã gói", "Tên gói dịch vụ", "Giá (VNĐ)", "Quy trình chi tiết"],
+        ["NS01", "Massage trị liệu cơ bản", "60 phút", "399.000VNĐ", "", "NS01", "Massage trị liệu cơ bản", "399.000 VNĐ", "• Massage full body • Tập trung cổ vai gáy, lưng, chân, tay"],
+        ["", "", "", "", "", "", "", "", ""],
+        ["FAQ", "", "", "", "", "", "", "", ""],
+        ["Massage có đau không?", "Kỹ thuật viên điều chỉnh lực phù hợp.", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", ""],
+        ["banh my bo sot vang", "", "", "", "", "", "", "", ""],
+        ["trung ngại cuu", "", "", "", "", "", "", "", ""],
+    ]
+    blocks: list[Block] = []
+    mk = _make_block_factory()
+
+    _emit_spreadsheet_grid_blocks(
+        filtered_rows=rows,
+        base_heading_path=[],
+        blocks=blocks,
+        start_local_index=0,
+        mk=mk,
+        parse_version="test-2.0",
+    )
+
+    table_blocks = [b for b in blocks if b.type == BlockType.TABLE]
+    list_blocks = [b for b in blocks if b.type == BlockType.LIST]
+
+    # Main massage table should include joined "Quy trình chi tiết" column
+    massage_tables = [b for b in table_blocks if b.heading_path and b.heading_path[0] == "MASSAGE" and "Bích Câu" in " ".join(b.heading_path)]
+    assert len(massage_tables) == 1
+    assert "Quy trình chi tiết" in massage_tables[0].markdown
+    assert "cổ vai gáy, lưng, chân, tay" in massage_tables[0].markdown
+
+    # Side strip table must have heading_path under MASSAGE, NOT FAQ
+    side_tables = [b for b in table_blocks if b.heading_path == ["MASSAGE", "Quy trình chi tiết"]]
+    assert len(side_tables) == 1
+
+    # Post-FAQ menu table must preserve parent FAQ heading and subheading with restored Vietnamese food items
+    menu_tables = [
+        b for b in table_blocks
+        if b.heading_path == ["FAQ", "Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình"]
+    ]
+    assert len(menu_tables) == 1
+    assert "Bánh mì bò sốt vang" in menu_tables[0].text
+    assert "Trứng ngải cứu" in menu_tables[0].text
+

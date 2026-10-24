@@ -79,6 +79,10 @@ public class SampleDialogueEntity {
     @Column(name = "review_status", nullable = false, length = 32)
     private String reviewStatus = "APPROVED";
 
+    @Builder.Default
+    @Column(name = "quality_label", length = 64)
+    private String qualityLabel = "APPROVED_GOOD";
+
     @Column(name = "quarantined_reason", columnDefinition = "TEXT")
     private String quarantinedReason;
 

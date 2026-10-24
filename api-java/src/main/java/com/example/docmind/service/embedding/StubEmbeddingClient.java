@@ -32,7 +32,7 @@ public class StubEmbeddingClient implements EmbeddingClient {
     }
 
     private static final String[][] VI_SEMANTIC_CONCEPTS = new String[][]{
-            {"__concept_neck_shoulder_pain__", "mỏi vai", "bả vai", "cổ vai gáy", "vai gáy", "căng cơ", "bó cơ", "nhức mỏi", "đau nhức", "đau vai", "đau cổ", "ngồi máy tính", "văn phòng", "ngồi làm việc", "ấn huyệt", "bấm huyệt", "giải cơ"},
+            {"__concept_neck_shoulder_pain__", "mỏi vai", "bả vai", "cổ vai", "vùng gáy", "căng cơ", "bó cơ", "nhức mỏi", "đau nhức", "đau vai", "đau cổ", "ngồi máy tính", "văn phòng", "ngồi làm việc", "ấn huyệt", "bấm huyệt", "giải cơ"},
             {"__concept_headache_sleep__", "đau đầu", "nặng đầu", "mất ngủ", "khó ngủ", "ngủ không sâu", "tiền đình", "căng thẳng", "stress", "áp lực công việc", "dưỡng sinh đầu"},
             {"__concept_herbal_therapy_process__", "ngâm bồn", "thảo dược", "xông hơi", "ngải cứu", "chườm nóng", "muối gừng", "ngâm chân", "quy trình", "các bước", "điểm tâm", "thực dưỡng"},
             {"__concept_pricing_packages__", "bảng giá", "mức giá", "chi phí", "bao nhiêu tiền", "niêm yết", "399.000", "530.000", "580.000", "129.000", "239.000", "trọn gói", "không nhận tip"},

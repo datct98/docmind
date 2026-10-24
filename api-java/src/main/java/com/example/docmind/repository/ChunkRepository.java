@@ -15,7 +15,8 @@ public interface ChunkRepository extends JpaRepository<ChunkEntity, UUID>, Chunk
     @Query("DELETE FROM ChunkEntity c WHERE c.documentId = :documentId")
     void deleteByDocumentId(@Param("documentId") UUID documentId);
 
-    List<ChunkEntity> findByPageId(UUID pageId);
+    @Query("SELECT c FROM ChunkEntity c WHERE c.pageId = :pageId AND NOT EXISTS (SELECT 1 FROM DocumentEntity d WHERE d.id = c.documentId AND d.active = false)")
+    List<ChunkEntity> findByPageId(@Param("pageId") UUID pageId);
 
     List<ChunkEntity> findByDocumentIdIn(List<UUID> documentIds);
 

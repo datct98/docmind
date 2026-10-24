@@ -170,7 +170,7 @@ class FanpageBotPromptBuilderToneTest {
 
         // Core Empathy Directives
         assertThat(prompt).contains("THẤU CẢM TRIỆU CHỨNG (EMPATHY FIRST)");
-        assertThat(prompt).contains("Khách đang gặp triệu chứng mệt mỏi thể chất (đau mỏi vai gáy, mất ngủ, stress, đau lưng...)");
+        assertThat(prompt).contains("Khách đang gặp triệu chứng mệt mỏi thể chất (đau mỏi cổ vai, mất ngủ, stress, đau lưng...)");
         assertThat(prompt).contains("BẮT BUỘC dành câu đầu tiên để đồng cảm chân thành và công nhận sự khó chịu");
         assertThat(prompt).contains("CẤM xả thông tin dồn dập hay chốt lịch ép buộc");
     }

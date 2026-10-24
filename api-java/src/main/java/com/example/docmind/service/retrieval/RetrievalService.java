@@ -134,6 +134,8 @@ public class RetrievalService {
                     || rawQuestionLower.contains("sđt")) && !asksExplicitPrice;
 
             boolean isCoolingMsg = isCoolingOrHesitationQuery(rawQuestionLower);
+            boolean isPriceObjOrDownsellMsg = isPriceObjectionOrDownsellQuery(rawQuestionLower);
+            boolean isTrialOrCorrectionMsg = isTrialOrCorrectionQuery(rawQuestionLower);
 
             // Vector search trên learned_rules (nếu có pageId thì chỉ lấy rule của page đó + global rules)
             if (queryEmbedding != null) {
@@ -150,6 +152,12 @@ public class RetrievalService {
                         continue;
                     }
                     if (isCoolingSpecificRule(r) && !isCoolingMsg) {
+                        continue;
+                    }
+                    if (isPriceObjectionSpecificRule(r) && !isPriceObjOrDownsellMsg) {
+                        continue;
+                    }
+                    if (isTrialOrCorrectionSpecificRule(r) && !isTrialOrCorrectionMsg) {
                         continue;
                     }
                     LearnedRuleDto dto = LearnedRuleDto.fromEntity(r);
@@ -176,6 +184,12 @@ public class RetrievalService {
                     continue;
                 }
                 if (isCoolingSpecificRule(r) && !isCoolingMsg) {
+                    continue;
+                }
+                if (isPriceObjectionSpecificRule(r) && !isPriceObjOrDownsellMsg) {
+                    continue;
+                }
+                if (isTrialOrCorrectionSpecificRule(r) && !isTrialOrCorrectionMsg) {
                     continue;
                 }
                 int matchedKwCount = 0;
@@ -245,8 +259,18 @@ public class RetrievalService {
             keywordsToExpand.add("tắm xông");
             keywordsToExpand.add("phục hồi");
         }
+        if (pageId != null) {
+            for (String scope : com.example.docmind.service.bot.ConversationState.extractTargetScopes(question, List.of())) {
+                keywordsToExpand.add(scope);
+            }
+            keywordsToExpand.add("bảng giá");
+            keywordsToExpand.add("có giá");
+        }
         if (FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(question)) {
-            keywordsToExpand.add("cổ vai gáy");
+            for (String scope : com.example.docmind.service.bot.ConversationState.extractTargetScopes(question, List.of())) {
+                keywordsToExpand.add(scope);
+            }
+            keywordsToExpand.add("thư giãn");
             keywordsToExpand.add("căng cơ");
             keywordsToExpand.add("phục hồi");
             keywordsToExpand.add("trị liệu");
@@ -485,7 +509,8 @@ public class RetrievalService {
                 || q.contains("khởi điểm") || q.contains("rẻ") || q.contains("mềm") || q.contains("thấp")
                 || q.contains("tiết kiệm") || q.contains("nhỏ") || q.contains("cao thế") || q.contains("cao quá")
                 || q.contains("cao vậy") || q.contains("hơi cao") || q.contains("giá cao") || q.contains("đắt")
-                || q.contains("mắc") || q.contains("chát");
+                || q.contains("mắc") || q.contains("chát") || q.contains("gói khác") || q.contains("gói nào nữa")
+                || q.contains("còn gói") || q.contains("lựa chọn khác");
         boolean isHighTierSpecificQuery = q.contains("vip") || q.contains("tinh hoa") || q.contains("chuyên sâu")
                 || q.contains("đá muối") || q.contains("nhiệt cứu") || q.contains("xông hơi") || q.contains("120 phút")
                 || q.contains("105 phút");
@@ -493,54 +518,74 @@ public class RetrievalService {
                 || q.contains("dịch vụ") || q.contains("sản phẩm") || q.contains("chi phí")
                 || q.contains("giá") || q.contains("bao nhiêu") || q.contains("gói") || q.contains("liệu trình")
                 || q.contains("phù hợp") || q.contains("tuổi") || q.contains("trung niên") || q.contains("nam")
-                || q.contains("dùng được") || q.contains("gội đầu") || q.contains("massage") || q.contains("cổ vai gáy");
+                || q.contains("dùng được") || q.contains("gội đầu") || q.contains("massage");
+
+        List<String> queryScopes = com.example.docmind.service.bot.ConversationState.extractTargetScopes(q, List.of());
+        int scopeBoost = 0;
+        if (!queryScopes.isEmpty()) {
+            boolean headingMatchesScope = queryScopes.stream().anyMatch(headings::contains);
+            boolean textMatchesScope = queryScopes.stream().anyMatch(text::contains);
+            if (headingMatchesScope) {
+                scopeBoost = 2;
+            } else if (textMatchesScope) {
+                scopeBoost = 1;
+            }
+        }
 
         List<String> semanticTags = ChunkMetadataExtractor.extractSemanticTags(headings, text);
         boolean hasTable = text.contains("|") && text.contains("---");
         boolean isPromoChunk = (hasTable && (headings.contains("chiết khấu") || headings.contains("combo")
                 || headings.contains("ưu đãi") || text.contains("tên ưu đãi") || text.contains("mức ưu đãi")
                 || text.contains("voucher"))) || semanticTags.contains("scarcity_promo");
-        boolean isProcessChunk = hasTable && (headings.contains("quy trình") || headings.contains("lưu_ý")
+        boolean isProcessChunk = hasTable && !text.contains("| mã gói |") && (headings.contains("quy trình") || headings.contains("lưu_ý")
                 || headings.contains("chi tiết")
                 || text.contains("| bước |") || text.contains("mục đích / lợi ích") || text.contains("quy trình chi tiết")
                 || text.contains("gồm những gì") || text.contains("tập trung vào gì")
                 || text.contains("bấm huyệt") || text.contains("chườm ngải cứu"));
         boolean isTreatmentFaqChunk = hasTable && (headings.contains("khách hỏi") || headings.contains("faq")
                 || headings.contains("lưu_ý_quy_trình") || text.contains("| nội dung | chi tiết |")
-                || text.contains("căng cứng vùng cổ vai gáy") || text.contains("gồm những gì?")
+                || text.contains("căng cứng vùng") || text.contains("gồm những gì?")
                 || text.contains("tập trung vào gì?"));
         boolean isWarrantyChunk = semanticTags.contains("warranty_return");
         boolean isSocialProofChunk = semanticTags.contains("social_proof");
         boolean isSpecChunk = semanticTags.contains("spec_ingredients");
 
         if (isPromoQuery && isPromoChunk) {
-            return 3;
+            return 3 + scopeBoost;
         }
         if (isProcessQuery && (isProcessChunk || isTreatmentFaqChunk)) {
-            return (!q.contains("giá") && !q.contains("bao nhiêu")) ? 4 : 3;
+            return ((!q.contains("giá") && !q.contains("bao nhiêu")) ? 4 : 3) + scopeBoost;
         }
         if (isSymptomQuery && (isTreatmentFaqChunk || isProcessChunk)) {
-            return 3;
+            return 3 + scopeBoost;
         }
         if (isWarrantyQuery && isWarrantyChunk) {
-            return 3;
+            return 3 + scopeBoost;
         }
         if (isSocialProofQuery && isSocialProofChunk) {
-            return 3;
+            return 3 + scopeBoost;
         }
         if (isSpecQuery && isSpecChunk) {
-            return 3;
+            return 3 + scopeBoost;
+        }
+        boolean isMultiPackageCatalogTable = (text.contains("| mã gói |") || text.contains("| mã dịch vụ |") || text.contains("| mã sp |"))
+                && text.split("\\r?\\n").length >= 5;
+        boolean isAuthoritativePriceChunk = (headings.contains("bảng giá")
+                && (text.contains("có giá") || text.contains("mức thời lượng") || text.contains("bảng giá chính thức")))
+                || isMultiPackageCatalogTable;
+        if (isAuthoritativePriceChunk && (isCatalogOrSuitabilityQuery || isSymptomQuery || !queryScopes.isEmpty())) {
+            return 5 + scopeBoost;
         }
         if (!isCatalogOrSuitabilityQuery && !isPromoQuery && !isProcessQuery && !isSymptomQuery
                 && !isWarrantyQuery && !isSocialProofQuery && !isSpecQuery) {
-            return 0;
+            return isAuthoritativePriceChunk ? (4 + scopeBoost) : scopeBoost;
         }
         if (isPriceCatalogTable(c)) {
             boolean hasSpecificPriceTokens = !extractExpandedPriceTokens(q).isEmpty();
             if (isEntryLevelPriceChunk(c) && (isEntryOrDownsellQuery || (!hasSpecificPriceTokens && !isHighTierSpecificQuery))) {
-                return 3;
+                return 3 + scopeBoost;
             }
-            return 2;
+            return 2 + scopeBoost;
         }
         if (isPromoChunk && isEntryOrDownsellQuery) {
             return 2;
@@ -692,6 +737,56 @@ public class RetrievalService {
                 || combined.contains("phản hồi ngắn đối phó");
     }
 
+    private static boolean isPriceObjectionSpecificRule(LearnedRuleEntity r) {
+        if (r == null) {
+            return false;
+        }
+        String code = r.getRuleCode() != null ? r.getRuleCode().toUpperCase(java.util.Locale.ROOT) : "";
+        String cat = r.getCategory() != null ? r.getCategory().toUpperCase(java.util.Locale.ROOT) : "";
+        if (code.contains("PRICE-OBJECTION") || code.equals("PB-001") || code.equals("PB-002")
+                || cat.equals("PRICE_OBJECTION") || cat.equals("EXPLICIT_DOWNSELL")) {
+            return true;
+        }
+        String combined = ((r.getTriggerCondition() != null ? r.getTriggerCondition() : "") + " "
+                + (r.getCueSignal() != null ? r.getCueSignal() : "")).toLowerCase(java.util.Locale.ROOT);
+        return combined.contains("price_objection")
+                || combined.contains("chê giá")
+                || combined.contains("chê đắt")
+                || combined.contains("hơi đắt")
+                || combined.contains("hơi cao")
+                || combined.contains("gói nào mềm hơn")
+                || combined.contains("gói nào rẻ hơn");
+    }
+
+    private static boolean isPriceObjectionOrDownsellQuery(String lowerQuestion) {
+        if (lowerQuestion == null || lowerQuestion.isBlank()) {
+            return false;
+        }
+        return com.example.docmind.service.bot.SentimentIntentLayer.isPriceObjection(lowerQuestion)
+                || com.example.docmind.service.bot.SentimentIntentLayer.isExplicitDownsellRequest(lowerQuestion)
+                || com.example.docmind.service.bot.SentimentIntentLayer.isPackageRejectionMessage(lowerQuestion)
+                || com.example.docmind.service.bot.SentimentIntentLayer.isAlternativePackageRequest(lowerQuestion);
+    }
+
+    private static boolean isTrialOrCorrectionSpecificRule(LearnedRuleEntity r) {
+        if (r == null) {
+            return false;
+        }
+        String code = r.getRuleCode() != null ? r.getRuleCode().toUpperCase(java.util.Locale.ROOT) : "";
+        String cat = r.getCategory() != null ? r.getCategory().toUpperCase(java.util.Locale.ROOT) : "";
+        return code.contains("TRIAL-ACCEPT") || code.contains("CORRECTION")
+                || cat.equals("TRIAL_ACCEPT") || cat.equals("CORRECTION");
+    }
+
+    private static boolean isTrialOrCorrectionQuery(String lowerQuestion) {
+        if (lowerQuestion == null || lowerQuestion.isBlank()) {
+            return false;
+        }
+        return com.example.docmind.service.bot.SentimentIntentLayer.isTrialAcceptanceMessage(lowerQuestion)
+                || com.example.docmind.service.bot.SentimentIntentLayer.isEntityMismatchCorrection(lowerQuestion)
+                || com.example.docmind.service.bot.PrimaryActionRouter.isFrustrationMessage(lowerQuestion);
+    }
+
     private static boolean isCoolingOrHesitationQuery(String lowerQuestion) {
         if (lowerQuestion == null || lowerQuestion.isBlank()) {
             return false;
@@ -713,12 +808,13 @@ public class RetrievalService {
         }
         return switch (normKw) {
             case "tư vấn", "liên hệ", "liên hệ tư vấn", "gói", "liệu", "trị", "quy", "tắc", "global", "rule",
-                 "của", "với", "bằng", "ngắn", "câu", "hỏi", "khách", "hàng", "thật", "cho", "các", "khi",
-                 "cần", "như", "này", "được", "không", "trong", "hoặc", "nhưng", "phải", "luôn", "trước",
-                 "sau", "đang", "rất", "hơn", "nhất", "tốt", "mức", "báo", "đặt", "tìm", "quyền", "cân",
-                 "nhắc", "hoàn", "toàn", "tuyệt", "đối", "chốt", "bán", "lực", "phản", "hồi", "dấu", "hiệu",
-                 "giai", "đoạn", "discovery", "temperature_delta", "harness", "chuẩn", "mực", "đồng", "duy",
-                 "trì", "tối", "bong", "bóng", "kết", "thúc", "xưng", "gọn", "chẩn", "đoán", "rào", "cản" -> true;
+                 "giá", "shop", "bên", "mình", "của", "với", "bằng", "ngắn", "câu", "hỏi", "khách", "hàng",
+                 "thật", "cho", "các", "khi", "cần", "như", "này", "được", "không", "trong", "hoặc", "nhưng",
+                 "phải", "luôn", "trước", "sau", "đang", "rất", "hơn", "nhất", "tốt", "mức", "báo", "đặt",
+                 "tìm", "quyền", "cân", "nhắc", "hoàn", "toàn", "tuyệt", "đối", "chốt", "bán", "lực", "phản",
+                 "hồi", "dấu", "hiệu", "giai", "đoạn", "discovery", "temperature_delta", "harness", "chuẩn",
+                 "mực", "đồng", "duy", "trì", "tối", "bong", "bóng", "kết", "thúc", "xưng", "gọn", "chẩn",
+                 "đoán", "rào", "cản" -> true;
             default -> false;
         };
     }

@@ -20,12 +20,26 @@ public record ReasoningBudget(
 ) {
     public static final int SIMPLE_TIMEOUT_SECONDS = 15;
     public static final int SIMPLE_MAX_TOKENS = 600;
-    public static final int SALES_CHAT_MAX_TOKENS = 700;
+    public static final int SALES_CHAT_MAX_TOKENS = 600;
     public static final double SIMPLE_TEMPERATURE = 0.1;
     public static final double DEFAULT_TEMPERATURE = 0.1;
-    public static final double SALES_CHAT_TEMPERATURE = 0.25;
+    public static final double SALES_CHAT_TEMPERATURE = resolveSalesChatTemperature();
     public static final double SALES_TOP_P = 0.9;
     public static final double SALES_REPEAT_PENALTY = 1.08;
+
+    private static double resolveSalesChatTemperature() {
+        String envTemp = System.getenv("LLM_TEMPERATURE");
+        if (envTemp != null && !envTemp.isBlank()) {
+            try {
+                double parsed = Double.parseDouble(envTemp.strip());
+                if (parsed >= 0.0 && parsed <= 2.0) {
+                    return parsed;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0.2;
+    }
 
     public static final int DEEP_TIMEOUT_SECONDS = 45;
     public static final int DEEP_MAX_TOKENS = 2000;

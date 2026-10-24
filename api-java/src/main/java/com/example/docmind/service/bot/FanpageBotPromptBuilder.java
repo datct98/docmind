@@ -39,7 +39,7 @@ public final class FanpageBotPromptBuilder {
     public static final int ACTIVE_SKILLS_MAX_CHARS = 260; // strictly max 260 chars across injected skills
     public static final int SINGLE_SKILL_INSTRUCTION_MAX_CHARS = 60;
     public static final int RECOMMENDED_STRATEGY_MAX_CHARS = 65;
-    public static final int SAMPLE_DIALOGUES_MAX_CHARS = 380;
+    public static final int SAMPLE_DIALOGUES_MAX_CHARS = 450;
 
     public record BudgetAllocation(
             List<LearnedRuleDto> alwaysOnRules,
@@ -252,7 +252,7 @@ public final class FanpageBotPromptBuilder {
             String c = t.content().toLowerCase(java.util.Locale.ROOT);
             if (isWellnessOrDiscomfortMessage(c)
                     || isServiceExplanationOrProcessInquiry(c)
-                    || c.contains("mỏi") || c.contains("đau") || c.contains("cổ vai gáy")
+                    || c.contains("mỏi") || c.contains("đau") || c.contains("cổ vai")
                     || c.contains("massage") || c.contains("dưỡng sinh")
                     || c.contains("mới xuất hiện") || c.contains("thường xuyên") || c.contains("thi thoảng")
                     || c.contains("60 phút") || c.contains("80 phút") || c.contains("chuyên sâu")
@@ -643,6 +643,10 @@ public final class FanpageBotPromptBuilder {
         if (dialogue == null || !dialogue.active()) {
             return "";
         }
+        if (dialogue.qualityLabel() != null && !dialogue.qualityLabel().isBlank()
+                && !"APPROVED_GOOD".equalsIgnoreCase(dialogue.qualityLabel())) {
+            return "";
+        }
         String code = dialogue.dialogueCode() != null ? dialogue.dialogueCode() : "FD";
         String userText = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(dialogue.userSummary()), 80);
         String botText = compactPromptText(
@@ -702,7 +706,7 @@ public final class FanpageBotPromptBuilder {
 
         sb.append("# QUY TẮC BẮT BUỘC\n");
         sb.append("1. GROUNDED: Chỉ báo dịch vụ, giá, ưu đãi trong <DOCUMENT_CONTEXT>; cấm tự bịa.\n");
-        sb.append("2. THẤU CẢM TRIỆU CHỨNG (EMPATHY FIRST): Khách đang gặp triệu chứng mệt mỏi thể chất (đau mỏi vai gáy, mất ngủ, stress, đau lưng...): BẮT BUỘC dành câu đầu tiên để đồng cảm chân thành và công nhận sự khó chịu; CẤM xả thông tin dồn dập hay chốt lịch ép buộc.\n");
+        sb.append("2. THẤU CẢM TRIỆU CHỨNG (EMPATHY FIRST): Khách đang gặp triệu chứng mệt mỏi thể chất (đau mỏi cổ vai, mất ngủ, stress, đau lưng...): BẮT BUỘC dành câu đầu tiên để đồng cảm chân thành và công nhận sự khó chịu; CẤM xả thông tin dồn dập hay chốt lịch ép buộc.\n");
         sb.append("3. CHỐNG XẢ SẠCH THÔNG TIN (ANTI-DUMPING) & BÁN LỊCH HẸN: 1 Tin nhắn = 1 Lợi ích + 1 Câu hỏi khống chế A/B. Mỗi lượt phản hồi BẮT BUỘC chỉ từ 2 đến 4 câu văn ngắn gọn, súc tích (tối đa 2 đoạn ngắn). Tuyệt đối không viết thành bài văn dài.\n");
         sb.append("4. DOWN-SELL TƯ VẤN KHÉO LÉO & HANDOFF: Khách chê đắt: thấu hiểu tâm lý giá, CẤM thanh minh hay tranh cãi; TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM buông xuôi 'cứ cân nhắc thêm'. Quy tắc chuyển tiếp hạ bậc (Consultative Down-sell Transition): xác nhận lần đầu thử dịch vụ thì chọn gói vừa vặn để trải nghiệm tay nghề trước là hoàn toàn hợp lý. Chỉ [[HANDOFF: lý do]] khi ngoài tài liệu.\n");
         String forbiddenHonorificLabel = "Anh/Chị".equalsIgnoreCase(honorific)
@@ -788,9 +792,25 @@ public final class FanpageBotPromptBuilder {
             sb.append('\n');
         }
 
-        // 3.6. BỘ KỸ NĂNG AGENT ĐANG KÍCH HOẠT (CÓ NGÂN SÁCH KÝ TỰ CHỐNG PHÌNH PROMPT)
+        // 3.6. BỘ KỸ NĂNG AGENT ĐANG KÍCH HOẠT (3-LAYER MODEL: ALWAYS-ON + 1 PRIMARY SKILL + CONTEXT)
+        boolean isMicroSkillActive = activeSkills != null && activeSkills.stream()
+                .anyMatch(s -> s != null && s.code() != null && (
+                        s.code().equalsIgnoreCase("greeting_warm_intro")
+                        || s.code().equalsIgnoreCase("discovery_ask_one_need")
+                        || s.code().equalsIgnoreCase("price_answer_from_docs")
+                        || s.code().equalsIgnoreCase("price_clarify_service_duration")
+                        || s.code().equalsIgnoreCase("price_objection_soft_anchor")
+                        || s.code().equalsIgnoreCase("booking_soft_confirm")
+                        || s.code().equalsIgnoreCase("upsell_one_addon")
+                        || s.code().equalsIgnoreCase("safety_handoff_high_risk")
+                        || s.code().equalsIgnoreCase("complaint_immediate_handoff")
+                ));
         if (activeSkills != null && !activeSkills.isEmpty() && !hasPhoneLeadOnly) {
             sb.append("# BỘ KỸ NĂNG AGENT ĐANG KÍCH HOẠT\n");
+            if (isMicroSkillActive) {
+                sb.append("- Priority: Core safety > State machine > Tenant persona > Primary skill > Memory > Example > Playbook detail\n");
+                sb.append("- Always-On Layer: [core_safety] Không tư vấn y khoa/cam kết chữa bệnh | [anti_hallucination_grounding] Chỉ báo giá trong <DOCUMENT_CONTEXT> | [messenger_tone_short] Tối đa 3 bong bóng, <=2 câu/bong bóng, <=45 từ/bong bóng.\n");
+            }
             int sIdx = 1;
             int usedSkillChars = 0;
             for (AgentSkillDto skill : activeSkills) {
@@ -804,8 +824,26 @@ public final class FanpageBotPromptBuilder {
                     String adapted = adaptHonorificInSkillText(PromptSecurityGuard.sanitizeUntrustedContent(skill.tacticalInstructions()), honorific);
                     instruction = compactPromptText(adapted, SINGLE_SKILL_INSTRUCTION_MAX_CHARS);
                 }
-                String line = (sIdx) + ". " + safeName + " [" + safeCat + "]: " + instruction + "\n";
-                if (usedSkillChars + line.length() > ACTIVE_SKILLS_MAX_CHARS && sIdx > 1) {
+                StringBuilder skillBlock = new StringBuilder();
+                skillBlock.append(sIdx).append(". ").append(safeName).append(" [").append(safeCat).append("]: ").append(instruction).append("\n");
+                if (isMicroSkillActive) {
+                    if (skill.antiPattern() != null && !skill.antiPattern().isBlank()) {
+                        skillBlock.append("   + Must-Not: ").append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(skill.antiPattern()), 140)).append("\n");
+                    }
+                    if (skill.goodExample() != null && !skill.goodExample().isBlank()) {
+                        String ex = adaptHonorificInSkillText(PromptSecurityGuard.sanitizeUntrustedContent(skill.goodExample()), honorific);
+                        skillBlock.append("   + Good-Example: ").append(compactPromptText(ex, 180)).append("\n");
+                    }
+                    AgentSkillDto.SkillOutputContract oc = skill.resolvedOutputContract();
+                    skillBlock.append("   + Output-Contract: max_bubbles=").append(oc.replyMaxBubbles())
+                            .append(", max_sentences=").append(oc.replyMaxSentences())
+                            .append(", max_words=").append(oc.replyMaxWords())
+                            .append(", max_questions=").append(oc.maxQuestions())
+                            .append(", requires_human=").append(oc.requiresHuman())
+                            .append(", delay_after_price_ms=").append(oc.minDelayAfterPriceMs()).append("\n");
+                }
+                String line = skillBlock.toString();
+                if (usedSkillChars + line.length() > (isMicroSkillActive ? ACTIVE_SKILLS_MAX_CHARS + 360 : ACTIVE_SKILLS_MAX_CHARS) && sIdx > 1) {
                     break;
                 }
                 sb.append(line);
@@ -824,9 +862,13 @@ public final class FanpageBotPromptBuilder {
                 BudgetAllocation alloc = packAlwaysOnRules(appliedRules);
                 sb.append("<EXPERIENCE_LIBRARY>\n");
                 List<LearnedRuleDto> rulesToInject = alloc.alwaysOnRules();
+                int rCount = 0;
+                int maxRulesToInject = isMicroSkillActive ? 1 : rulesToInject.size();
                 for (LearnedRuleDto rule : rulesToInject) {
+                    if (rCount >= maxRulesToInject) break;
                     if (rule != null && rule.generalizedRule() != null && !rule.generalizedRule().isBlank()) {
                         sb.append(formatExperienceCard(rule)).append('\n');
+                        rCount++;
                     }
                 }
                 sb.append("</EXPERIENCE_LIBRARY>\n");
@@ -835,14 +877,15 @@ public final class FanpageBotPromptBuilder {
                 sb.append("<SAMPLE_DIALOGUES note=\"Chỉ học cấu trúc & giọng điệu, CẤM chép nguyên văn\">\n");
                 int usedDialogueChars = 0;
                 int dCount = 0;
+                int maxDialoguesToInject = 1;
                 for (SampleDialogueDto d : sampleDialogues) {
                     if (d == null || !d.active()) continue;
                     String card = formatSampleDialogueCard(d, honorific);
                     if (card.isBlank()) continue;
-                    if (dCount >= 1 && usedDialogueChars + card.length() > SAMPLE_DIALOGUES_MAX_CHARS) {
-                        break;
+                    if (usedDialogueChars + card.length() > SAMPLE_DIALOGUES_MAX_CHARS) {
+                        card = compactPromptText(card, SAMPLE_DIALOGUES_MAX_CHARS);
                     }
-                    if (dCount >= 2) {
+                    if (dCount >= maxDialoguesToInject) {
                         break;
                     }
                     sb.append(card).append('\n');
@@ -1126,7 +1169,7 @@ public final class FanpageBotPromptBuilder {
               .append(honorific).append(" quan tâm (TUYỆT ĐỐI CẤM báo giá ở lượt chào hỏi và CẤM xin SĐT/giờ hẹn sớm).\n");
         } else if (isBroadUnspecifiedPrice && !bookingState.hasCapturedPhone()) {
             sb.append("Khách hỏi giá chung chung chưa rõ dịch vụ: Giải thích nhẹ nhàng giá tùy dịch vụ và thời lượng, hỏi 1 câu làm rõ nhóm dịch vụ ")
-              .append(honorific).append(" quan tâm (massage cổ vai gáy, massage body hay ngâm thảo dược) để gửi đúng mức giá (TUYỆT ĐỐI CẤM đổ cả bảng giá).\n");
+              .append(honorific).append(" quan tâm (gói cơ bản, chuyên sâu hay chăm sóc thư giãn) để gửi đúng mức giá (TUYỆT ĐỐI CẤM đổ cả bảng giá).\n");
         } else {
             if (asksMaleEligibility) {
                 sb.append("Khách Nam: phòng riêng kín đáo, tiếp nối <CONVERSATION_HISTORY>. ");
@@ -1165,7 +1208,7 @@ public final class FanpageBotPromptBuilder {
             sb.append("- Trạng thái: ĐÃ Ở MỨC GIÁ SÀN DANH MỤC (")
               .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "129.000 VNĐ")
               .append(")\n");
-            sb.append("- Gói dịch vụ: ").append(result.targetPackageName() != null ? result.targetPackageName() : "Gói Lấy ráy tai cơ bản (DS01)").append("\n");
+            sb.append("- Gói dịch vụ: ").append(result.targetPackageName() != null ? result.targetPackageName() : "Gói cơ bản (DS01)").append("\n");
             if (result.discountPolicy() != null) {
                 sb.append("- Chính sách ưu đãi áp dụng: ").append(result.discountPolicy()).append("\n");
             }
@@ -1359,7 +1402,8 @@ public final class FanpageBotPromptBuilder {
         if (assistantText == null || assistantText.isBlank()) {
             return null;
         }
-        String lower = assistantText.toLowerCase(java.util.Locale.ROOT);
+        String lower = assistantText.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("(?iU)\\b(?:em|mình|tôi)\\s+là\\s+[\\p{L}\\s]{1,25}?(?=[,.!?;]|\\s+(?:nhân\\s+viên|trợ\\s+lý|chuyên\\s+viên|tư\\s+vấn|của|tại|bên)|$)", " ");
         if (lower.contains("anh/chị")) {
             return null;
         }
@@ -1435,5 +1479,206 @@ public final class FanpageBotPromptBuilder {
                        .replaceAll("(?iU)(?<!\\p{L})như\\s+anh\\s+vừa(?!\\p{L})", "như Chị vừa");
         }
         return text;
+    }
+
+    /**
+     * Dựng Prompt thực thi động 100% từ Database của Page hiện tại:
+     * {@code FusedChunk} (bảng {@code chunks}), {@code instruction} (bảng {@code learned_rules}),
+     * {@code strategy_instruction} (bảng {@code agent_skills}), {@code sample_dialogues},
+     * {@code history[]} và {@link ConversationState} + {@link PrimaryActionRouter.RoutingDecision}.
+     */
+    public static String buildDynamicRuntimePrompt(
+            String customerMessage,
+            String customerName,
+            List<FanpageBotRequest.ConversationTurn> history,
+            List<ReciprocalRankFusion.FusedChunk> chunks,
+            List<LearnedRuleDto> appliedRules,
+            PromptBuilder.PagePersona pagePersona,
+            SalesStage salesStage,
+            String resolvedHonorific,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            String mocSummary,
+            PriceLadderResult priceLadderResult,
+            List<SampleDialogueDto> sampleDialogues,
+            ConversationState convState,
+            PrimaryActionRouter.RoutingDecision actionDecision,
+            List<com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble> dbGroundedReferenceBubbles
+    ) {
+        if (convState == null && actionDecision == null) {
+            return build(
+                    customerMessage,
+                    customerName,
+                    history,
+                    chunks,
+                    appliedRules,
+                    pagePersona,
+                    salesStage,
+                    resolvedHonorific,
+                    customerInsight,
+                    activeSkills,
+                    mocSummary,
+                    priceLadderResult,
+                    sampleDialogues
+            );
+        }
+
+        PagePersonaConfig cfg = pagePersona != null ? pagePersona.resolvedConfig() : PagePersonaConfig.empty();
+        String pageName = (pagePersona != null && pagePersona.name() != null && !pagePersona.name().isBlank())
+                ? PromptSecurityGuard.sanitizeUntrustedContent(pagePersona.name().strip())
+                : "Fanpage";
+        String honorific = (resolvedHonorific != null && !resolvedHonorific.isBlank())
+                ? resolvedHonorific.strip()
+                : resolveCustomerHonorific(customerMessage, history, customerName, pagePersona);
+        String selfPronoun = cfg.resolvedSelfPronoun();
+
+        StringBuilder sb = new StringBuilder(2400);
+        sb.append("# VAI TRÒ & QUY TẮC RUNTIME PAGE (").append(pageName).append(")\n");
+        sb.append("- Xưng '").append(selfPronoun).append("', gọi khách là '").append(honorific).append("'.\n");
+        if (cfg.activePromptCompact() != null && !cfg.activePromptCompact().isBlank()) {
+            sb.append(PromptSecurityGuard.sanitizeUntrustedContent(cfg.activePromptCompact().strip())).append('\n');
+        }
+        sb.append('\n');
+
+        // 1. <DOCUMENT_CONTEXT> từ bảng chunks (FusedChunk)
+        sb.append("<DOCUMENT_CONTEXT>\n");
+        if (chunks != null && !chunks.isEmpty()) {
+            int maxChunks = Math.min(chunks.size(), 4);
+            int maxChunkChars = (actionDecision != null
+                    && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA)
+                    ? 520
+                    : 340;
+            for (int i = 0; i < maxChunks; i++) {
+                ReciprocalRankFusion.FusedChunk fc = chunks.get(i);
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    String chunkText = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(fc.chunk().text()), maxChunkChars);
+                    sb.append("[Chunk ").append(i + 1).append("] ").append(chunkText).append('\n');
+                }
+            }
+        }
+        sb.append("</DOCUMENT_CONTEXT>\n\n");
+
+        // 2. <PAGE_LEARNED_RULES> từ bảng learned_rules (quản trị bởi PromptBudgetGuard: <=1200 always-on + tối đa 1 contextual rule)
+        if (appliedRules != null && !appliedRules.isEmpty()) {
+            List<LearnedRuleDto> guardedAlwaysOn = PromptBudgetGuard.validateAlwaysOnRules(appliedRules);
+            LearnedRuleDto scopedContextual = PromptBudgetGuard.selectScopedContextualRule(
+                    appliedRules,
+                    actionDecision != null ? actionDecision.detectedIntent() : null,
+                    customerMessage
+            );
+            List<LearnedRuleDto> rulesForTurn = new ArrayList<>(guardedAlwaysOn);
+            if (scopedContextual != null && rulesForTurn.stream().noneMatch(r -> r.id() != null && r.id().equals(scopedContextual.id()))) {
+                rulesForTurn.add(scopedContextual);
+            }
+            if (!rulesForTurn.isEmpty()) {
+                sb.append("<PAGE_LEARNED_RULES>\n");
+                for (LearnedRuleDto r : rulesForTurn) {
+                    if (r == null || r.generalizedRule() == null || r.generalizedRule().isBlank()) continue;
+                    sb.append("- [").append(r.ruleCode() != null ? r.ruleCode() : "RULE").append("] ")
+                      .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(r.generalizedRule()), 220))
+                      .append('\n');
+                }
+                sb.append("</PAGE_LEARNED_RULES>\n\n");
+            }
+        }
+
+        // 3. <TACTICAL_SALES_SKILLS> từ bảng agent_skills
+        if (activeSkills != null && !activeSkills.isEmpty()) {
+            sb.append("<TACTICAL_SALES_SKILLS>\n");
+            for (AgentSkillDto skill : activeSkills) {
+                if (skill == null) continue;
+                sb.append("- Skill [").append(skill.code()).append("]: ")
+                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(skill.tacticalInstructions()), 240))
+                  .append('\n');
+                if (skill.goodExample() != null && !skill.goodExample().isBlank()) {
+                    sb.append("  Mẫu tham khảo: ")
+                      .append(compactPromptText(adaptHonorificInSkillText(PromptSecurityGuard.sanitizeUntrustedContent(skill.goodExample()), honorific), 200))
+                      .append('\n');
+                }
+            }
+            sb.append("</TACTICAL_SALES_SKILLS>\n\n");
+        }
+
+        // 4. <SAMPLE_DIALOGUES> từ bảng sample_dialogues (tối đa 1 mẫu <= 450 ký tự, chỉ lấy APPROVED_GOOD & active)
+        if (sampleDialogues != null && !sampleDialogues.isEmpty()) {
+            sb.append("<SAMPLE_DIALOGUES>\n");
+            int dlgCount = 0;
+            for (SampleDialogueDto d : sampleDialogues) {
+                String card = formatSampleDialogueCard(d, honorific);
+                if (!card.isBlank()) {
+                    if (card.length() > SAMPLE_DIALOGUES_MAX_CHARS) {
+                        card = compactPromptText(card, SAMPLE_DIALOGUES_MAX_CHARS);
+                    }
+                    sb.append(card).append('\n');
+                    if (++dlgCount >= 1) break;
+                }
+            }
+            sb.append("</SAMPLE_DIALOGUES>\n\n");
+        }
+
+        // 5. <CONVERSATION_HISTORY>
+        if (history != null && !history.isEmpty()) {
+            sb.append("<CONVERSATION_HISTORY>\n");
+            int start = Math.max(0, history.size() - 4);
+            for (int i = start; i < history.size(); i++) {
+                FanpageBotRequest.ConversationTurn t = history.get(i);
+                if (t != null && t.content() != null && !t.content().isBlank()) {
+                    String roleLabel = "assistant".equalsIgnoreCase(t.role()) ? "Tư vấn viên" : "Khách hàng";
+                    sb.append(roleLabel).append(": ")
+                      .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(t.content()), 180))
+                      .append('\n');
+                }
+            }
+            sb.append("</CONVERSATION_HISTORY>\n\n");
+        }
+
+        // 6. <CONVERSATION_STATE_AND_ACTION_CONTRACT>
+        sb.append("<CONVERSATION_STATE_AND_ACTION_CONTRACT>\n");
+        if (actionDecision != null) {
+            sb.append("- primary_action: ").append(actionDecision.effectiveResponseAction()).append('\n');
+            sb.append("- detected_intent: ").append(actionDecision.detectedIntent()).append('\n');
+            sb.append("- opening_required: ").append(actionDecision.openingRequired()).append('\n');
+            sb.append("- active_skill_code: ").append(actionDecision.correspondingMicroSkillCode()).append('\n');
+        }
+        if (convState != null) {
+            ConversationState enriched = convState.enrichWithCurrentMessage(customerMessage, cfg.safeDomainKeywords());
+            sb.append("- known_service: ").append(enriched.knownServiceFamily() != null ? enriched.knownServiceFamily() : "null").append('\n');
+            sb.append("- known_symptoms: ").append(enriched.knownSymptoms()).append('\n');
+            sb.append("- known_body_areas: ").append(enriched.knownBodyAreas()).append('\n');
+            sb.append("- condition_clarified: ").append(enriched.conditionClarified()).append('\n');
+            sb.append("- price_discussed: ").append(convState.priceDiscussed()).append('\n');
+            sb.append("- price_objection_count: ").append(convState.objectionCount()).append('\n');
+            sb.append("- held_package: ").append(convState.knownRecommendedPackage() != null ? convState.knownRecommendedPackage() : "null").append('\n');
+            sb.append("- downsell_package: ").append(convState.downsellPackage() != null ? convState.downsellPackage() : "null").append('\n');
+            sb.append("- rejected_durations: ").append(convState.rejectedDurations()).append('\n');
+            ConversationState.UnresolvedCustomerRequest activeUnresolved = enriched.mostRecentUnresolvedRequest();
+            if (activeUnresolved != null) {
+                sb.append("- unresolved_customer_request: intent=").append(activeUnresolved.semanticIntent())
+                  .append(", entity=").append(activeUnresolved.referencedEntity() != null ? activeUnresolved.referencedEntity() : "null")
+                  .append(", question=\"").append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(activeUnresolved.canonicalQuestion()), 120)).append("\"")
+                  .append(", repeat_or_challenge_count=").append(activeUnresolved.repeatOrChallengeCount())
+                  .append('\n');
+            }
+        }
+        if (dbGroundedReferenceBubbles != null && !dbGroundedReferenceBubbles.isEmpty()) {
+            sb.append("- db_grounded_reference_bubbles (BẮT BUỘC giữ đúng số lượng ")
+              .append(dbGroundedReferenceBubbles.size())
+              .append(" bong bóng, tên gói, thời lượng, mức giá, cảm xúc và typing_delay_ms từng bong bóng):\n");
+            for (int i = 0; i < dbGroundedReferenceBubbles.size(); i++) {
+                var b = dbGroundedReferenceBubbles.get(i);
+                if (b != null && b.text() != null) {
+                    sb.append("  + Bubble ").append(i + 1)
+                      .append(" (typing_delay_ms=").append(b.typingDelayMs()).append("): ")
+                      .append(b.text()).append('\n');
+                }
+            }
+        }
+        sb.append("- Trả về JSON hợp lệ đủ các bong bóng theo mẫu (KHÔNG giải thích thêm):\n");
+        sb.append("  {\"reply_bubbles\": [{\"text\": \"...\", \"typing_delay_ms\": 1000}, {\"text\": \"...\", \"typing_delay_ms\": 2000}], \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
+          .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
+        sb.append("</CONVERSATION_STATE_AND_ACTION_CONTRACT>\n\n");
+        sb.append("Khách hàng: ").append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage != null ? customerMessage : "")).append('\n');
+        sb.append("Tin nhắn phản hồi khách hàng:");
+        return sb.toString();
     }
 }

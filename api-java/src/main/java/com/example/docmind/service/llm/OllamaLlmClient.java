@@ -15,8 +15,8 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Map;
 
 /**
- * Client gọi Ollama chạy local (mặc định http://localhost:11434, model qwen2.5:14b-instruct-q5_K_M).
- * Tối ưu cho máy chạy CPU 16GB RAM (giới hạn num_ctx=4096, temperature=0.1, readTimeout=120s).
+ * Client gọi Ollama chạy local theo cấu hình từ {@link com.example.docmind.config.LlmProperties}.
+ * Tối ưu cho máy chạy CPU 16GB RAM (giới hạn num_ctx=4096, temperature=0.2, readTimeout=45s).
  * Nếu Ollama chưa bật hoặc chưa pull model, tự động fallback an toàn để ứng dụng không bị treo/lỗi.
  */
 @Component
@@ -40,7 +40,7 @@ public class OllamaLlmClient implements LlmClient {
         this.enableTimeoutCooldown = true;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(3000);
-        int readTimeoutMs = 45000;
+        int readTimeoutMs = 22000;
         factory.setReadTimeout(readTimeoutMs);
         this.http = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
@@ -65,7 +65,9 @@ public class OllamaLlmClient implements LlmClient {
     @SuppressWarnings("unchecked")
     public String complete(String prompt, ReasoningBudget budget) {
         long startNs = System.nanoTime();
-        String base = props.getBaseUrl() != null ? props.getBaseUrl().replaceAll("/+$", "") : "http://localhost:11434";
+        String base = props.getBaseUrl() != null
+                ? props.getBaseUrl().replaceAll("/+$", "")
+                : new com.example.docmind.config.LlmProperties().resolveBaseUrl();
         String endpoint = base + "/api/generate";
         int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 600;
         int numPredict = (budget != null && budget.maxTokens() > 0)
@@ -120,6 +122,9 @@ public class OllamaLlmClient implements LlmClient {
                     : null;
             String result = extractResponseText(resp, prompt);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            if (enableTimeoutCooldown && latencyMs >= 18_000) {
+                cooldownUntilEpochMs = System.currentTimeMillis() + 30_000L;
+            }
             boolean isFallback = result != null && result.startsWith("[ollama-offline]");
             log.info("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status={}",
                     effectiveModel, latencyMs, isFallback ? "fallback" : "ok");
@@ -171,8 +176,8 @@ public class OllamaLlmClient implements LlmClient {
                 }
             }
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
-            if (enableTimeoutCooldown && latencyMs >= 43_500) {
-                cooldownUntilEpochMs = System.currentTimeMillis() + 15_000L;
+            if (enableTimeoutCooldown && latencyMs >= 18_000) {
+                cooldownUntilEpochMs = System.currentTimeMillis() + 30_000L;
             }
             log.warn("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status=fallback (error={})",
                     effectiveModel, latencyMs, e.getMessage());

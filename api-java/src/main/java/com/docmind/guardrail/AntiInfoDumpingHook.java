@@ -115,8 +115,8 @@ public class AntiInfoDumpingHook implements GuardrailHook {
         boolean isMassageDoc = combinedChunksLower.contains("dưỡng sinh")
                 || combinedChunksLower.contains("gội đầu")
                 || combinedChunksLower.contains("massage body")
-                || combinedChunksLower.contains("nàng sen")
-                || combinedChunksLower.contains("ngâm thảo dược");
+                || combinedChunksLower.contains("ấn huyệt")
+                || combinedChunksLower.contains("ngâm chân");
         boolean isDermatologyDoc = !isMassageDoc && (combinedChunksLower.isEmpty()
                 || combinedChunksLower.contains("soi da")
                 || combinedChunksLower.contains("laser")
@@ -141,12 +141,12 @@ public class AntiInfoDumpingHook implements GuardrailHook {
                     ? Character.toUpperCase(honorific.charAt(0)) + honorific.substring(1)
                     : "Mình";
             if (isFirstTurn) {
-                rewritten = "Dạ An Nhiên chào " + honorific + " ạ, chào mừng " + honorific + " đến với Nàng Sen Spa.\n\n"
+                rewritten = "Dạ em chào " + honorific + " ạ, rất vui được đón " + honorific + " ghé thăm.\n\n"
                         + "Dạ giá bên em tùy dịch vụ và thời lượng " + honorific + " chọn ạ. "
-                        + capHonorific + " đang quan tâm massage cổ vai gáy, massage body hay ngâm thảo dược để em gửi đúng mức giá cho " + honorific + " nha?";
+                        + capHonorific + " đang quan tâm gói cơ bản hay gói chuyên sâu để em gửi đúng mức giá cho " + honorific + " nha?";
             } else {
                 rewritten = "Dạ giá bên em tùy dịch vụ và thời lượng " + honorific + " chọn ạ. "
-                        + capHonorific + " đang quan tâm massage cổ vai gáy, massage body hay ngâm thảo dược để em gửi đúng mức giá cho " + honorific + " nha?";
+                        + capHonorific + " đang quan tâm gói cơ bản hay gói chuyên sâu để em gửi đúng mức giá cho " + honorific + " nha?";
             }
         } else if (isDermatologyDoc) {
             rewritten = opening + "Chi phí các liệu trình chuẩn Y khoa bên em rất linh hoạt chỉ từ " + startingPrice

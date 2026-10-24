@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sơ Đồ Kiến Trúc Hệ Thống DocMind v3.2.0 — Multi-Tenant Zero-Hardcode &amp; Scope-Grounded Conversational Sales AI</title>
+  <style>
+    :root {
+      --bg-primary: #0b1020;
+      --bg-secondary: #11182d;
+      --bg-card: #161f38;
+      --bg-card-hover: #1c2847;
+      --border-color: #293860;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #38bdf8;
+      --accent-indigo: #818cf8;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #fb7185;
+      --accent-purple: #c084fc;
+      --accent-cyan: #22d3ee;
+      --shadow-lg: 0 20px 45px -15px rgba(0, 0, 0, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: radial-gradient(circle at 15% 10%, #172554 0%, var(--bg-primary) 45%, #070b16 100%);
+      color: var(--text-primary);
+      line-height: 1.55;
+      min-height: 100vh;
+      padding-bottom: 60px;
+    }
+
+    /* Header */
+    .hero-header {
+      background: linear-gradient(135deg, rgba(22, 31, 56, 0.92) 0%, rgba(15, 23, 42, 0.96) 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 28px 40px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(14px);
+    }
+
+    .hero-top {
+      max-width: 1520px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-badge {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      color: #0b1020;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+    }
+
+    .brand-title h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+
+    .brand-title p {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .kpi-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .kpi-pill {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border-color);
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-green { background: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); }
+    .dot-blue { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+    .dot-amber { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
+    .dot-purple { background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      max-width: 1520px;
+      margin: 18px auto 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab-btn {
+      background: rgba(22, 31, 56, 0.7);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--accent-blue);
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(99, 102, 241, 0.25));
+      color: #ffffff;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
+    }
+
+    /* Container */
+    .main-container {
+      max-width: 1520px;
+      margin: 28px auto;
+      padding: 0 40px;
+    }
+
+    .tab-panel {
+      display: none;
+      animation: fadeIn 0.25s ease;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section Header */
+    .section-banner {
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), rgba(129, 140, 248, 0.05));
+      border-left: 4px solid var(--accent-blue);
+      padding: 16px 22px;
+      border-radius: 0 12px 12px 0;
+      margin-bottom: 24px;
+    }
+
+    .section-banner h2 {
+      font-size: 19px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .section-banner p {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+    }
+
+    /* Architecture Swimlanes */
+    .arch-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .layer-box {
+      background: rgba(17, 24, 45, 0.85);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+    }
+
+    .layer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
+    }
+
+    .layer-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .layer-badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .cards-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 16px;
+    }
+
+    .comp-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .comp-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-blue);
+      background: var(--bg-card-hover);
+    }
+
+    .comp-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--card-accent, var(--accent-blue));
+    }
+
+    .comp-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .comp-name {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .comp-port {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(34, 211, 238, 0.3);
+      white-space: nowrap;
+    }
+
+    .comp-desc {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .code-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .code-tag {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      background: rgba(15, 23, 42, 0.75);
+      color: #cbd5e1;
+      padding: 3px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .connector-arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      color: var(--accent-blue);
+      font-size: 12px;
+      font-weight: 600;
+      margin: -6px 0;
+    }
+
+    .connector-arrow span {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border-color);
+      padding: 4px 14px;
+      border-radius: 999px;
+      color: var(--text-secondary);
+    }
+
+    /* Pipeline Timeline (Tab 2) */
+    .pipeline-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .step-card {
+      display: grid;
+      grid-template-columns: 64px 1fr 280px;
+      gap: 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 18px 22px;
+      align-items: center;
+    }
+
+    @media (max-width: 960px) {
+      .step-card {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .step-num {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.25));
+      border: 1px solid var(--accent-blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--accent-blue);
+    }
+
+    .step-body h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .step-body p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .step-meta {
+      background: rgba(11, 16, 32, 0.75);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12px;
+    }
+
+    .step-meta div {
+      margin-bottom: 4px;
+      color: var(--text-secondary);
+    }
+
+    .step-meta strong {
+      color: var(--accent-emerald);
+    }
+
+    /* Table Styles (Tab 3) */
+    .matrix-table-wrap {
+      overflow-x: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--accent-blue);
+      font-weight: 700;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid rgba(41, 56, 96, 0.5);
+      color: var(--text-primary);
+      vertical-align: top;
+    }
+
+    tr:hover td {
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .action-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 6px;
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+    }
+
+    .action-badge.danger {
+      background: rgba(251, 113, 133, 0.16);
+      color: var(--accent-rose);
+      border-color: rgba(251, 113, 133, 0.35);
+    }
+
+    .action-badge.price {
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--accent-amber);
+      border-color: rgba(251, 191, 36, 0.35);
+    }
+
+    .action-badge.open {
+      background: rgba(52, 211, 153, 0.16);
+      color: var(--accent-emerald);
+      border-color: rgba(52, 211, 153, 0.35);
+    }
+
+    /* Validator Grid */
+    .validator-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .rule-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--accent-emerald);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .rule-box h4 {
+      font-size: 13.5px;
+      color: #ffffff;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .rule-box p {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Schema & Multi-tenant Grid (Tab 4) */
+    .schema-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 18px;
+    }
+
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .table-card-header {
+      background: rgba(15, 23, 42, 0.9);
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-card-header h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--accent-cyan);
+    }
+
+    .field-list {
+      list-style: none;
+      padding: 14px 18px;
+    }
+
+    .field-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px dashed rgba(148, 163, 184, 0.15);
+      font-size: 12.5px;
+    }
+
+    .field-list li:last-child {
+      border-bottom: none;
+    }
+
+    .field-name {
+      font-family: 'JetBrains Mono', monospace;
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .field-type {
+      color: var(--text-secondary);
+      font-size: 11.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HERO HEADER -->
+  <header class="hero-header">
+    <div class="hero-top">
+      <div class="brand-title">
+        <div class="brand-badge">DM</div>
+        <div>
+          <h1>Kiến Trúc Hệ Thống DocMind v3.2.0 (Multi-Tenant Zero-Hardcode Conversational Sales AI)</h1>
+          <p>Zero Domain Hardcode Gate &bull; Multi-Entity &amp; Scope-Grounded Matching &bull; Entity Mismatch Rescue (R00) &bull; Veteran Two-Step Price Objection (R11/R12)</p>
+        </div>
+      </div>
+      <div class="kpi-pills">
+        <div class="kpi-pill"><span class="dot dot-green"></span> Đa Ngành Nghề (0 Lines Hardcode in Java)</div>
+        <div class="kpi-pill"><span class="dot dot-blue"></span> Scope-Grounded &bull; Anti-Keyword-Hijacking (R00)</div>
+        <div class="kpi-pill"><span class="dot dot-amber"></span> Active Prompt &le; 900 Chars &bull; Post-Price &ge; 10s / Value &equals; 2s</div>
+        <div class="kpi-pill"><span class="dot dot-purple"></span> Regression: 22/22 (Spa + Dental) + 6/6 + 96/96 JUnit PASS (100%)</div>
+      </div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-topology', this)">1. Tổng Quan Kiến Trúc &amp; Microservices</button>
+      <button class="tab-btn" onclick="switchTab('tab-pipeline', this)">2. Luồng Xử Lý Tin Nhắn 10 Bước (Runtime v3.2.0)</button>
+      <button class="tab-btn" onclick="switchTab('tab-router', this)">3. Ma Trận Định Tuyến PRE/R00..R13D &amp; 30 Quy Tắc VR</button>
+      <button class="tab-btn" onclick="switchTab('tab-schema', this)">4. Mô Hình Dữ Liệu Đa Ngành &amp; 34-Field State</button>
+    </nav>
+  </header>
+
+  <main class="main-container">
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: SYSTEM TOPOLOGY & MICROSERVICES                              -->
+    <!-- =================================================================== -->
+    <section id="tab-topology" class="tab-panel active">
+      <div class="section-banner">
+        <h2>1. Sơ Đồ Tổng Quan Kiến Trúc Đa Tầng (5-Layer Multi-Service Topology)</h2>
+        <p>Toàn bộ hệ thống DocMind được chia thành 5 tầng độc lập: Kênh Giao Tiếp &amp; Quản Trị &rarr; Cổng Điều Phối Trung Tâm (Spring Boot Java 21) &rarr; Dịch Vụ AI Chuyên Biệt (FastAPI Python) &rarr; Mô Hình Ngôn Ngữ Cục Bộ (Ollama Qwen2.5 14B) &rarr; Kho Tri Thức Đa Ngành (PostgreSQL + pgvector).</p>
+      </div>
+
+      <div class="arch-grid">
+
+        <!-- LAYER 1: CLIENT & CHANNELS -->
+        <div class="layer-box">
+          <div class="layer-header">
+            <div class="layer-title"><span class="dot dot-blue"></span> Tầng 1: Giao Diện Quản Trị &amp; Kênh Hội Thoại Khách Hàng (Channels &amp; UI Layer)</div>
+            <span class="layer-badge">Port :5173 / Webhook</span>
+          </div>
+          <div class="cards-row">
+            <div class="comp-card" style="--card-accent: #38bdf8;">
+              <div class="comp-head">
+                <div class="comp-name">DocMind Admin &amp; Knowledge Studio</div>
+                <span class="comp-port">React + Vite :5173</span>
+              </div>
+              <div class="comp-desc">Giao diện quản lý đa Fanpage (Multi-Page), cấu hình <code>persona_config</code> theo ngành nghề, upload tài liệu tri thức (PDF, DOCX, XLSX, MD, HTML) và quản lý hiệu lực tài liệu.</div>
+              <div class="code-tags">
+                <span class="code-tag">KnowledgePagesUI</span>
+                <span class="code-tag">PersonaConfigEditor</span>
+                <span class="code-tag">DocumentManager</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #818cf8;">
+              <div class="comp-head">
+                <div class="comp-name">Playbook &amp; Micro-Skill Studio</div>
+                <span class="comp-port">REST /api/bot/fanpage/*</span>
+              </div>
+              <div class="comp-desc">Cho phép chủ Page mỗi ngành tự upload AI Playbook (<code>.yaml</code>, <code>.md</code>, <code>.json</code> với cờ <code>replace_existing=true</code>) và bộ Micro-Skills 7 phần mà không cần sửa code.</div>
+              <div class="code-tags">
+                <span class="code-tag">replace_existing=true</span>
+                <span class="code-tag">7-Part Micro-Skill</span>
+                <span class="code-tag">SampleDialogues</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #34d399;">
+              <div class="comp-head">
+                <div class="comp-name">Messenger Chat &amp; &ldquo;Báo Sai &amp; Dạy AI&rdquo;</div>
+                <span class="comp-port">POST /api/bot/fanpage/message</span>
+              </div>
+              <div class="comp-desc">Hiển thị bong bóng chat theo nhịp thở tự nhiên (<code>reply_bubbles</code> + <code>typing_delay_ms</code>), badge kỹ năng kích hoạt, quy tắc áp dụng và nút dạy AI trực tiếp.</div>
+              <div class="code-tags">
+                <span class="code-tag">reply_bubbles[]</span>
+                <span class="code-tag">typing_delay_ms</span>
+                <span class="code-tag">POST /feedback</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connector-arrow">
+          <span>&darr; HTTP REST JSON (page_id, sender_id, customer_name, message, history[]) &darr;</span>
+        </div>
+
+        <!-- LAYER 2: CORE JAVA ENGINE -->
+        <div class="layer-box">
+          <div class="layer-header">
+            <div class="layer-title"><span class="dot dot-green"></span> Tầng 2: Bộ Máy Điều Phối Hội Thoại &amp; Kiểm Soát Runtime (docmind-api-java)</div>
+            <span class="layer-badge">Spring Boot 3.3 &bull; Java 21 &bull; Port :8090</span>
+          </div>
+          <div class="cards-row">
+            <div class="comp-card" style="--card-accent: #34d399;">
+              <div class="comp-head">
+                <div class="comp-name">1. Security, Neurological Safety &amp; SentimentIntentLayer</div>
+                <span class="comp-port">Deterministic &lt; 1ms</span>
+              </div>
+              <div class="comp-desc">Chặn Prompt Injection, phát hiện cờ đỏ thần kinh/y khoa (<code>tê tay + đau đầu dữ dội</code>, <code>tê lan từ cổ xuống tay</code>, <code>yếu tay</code>, <code>chóng mặt</code>, <code>ù tai</code>), phân tách từ <code>&ldquo;thôi&rdquo;</code> mềm vs <code>STRONG_REJECTION</code>, <code>EXPLICIT_DOWNSELL_REQUEST</code> và <code>TRIAL_ACCEPTANCE</code>.</div>
+              <div class="code-tags">
+                <span class="code-tag">SentimentIntentLayer.java</span>
+                <span class="code-tag">hasNeurologicalSafetyRedFlag</span>
+                <span class="code-tag">isStrongRejection</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #38bdf8;">
+              <div class="comp-head">
+                <div class="comp-name">2. ConversationState (34-Field Dual-Hydration)</div>
+                <span class="comp-port">Stateful Memory v3.1.5.3</span>
+              </div>
+              <div class="comp-desc">Khôi phục 34 trường trạng thái đa ngành theo <code>pageId:senderId</code> + <code>history[]</code>: <code>heldPackage</code>, <code>heldDuration</code>, <code>downsellOffered</code>, <code>downsellPackage</code>, <code>rejectedPackages</code>, <code>rejectedDurations</code>, <code>docsHasFeedback</code>, <code>priceObjectionCount</code>.</div>
+              <div class="code-tags">
+                <span class="code-tag">ConversationState.java</span>
+                <span class="code-tag">heldPackage / heldDuration</span>
+                <span class="code-tag">downsellOffered</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #fbbf24;">
+              <div class="comp-head">
+                <div class="comp-name">3. PrimaryActionRouter (PRE-01..04 &amp; R01..R13D)</div>
+                <span class="comp-port">Veteran 2-Step Objection</span>
+              </div>
+              <div class="comp-desc">Định tuyến ưu tiên: <strong>Safety &gt; Emotion Rescue &gt; State Progression &gt; Value Defense (Chê đắt lần 1 giữ gói + mời thử 🥰) &gt; 1-Step Downsell (Lần 2 hoặc xin gói rẻ hơn)</strong>. Nén <code>active_prompt_compact &le; 900 chars</code>.</div>
+              <div class="code-tags">
+                <span class="code-tag">PrimaryActionRouter.java</span>
+                <span class="code-tag">HANDLE_PRICE_OBJECTION_*</span>
+                <span class="code-tag">TRIAL_ACCEPTANCE</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #818cf8;">
+              <div class="comp-head">
+                <div class="comp-name">4. Hybrid RRF Retrieval Service</div>
+                <span class="comp-port">Dense + BM25 + Rules</span>
+              </div>
+              <div class="comp-desc">Kết hợp tìm kiếm ngữ nghĩa Vector (<code>pgvector</code>) và từ khóa Full-Text (BM25), hợp nhất bằng thuật toán <strong>Reciprocal Rank Fusion (RRF)</strong>, lọc theo <code>is_active = true</code> và tự động phát hiện <code>docsHasFeedback</code> từ KB.</div>
+              <div class="code-tags">
+                <span class="code-tag">RetrievalService.java</span>
+                <span class="code-tag">ReciprocalRankFusion</span>
+                <span class="code-tag">detectDocsHasFeedback</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #fb7185;">
+              <div class="comp-head">
+                <div class="comp-name">5. ReplyContractValidator (30 Hard Rules)</div>
+                <span class="comp-port">VR-001..020 + VR-004A..015A</span>
+              </div>
+              <div class="comp-desc">Kiểm định hậu LLM 30 quy tắc: Cấm nhắc lại thời lượng đã bị chê đắt sau khi hạ gói (<code>VR-004A</code>), kiểm soát social proof/y khoa (<code>VR-007B..H</code>), delay <code>2000ms</code> khi không báo giá số vs <code>&ge; 10s</code> sau báo giá (<code>VR-014A</code>), chốt đúng gói thử (<code>VR-015A</code>).</div>
+              <div class="code-tags">
+                <span class="code-tag">ReplyContractValidator</span>
+                <span class="code-tag">VR-004A / VR-007B..H</span>
+                <span class="code-tag">VR-014A / VR-015A</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #c084fc;">
+              <div class="comp-head">
+                <div class="comp-name">6. MetaLearning &amp; EvoSkill Loop</div>
+                <span class="comp-port">Self-Improving</span>
+              </div>
+              <div class="comp-desc">Tổng hợp quy tắc mới từ phản hồi của Admin, tự động cách ly hội thoại mẫu xấu (<code>QUARANTINED_BAD</code>) và cộng điểm thưởng chuyển đổi (<code>conversion_count</code>) khi khách để lại SĐT.</div>
+              <div class="code-tags">
+                <span class="code-tag">MetaLearningService</span>
+                <span class="code-tag">PlaybookUploadService</span>
+                <span class="code-tag">AgentSkillService</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connector-arrow">
+          <span>&darr; Internal Microservice &amp; Multi-Provider LLM Calls (FastAPI :8000 &bull; Agent Brain :8095 &bull; Dynamic .env LLM Endpoint) &darr;</span>
+        </div>
+
+        <!-- LAYER 3: PYTHON AI MICROSERVICES & LLM -->
+        <div class="layer-box">
+          <div class="layer-header">
+            <div class="layer-title"><span class="dot dot-purple"></span> Tầng 3: Dịch Vụ Xử Lý Ngôn Ngữ, Trí Nhớ Dài Hạn &amp; Suy Luận LLM Đa Nhà Cung Cấp</div>
+            <span class="layer-badge">FastAPI Python &bull; Multi-Provider .env LLM (OLLAMA / OPENAI_COMPATIBLE / GEMINI / ANTHROPIC)</span>
+          </div>
+          <div class="cards-row">
+            <div class="comp-card" style="--card-accent: #22d3ee;">
+              <div class="comp-head">
+                <div class="comp-name">docmind-doc-service (RAG &amp; LangGraph)</div>
+                <span class="comp-port">FastAPI :8000</span>
+              </div>
+              <div class="comp-desc">Bóc tách tài liệu đa định dạng, chia nhỏ đoạn văn (Semantic Chunking) giữ nguyên cấu trúc <code>heading_path</code>, tạo Vector Embedding và nén ngữ cảnh hội thoại đa lượt qua LangGraph.</div>
+              <div class="code-tags">
+                <span class="code-tag">POST /embed</span>
+                <span class="code-tag">POST /parse</span>
+                <span class="code-tag">POST /agent/consult</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #c084fc;">
+              <div class="comp-head">
+                <div class="comp-name">docmind-agent-brain (Long-Term Memory)</div>
+                <span class="comp-port">FastAPI :8095</span>
+              </div>
+              <div class="comp-desc">Lưu trữ và truy hồi trí nhớ dài hạn của từng khách hàng theo <code>page_id + sender_id</code> (sở thích, lịch sử băn khoăn, nhiệt độ mua hàng) và tư vấn chiến thuật cho Java Engine.</div>
+              <div class="code-tags">
+                <span class="code-tag">POST /brain/recall-and-advise</span>
+                <span class="code-tag">POST /brain/retain-turn</span>
+                <span class="code-tag">Episodic Memory</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #fbbf24;">
+              <div class="comp-head">
+                <div class="comp-name">Multi-Provider LLM Engine (.env)</div>
+                <span class="comp-port">Dynamic Endpoint</span>
+              </div>
+              <div class="comp-desc">Đọc 100% từ <code>.env</code> (<code>LLM_PROVIDER</code>, <code>LLM_BASE_URL</code>, <code>LLM_API_KEY</code>, <code>LLM_MODEL</code>, <code>LLM_TEMPERATURE</code>), hỗ trợ linh hoạt <code>OLLAMA</code>, <code>OPENAI</code> / <code>OPENAI_COMPATIBLE</code>, <code>GEMINI</code>, <code>ANTHROPIC</code> kèm tự động bóc tách markdown fence <code>```json ... ```</code>.</div>
+              <div class="code-tags">
+                <span class="code-tag">LlmProperties + LlmClientConfig</span>
+                <span class="code-tag">OpenAiCompatibleLlmClient</span>
+                <span class="code-tag">OllamaLlmClient</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connector-arrow">
+          <span>&darr; JDBC / SQL &amp; pgvector Cosine Similarity Search &darr;</span>
+        </div>
+
+        <!-- LAYER 4: POSTGRESQL + PGVECTOR -->
+        <div class="layer-box">
+          <div class="layer-header">
+            <div class="layer-title"><span class="dot dot-amber"></span> Tầng 4: Cơ Sở Dữ Liệu Đa Ngành &amp; Vector Store (docmind-postgres)</div>
+            <span class="layer-badge">PostgreSQL 16 + pgvector &bull; Port :5432</span>
+          </div>
+          <div class="cards-row">
+            <div class="comp-card" style="--card-accent: #fbbf24;">
+              <div class="comp-head">
+                <div class="comp-name">Tenant &amp; Persona Store</div>
+                <span class="comp-port">knowledge_pages</span>
+              </div>
+              <div class="comp-desc">Cô lập dữ liệu tuyệt đối theo <code>page_id</code>. Lưu trữ <code>industry</code> và cấu hình <code>persona_config</code> (JSONB: <code>opening_bubbles</code>, <code>post_price_delay_ms</code>, <code>preference_discovery_prompt</code>, đại từ xưng hô).</div>
+              <div class="code-tags">
+                <span class="code-tag">knowledge_pages</span>
+                <span class="code-tag">persona_config JSONB</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #38bdf8;">
+              <div class="comp-head">
+                <div class="comp-name">Active Vector Knowledge Base</div>
+                <span class="comp-port">documents &amp; chunks</span>
+              </div>
+              <div class="comp-desc">Lưu trữ tài liệu và các đoạn <code>chunks</code> kèm vector <code>embedding</code>, đường dẫn tiêu đề <code>heading_path</code> và cờ kiểm soát vòng đời <code>is_active</code>, <code>effective_from</code>, <code>effective_to</code>.</div>
+              <div class="code-tags">
+                <span class="code-tag">documents (READY/ACTIVE)</span>
+                <span class="code-tag">chunks (pgvector)</span>
+              </div>
+            </div>
+
+            <div class="comp-card" style="--card-accent: #34d399;">
+              <div class="comp-head">
+                <div class="comp-name">Playbook, Micro-Skills &amp; Dialogues</div>
+                <span class="comp-port">learned_rules &amp; agent_skills</span>
+              </div>
+              <div class="comp-desc">Lưu trữ Micro-Skills theo từng Page (<code>agent_skills</code>), quy tắc Playbook (<code>learned_rules</code>) và kho hội thoại mẫu (<code>sample_dialogues</code>) kèm thống kê hiệu quả thực chiến.</div>
+              <div class="code-tags">
+                <span class="code-tag">agent_skills</span>
+                <span class="code-tag">learned_rules</span>
+                <span class="code-tag">sample_dialogues</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: 10-STEP RUNTIME MESSAGE PIPELINE                             -->
+    <!-- =================================================================== -->
+    <section id="tab-pipeline" class="tab-panel">
+      <div class="section-banner">
+        <h2>2. Luồng Xử Lý Tin Nhắn 10 Bước (End-to-End Stateful Turn Pipeline v3.1)</h2>
+        <p>Mỗi tin nhắn từ khách hàng đi qua 10 bước kiểm soát chặt chẽ trong <code>FanpageBotService.chat()</code> để đảm bảo trả lời nhanh, giàu cảm xúc, không bao giờ lặp giá hay hỏi lặp thông tin khách đã nói.</p>
+      </div>
+
+      <div class="pipeline-steps">
+
+        <div class="step-card">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <h3>Tiếp Nhận Tin Nhắn &amp; Nạp Cấu Hình Thương Hiệu Theo Page (Tenant Persona Resolution)</h3>
+            <p>Nhận <code>FanpageBotRequest</code> (gồm <code>page_id</code>, <code>sender_id</code>, <code>customer_name</code>, <code>message</code>, <code>history</code>). Nạp <code>PagePersonaConfig</code> từ bảng <code>knowledge_pages</code> và xác định đại từ xưng hô chuẩn xác (<code>em</code> &ndash; <code>mình / Anh / Chị</code>).</p>
+            <div class="code-tags">
+              <span class="code-tag">FanpageBotService.resolvePagePersona()</span>
+              <span class="code-tag">PagePersonaConfig.java</span>
+              <span class="code-tag">resolveCustomerHonorific()</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Đầu vào:</strong> <code>page_id</code>, <code>customer_name</code></div>
+            <div><strong>Đầu ra:</strong> <code>PagePersona</code>, <code>honorific</code></div>
+            <div><strong>Độ trễ:</strong> <code>&lt; 2ms</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <h3>Cổng Bảo Mật &amp; An Toàn Tầng 1 Trước LLM (Pre-LLM Security &amp; Safety Handoff Gate)</h3>
+            <p>Kiểm tra tất định: (a) Chống Prompt Injection / Jailbreak (<code>PromptSecurityGuard.isDirectJailbreakAttempt</code>), (b) Phát hiện chống chỉ định sức khỏe/an toàn (mang thai, mới phẫu thuật, sốt cao, đau/ù tai...), (c) Phát hiện khiếu nại dịch vụ. Nếu khớp, dừng bán hàng ngay và chuyển chuyên viên trong <strong>1 bong bóng duy nhất</strong> (<code>0</code> câu hỏi).</p>
+            <div class="code-tags">
+              <span class="code-tag">PromptSecurityGuard</span>
+              <span class="code-tag">HARD_HANDOFF_SAFETY</span>
+              <span class="code-tag">HARD_HANDOFF_COMPLAINT</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Quy tắc:</strong> Core Safety &gt; Mọi quy tắc khác</div>
+            <div><strong>Hành động:</strong> <code>needs_human_handoff = true</code></div>
+            <div><strong>Số bong bóng:</strong> Đúng <code>1 bubble</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <h3>Nén Ngữ Cảnh Đa Lượt &amp; Truy Tìm Tri Thức Hybrid RRF (Active Knowledge Retrieval)</h3>
+            <p>Chỉ lấy các tài liệu có <code>status = 'READY'</code> và <code>isCurrentlyEffective() == true</code> của Page. Kết hợp tìm kiếm Vector <code>pgvector</code> và Full-Text BM25 qua <code>ReciprocalRankFusion</code>, lọc theo nhánh chủ đề (<code>scopeChunksToTopicFamily</code>) và nạp 1 quy tắc Playbook liên quan nhất.</p>
+            <div class="code-tags">
+              <span class="code-tag">RetrievalService.retrieveWithRules()</span>
+              <span class="code-tag">ReciprocalRankFusion.FusedChunk</span>
+              <span class="code-tag">scopeChunksToTopicFamily()</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Nguồn:</strong> <code>chunks</code> (<code>is_active=true</code>)</div>
+            <div><strong>Chống rò dữ liệu:</strong> Cách ly 100% theo <code>page_id</code></div>
+            <div><strong>Độ trễ:</strong> <code>~15ms &ndash; 45ms</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <h3>Khôi Phục Bộ Nhớ Trạng Thái Hội Thoại Đa Ngành (Dual-Hydration ConversationState)</h3>
+            <p>Tái tạo <code>ConversationState</code> từ bộ nhớ phiên (<code>pageId:senderId</code>) kết hợp quét lịch sử <code>history[]</code>: xác định <code>greetingSent</code>, <code>introSent</code>, <code>known</code> (vấn đề/nhu cầu khách gặp phải, sở thích lực nhẹ/vừa, thời lượng), các gói đã gợi ý (<code>recommendedOptions</code>), <code>priceDiscussed</code>, <code>objectionCount</code>, <code>ackCount</code> và <code>usedTemplates</code>.</p>
+            <div class="code-tags">
+              <span class="code-tag">ConversationState.hydrate()</span>
+              <span class="code-tag">extractProblemOrNeedPhrase()</span>
+              <span class="code-tag">extractPreferenceAttribute()</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Chống mất trí nhớ:</strong> Dual-Hydration</div>
+            <div><strong>Theo dõi:</strong> Giá đã báo &amp; Template đã dùng</div>
+            <div><strong>Độ trễ:</strong> <code>&lt; 1ms</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <h3>Định Tuyến Hành Động Chính &amp; Khóa 1 Kỹ Năng Duy Nhất (PrimaryActionRouter)</h3>
+            <p>Phân loại tin nhắn bằng quy tắc tất định trước LLM (nhận diện câu ừ/ok <code>ADVANCE_AFTER_ACK</code>, so sánh đơn giá theo phút <code>EXPLAIN_UNIT_VALUE</code>, chê đắt lần 1 vs lần 2, hỏi giá chung vs cụ thể, mô tả triệu chứng). Chọn đúng <strong>1 PrimaryAction</strong> và kích hoạt tối đa <strong>1 Micro-Skill</strong> (<code>MAX_ACTIVE_SKILLS = 1</code>).</p>
+            <div class="code-tags">
+              <span class="code-tag">PrimaryActionRouter.route()</span>
+              <span class="code-tag">RoutingDecision</span>
+              <span class="code-tag">MAX_ACTIVE_SKILLS = 1</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Đầu ra:</strong> 1 trong 15 <code>PrimaryAction</code></div>
+            <div><strong>Micro-Skill:</strong> Tối đa <code>1 skill/turn</code></div>
+            <div><strong>Độ trễ:</strong> <code>&lt; 1ms</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <h3>Tự Động Ghép 2 Bong Bóng Chào Mở Đầu Ở Lượt Đầu Tiên (Code-Injected Opening Bubbles)</h3>
+            <p>Nếu <code>greetingSent == false</code> (Turn 1) và không phải ca cấp cứu/khiếu nại: Backend tự động lấy 2 bong bóng mở đầu từ <code>persona_config.opening_bubbles</code> của Page (Bubble 1 ở <code>0ms</code>, Bubble 2 ở <code>1200ms</code>) và chỉ sinh thêm tối đa <strong>1 bong bóng phản hồi</strong> ở <code>2500ms</code> (tổng cộng đúng 3 bong bóng).</p>
+            <div class="code-tags">
+              <span class="code-tag">openingRequired = !state.greetingSent()</span>
+              <span class="code-tag">OPENING_GREETING_1 (0ms)</span>
+              <span class="code-tag">OPENING_INTRO_2 (1200ms)</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Turn 1:</strong> 2 Opening + 1 Response = <code>3 bubbles</code></div>
+            <div><strong>Turn 2+:</strong> Không chào lại, tối đa <code>2 bubbles</code></div>
+            <div><strong>Cấu hình:</strong> Từ <code>persona_config</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <h3>Thực Thi Phản Hồi Động Từ DB Qua Multi-Provider LLM (Action Execution)</h3>
+            <p>Truyền 100% dữ liệu thực tế từ DB (<code>fusedChunks</code>, <code>learned_rules</code>, <code>agent_skills</code>, <code>sample_dialogues</code>, <code>history[]</code>) kèm hợp đồng <code>PrimaryAction</code> vào LLM được cấu hình trong <code>.env</code> để sinh JSON <code>reply_bubbles</code> (chỉ giữ cố định 2 câu chào mở đầu ở Turn 1 từ <code>persona_config.opening_bubbles</code> và <code>OPT_OUT</code>).</p>
+            <div class="code-tags">
+              <span class="code-tag">FanpageBotPromptBuilder.build()</span>
+              <span class="code-tag">OpenAiCompatibleLlmClient / OllamaLlmClient</span>
+              <span class="code-tag">PrimaryActionRouter.route()</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Grounding:</strong> 100% từ Active DB Chunks/Rules/Skills</div>
+            <div><strong>Bịa giá / khuyến mãi:</strong> <code>0%</code></div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <h3>Kiểm Định Hợp Đồng 12 Quy Tắc &amp; Nhịp Nghỉ 10 Giây Sau Báo Giá (ReplyContractValidator)</h3>
+            <p>Kiểm tra từng bong bóng qua 12 quy tắc của <code>ReplyContractValidator</code>: cắt gọn nếu quá 2 câu hoặc 45 từ, giữ tối đa 1 dấu <code>?</code> ở bong bóng cuối, xóa câu lặp giá nếu <code>priceDiscussed == true</code>, và ép cứng <code>typing_delay_ms &ge; 10000ms</code> cho bong bóng neo cảm xúc ngay sau bong bóng báo giá.</p>
+            <div class="code-tags">
+              <span class="code-tag">ReplyContractValidator.validateAndEnforce()</span>
+              <span class="code-tag">post_price_delay_ms = 10000</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Post-Price Delay:</strong> <code>10.000ms</code> (10 giây)</div>
+            <div><strong>Mục tiêu:</strong> Giữ nhịp cảm xúc khách hàng</div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <h3>Hậu Kiểm Guardrail Pipeline 6 Chốt Chặn (Post-Processing Guardrail Hooks)</h3>
+            <p>Chạy chuỗi 6 Hook: <code>SyntaxSanitizationHook</code> (xóa markdown/bullet/mã nội bộ) &rarr; <code>HonorificConsistencyHook</code> (đồng nhất xưng hô) &rarr; <code>AntiInfoDumpingHook</code> &rarr; <code>ClosingQuestionHook</code> &rarr; <code>BubbleCapHook</code> &rarr; <code>SkillContractValidatorHook</code>.</p>
+            <div class="code-tags">
+              <span class="code-tag">GuardrailPipeline.java</span>
+              <span class="code-tag">BubbleCapHook.java</span>
+              <span class="code-tag">SkillContractValidatorHook.java</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Rò rỉ nội bộ:</strong> Chặn 100%</div>
+            <div><strong>Xưng hô:</strong> Đồng nhất 100%</div>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <h3>Cập Nhật Trạng Thái Phiên &amp; Ghi Nhận Học Tăng Cường (State Persistence &amp; Telemetry)</h3>
+            <p>Lưu trạng thái mới qua <code>ConversationState.advanceAndPersist()</code>, ghi nhận lượt áp dụng kỹ năng/quy tắc vào PostgreSQL và lưu trí nhớ dài hạn bất đồng bộ sang <code>docmind-agent-brain</code>.</p>
+            <div class="code-tags">
+              <span class="code-tag">ConversationState.advanceAndPersist()</span>
+              <span class="code-tag">agentBrainService.retainTurnAsync()</span>
+              <span class="code-tag">recordSkillsApplied()</span>
+            </div>
+          </div>
+          <div class="step-meta">
+            <div><strong>Trạng thái phiên:</strong> Đã cập nhật</div>
+            <div><strong>Đầu ra cuối:</strong> <code>FanpageBotResponse</code></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 3: 15 PRIMARY ACTIONS & 30 VALIDATOR RULES                      -->
+    <!-- =================================================================== -->
+    <section id="tab-router" class="tab-panel">
+      <div class="section-banner">
+        <h2>3. Ma Trận Định Tuyến Ưu Tiên (PRE-01..04 &amp; R01..R13D) &amp; 30 Quy Tắc Kiểm Định (VR-001..VR-020 + VR-004A..015A)</h2>
+        <p>Bộ định tuyến <code>PrimaryActionRouter</code> v3.1.5.3 kết hợp <code>SentimentIntentLayer</code>, ánh xạ tương thích ngược về 15 <code>PrimaryAction</code> chuẩn nhưng điều khiển chi tiết bằng 23 Micro-Skills (Two-Step Veteran Sales Price Objection, Trial Acceptance, Neurological Safety, Frustration Rescue) và 30 chốt chặn <code>ReplyContractValidator</code>.</p>
+      </div>
+
+      <div class="matrix-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rule ID</th>
+              <th>Hành Vi Logic &rarr; PrimaryAction</th>
+              <th>Điều Kiện Kích Hoạt (Trigger &amp; State)</th>
+              <th>Micro-Skill Kích Hoạt</th>
+              <th>Cấu Trúc Bong Bóng &amp; Timing</th>
+              <th>Cập Nhật State Sau Khi Gửi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>PRE-01..04</code></td>
+              <td><span class="action-badge danger">HARD_HANDOFF / OPT_OUT / NEURO_SAFETY</span></td>
+              <td>Đang <code>humanTakeover</code> / Khách nhắn <code>&ldquo;đừng nhắn&rdquo;</code> (Opt-out) / Rủi ro y khoa &amp; thần kinh từ <code>persona_config</code> / Khiếu nại</td>
+              <td><code>spa_neurological_safety_handoff</code> / <code>safety_handoff_high_risk</code></td>
+              <td><strong>1 Bubble duy nhất:</strong> Khuyên thăm khám y tế / dừng nhắn hoặc chuyển chuyên viên ngay (<code>0</code> câu hỏi)</td>
+              <td><code>opted_out=true</code> hoặc <code>human_takeover=true</code></td>
+            </tr>
+            <tr>
+              <td><code>R00</code></td>
+              <td><span class="action-badge danger">ENTITY_MISMATCH_CORRECTION &rarr; MISMATCH_RESCUE / HANDOFF</span></td>
+              <td>Khách mắng/phản bác tư vấn lệch nhu cầu: <code>&ldquo;Tao đau chân, mỏi gối tê tay mà mày đi tư vấn massage cổ là sao&rdquo;</code>, <code>&ldquo;sao lại tư vấn...&rdquo;</code>, <code>&ldquo;tư vấn nhầm&rdquo;</code></td>
+              <td><code>mismatch_correction_rescue</code> / <code>complaint_immediate_handoff</code></td>
+              <td>Cắt bỏ mệnh đề phê phán để <strong>chặn Keyword Hijacking</strong>, đưa gói bị mắng vào <code>rejectedPackages</code>, xóa <code>heldPackage</code>. Nếu dùng đại từ gay gắt (<code>tao/mày</code>) hoặc bức xúc: Xin lỗi đúng nhu cầu thật + 1 Bubble Handoff (<code>0</code> câu hỏi). Nếu nhắc nhẹ: xin lỗi + tư vấn lại gói khớp <code>targetScopes</code></td>
+              <td><code>rejected_packages+=[wrongOffer], held_package=null</code></td>
+            </tr>
+            <tr>
+              <td><code>R01</code></td>
+              <td><span class="action-badge danger">FRUSTRATION_RESCUE &rarr; RECOMMEND / QUOTE / HANDOFF</span></td>
+              <td>Khách bức xúc: <code>&ldquo;Hâm à&rdquo;</code>, <code>&ldquo;vớ vẩn&rdquo;</code>, <code>&ldquo;lại hỏi&rdquo;</code>, <code>&ldquo;nói linh tinh&rdquo;</code>, <code>&ldquo;bực mình&rdquo;</code> (Có false-positive guard)</td>
+              <td><code>spa_frustration_rescue</code></td>
+              <td>Lần 1 (<code>frustrationCount==0</code>): Xin lỗi ngắn + Gợi ý gói/Báo giá luôn (CẤM hỏi menu/lực). Lần 2+ (<code>frustrationCount&ge;1</code>): 1 Bubble Handoff (<code>0</code> câu hỏi)</td>
+              <td><code>frustration_count += 1</code></td>
+            </tr>
+            <tr>
+              <td><code>R02</code></td>
+              <td><span class="action-badge open">ASK_CONDITION_ONCE &rarr; ACKNOWLEDGE_AND_ASK_PREFERENCE</span></td>
+              <td>Khách nêu đau/mỏi/nhức/tê/căng (VD: <code>&ldquo;Tôi bị tê tay, mỏi vai và đau đầu&rdquo;</code>) &amp; <code>conditionAskedCount == 0</code></td>
+              <td><code>spa_condition_first_discovery</code></td>
+              <td>Ghi nhận đầy đủ vùng mỏi + triệu chứng (<code>đau đầu</code>, <code>tê tay</code>) + hỏi đúng 1 câu thời điểm/nguyên nhân. <strong>CẤM hỏi lực nhẹ/vừa!</strong></td>
+              <td><code>condition_asked_count=1, used_question_intents+=[ASK_CONDITION]</code></td>
+            </tr>
+            <tr>
+              <td><code>R03..R05</code></td>
+              <td><span class="action-badge price">SCOPE_GROUNDED_RECOMMEND_AND_QUOTE / UNGROUNDED_SCOPE_HANDOFF</span></td>
+              <td>Đã rõ tình trạng/nhu cầu (<code>extractedNeeds</code> &amp; <code>targetScopes</code>) + cần gợi ý gói hoặc báo giá từ Active Chunks</td>
+              <td><code>spa_recommend_and_quote_if_requested</code> / <code>price_answer_from_docs</code></td>
+              <td>Chấm điểm <code>computeScopeOverlapScore</code> giữa <code>targetScopes</code> (VD: <code>[&ldquo;chân&rdquo;, &ldquo;gối&rdquo;]</code> hoặc <code>[&ldquo;răng&rdquo;]</code>) với <code>heading_path</code> + nội dung Chunk. <strong>CẤM chọn gói lệch phạm vi</strong>. Nếu Active Chunks không có gói nào khớp <code>targetScopes</code> &rarr; <code>UNGROUNDED_SCOPE_HANDOFF</code> (1 Bubble chuyển chuyên viên)</td>
+              <td><code>held_package=..., held_duration=..., price_discussed=true</code></td>
+            </tr>
+            <tr>
+              <td><code>R04..R08</code></td>
+              <td><span class="action-badge">RECOMMEND / CLARIFY_SERVICE / CLARIFY_DURATION / SHORTCUT</span></td>
+              <td>Gợi ý gói sau khi hỏi tình trạng (<code>R04</code>) / Báo giá trực tiếp (<code>R05</code>) / Hỏi nhóm dịch vụ tối đa 1 lần (<code>R06</code>) / Hỏi thời lượng 45p hay 60p (<code>R07</code>) / Shortcut <code>&ldquo;Massage đi&rdquo;</code> (<code>R08</code>)</td>
+              <td><code>spa_recommend_after_condition</code> / <code>spa_clarify_service_type_once</code> / <code>spa_clarify_duration_once</code></td>
+              <td>Tối đa 2 Bubbles (hoặc 3 ở Turn 1), không hỏi lại menu rộng khi <code>serviceFamilyKnown == true</code></td>
+              <td><code>held_package=..., service_family_known=true</code></td>
+            </tr>
+            <tr>
+              <td><code>R11A / R11B</code></td>
+              <td><span class="action-badge price">EXPLICIT_DOWNSELL_FIRST_TIME / NO_LOWER_PACKAGE_HANDOFF</span></td>
+              <td>Khách chủ động xin gói ngắn/rẻ hơn (<code>&ldquo;Có gói nào ngắn hơn rẻ hơn không?&rdquo;</code> hoặc <code>&ldquo;Có gói 30 phút thử xem sao không em?&rdquo;</code>)</td>
+              <td><code>spa_explicit_downsell_or_second_objection</code> / <code>spa_no_lower_package_handoff</code></td>
+              <td>Nếu còn gói thấp hơn trong KB (VD: <code>30 phút 200k</code>): Hạ đúng 1 bậc, <strong>CẤM nhắc lại gói/giá cũ</strong>, B2 <code>delay &ge; 10.000ms</code>. Nếu hết gói thấp hơn: 1 Bubble Handoff (<code>0</code> câu hỏi)</td>
+              <td><code>downsell_offered=true, downsell_package=30p, rejected_durations+=[old]</code></td>
+            </tr>
+            <tr>
+              <td><code>R11</code></td>
+              <td><span class="action-badge open">FIRST_PRICE_OBJECTION_HOLD_AND_INVITE_TRIAL &rarr; HANDLE_PRICE_OBJECTION_FIRST_TIME</span></td>
+              <td>Khách chê đắt lần 1 (<code>&ldquo;đắt thế&rdquo;</code>, <code>&ldquo;hơi cao&rdquo;</code>, <code>&ldquo;Đắt&rdquo;</code>) &amp; <code>priceObjectionCount == 0</code> &amp; không xin gói rẻ hơn</td>
+              <td><code>spa_first_price_objection_value_and_trial</code></td>
+              <td><strong>Giữ nguyên gói đang báo</strong> (KHÔNG tự hạ gói, KHÔNG đưa vào <code>rejectedDurations</code>, KHÔNG lặp số tiền cũ). B1: Đồng cảm + chất lượng/phản hồi tốt (<code>1200ms</code>). B2: Mời trải nghiệm thử 1 buổi kèm <code>🥰</code> (<strong><code>delay = 2000ms</code></strong>)</td>
+              <td><code>price_objection_count=1, trial_invite_count+=1, downsell_offered=false</code></td>
+            </tr>
+            <tr>
+              <td><code>R12</code></td>
+              <td><span class="action-badge price">SECOND_PRICE_OBJECTION_DOWNSELL_ONE_STEP &rarr; HANDLE_PRICE_OBJECTION_REPEAT</span></td>
+              <td>Khách chê đắt lần 2 (<code>&ldquo;Nhưng vẫn thấy hơi đắt em ạ&rdquo;</code>, <code>&ldquo;Vẫn đắt&rdquo;</code>) &amp; <code>priceObjectionCount &ge; 1</code></td>
+              <td><code>spa_explicit_downsell_or_second_objection</code></td>
+              <td>Hạ đúng 1 bậc xuống gói thấp hơn còn hiệu lực (<code>90 &rarr; 60 &rarr; 45 &rarr; 30 phút</code>). <strong>CẤM tuyệt đối nhắc lại thời lượng hoặc giá cũ (<code>VR-004A</code>)</strong>. B2 <strong><code>delay &ge; 10.000ms</code></strong></td>
+              <td><code>price_objection_count+=1, downsell_offered=true, rejected_durations+=[old]</code></td>
+            </tr>
+            <tr>
+              <td><code>R13B</code></td>
+              <td><span class="action-badge open">TRIAL_ACCEPTANCE_BOOKING &rarr; CONFIRM_BOOKING_DETAILS</span></td>
+              <td>Khách đồng ý thử: <code>&ldquo;Thử xem sao&rdquo;</code>, <code>&ldquo;thử 1 buổi xem sao&rdquo;</code>, <code>&ldquo;Đắt thế nhưng thôi thử xem sao&rdquo;</code></td>
+              <td><code>spa_trial_acceptance_booking</code></td>
+              <td>Nếu <code>downsellOffered == false</code>: chốt đúng <code>heldPackage</code> (VD: <code>massage cổ vai gáy 45 phút</code>, cấm gọi là <code>gói ngắn</code>). Nếu <code>downsellOffered == true</code>: chốt đúng <code>downsellPackage</code> (<code>gói ngắn 30 phút</code>). Cấm lặp lại giá, hỏi cơ sở &amp; khung giờ (<code>delay = 2000ms</code>)</td>
+              <td><code>stage=BOOKING, ack_count+=1</code></td>
+            </tr>
+            <tr>
+              <td><code>R13C / R13D</code></td>
+              <td><span class="action-badge">STRONG_REJECTION / ACK_ADVANCE</span></td>
+              <td>Từ chối rõ (<code>&ldquo;Thôi khỏi em ạ&rdquo;</code>, <code>&ldquo;Để lúc khác&rdquo;</code> &ndash; không bắt nhầm từ đơn <code>&ldquo;thôi&rdquo;</code>) hoặc xác nhận ngắn (<code>&ldquo;Uk/Ừ/Ok&rdquo;</code>)</td>
+              <td><code>spa_graceful_exit_after_rejection</code> / <code>spa_booking_advance_after_ack</code></td>
+              <td>Từ chối rõ: 1 Bubble cảm ơn lịch sự, <code>0</code> câu hỏi. Đồng ý ngắn: tiến sang hỏi giờ đặt lịch, <code>0</code> giá</td>
+              <td><code>stage=CLOSED_POLITE</code> hoặc <code>stage=BOOKING</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 30 Validator Rules (VR-001..VR-020 + VR-004A..015A) -->
+      <div class="validator-grid">
+        <div class="rule-box">
+          <h4><span>VR-001..003: Opening &amp; Pronouns</span> <code>TURN_1_CONTRACT</code></h4>
+          <p>Turn 1 chỉ inject 2 opening bubbles từ code; Turn 2+ cấm chào lại; đồng nhất xưng hô <code>em - mình/Anh/Chị</code> (bảo toàn cụm số nhiều <code>nhiều anh/chị</code>).</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-004 &amp; VR-004A: Condition &amp; No Old Duration</span> <code>NO_REJECTED_DURATION</code></h4>
+          <p><code>VR-004</code>: Cấm hỏi <code>lực nhẹ hay lực vừa</code> khi chưa rõ tình trạng. <code>VR-004A</code>: Cấm nhắc lại thời lượng trong <code>rejectedDurations</code> sau khi đã downsell.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-006..007 &amp; VR-007B..E: Social Proof</span> <code>CONTROLLED_PROOF</code></h4>
+          <p>Khi <code>docsHasFeedback == true</code> cho phép câu định tính có kiểm soát; cấm bịa phần trăm/số lượng khách (<code>90%</code>, <code>hàng nghìn khách</code>) hoặc từ tuyệt đối (<code>chắc chắn 100%</code>).</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-007F..H: Medical &amp; Neuro Safety</span> <code>NO_CURE_CLAIMS</code></h4>
+          <p>Cho phép mô tả thư giãn cơ có kiểm soát (<code>ấn huyệt làm mềm cơ vùng cổ vai giúp nhẹ đầu và đỡ tê mỏi</code>); cấm cam kết chữa khỏi; cờ đỏ thần kinh phải handoff ngay.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-008..013: Anti-Loop &amp; Single Price</span> <code>SINGLE_GROUNDED_PRICE</code></h4>
+          <p>Cấm hỏi lại menu rộng khi <code>serviceFamilyKnown == true</code>; mỗi lượt báo tối đa 1 mức giá lấy 100% từ Active Chunks.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-014 &amp; VR-014A: Dynamic Delay</span> <code>10000MS_VS_2000MS</code></h4>
+          <p>Chỉ bắt buộc <code>typing_delay_ms &ge; 10000ms</code> khi bong bóng trước có giá số; khi bảo vệ giá trị không báo giá (<code>R11</code>) hoặc chốt thử (<code>R13B</code>) giữ <code>delay = 2000ms</code>.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-015 &amp; VR-015A: Trial Package Lock</span> <code>HELD_VS_DOWNSELL</code></h4>
+          <p>Khi khách nói <code>Thử xem sao</code>: nếu <code>!downsellOffered</code> bắt buộc chốt đúng <code>heldPackage</code> (cấm từ <code>gói ngắn</code>); nếu <code>downsellOffered</code> chốt đúng <code>downsellPackage</code>.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-016..020: Bubble &amp; Question Cap</span> <code>&le; 2 Bubbles / &le; 1 ?</code></h4>
+          <p>Turn 2+ tối đa 2 bong bóng; mỗi bong bóng tối đa 2 câu và 45 từ; toàn bộ turn tối đa 1 dấu <code>?</code> (<code>0</code> dấu <code>?</code> khi handoff/exit).</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>VR-021 &amp; R00: Multi-Entity Scope Grounding &amp; Anti-Hijacking (v3.2.0)</span> <code>ZERO_DOMAIN_HARDCODE</code></h4>
+          <p>Trích xuất đa thực thể cả cấu trúc xuôi &amp; đảo (<code>chân đau, mỏi gối tê bì</code> &rarr; <code>đau chân, mỏi gối và tê bì</code>, <code>targetScopes = [chân, gối]</code>). Khóa cứng Scope-Grounded Recommendation theo <code>targetScopes</code> (cấm ép sang gói lệch vùng; nếu 0 gói khớp thì <code>UNGROUNDED_SCOPE_HANDOFF</code>). Tách mệnh đề phản bác <code>ENTITY_MISMATCH_CORRECTION</code> (<code>mà mày đi tư vấn massage cổ là sao</code>) để chống Keyword Hijacking và kích hoạt <code>MISMATCH_CORRECTION_HANDOFF</code>.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>v3.2.1-FINAL: Prompt Budget Guard, Real HTML Price List &amp; Dynamic Catalog</span> <code>PROMPT_BUDGET_GUARD_V321</code></h4>
+          <p>Quản trị ngân sách Prompt qua <code>PromptBudgetGuard</code> (<code>MAX_ALWAYS_ON_CHARS = 1200</code>, <code>TARGET_ALWAYS_ON_CHARS = 900</code>; chỉ giữ <code>SAFE-NEURO-001</code> <code>774 chars</code> là <code>always_on = true</code>, nạp <code>PB-SPA-*</code> theo ngữ cảnh <code>max_1_rule_per_turn</code>; <code>active_prompt_compact = 859 chars</code>). Ngắt kích hoạt <code>SPA_PRICE_LIST_V2_ACTIVE.md</code> + lọc <code>d.active = true</code> tại <code>ChunkRepository.findByPageId</code>, kích hoạt bảng giá thực tế <code>01_giá_dịch_vụ.html</code> (Hà Nội &amp; Sài Gòn: <code>NS01..NS07, DS01..DS06, ADD01</code>) kèm <code>PackageCatalogService</code> phục vụ <code>ALTERNATIVE_PACKAGE_REQUEST</code> (<code>Có gói khác k</code>, <code>Còn gói nào nữa không</code>) và định dạng giá gọn duy nhất (<code>399k</code>, <code>239k</code>, <code>530k</code>).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 4: MULTI-TENANT DATABASE SCHEMA & ACTIVE TEST PAGES INVENTORY   -->
+    <!-- =================================================================== -->
+    <section id="tab-schema" class="tab-panel">
+      <div class="section-banner">
+        <h2>4. Mô Hình Cơ Sở Dữ Liệu Đa Ngành Nghề (Multi-Tenant PostgreSQL + pgvector Schema)</h2>
+        <p>Thiết kế Đa Ngành Nghề (Domain-Agnostic): Mọi ngành nghề (Spa, Nha khoa, Thẩm mỹ, Bất động sản, Giáo dục, SaaS...) dùng chung 1 Engine duy nhất và được cô lập hoàn toàn qua khóa ngoại <code>page_id</code>.</p>
+      </div>
+
+      <div class="schema-grid">
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>knowledge_pages</h3>
+            <span class="layer-badge">Tenant Root</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">id (PK)</span> <span class="field-type">UUID</span></li>
+            <li><span class="field-name">code / name</span> <span class="field-type">VARCHAR (VD: Nàng Sen Spa)</span></li>
+            <li><span class="field-name">industry</span> <span class="field-type">VARCHAR (SPA, DENTAL, EDU...)</span></li>
+            <li><span class="field-name">persona_config</span> <span class="field-type">JSONB (opening_bubbles, delay...)</span></li>
+            <li><span class="field-name">active</span> <span class="field-type">BOOLEAN</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>persona_config (JSONB Schema v3.2.1-FINAL)</h3>
+            <span class="layer-badge">Per-Page Runtime Config</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">policy_version / bot_name / self_pronoun</span> <span class="field-type">STRING (3.2.1-FINAL / nhân viên chăm sóc / em / mình)</span></li>
+            <li><span class="field-name">opening_bubbles / post_price_delay_ms</span> <span class="field-type">ARRAY&lt;STRING&gt; / INT (10000ms)</span></li>
+            <li><span class="field-name">condition_discovery_prompt</span> <span class="field-type">STRING (Hỏi tình trạng trước, lực sau)</span></li>
+            <li><span class="field-name">active_prompt_compact</span> <span class="field-type">STRING (859 chars &le; 900 chars chống cắt tỉa DOM)</span></li>
+            <li><span class="field-name">symptom / body_area / service_family_keywords</span> <span class="field-type">ARRAY / MAP (Đa ngành)</span></li>
+            <li><span class="field-name">emotion_signals</span> <span class="field-type">MAP (frustration + neuro_red_flags)</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>ConversationState (Memory v3.2.1-FINAL)</h3>
+            <span class="layer-badge">Dual-Hydration State</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">preferredRegion / availablePackageCatalog</span> <span class="field-type">STRING (HN/SG) / LIST&lt;PackageSummary&gt;</span></li>
+            <li><span class="field-name">heldPackage / heldDuration / heldPrice</span> <span class="field-type">STRING / INT (Gói đang giữ ở lần chê 1)</span></li>
+            <li><span class="field-name">downsellOffered / downsellPackage / downsellPrice</span> <span class="field-type">BOOLEAN / STRING / INT (Hạ bậc gói)</span></li>
+            <li><span class="field-name">mentionedPackages / quotedPackages / rejectedPackages</span> <span class="field-type">LIST&lt;STRING&gt; (Theo dõi gói đã nhắc / báo / chê)</span></li>
+            <li><span class="field-name">priceObjectionCount / alternativeRequestCount</span> <span class="field-type">INTEGER (Theo dõi 2 bước chê đắt &amp; hỏi gói khác)</span></li>
+            <li><span class="field-name">lastBotBubbleHashes / customerCorrectionDetected</span> <span class="field-type">LIST&lt;STRING&gt; / BOOLEAN (Chống lặp bubble &amp; sửa sai)</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>documents &amp; chunks</h3>
+            <span class="layer-badge">pgvector RAG</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">document.id / page_id (FK)</span> <span class="field-type">UUID</span></li>
+            <li><span class="field-name">status / is_active</span> <span class="field-type">VARCHAR(READY) / BOOLEAN</span></li>
+            <li><span class="field-name">effective_from / effective_to</span> <span class="field-type">TIMESTAMPTZ (Kiểm soát hiệu lực)</span></li>
+            <li><span class="field-name">chunk.text / heading_path</span> <span class="field-type">TEXT / TEXT[]</span></li>
+            <li><span class="field-name">chunk.embedding</span> <span class="field-type">VECTOR(1024) (HNSW Index)</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>agent_skills</h3>
+            <span class="layer-badge">7-Part Micro-Skills</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID (NULL = Global, UUID = Page)</span></li>
+            <li><span class="field-name">code / name / category</span> <span class="field-type">VARCHAR (23 Active Skills/Page)</span></li>
+            <li><span class="field-name">trigger_signals</span> <span class="field-type">TEXT (Tín hiệu kích hoạt)</span></li>
+            <li><span class="field-name">tactical_instructions</span> <span class="field-type">TEXT (Must Do + Output Contract)</span></li>
+            <li><span class="field-name">anti_pattern / good_example</span> <span class="field-type">TEXT (Must Not Do &amp; Fallback)</span></li>
+            <li><span class="field-name">applied_count / conversion_count</span> <span class="field-type">INTEGER (Tự chấm điểm hiệu quả)</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>learned_rules</h3>
+            <span class="layer-badge">AI Playbook Rules (v3.2.1-FINAL)</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID</span></li>
+            <li><span class="field-name">rule_code / stage / priority</span> <span class="field-type">SAFE-NEURO-001 (always_on=true), PB-SPA-* (always_on=false)</span></li>
+            <li><span class="field-name">trigger_signals</span> <span class="field-type">TEXT</span></li>
+            <li><span class="field-name">content / must_do / must_not</span> <span class="field-type">TEXT (Chỉ dẫn nghiệp vụ của Page)</span></li>
+            <li><span class="field-name">active / review_status</span> <span class="field-type">BOOLEAN (true) / APPROVED</span></li>
+          </ul>
+        </div>
+
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3>sample_dialogues</h3>
+            <span class="layer-badge">Contrastive Examples (V18)</span>
+          </div>
+          <ul class="field-list">
+            <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID</span></li>
+            <li><span class="field-name">dialogue_code / intent / stage</span> <span class="field-type">FD-SPA-* (9 Active, 2 Quarantined)</span></li>
+            <li><span class="field-name">turns_json / expected_bot_answer</span> <span class="field-type">TEXT</span></li>
+            <li><span class="field-name">quality_label</span> <span class="field-type">APPROVED_GOOD / QUARANTINED_BAD</span></li>
+            <li><span class="field-name">active / review_status</span> <span class="field-type">BOOLEAN / APPROVED | REJECTED</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ACTIVE TEST PAGES INVENTORY TABLE -->
+      <div class="section-banner" style="margin-top: 2rem;">
+        <h2>5. Danh Mục Chi Tiết Playbooks, Micro-Skills, Sample Dialogues &amp; Tài Liệu Đang Dùng Để Test Theo Từng Page</h2>
+        <p>Bảng đối chiếu trực tiếp dữ liệu thực tế trong PostgreSQL đang phục vụ kiểm thử cho từng Fanpage Đa Ngành Nghề.</p>
+      </div>
+
+      <div class="matrix-wrapper">
+        <table class="router-table">
+          <thead>
+            <tr>
+              <th>Test Page (<code>page_id</code>)</th>
+              <th>Nhân Cách &amp; Cấu Hình (<code>persona_config</code>)</th>
+              <th>Playbooks Đang Active (<code>learned_rules</code>)</th>
+              <th>Micro-Skills Đang Active (<code>agent_skills</code>)</th>
+              <th>Sample Dialogues (<code>sample_dialogues</code>)</th>
+              <th>Tài Liệu &amp; Chunks (<code>documents / chunks</code>)</th>
+              <th>Bộ Test &amp; Kịch Bản Kiểm Chứng</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>1. Nàng Sen Spa</strong><br>
+                <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>
+              </td>
+              <td>
+                &bull; <strong>Ngành</strong>: Spa &amp; Dưỡng sinh Đông y (<code>BEAUTY_SPA</code>)<br>
+                &bull; <strong>Bot</strong>: <code>nhân viên chăm sóc</code> (<code>em - mình/Anh/Chị</code>)<br>
+                &bull; <strong>Post-Price Delay</strong>: <code>10000ms</code><br>
+                &bull; <strong>Active Prompt Compact</strong>: <code>859 chars &le; 900 chars</code> (<code>v3.2.1-FINAL</code>)
+              </td>
+              <td>
+                <strong>Bundle <code>SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED</code> (<code>v3.2.1-FINAL</code>) &mdash; 1 Always-On (<code>774 chars</code>) + 11 Contextual Rules (<code>always_on=false</code>)</strong>:<br>
+                &bull; <code>SAFE-NEURO-001</code> (P100, <code>HANDOFF</code>, <code>always_on=true</code>)<br>
+                &bull; <code>PB-SPA-SAFETY-001</code> (P100, <code>HANDOFF</code>)<br>
+                &bull; <code>PB-SPA-CORRECTION-001</code> (P99, <code>VALUE_CONSULTATION</code>)<br>
+                &bull; <code>PB-SPA-PRICE-OBJECTION-002</code> (P98, <code>OBJECTION</code>)<br>
+                &bull; <code>PB-SPA-PRICE-OBJECTION-001</code> (P97, <code>OBJECTION</code>)<br>
+                &bull; <code>PB-SPA-DISCOVER-001</code> (P96, <code>DISCOVERY</code>)<br>
+                &bull; <code>PB-SPA-TRIAL-ACCEPT-001</code> (P96, <code>SOFT_BOOKING_CLOSE</code>)<br>
+                &bull; <code>PB-SPA-BOOKING-001</code> (P95, <code>SOFT_BOOKING_CLOSE</code>)<br>
+                &bull; <code>PB-SPA-MATCH-001</code> (P95, <code>VALUE_CONSULTATION</code>)<br>
+                &bull; <code>PB-SPA-OPEN-001</code> (P95, <code>DISCOVERY</code>)<br>
+                &bull; <code>PB-SPA-HERBAL-001</code> (P92, <code>VALUE_CONSULTATION</code>)<br>
+                &bull; <code>PB-SPA-EAR-001</code> (P88, <code>VALUE_CONSULTATION</code>)
+              </td>
+              <td>
+                <strong>23 Active Micro-Skills</strong>:<br>
+                &bull; <strong>Safety/Handoff</strong>: <code>spa_neurological_safety_handoff</code>, <code>safety_handoff_high_risk</code>, <code>complaint_immediate_handoff</code>, <code>spa_objection_no_lower_package_handoff</code>, <code>spa_price_escalation_handoff</code><br>
+                &bull; <strong>Discovery</strong>: <code>spa_condition_first_discovery</code>, <code>spa_service_family_shortcut</code>, <code>spa_clarify_duration_once</code>, <code>spa_clarify_service_type_once</code>, <code>greeting_warm_intro</code>, <code>spa_ambiguous_confirm_once</code><br>
+                &bull; <strong>Psych/Rescue</strong>: <code>spa_frustration_rescue</code><br>
+                &bull; <strong>Sales/Pricing</strong>: <code>price_answer_from_docs</code>, <code>spa_recommend_and_quote_if_requested</code>, <code>spa_recommend_after_condition</code>, <code>spa_price_repeat_guard</code>, <code>upsell_one_addon</code><br>
+                &bull; <strong>Objection/Closing</strong>: <code>spa_objection_value_trial</code>, <code>spa_objection_dynamic_downsell</code>, <code>spa_objection_explicit_downsell</code>, <code>price_objection_soft_anchor</code>, <code>spa_trial_acceptance_booking</code>, <code>spa_booking_advance_after_ack</code>
+              </td>
+              <td>
+                <strong>9 Active (<code>APPROVED_GOOD</code>)</strong>:<br>
+                <code>FD-SPA-OPEN-001</code>, <code>FD-SPA-DISCOVER-001</code>, <code>FD-SPA-PRICE-001</code>, <code>FD-SPA-PRICE-002</code>, <code>FD-SPA-TRIAL-001</code>, <code>FD-SPA-CORRECTION-001</code>, <code>FD-SPA-SAFETY-001</code>, <code>FD-SPA-HERBAL-001</code>, <code>FD-SPA-EAR-001</code><br><br>
+                <strong>2 Quarantined (<code>QUARANTINED_BAD</code>, <code>active=false</code>)</strong>:<br>
+                <code>FD-SPA-BAD-001</code> (Medical cure + PII), <code>FD-SPA-BAD-002</code> (Prompt injection + 0đ)
+              </td>
+              <td>
+                <strong>4 Active HTML Documents (<code>is_active=true</code>, <code>READY</code>, 100 Chunks)</strong>:<br>
+                &bull; <a href="../test_pages/nang_sen_spa/01_giá_dịch_vụ.html.chunks.md"><code>01_giá_dịch_vụ.html</code></a> (<code>c9481efb-f3a9-4613-a2e0-fe50e9b99b39</code>, 78 chunks &mdash; Hà Nội: <code>NS01 399k</code>, <code>NS02 530k</code>, <code>NS03 580k</code>, <code>NS04 670k</code>, <code>NS05 Silver 780k</code>, <code>NS06 Gold 990k</code>, <code>NS07 Diamond 1.990k</code>, <code>ADD01 100k</code>, <code>DS01 129k</code>, <code>DS02 239k</code>, <code>DS03 339k</code>, <code>DS04 Silver 500k</code>, <code>DS05 Gold 780k</code>, <code>DS06 Diamond 990k</code>; Sài Gòn: <code>NS01..06 570k..2.150k</code>, <code>DS01..06 129k..1.100k</code>)<br>
+                &bull; <a href="../test_pages/nang_sen_spa/02_chi_tiết_điều_trị.html.chunks.md"><code>02_chi_tiết_điều_trị.html</code></a> (<code>6ce2c255-d123-46df-8590-5a7a41e07f9c</code>, 15 chunks)<br>
+                &bull; <a href="../test_pages/nang_sen_spa/03_khuyến_mãi_phiếu_vouchers (tùy chọn).html.chunks.md"><code>03_khuyến_mãi_phiếu_vouchers (tùy chọn).html</code></a> (<code>228b6a40-48c7-4efb-86a5-5ce52c290c10</code>, 1 chunk)<br>
+                &bull; <a href="../test_pages/nang_sen_spa/04_chính_sách.html.chunks.md"><code>04_chính_sách.html</code></a> (<code>23152b65-130e-4521-982f-e5e011a21aa9</code>, 6 chunks)<br>
+                &bull; <a href="../test_pages/nang_sen_spa/NANG_SEN_SPA_FULL_TRACE_MANIFEST.json"><code>NANG_SEN_SPA_FULL_TRACE_MANIFEST.json</code></a> (Full JSON Snapshot)<br>
+                <em>(Deactivated <code>is_active=false</code>: <code>SPA_PRICE_LIST_V2_ACTIVE.md</code>, <code>gemini-code-1792714816775.md</code>)</em>
+              </td>
+              <td>
+                &bull; <code>SpaV321RealHtmlKbTest</code> (<code>BT-SPA-001..004</code>)<br>
+                &bull; <code>test_office_parser.py</code> (7 tests)<br>
+                &bull; <code>PlaybookUploadServiceTest</code><br>
+                &bull; <code>FanpageBotServiceTest</code><br>
+                &bull; <code>EmpiricalAdversarialTest</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <strong>2. Nha Khoa Tỏa Sáng</strong><br>
+                <code>d3000000-0000-0000-0000-000000000001</code>
+              </td>
+              <td>
+                &bull; <strong>Ngành</strong>: Nha khoa &amp; Răng hàm mặt (<code>DENTAL_CLINIC</code>)<br>
+                &bull; <strong>Bot</strong>: <code>Minh Anh</code> (<code>em - mình/Anh/Chị</code>)<br>
+                &bull; <strong>Post-Price Delay</strong>: <code>12000ms</code><br>
+                &bull; <strong>Safety Red Flags</strong>: <code>sưng mặt kèm sốt cao</code>, <code>chảy máu không cầm</code>, <code>đau dữ dội lan lên thái dương</code>
+              </td>
+              <td>
+                Thực thi qua <strong>Domain-Agnostic Runtime State Machine</strong> + <code>persona_config</code> của Page Nha Khoa (<code>condition_discovery_prompt</code>) mà không cần bất kỳ từ khóa Spa nào
+              </td>
+              <td>
+                Kế thừa bộ điều phối hành động đa ngành (<code>ACKNOWLEDGE_AND_ASK_PREFERENCE</code>, <code>RECOMMEND_ONE_PACKAGE</code>, <code>ANSWER_PRICE_ONCE</code>, <code>HANDLE_PRICE_OBJECTION_FIRST_TIME</code>, <code>HARD_HANDOFF_SAFETY</code>)
+              </td>
+              <td>
+                N/A (Kiểm thử khả năng Zero-Hardcode chỉ với <code>persona_config</code> + <code>DENTAL_PRICE_LIST_ACTIVE.md</code>)
+              </td>
+              <td>
+                <strong>1 Document <code>READY</code> (1 Chunk)</strong>:<br>
+                &bull; <a href="../test_pages/nha_khoa_toa_sang/DENTAL_PRICE_LIST_ACTIVE.md.chunks.md"><code>DENTAL_PRICE_LIST_ACTIVE.md</code></a> (1 chunk &mdash; Cạo vôi răng và đánh bóng 30p <code>250k</code>, Tẩy trắng răng công nghệ lạnh 60p <code>900k</code>, Trám răng thẩm mỹ 45p <code>400k</code>)
+              </td>
+              <td>
+                &bull; <code>verify_v3_1_4_patch_pack.py</code> (<code>RT-MULTI-TENANT-001</code>: Cô lập đa ngành Nha Khoa vs Spa, bảo vệ từ ghép <code>chân răng</code> &rarr; <code>răng</code>, báo giá <code>250k</code> kèm <code>delay &ge; 12000ms</code>)<br>
+                &bull; <code>MultiTenantPrimaryActionRouterTest</code><br>
+                &bull; <code>MultiTenantPersonaAndLifecycleTest</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- END-TO-END TRACEABILITY TABLE FOR NANG SEN SPA -->
+      <div class="section-banner" style="margin-top: 2rem;">
+        <h2>6. Bảng Trace Luồng Thực Thi Từng Lượt (End-to-End Turn-by-Turn Trace — Nàng Sen Spa <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>)</h2>
+        <p>Đối chiếu trực tiếp từ tin nhắn khách &rarr; biến đổi <code>ConversationState</code> &rarr; Rule/Micro-Skill nạp On-Demand &rarr; Chunk bảng giá trong <code>01_giá_dịch_vụ.html</code> &rarr; đầu ra <code>reply_bubbles</code> và <code>typing_delay_ms</code>.</p>
+      </div>
+
+      <div class="matrix-wrapper">
+        <table class="router-table">
+          <thead>
+            <tr>
+              <th>Lượt (Scenario &amp; Turn)</th>
+              <th>Tin Nhắn Khách (<code>message</code>)</th>
+              <th>Ý Định &amp; Cập Nhật <code>ConversationState</code></th>
+              <th>Scoped Rule &amp; Skill (<code>On-Demand</code>)</th>
+              <th>Chunk &amp; Gói Khớp Trong <code>01_giá_dịch_vụ.html</code></th>
+              <th>Kết Quả <code>reply_bubbles</code> &amp; <code>typing_delay_ms</code></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 1</strong></td>
+              <td><code>&ldquo;Giá&rdquo;</code></td>
+              <td><code>intent = GENERAL_PRICE_INQUIRY</code><br><code>priceRequestedInSession = true</code><br><code>preferredRegion = "HN"</code></td>
+              <td>&bull; Rule: <code>PB-SPA-OPEN-001</code><br>&bull; Skill: <code>spa_clarify_service_type_once</code><br><em>(0 Price Objection rules loaded)</em></td>
+              <td>Nhóm dịch vụ trích xuất từ <code>PackageCatalogService</code>: <code>massage</code> và <code>gội đầu dưỡng sinh</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>)</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên, nhân viên chăm sóc của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>1200ms</code>)</strong>: <em>&ldquo;Bên em chuyên massage thư giãn, ngâm thảo dược và vệ sinh tai ngoài nhẹ nhàng, thoải mái.&rdquo;</em><br>&bull; <strong>B3 (<code>2500ms</code>)</strong>: <em>&ldquo;Dạ mình đang quan tâm massage hay gội đầu dưỡng sinh để em gửi đúng mức giá theo thời lượng cho mình nha?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 2</strong></td>
+              <td><code>&ldquo;Toi bbi đau mỏi cổ , nhức vai&rdquo;</code></td>
+              <td><code>intent = SYMPTOM_OR_PAIN_SHARE</code><br><code>knownSymptoms = ["đau mỏi cổ", "nhức vai"]</code><br><code>knownBodyAreas = ["cổ", "vai"]</code><br><code>conditionAskedCount = 1</code></td>
+              <td>&bull; Rule: <code>PB-SPA-DISCOVER-001</code><br>&bull; Skill: <code>spa_condition_first_discovery</code></td>
+              <td>Cổng <code>R02</code> Condition-First: Đồng cảm tự nhiên (cấm <code>&ldquo;Dạ em ghi nhận&rdquo;</code>), hỏi 1 câu thời điểm/mức độ mỏi</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ tình trạng đau mỏi cổ và nhức vai chắc đang làm mình khá khó chịu ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Mình bị lâu chưa hay mới gần đây, và thường căng sau ngồi lâu hay vận động nhiều ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 3</strong></td>
+              <td><code>&ldquo;thi thoảng&rdquo;</code></td>
+              <td><code>intent = CONDITION_CLARIFICATION</code><br><code>conditionClarified = true</code><br><code>priceDiscussed = true</code><br><code>heldPackage = "massage cơ bản 60 phút"</code><br><code>heldPrice = 399000</code></td>
+              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
+              <td>Khớp gói <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, <code>Full body massage trị liệu cơ bản, kèm buffet thực dưỡng</code>)</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ với tình trạng đau mỏi cổ và nhức vai thi thoảng xuất hiện của mình, em gợi ý gói massage cơ bản 60 phút có giá 399k theo bảng giá hiện tại ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Gói này gồm full body massage trị liệu cơ bản, giúp chăm sóc vùng cổ và vai đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ. Mình muốn ghé trải nghiệm gói 60 phút hôm nay hay ngày mai để em giữ lịch cho mình nhé?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 4</strong></td>
+              <td><code>&ldquo;đắt nhỉ&rdquo;</code></td>
+              <td><code>intent = PRICE_OBJECTION_FIRST</code><br><code>priceObjectionCount = 1</code><br><code>downsellOffered = false</code><br><code>trialInviteOffered = true</code></td>
+              <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-001</code><br>&bull; Skill: <code>spa_objection_value_trial</code></td>
+              <td>Giữ nguyên <code>HN_NS01</code> (<code>399k</code>), bảo vệ giá trị thực tế (<code>buffet thực dưỡng</code> + <code>kỹ thuật viên làm kỹ đúng vùng mỏi</code>) + mời thử lẻ 1 buổi 🥰</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em hiểu mình đang cân nhắc chi phí ạ. Gói bên em gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng, kỹ thuật viên làm kỹ đúng vùng mỏi ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Nếu mình còn chút băn khoăn, mình cứ trải nghiệm thử 1 buổi massage cơ bản 60 phút bên em xem sao ha 🥰&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 5</strong></td>
+              <td><code>&ldquo;mà hơi đắt&rdquo;</code></td>
+              <td><code>intent = PRICE_OBJECTION_REPEAT</code><br><code>priceObjectionCount = 2</code><br><code>downsellOffered = true</code><br><code>downsellPackage = "gói dưỡng sinh cơ bản 60 phút"</code><br><code>downsellPrice = 239000</code><br><code>rejectedPackages += ["massage cơ bản 60 phút"]</code></td>
+              <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-002</code><br>&bull; Skill: <code>spa_objection_dynamic_downsell</code></td>
+              <td>Hạ 1 bậc từ <code>HN_NS01 (399k)</code> xuống <code>HN_DS02</code> (<code>Gói dưỡng sinh cơ bản 60 phút &mdash; 239k</code>, <code>gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ</code>)</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em hiểu mình muốn gọn chi phí cho lần đầu. Bên em có gói dưỡng sinh cơ bản 60 phút có giá 239k gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Gói này giúp mình làm quen kỹ thuật trước mà vẫn thư giãn vùng mỏi nhé. Mình muốn em giữ lịch gói 60 phút hôm nay hay ngày mai ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 6</strong></td>
+              <td><code>&ldquo;Có gói khác k&rdquo;</code></td>
+              <td><code>intent = ALTERNATIVE_PACKAGE_REQUEST</code><br><code>alternativeRequestCount = 1</code><br><code>mentionedPackages</code> loại trừ <code>NS01</code>, <code>DS02</code></td>
+              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>price_answer_from_docs</code></td>
+              <td>Chọn 2 gói chưa nhắc trong <code>availablePackageCatalog</code>: <code>HN_DS03</code> (<code>80p &mdash; 339k</code>) và <code>HN_NS02</code> (<code>80p &mdash; 530k</code>)</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ ngoài gói trên, bên em còn có gói dưỡng sinh cao cấp 80 phút giá 339k và gói massage cơ bản nâng cao 80 phút giá 530k ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Cả hai gói đều tập trung chăm sóc kỹ vùng mình đang cần ạ. Mình muốn chọn gói 339k hay 530k để em giữ lịch cho mình nhé?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-002 Turn 7</strong></td>
+              <td><code>&ldquo;Dở à&rdquo;</code></td>
+              <td><code>emotion = FRUSTRATION</code><br><code>frustrationCount = 1</code><br><code>outstandingRequests</code> kiểm tra câu hỏi chưa giải đáp</td>
+              <td>&bull; Rule: <code>PB-SPA-FRUSTRATION-RECOVERY-001</code><br>&bull; Skill: <code>spa_frustration_rescue</code></td>
+              <td>Nhận lỗi ngắn gọn, tuyệt đối không đẩy template bán gói/ép chốt lịch; hỏi lại điều khách đang vướng hoặc đề nghị kết nối nhân viên hỗ trợ</td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em xin lỗi vì phản hồi vừa rồi chưa đúng ý mình ạ. Mình cho em biết điểm mình đang băn khoăn hoặc cần kiểm tra lại để em giải đáp ngay, hoặc em kết nối nhân viên hỗ trợ trực tiếp cho mình nha ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-005 Turn 5 &amp; 6</strong></td>
+              <td><code>&ldquo;Thực dưỡng là j&rdquo;</code> &rarr; <code>&ldquo;K tôi thấy có buffet thực dưỡng, nó là j&rdquo;</code></td>
+              <td><code>intent = DETAIL_OR_FAQ_QUESTION</code><br><code>primaryAction = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>referencedConcept = "buffet thực dưỡng"</code><br><code>outstandingRequests</code>: <code>RESOLVED</code></td>
+              <td>&bull; Rule: <code>PB-SPA-FAQ-DETAIL-001</code><br>&bull; Skill: <code>spa_service_detail_faq_qa</code></td>
+              <td>Neo ngữ cảnh từ quyền lợi <code>kèm buffet thực dưỡng</code> vừa nhắc ở Turn 4 + chunk FAQ <code>ca64440e-acc2-4afa-b29d-fa9bdf3231fd</code> (dòng 128&ndash;130 &amp; 155&ndash;160), giải thích trực tiếp 1 bong bóng không ép chốt lịch</td>
+              <td>&bull; <strong>Turn 5 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ buffet thực dưỡng (điểm tâm ăn nhẹ phục hồi sau liệu trình) là phần điểm tâm miễn phí đi kèm các gói có ghi quyền lợi buffet thực dưỡng/ăn nhẹ tại spa ạ. Thực đơn tại spa gồm các món như bánh mì bò sốt vang, trứng ngải cứu, chè đậu đen, bún dọc mùng, cháo sườn, hoa quả theo mùa cùng trà thảo mộc/nước ép để mình nạp lại năng lượng sau buổi trị liệu ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-003 Turn 2 &amp; 3</strong></td>
+              <td><code>&ldquo;Tôi bị chân đau, mỏi gối&rdquo;</code> &rarr; <code>&ldquo;thi thoảng&rdquo;</code></td>
+              <td><code>knownSymptoms = ["đau chân", "mỏi gối"]</code><br><code>knownBodyAreas = ["chân", "gối"]</code><br>Loại bỏ <code>DS01..DS06</code> (chỉ làm đầu/cổ vai)</td>
+              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
+              <td>Khớp Cột N của <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, Full body chăm sóc vùng cổ-vai-gáy, lưng, chân, tay + buffet thực dưỡng)</td>
+              <td>&bull; <strong>Turn 2</strong>: Đồng cảm đủ <em>&ldquo;đau chân và mỏi gối&rdquo;</em> + hỏi 1 câu tình trạng (<code>2000ms</code>).<br>&bull; <strong>Turn 3</strong>: Gợi ý <em>&ldquo;gói massage cơ bản 60 phút có giá 399k&rdquo;</em> (<code>Full body massage trị liệu cơ bản, giúp chăm sóc vùng chân và gối đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ</code>, <code>10000ms</code>).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    function switchTab(tabId, btnEl) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const target = document.getElementById(tabId);
+      if (target) target.classList.add('active');
+      if (btnEl) btnEl.classList.add('active');
+    }
+  </script>
+</body>
+</html>
