@@ -4,6 +4,7 @@ import com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble;
 import com.example.docmind.service.bot.ConversationState;
 import com.example.docmind.service.bot.PrimaryActionRouter;
 import com.example.docmind.service.bot.PrimaryActionRouter.PrimaryAction;
+import com.example.docmind.service.bot.ThinkingMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,9 +12,9 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * Bộ kiểm duyệt hợp đồng đầu ra 20 luật cứng (Domain-Agnostic Reply Contract Validator v3.1.4).
+ * Bộ kiểm duyệt hợp đồng đầu ra 20 luật cứng (Domain-Agnostic Reply Contract Validator v3.1.4 + v3.3 Adaptive Thinking).
  * <p>
- * Bao gồm 12 quy tắc nền tảng v3.1 và 8 quy tắc mở rộng v3.1.4:
+ * Bao gồm 12 quy tắc nền tảng v3.1, 8 quy tắc mở rộng v3.1.4 và cơ chế Adaptive Thinking:
  * <ul>
  *   <li>{@code NO_PRESSURE_BEFORE_CONDITION}: Cấm hỏi lực nhẹ/vừa khi chưa làm rõ tình trạng.</li>
  *   <li>{@code NO_BROAD_MENU_AFTER_SERVICE_KNOWN}: Cấm hỏi lại menu nhóm dịch vụ khi đã biết nhóm dịch vụ.</li>
@@ -22,7 +23,7 @@ import java.util.regex.Pattern;
  *   <li>{@code PRICE_AFTER_ONE_CLARIFY_PER_INTENT}: Sau khi đã hỏi loại dịch vụ và thời lượng tối đa 1 lần, không hỏi vòng thêm.</li>
  *   <li>{@code RECOMMEND_WHEN_CONDITION_READY}: Khi đã hỏi/làm rõ tình trạng, bắt buộc tiến tới gợi ý gói dịch vụ.</li>
  *   <li>{@code NO_NUMERIC_PRICE_REPEAT_AFTER_DISCUSSED}: Cấm lặp lại con số giá trong GENERIC_SHORT_DISCOVERY sau khi đã báo giá.</li>
- *   <li>{@code POST_PRICE_DELAY_ENFORCE}: Bong bóng ngay sau bong bóng chứa giá phải có delay &gt;= 10.000ms.</li>
+ *   <li>{@code POST_PRICE_DELAY_ENFORCE}: Bong bóng ngay sau bong bóng chứa giá có delay động {@code max(0, targetPostPricePauseMs - elapsedSincePriceBubbleMs)}.</li>
  * </ul>
  */
 public final class ReplyContractValidator {
@@ -30,11 +31,11 @@ public final class ReplyContractValidator {
     private ReplyContractValidator() {
     }
 
-    private static final Pattern PRICE_PATTERN = Pattern.compile(
+    public static final Pattern PRICE_PATTERN = Pattern.compile(
             "(?iU)\\b\\d{2,3}(?:\\.\\d{3})*\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b)"
     );
     private static final Pattern INTERNAL_LEAK_PATTERN = Pattern.compile(
-            "(?isU).*(?:system\\s+prompt|chunk_id|document_id|<document_context>|<experience_library>|template_id).*"
+            "(?isU).*(?:system\\s+prompt|chunk_id|document_id|<document_context>|<experience_library>|template_id|reasoning_brief|<think>).*"
     );
     private static final Pattern MEDICAL_CLAIM_PATTERN = Pattern.compile(
             "(?isU).*(?:cam\\s+kết\\s+khỏi|chữa\\s+khỏi(?:\\s+hẳn)?|điều\\s+trị\\s+dứt\\s+điểm|trị\\s+dứt\\s+điểm|khỏi\\s+bệnh\\s+100%|hết\\s+tê\\s+tay|khỏi\\s+đau\\s+đầu|điều\\s+trị\\s+bệnh|chữa\\s+thoát\\s+vị|chữa\\s+thoái\\s+hóa|cam\\s+kết\\s+hết\\s+đau|đảm\\s+bảo\\s+khỏi).*"
@@ -79,7 +80,35 @@ public final class ReplyContractValidator {
             boolean openingRequired,
             int minPostPriceDelayMs
     ) {
+        return validateAndEnforce(
+                bubbles,
+                state,
+                customerMessage,
+                effectiveAction,
+                openingRequired,
+                minPostPriceDelayMs,
+                null,
+                null
+        );
+    }
+
+    public static ValidationResult validateAndEnforce(
+            List<ReplyBubble> bubbles,
+            ConversationState state,
+            String customerMessage,
+            PrimaryAction effectiveAction,
+            boolean openingRequired,
+            int minPostPriceDelayMs,
+            ThinkingMode thinkingMode,
+            Long elapsedSincePriceBubbleMs
+    ) {
         int requiredDelay = Math.max(10_000, minPostPriceDelayMs);
+        boolean hasDynamicElapsed = elapsedSincePriceBubbleMs != null && elapsedSincePriceBubbleMs > 0L;
+        int effectivePostPriceDelay = hasDynamicElapsed
+                ? (int) Math.max(0L, (long) requiredDelay - elapsedSincePriceBubbleMs)
+                : requiredDelay;
+        int maxSentencesPerBubble = thinkingMode != null ? thinkingMode.maxSentencesPerBubble() : 2;
+        int maxWordsPerBubble = Math.max(65, thinkingMode != null ? thinkingMode.maxWordsPerBubble() : 65);
         List<String> errors = new ArrayList<>();
         if (bubbles == null || bubbles.isEmpty()) {
             errors.add("EMPTY_BUBBLES");
@@ -254,16 +283,16 @@ public final class ReplyContractValidator {
                         "Dạ tình trạng $1 chắc đang làm mình khá khó chịu ạ.");
             }
 
-            // 3. Tối đa 2 câu mỗi bong bóng
-            if (countSentences(text) > 2) {
+            // 3. Tối đa N câu mỗi bong bóng (2 câu với FAST_NO_THINK, 3 câu với PRICE_ANCHOR_THINK / OBJECTION_REFRAME_THINK / REPAIR_FIRST)
+            if (countSentences(text) > maxSentencesPerBubble) {
                 errors.add("TOO_MANY_SENTENCES");
-                text = trimToMaxSentences(text, 2);
+                text = trimToMaxSentences(text, maxSentencesPerBubble);
             }
 
-            // 4. Tối đa 45 từ mỗi bong bóng
-            if (countWords(text) > 45) {
+            // 4. Tối đa M từ mỗi bong bóng (45 từ với FAST_NO_THINK, 65 từ với PRICE_ANCHOR_THINK / OBJECTION_REFRAME_THINK / REPAIR_FIRST)
+            if (countWords(text) > maxWordsPerBubble) {
                 errors.add("TOO_LONG");
-                text = trimToMaxWords(text, 45);
+                text = trimToMaxWords(text, maxWordsPerBubble);
             }
 
             // 5. Tối đa 1 câu hỏi mỗi bong bóng
@@ -315,10 +344,13 @@ public final class ReplyContractValidator {
             working.set(i, new ReplyBubble(text, b.typingDelayMs()));
         }
 
-        // Enforce total question marks across all bubbles <= 1 (or 0 on handoff)
-        boolean isHandoffAction = effectiveAction == PrimaryAction.HARD_HANDOFF_SAFETY
-                || effectiveAction == PrimaryAction.HARD_HANDOFF_COMPLAINT;
-        int maxTotalQuestions = isHandoffAction ? 0 : 1;
+        // Enforce total question marks across all bubbles <= 1 (or 0 on handoff / Stage 3 graceful exit)
+        boolean isNoQuestionAction = effectiveAction == PrimaryAction.HARD_HANDOFF_SAFETY
+                || effectiveAction == PrimaryAction.HARD_HANDOFF_COMPLAINT
+                || "STAGE_3_GRACEFUL_EXIT".equals(safeState.objectionStage())
+                || "STAGE_3_GRACEFUL_EXIT".equals(enrichedState.objectionStage())
+                || "STAGE_3_GRACEFUL_EXIT".equals(enrichedState.lastIntent());
+        int maxTotalQuestions = isNoQuestionAction ? 0 : 1;
         int totalQuestionsSeen = 0;
         for (int i = working.size() - 1; i >= 0; i--) {
             ReplyBubble b = working.get(i);
@@ -335,19 +367,44 @@ public final class ReplyContractValidator {
             }
         }
 
-        // 12 & v3.1.4 Check 8: POST_PRICE_DELAY_ENFORCE — Sau bong bóng chứa giá, bong bóng kế tiếp phải delay >= requiredDelay (10.000ms)
+        // 12 & v3.1.4 Check 8: POST_PRICE_DELAY_ENFORCE — Sau bong bóng chứa giá, bong bóng kế tiếp có delay động max(0, requiredDelay - elapsedSincePriceBubbleMs)
+        if (working.size() == 1 && effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE && hasDynamicElapsed) {
+            ReplyBubble singleAnchor = working.get(0);
+            if (singleAnchor != null && singleAnchor.text() != null) {
+                if (PRICE_PATTERN.matcher(singleAnchor.text()).find()) {
+                    errors.add("REPEATED_PRICE_IN_ANCHOR_BUBBLE");
+                    errors.add("REPEATED_PRICE_AFTER_DISCUSSED");
+                }
+                working.set(0, new ReplyBubble(singleAnchor.text(), effectivePostPriceDelay));
+            }
+        }
         boolean previousContainsPrice = false;
+        int previousPriceCount = 0;
         for (int i = 0; i < working.size(); i++) {
             ReplyBubble b = working.get(i);
             if (b == null || b.text() == null) continue;
             if (previousContainsPrice) {
-                if (b.typingDelayMs() < requiredDelay) {
+                if (effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
+                        && previousPriceCount == 1
+                        && PRICE_PATTERN.matcher(b.text()).find()) {
+                    errors.add("REPEATED_PRICE_IN_ANCHOR_BUBBLE");
+                    errors.add("REPEATED_PRICE_AFTER_DISCUSSED");
+                }
+                if (hasDynamicElapsed) {
+                    working.set(i, new ReplyBubble(b.text(), effectivePostPriceDelay));
+                } else if (b.typingDelayMs() < effectivePostPriceDelay) {
                     errors.add("MISSING_10S_DELAY_AFTER_PRICE");
                     errors.add("POST_PRICE_DELAY_ENFORCE");
-                    working.set(i, new ReplyBubble(b.text(), requiredDelay));
+                    working.set(i, new ReplyBubble(b.text(), effectivePostPriceDelay));
                 }
             }
-            previousContainsPrice = PRICE_PATTERN.matcher(b.text()).find();
+            java.util.regex.Matcher pm = PRICE_PATTERN.matcher(b.text());
+            int count = 0;
+            while (pm.find()) {
+                count++;
+            }
+            previousContainsPrice = count > 0;
+            previousPriceCount = count;
         }
 
         for (int i = 0; i < working.size(); i++) {
@@ -393,14 +450,25 @@ public final class ReplyContractValidator {
     }
 
     private static String trimToMaxSentences(String text, int maxSentences) {
+        int cap = Math.max(1, maxSentences);
         String[] sentences = text.split("(?<=[.!?])\\s+");
-        if (sentences.length <= maxSentences) {
+        if (sentences.length <= cap) {
             return text;
         }
-        if (text.contains("?")) {
-            return (sentences[0].strip() + " " + sentences[sentences.length - 1].strip()).strip();
+        StringBuilder sb = new StringBuilder();
+        if (text.contains("?") && cap >= 2) {
+            for (int i = 0; i < cap - 1; i++) {
+                if (i > 0) sb.append(' ');
+                sb.append(sentences[i].strip());
+            }
+            sb.append(' ').append(sentences[sentences.length - 1].strip());
+            return sb.toString().strip();
         }
-        return (sentences[0].strip() + " " + sentences[1].strip()).strip();
+        for (int i = 0; i < cap; i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(sentences[i].strip());
+        }
+        return sb.toString().strip();
     }
 
     private static String trimToMaxWords(String text, int maxWords) {

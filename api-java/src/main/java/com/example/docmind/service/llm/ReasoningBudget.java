@@ -1,11 +1,14 @@
 package com.example.docmind.service.llm;
 
+import com.example.docmind.service.bot.ThinkingMode;
+import com.example.docmind.service.bot.ThinkingModePolicy;
 import com.example.docmind.service.reasoning.QueryComplexity;
 
 /**
- * Ngân sách suy luận thích ứng (Adaptive Reasoning Budget) theo độ phức tạp câu hỏi (F8).
- * Định hình max_tokens, timeout_seconds, target latency và mức độ suy luận (reasoning_effort)
- * gửi tới các mô hình reasoning (OpenAI o1/o3/o4, Grok 4.x/3-mini, DeepSeek-R1).
+ * Ngân sách suy luận thích ứng (Adaptive Reasoning Budget) theo độ phức tạp câu hỏi (F8)
+ * và chế độ suy luận nội tâm provider-agnostic ({@link ThinkingMode}).
+ * Định hình max_tokens, timeout_seconds, target latency và mức độ suy luận (reasoning_effort / ThinkingMode)
+ * gửi tới các adapter LLM (Ollama, OpenAI-compatible, v.v.).
  */
 public record ReasoningBudget(
         QueryComplexity complexity,
@@ -16,7 +19,8 @@ public record ReasoningBudget(
         int maxTokens,
         double temperature,
         Double topP,
-        Double repeatPenalty
+        Double repeatPenalty,
+        ThinkingMode thinkingMode
 ) {
     public static final int SIMPLE_TIMEOUT_SECONDS = 15;
     public static final int SIMPLE_MAX_TOKENS = 600;
@@ -64,6 +68,31 @@ public record ReasoningBudget(
             int targetMinLatencyMs,
             int targetMaxLatencyMs,
             int maxTokens,
+            double temperature,
+            Double topP,
+            Double repeatPenalty
+    ) {
+        this(
+                complexity,
+                reasoningEffort,
+                timeoutSeconds,
+                targetMinLatencyMs,
+                targetMaxLatencyMs,
+                maxTokens,
+                temperature,
+                topP,
+                repeatPenalty,
+                null
+        );
+    }
+
+    public ReasoningBudget(
+            QueryComplexity complexity,
+            String reasoningEffort,
+            int timeoutSeconds,
+            int targetMinLatencyMs,
+            int targetMaxLatencyMs,
+            int maxTokens,
             double temperature
     ) {
         this(
@@ -75,8 +104,17 @@ public record ReasoningBudget(
                 maxTokens,
                 temperature,
                 null,
+                null,
                 null
         );
+    }
+
+    public boolean hasExplicitThinkingMode() {
+        return thinkingMode != null;
+    }
+
+    public boolean thinkEnabled() {
+        return thinkingMode != null && thinkingMode.isDeepThink();
     }
 
     public static ReasoningBudget simple() {
@@ -88,6 +126,7 @@ public record ReasoningBudget(
                 QueryComplexity.SIMPLE.getMaxLatencyMs(),    // 8000
                 SIMPLE_MAX_TOKENS,
                 SIMPLE_TEMPERATURE,
+                null,
                 null,
                 null
         );
@@ -103,7 +142,60 @@ public record ReasoningBudget(
                 DEEP_MAX_TOKENS,
                 DEEP_TEMPERATURE,
                 null,
+                null,
                 null
+        );
+    }
+
+    /**
+     * Tạo ReasoningBudget theo chế độ suy luận nội tâm {@link ThinkingMode} (Adaptive Thinking Router).
+     */
+    public static ReasoningBudget forThinkingMode(ThinkingMode mode) {
+        ThinkingMode effective = mode != null ? mode : ThinkingMode.FAST_NO_THINK;
+        QueryComplexity complexity = effective.isDeepThink()
+                ? QueryComplexity.DEEP_REASONING
+                : QueryComplexity.SIMPLE;
+        int timeoutSeconds = effective.isDeepThink() ? DEEP_TIMEOUT_SECONDS : SIMPLE_TIMEOUT_SECONDS;
+        return new ReasoningBudget(
+                complexity,
+                complexity.getReasoningEffort(),
+                timeoutSeconds,
+                complexity.getMinLatencyMs(),
+                complexity.getMaxLatencyMs(),
+                effective.maxOutputTokens(),
+                SALES_CHAT_TEMPERATURE,
+                SALES_TOP_P,
+                SALES_REPEAT_PENALTY,
+                effective
+        );
+    }
+
+    /**
+     * Tạo ReasoningBudget từ {@link ThinkingModePolicy.ThinkingDecision}.
+     */
+    public static ReasoningBudget forThinkingDecision(ThinkingModePolicy.ThinkingDecision decision) {
+        if (decision == null) {
+            return forThinkingMode(ThinkingMode.FAST_NO_THINK);
+        }
+        ThinkingMode effective = decision.thinkingMode() != null
+                ? decision.thinkingMode()
+                : ThinkingMode.FAST_NO_THINK;
+        QueryComplexity complexity = effective.isDeepThink()
+                ? QueryComplexity.DEEP_REASONING
+                : QueryComplexity.SIMPLE;
+        int timeoutSeconds = effective.isDeepThink() ? DEEP_TIMEOUT_SECONDS : SIMPLE_TIMEOUT_SECONDS;
+        int maxTokens = decision.maxOutputTokens() > 0 ? decision.maxOutputTokens() : effective.maxOutputTokens();
+        return new ReasoningBudget(
+                complexity,
+                complexity.getReasoningEffort(),
+                timeoutSeconds,
+                complexity.getMinLatencyMs(),
+                complexity.getMaxLatencyMs(),
+                maxTokens,
+                SALES_CHAT_TEMPERATURE,
+                SALES_TOP_P,
+                SALES_REPEAT_PENALTY,
+                effective
         );
     }
 
@@ -122,7 +214,8 @@ public record ReasoningBudget(
                     DEEP_MAX_TOKENS,
                     SALES_CHAT_TEMPERATURE,
                     SALES_TOP_P,
-                    SALES_REPEAT_PENALTY
+                    SALES_REPEAT_PENALTY,
+                    null
             );
         }
         return new ReasoningBudget(
@@ -134,7 +227,8 @@ public record ReasoningBudget(
                 SALES_CHAT_MAX_TOKENS,
                 SALES_CHAT_TEMPERATURE,
                 SALES_TOP_P,
-                SALES_REPEAT_PENALTY
+                SALES_REPEAT_PENALTY,
+                null
         );
     }
 
@@ -152,7 +246,8 @@ public record ReasoningBudget(
                 INTERNAL_QA_MAX_TOKENS,
                 INTERNAL_QA_TEMPERATURE,
                 INTERNAL_QA_TOP_P,
-                INTERNAL_QA_REPEAT_PENALTY
+                INTERNAL_QA_REPEAT_PENALTY,
+                null
         );
     }
 
@@ -170,7 +265,8 @@ public record ReasoningBudget(
                 EXTRACTION_MAX_TOKENS,
                 EXTRACTION_TEMPERATURE,
                 EXTRACTION_TOP_P,
-                EXTRACTION_REPEAT_PENALTY
+                EXTRACTION_REPEAT_PENALTY,
+                null
         );
     }
 

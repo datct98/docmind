@@ -1064,4 +1064,274 @@ class SpaV321RealHtmlKbTest {
         assertThat(stateAfterFaq.heldPackage()).isEqualTo(heldPkgBeforeFaq);
         assertThat(stateAfterFaq.lastBotAction()).isEqualTo("SERVICE_DETAIL_AND_FAQ_QA");
     }
+
+    @Test
+    @DisplayName("BT-SPA-013-V324-SCENARIO-A-THREE-STAGE-RETENTION-FLOW: Full 5-turn flow (Early Price -> 339k Quote + Anchor -> Stage 1 Hold & Trial -> Stage 2 Hesitation Clarify + 239k Downsell -> Stage 3 Graceful Exit)")
+    void scenarioA_V324ThreeStageRetentionAndEmotionalAnchorFlow() {
+        String senderId = "user-v324-scenario-a";
+        List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
+
+        // Turn 1: "Giá gội đầu dưỡng sinh bao nhiêu?" -> asks 1 clarifying question, 0 price quoted, FAST_NO_THINK
+        String msg1 = "Giá gội đầu dưỡng sinh bao nhiêu?";
+        ConversationState state1 = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, senderId, history,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        PrimaryActionRouter.RoutingDecision dec1 = PrimaryActionRouter.route(
+                msg1, state1, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        ThinkingModePolicy.ThinkingDecision think1 = ThinkingModePolicy.decide(
+                msg1, state1, dec1, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(think1.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
+        List<FanpageBotResponse.ReplyBubble> bubbles1 = PrimaryActionRouter.executeActionBubbles(
+                dec1, msg1, state1, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult val1 = ReplyContractValidator.validateAndEnforce(
+                bubbles1, state1, msg1, dec1.effectiveResponseAction(), dec1.openingRequired(), 10000
+        );
+        assertThat(val1.combinedText()).doesNotContain("339k", "239k").contains("?");
+        ConversationState.updateAfterSend(NANG_SEN_PAGE_ID, senderId, state1, msg1, dec1, val1.validatedBubbles(), false);
+        history.add(new FanpageBotRequest.ConversationTurn("user", msg1));
+        val1.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+
+        // Turn 2: "Tôi hay đau đầu căng thẳng, muốn gói 80 phút" -> Bubble 1 quotes 339k (DS03 Dưỡng sinh thư giãn 80 phút), Bubble 2 anchors emotion & value without repeating price or pushing hard booking close
+        String msg2 = "Tôi hay đau đầu căng thẳng, muốn gói 80 phút";
+        ConversationState state2 = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, senderId, history,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        PrimaryActionRouter.RoutingDecision dec2 = PrimaryActionRouter.route(
+                msg2, state2, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        ThinkingModePolicy.ThinkingDecision think2 = ThinkingModePolicy.decide(
+                msg2, state2, dec2, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(think2.thinkingMode()).isEqualTo(ThinkingMode.PRICE_ANCHOR_THINK);
+        List<FanpageBotResponse.ReplyBubble> bubbles2 = PrimaryActionRouter.executeActionBubbles(
+                dec2, msg2, state2, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult val2 = ReplyContractValidator.validateAndEnforce(
+                bubbles2, state2, msg2, dec2.effectiveResponseAction(), dec2.openingRequired(), 10000, ThinkingMode.PRICE_ANCHOR_THINK, 0L
+        );
+        assertThat(val2.validatedBubbles()).hasSize(2);
+        assertThat(val2.validatedBubbles().get(0).text()).contains("339k").contains("80 phút");
+        assertThat(val2.validatedBubbles().get(1).text())
+                .doesNotContain("339k")
+                .doesNotContainIgnoringCase("hôm nay hay ngày mai")
+                .doesNotContainIgnoringCase("giữ lịch");
+        assertThat(val2.validatedBubbles().get(1).typingDelayMs()).isGreaterThanOrEqualTo(10000);
+        ConversationState post2 = ConversationState.updateAfterSend(
+                NANG_SEN_PAGE_ID, senderId, state2, msg2, dec2, val2.validatedBubbles(), false
+        );
+        assertThat(post2.lastPriceOffered()).isNotNull();
+        history.add(new FanpageBotRequest.ConversationTurn("user", msg2));
+        val2.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+
+        // Turn 3 (Stage 1 / Nhịp 1): "339k hơi cao nhỉ" -> holds 339k, empathizes, reinforces KB value, invites 1-session trial with 🥰, no auto-downsell
+        String msg3 = "339k hơi cao nhỉ";
+        ConversationState state3 = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, senderId, history,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        PrimaryActionRouter.RoutingDecision dec3 = PrimaryActionRouter.route(
+                msg3, state3, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(dec3.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME);
+        ThinkingModePolicy.ThinkingDecision think3 = ThinkingModePolicy.decide(
+                msg3, state3, dec3, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(think3.thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
+        List<FanpageBotResponse.ReplyBubble> bubbles3 = PrimaryActionRouter.executeActionBubbles(
+                dec3, msg3, state3, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult val3 = ReplyContractValidator.validateAndEnforce(
+                bubbles3, state3, msg3, dec3.effectiveResponseAction(), dec3.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
+        );
+        assertThat(val3.combinedText())
+                .contains("trải nghiệm thử 1 buổi")
+                .contains("🥰")
+                .doesNotContain("239k")
+                .doesNotContain("129k");
+        ConversationState post3 = ConversationState.updateAfterSend(
+                NANG_SEN_PAGE_ID, senderId, state3, msg3, dec3, val3.validatedBubbles(), false
+        );
+        assertThat(post3.downsellOffered()).isFalse();
+        assertThat(post3.retentionAttemptCount()).isEqualTo(0);
+        history.add(new FanpageBotRequest.ConversationTurn("user", msg3));
+        val3.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+
+        // Turn 4 (Stage 2 / Nhịp 2): "Để tôi cân nhắc thêm" -> respects consideration + asks 1 gentle clarifying question in Bubble 1, then introduces verified 239k package in Bubble 2
+        String msg4 = "Để tôi cân nhắc thêm";
+        ConversationState state4 = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, senderId, history,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        PrimaryActionRouter.RoutingDecision dec4 = PrimaryActionRouter.route(
+                msg4, state4, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(dec4.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT);
+        ThinkingModePolicy.ThinkingDecision think4 = ThinkingModePolicy.decide(
+                msg4, state4, dec4, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(think4.thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
+        List<FanpageBotResponse.ReplyBubble> bubbles4 = PrimaryActionRouter.executeActionBubbles(
+                dec4, msg4, state4, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult val4 = ReplyContractValidator.validateAndEnforce(
+                bubbles4, state4, msg4, dec4.effectiveResponseAction(), dec4.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
+        );
+        assertThat(val4.validatedBubbles()).hasSize(2);
+        assertThat(val4.validatedBubbles().get(0).text().toLowerCase(Locale.ROOT))
+                .contains("cân nhắc")
+                .contains("?");
+        assertThat(val4.validatedBubbles().get(1).text().toLowerCase(Locale.ROOT))
+                .contains("239k")
+                .contains("dưỡng sinh cơ bản")
+                .contains("60 phút")
+                .contains("rửa mặt")
+                .contains("gội thảo dược")
+                .doesNotContain("?");
+        assertThat(val4.validatedBubbles().get(1).typingDelayMs()).isGreaterThanOrEqualTo(10000);
+        ConversationState post4 = ConversationState.updateAfterSend(
+                NANG_SEN_PAGE_ID, senderId, state4, msg4, dec4, val4.validatedBubbles(), false
+        );
+        assertThat(post4.downsellOffered()).isTrue();
+        assertThat(post4.retentionAttemptCount()).isEqualTo(1);
+        history.add(new FanpageBotRequest.ConversationTurn("user", msg4));
+        val4.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+
+        // Turn 5 (Stage 3 / Nhịp 3): "Thôi để lúc khác vậy" -> stops persuading, 0 questions, 0 new package pitch, warm closing
+        String msg5 = "Thôi để lúc khác vậy";
+        ConversationState state5 = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, senderId, history,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        assertThat(state5.downsellOffered()).isTrue();
+        PrimaryActionRouter.RoutingDecision dec5 = PrimaryActionRouter.route(
+                msg5, state5, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(dec5.detectedIntent()).isEqualTo("STAGE_3_GRACEFUL_EXIT");
+        ThinkingModePolicy.ThinkingDecision think5 = ThinkingModePolicy.decide(
+                msg5, state5, dec5, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(think5.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
+        List<FanpageBotResponse.ReplyBubble> bubbles5 = PrimaryActionRouter.executeActionBubbles(
+                dec5, msg5, state5, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult val5 = ReplyContractValidator.validateAndEnforce(
+                bubbles5, state5, msg5, dec5.effectiveResponseAction(), dec5.openingRequired(), 10000, ThinkingMode.FAST_NO_THINK, 0L
+        );
+        assertThat(val5.validatedBubbles()).hasSize(1);
+        assertThat(val5.combinedText())
+                .doesNotContain("?")
+                .doesNotContain("129k")
+                .doesNotContain("239k")
+                .doesNotContain("339k");
+    }
+
+    @Test
+    @DisplayName("BT-SPA-014-V324-SCENARIOS-B-C-D: External price comparison, Repair-First on unanswered steps question, and SAFE-NEURO-001 radiating numbness")
+    void scenariosB_C_D_V324ExternalComparisonRepairFirstAndSafeNeuro001() {
+        // Scenario B: "Sao bên mình cao hơn tiệm gội đầu gần nhà chị thế?" -> OBJECTION_REFRAME_THINK, full-service + no-tip + trial invite
+        List<FanpageBotRequest.ConversationTurn> historyB = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Giá gội đầu dưỡng sinh 80 phút"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói dưỡng sinh thư giãn 80 phút bên em có giá 339k, giá trọn gói không nhận Tip và có ăn nhẹ miễn phí ạ.")
+        );
+        ConversationState stateB = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, "user-v324-b", historyB,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        String msgB = "Sao bên mình cao hơn tiệm gội đầu gần nhà chị thế?";
+        PrimaryActionRouter.RoutingDecision decB = PrimaryActionRouter.route(
+                msgB, stateB, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        ThinkingModePolicy.ThinkingDecision thinkB = ThinkingModePolicy.decide(
+                msgB, stateB, decB, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(thinkB.thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
+        assertThat(thinkB.objectionRootCause()).isEqualTo(ThinkingModePolicy.ObjectionRootCause.EXTERNAL_COMPARISON);
+        List<FanpageBotResponse.ReplyBubble> bubblesB = PrimaryActionRouter.executeActionBubbles(
+                decB, msgB, stateB, "chị", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult valB = ReplyContractValidator.validateAndEnforce(
+                bubblesB, stateB, msgB, decB.effectiveResponseAction(), decB.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
+        );
+        assertThat(valB.combinedText().toLowerCase(Locale.ROOT))
+                .contains("trải nghiệm thử 1 buổi")
+                .contains("🥰")
+                .doesNotContain("239k");
+
+        // Scenario C: "Tôi đang hỏi gói 339k gồm những bước gì cơ mà" after an off-topic bot reply -> REPAIR_FIRST, answers 339k steps from KB, 0 booking push
+        List<FanpageBotRequest.ConversationTurn> historyC = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Gói 339k gồm những gì?"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ mình muốn đặt lịch khung giờ nào để em giữ chỗ cho mình ạ?")
+        );
+        String msgC = "Tôi đang hỏi gói 339k gồm những bước gì cơ mà";
+        ConversationState stateC = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, "user-v324-c", historyC,
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        PrimaryActionRouter.RoutingDecision decC = PrimaryActionRouter.route(
+                msgC, stateC, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(decC.primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
+        ThinkingModePolicy.ThinkingDecision thinkC = ThinkingModePolicy.decide(
+                msgC, stateC, decC, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        );
+        assertThat(thinkC.thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
+        List<FanpageBotResponse.ReplyBubble> bubblesC = PrimaryActionRouter.executeActionBubbles(
+                decC, msgC, stateC, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult valC = ReplyContractValidator.validateAndEnforce(
+                bubblesC, stateC, msgC, decC.effectiveResponseAction(), decC.openingRequired(), 10000, ThinkingMode.REPAIR_FIRST, 0L
+        );
+        assertThat(valC.combinedText().toLowerCase(Locale.ROOT))
+                .contains("dưỡng sinh thư giãn")
+                .contains("80 phút")
+                .contains("ngâm chân thảo dược")
+                .contains("massage cổ vai gáy")
+                .contains("gội thảo dược")
+                .doesNotContain("giữ lịch")
+                .doesNotContain("hôm nay hay ngày mai");
+
+        // Scenario D (SAFE-NEURO-001): "Tôi bị đau cổ vai gáy kèm tê lan xuống cánh tay và bàn tay", "tê chân", "chèn ép rễ thần kinh" -> immediate medical safety handoff, FAST_NO_THINK, 0 questions
+        String msgD = "Tôi bị đau cổ vai gáy kèm tê lan xuống cánh tay và bàn tay";
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage(msgD)).isTrue();
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Đau lưng kèm tê chân nhiều ngày")).isTrue();
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Bác sĩ bảo mình bị chèn ép rễ thần kinh cổ")).isTrue();
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Mình bị tê tay lan xuống ngón tay")).isTrue();
+        ConversationState stateD = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, "user-v324-d", List.of(),
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        for (String neuroInput : List.of(
+                msgD,
+                "Đau lưng kèm tê chân nhiều ngày",
+                "Bác sĩ bảo mình bị chèn ép rễ thần kinh cổ"
+        )) {
+            PrimaryActionRouter.RoutingDecision decD = PrimaryActionRouter.route(
+                    neuroInput, stateD, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+            );
+            assertThat(decD.primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY);
+            assertThat(decD.detectedIntent()).isEqualTo("NEUROLOGICAL_RISK");
+            assertThat(decD.correspondingMicroSkillCode()).isEqualTo("safety_handoff_high_risk");
+            ThinkingModePolicy.ThinkingDecision thinkD = ThinkingModePolicy.decide(
+                    neuroInput, stateD, decD, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+            );
+            assertThat(thinkD.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
+            List<FanpageBotResponse.ReplyBubble> bubblesD = PrimaryActionRouter.executeActionBubbles(
+                    decD, neuroInput, stateD, "mình", nangSenPersona, realHtmlChunks, null
+            );
+            ReplyContractValidator.ValidationResult valD = ReplyContractValidator.validateAndEnforce(
+                    bubblesD, stateD, neuroInput, decD.effectiveResponseAction(), decD.openingRequired(), 10000, ThinkingMode.FAST_NO_THINK, 0L
+            );
+            assertThat(valD.combinedText().toLowerCase(Locale.ROOT))
+                    .containsAnyOf("bác sĩ", "y tế", "thăm khám")
+                    .contains("chuyên viên")
+                    .doesNotContain("339k")
+                    .doesNotContain("399k")
+                    .doesNotContain("?");
+        }
+    }
 }

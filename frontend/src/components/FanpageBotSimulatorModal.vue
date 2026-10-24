@@ -1153,6 +1153,67 @@ const sendCustomerMessage = (rawText) => {
   }, 350)
 }
 
+const deliverDelayedAnchorBubble = async (anchorResponse, myGen, assistantHistoryIdx) => {
+  if (!anchorResponse || !anchorResponse.reply_bubbles || anchorResponse.reply_bubbles.length === 0) {
+    return
+  }
+  const bubble2 = anchorResponse.reply_bubbles[0]
+  if (!bubble2 || !bubble2.text) {
+    return
+  }
+  const appliedRules = anchorResponse.applied_rules || []
+  const activeSkills = anchorResponse.active_skills || []
+  const triggeredHooks = anchorResponse.triggered_hooks || anchorResponse.triggeredHooks || []
+
+  isDeliveringBubbles.value = true
+  isTyping.value = true
+  scrollToBottom()
+  try {
+    const rawDelay = bubble2.typing_delay_ms ?? 0
+    if (rawDelay >= 1000) {
+      const totalSec = Math.max(1, Math.round(rawDelay / 1000))
+      for (let sec = totalSec; sec >= 1; sec--) {
+        if (myGen !== bubbleDeliveryGeneration) return
+        thinkingRemainingSec.value = sec
+        scrollToBottom()
+        await sleep(1000)
+      }
+      thinkingRemainingSec.value = 0
+    } else if (rawDelay > 0) {
+      thinkingRemainingSec.value = 0
+      await sleep(rawDelay)
+    }
+    if (myGen !== bubbleDeliveryGeneration) return
+    isTyping.value = false
+    thinkingRemainingSec.value = 0
+    chatItems.value.push({
+      role: 'assistant',
+      text: bubble2.text,
+      isHandoff: anchorResponse.needs_human_handoff,
+      appliedRules,
+      activeSkills,
+      triggeredHooks
+    })
+    if (
+      assistantHistoryIdx >= 0 &&
+      assistantHistoryIdx < conversationHistory.value.length &&
+      conversationHistory.value[assistantHistoryIdx]?.role === 'assistant'
+    ) {
+      conversationHistory.value[assistantHistoryIdx].content =
+        `${conversationHistory.value[assistantHistoryIdx].content}\n\n${bubble2.text}`
+    } else {
+      conversationHistory.value.push({ role: 'assistant', content: bubble2.text })
+    }
+    scrollToBottom()
+  } finally {
+    if (myGen === bubbleDeliveryGeneration) {
+      isDeliveringBubbles.value = false
+      isTyping.value = false
+      thinkingRemainingSec.value = 0
+    }
+  }
+}
+
 const flushBurst = async () => {
   if (pendingBurstBuffer.value.length === 0) {
     isDebouncingBurst.value = false
@@ -1166,10 +1227,12 @@ const flushBurst = async () => {
   isTyping.value = true
   scrollToBottom()
 
+  let turnGen = null
   try {
     const singleMessage = messagesToSend.join('. ')
     const docIds = props.selectedDocs.map(d => d.document_id)
     const prevTemp = currentInsight.value?.buying_temperature ?? null
+    const historySnapshotBeforeSend = [...conversationHistory.value]
 
     const response = await api.sendFanpageBotMessage({
       pageId: props.activePage?.id || null,
@@ -1177,10 +1240,11 @@ const flushBurst = async () => {
       customerName: null,
       message: singleMessage,
       messages: messagesToSend.length > 1 ? messagesToSend : null,
-      history: conversationHistory.value,
+      history: historySnapshotBeforeSend,
       documentIds: docIds,
       previousTemperature: prevTemp,
-      topK: 5
+      topK: 5,
+      splitPriceBubbles: true
     })
 
     // Cập nhật lịch sử hội thoại
@@ -1188,6 +1252,7 @@ const flushBurst = async () => {
       conversationHistory.value.push({ role: 'user', content: msg })
     }
     conversationHistory.value.push({ role: 'assistant', content: response.reply_text })
+    const assistantHistoryIdx = conversationHistory.value.length - 1
 
     currentStage.value = response.sales_stage || 'DISCOVERY'
     lastConfidence.value = response.confidence_score ?? 0.85
@@ -1210,15 +1275,49 @@ const flushBurst = async () => {
     }
 
     await deliverBubbles(response)
+    turnGen = bubbleDeliveryGeneration
+
+    if (response.pending_second_bubble && turnGen === bubbleDeliveryGeneration) {
+      const anchorGen = turnGen
+      isSending.value = false
+      isDeliveringBubbles.value = true
+      isTyping.value = true
+      scrollToBottom()
+
+      const anchorResponse = await api.sendFanpageBotMessage({
+        pageId: props.activePage?.id || null,
+        senderId: 'fb-customer-demo',
+        customerName: null,
+        message: singleMessage,
+        messages: messagesToSend.length > 1 ? messagesToSend : null,
+        history: historySnapshotBeforeSend,
+        documentIds: docIds,
+        previousTemperature: prevTemp,
+        topK: 5,
+        action: 'GENERATE_PRICE_ANCHOR_BUBBLE',
+        pendingTurnSequence: response.pending_turn_sequence,
+        priceBubbleSentAtNs: response.price_bubble_sent_at_ns
+      })
+
+      if (anchorGen === bubbleDeliveryGeneration) {
+        await deliverDelayedAnchorBubble(anchorResponse, anchorGen, assistantHistoryIdx)
+      }
+    }
   } catch (err) {
-    chatItems.value.push({
-      role: 'timeline',
-      text: `⚠️ Kết nối tạm thời gián đoạn (${err.message || 'Lỗi mạng'}). Bạn có thể gửi lại tin nhắn ngay bên dưới.`
-    })
+    if (turnGen === null || turnGen === bubbleDeliveryGeneration) {
+      chatItems.value.push({
+        role: 'timeline',
+        text: `⚠️ Kết nối tạm thời gián đoạn (${err.message || 'Lỗi mạng'}). Bạn có thể gửi lại tin nhắn ngay bên dưới.`
+      })
+    }
   } finally {
-    isSending.value = false
-    isTyping.value = false
-    scrollToBottom()
+    if (turnGen === null || turnGen === bubbleDeliveryGeneration) {
+      isSending.value = false
+      isTyping.value = false
+      isDeliveringBubbles.value = false
+      thinkingRemainingSec.value = 0
+      scrollToBottom()
+    }
   }
 }
 

@@ -27,7 +27,7 @@
   "response_contract": {
     "max_bubbles_per_turn": 3,
     "max_sentences_per_bubble": 2,
-    "max_words_per_bubble": 45,
+    "max_words_per_bubble": 65,
     "max_questions_per_bubble": 1,
     "max_questions_per_turn": 1,
     "post_price_delay_ms": 10000,
@@ -49,11 +49,15 @@
     "grounded_kb_price_summary": {
       "ear_care_30m": "129.000đ",
       "herbal_shampoo_60m": "239.000đ",
+      "ear_shampoo_combo_75m": "339.000đ",
       "massage_basic_ns01": "399.000đ",
+      "ear_shampoo_vip_90m": "500.000đ",
       "massage_herbal_ns02": "530.000đ",
       "massage_vip_ns03": "580.000đ",
       "combo_recovery_120m": "670.000đ",
       "silver_vip_120m": "780.000đ",
+      "gold_vip_130m": "990.000đ",
+      "diamond_vip_150m": "1.990.000đ",
       "membership_5_sessions_discount": "10%"
     }
   },
@@ -160,7 +164,7 @@
         "Mỏi âm ỉ suốt mấy tuần nay"
       ],
       "do": [
-        "Gợi ý đúng nhóm dịch vụ khớp vùng mỏi từ KB kèm 2 lựa chọn thời lượng (ví dụ 60 phút hoặc 90 phút).",
+        "Gợi ý đúng nhóm dịch vụ khớp vùng mỏi từ KB kèm 2 lựa chọn thời lượng (ví dụ 60 phút hoặc 80-100 phút).",
         "Hỏi khách muốn xem chi tiết hay chi phí gói nào trước."
       ],
       "dont": [
@@ -168,7 +172,7 @@
         "Không tự báo giá khi khách chưa hỏi giá."
       ],
       "recommended_questions": [
-        "Mình muốn em gửi chi tiết và mức chi phí của gói 60 phút hay 90 phút trước ạ?"
+        "Mình muốn em gửi chi tiết và mức chi phí của gói 60 phút hay gói chuyên sâu hơn trước ạ?"
       ],
       "grounding_policy": "must_use_kb_document_context",
       "handoff_policy": "none",
@@ -176,28 +180,28 @@
     },
     {
       "id": "PB-SPA-PRICE-OBJECTION-001",
-      "title": "First price objection -> empathize + defend value + invite 1-session trial (no immediate downsell)",
+      "title": "Nhịp 1: First price objection -> empathize + reinforce grounded value + invite 1-session trial (no immediate downsell)",
       "domain": "spa_wellness",
       "intent": "price_objection_first",
       "stage": "OBJECTION",
       "priority": 97,
       "when_user_says": [
-        "500k hơi cao",
-        "Giá 580k hơi cao em ơi, có gói nào mềm hơn không?",
-        "Hơi đắt nhỉ",
-        "Có gói nào nhẹ tiền hơn không shop?"
+        "Giá hơi cao",
+        "Giá 399k hơi cao em ơi",
+        "Giá 580k hơi cao em ơi",
+        "Đắt nhỉ"
       ],
       "do": [
-        "Bước 1 (Chê đắt lần 1): Giữ nguyên gói đang tư vấn, đồng cảm + bảo vệ giá trị gói từ KB (không gian yên tĩnh, kỹ thuật viên chăm sóc sát vùng mỏi, trọn gói không nhận tip, tại Hà Nội có gói 399.000đ/60p, 239.000đ/60p gội dưỡng sinh, 530.000đ/80p, 580.000đ/90-100p, 670.000đ/120p, 780.000đ/120p, ưu đãi giảm 10% khi mua từ 5 buổi/voucher).",
+        "Nhịp 1 (Chê đắt lần 1): Giữ nguyên gói đang tư vấn, đồng cảm + bảo vệ giá trị thực tế từ KB (xông hơi thảo dược, ngâm chân thảo dược, kỹ thuật viên chăm sóc sát vùng mỏi, ăn nhẹ, trọn gói không nhận tip, tại Hà Nội có gói 399.000đ/60p, 239.000đ/60p gội dưỡng sinh, 530.000đ/80p, 580.000đ/100p, 670.000đ/120p, 780.000đ/120p, ưu đãi giảm 10% khi mua từ 5 buổi/voucher).",
         "Mời khách trải nghiệm thử 1 buổi lẻ (kèm icon 🥰) với typing_delay_ms = 2000."
       ],
       "dont": [
         "Không tự ý hạ gói ngay ở lần chê giá đầu tiên.",
         "Không tự giảm giá hoặc bịa khuyến mãi ngoài KB.",
-        "Không dùng thống kê giả (90% khách, 10.000 khách)."
+        "Không dùng thống kê giả (90% khách, 10.000 khách, 100% hài lòng)."
       ],
       "recommended_questions": [
-        "Mình thử trải nghiệm 1 buổi lẻ trước để cảm nhận trực tiếp tay nghề kỹ thuật viên bên em nha 🥰?"
+        "Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha 🥰"
       ],
       "grounding_policy": "must_use_kb_document_context",
       "handoff_policy": "none",
@@ -205,30 +209,32 @@
     },
     {
       "id": "PB-SPA-PRICE-OBJECTION-002",
-      "title": "Second price objection -> downsell 1 step to 30m (200k) or shortest KB option with post-price delay >= 10000ms",
+      "title": "Nhịp 2 & Nhịp 3: Continued hesitation or second price objection -> 1 gentle retention + verified lower-cost KB package (239.000đ / 129.000đ), then graceful exit",
       "domain": "spa_wellness",
       "intent": "price_objection_repeat",
       "stage": "OBJECTION",
       "priority": 98,
       "when_user_says": [
+        "Để tôi cân nhắc thêm",
+        "Để suy nghĩ thêm",
         "Vẫn đắt quá shop",
         "Còn gói nào rẻ hơn nữa không?",
-        "Thôi cao quá để mình xem thêm"
+        "Thôi để lúc khác"
       ],
       "do": [
-        "Bước 2 (Chê đắt lần 2): Tôn trọng hoàn toàn ngân sách của khách, tuyệt đối không lặp lại câu mẫu đồng cảm của lần 1.",
-        "Hạ bậc 1 nấc sang gói ngắn hơn trong KB (như 30 phút 200k, Gội đầu dưỡng sinh 239.000đ hoặc Lấy ráy tai 129.000đ) với typing_delay_ms >= 10000 sau khi báo giá mới."
+        "Nhịp 2 (Khi khách vẫn lăn tăn 'để cân nhắc thêm' hoặc chê đắt lần 2 khi downsellOffered = false): Bong bóng 1 tôn trọng quyết định cân nhắc của khách và hỏi nhẹ 1 câu làm rõ khách đang lăn tăn chủ yếu về chi phí buổi đầu hay điểm nào trong liệu trình; Bong bóng 2 giới thiệu 1 lựa chọn nhẹ chi phí hơn trong KB (Gội đầu dưỡng sinh cơ bản DS02 60 phút 239.000đ gồm rửa mặt, massage mặt, gội thảo dược, chườm thảo dược cổ vai và ăn nhẹ; hoặc Lấy ráy tai thư giãn DS01 30 phút 129.000đ) với typing_delay_ms >= 10000.",
+        "Nhịp 3 (Khi đã gợi ý phương án thay thế downsellOffered = true mà khách vẫn từ chối): Dừng thuyết phục, không đưa thêm gói mới, không hỏi thêm câu hỏi, gửi 1 lời chào ấm áp mở đường quay lại."
       ],
       "dont": [
-        "Tuyệt đối không nhắc lại gói/thời lượng khách đã từ chối.",
-        "Không chèo kéo chốt lịch khi khách đã báo dừng hoặc muốn suy nghĩ thêm."
+        "Tuyệt đối không nhắc lại gói/thời lượng khách đã từ chối và không mô tả sai quyền lợi gói 239.000đ.",
+        "Không chèo kéo chốt lịch khi khách đã báo dừng hoặc muốn để lúc khác sau khi đã nhận phương án thay thế."
       ],
       "recommended_questions": [
-        "Mình muốn đặt thử gói 30 phút (200k) để thư giãn nhẹ nhàng trước không ạ?"
+        "Không biết mình đang lăn tăn chủ yếu về chi phí cho buổi đầu hay còn điểm nào trong liệu trình chưa yên tâm để em giải đáp đúng điều mình cần ạ?"
       ],
       "grounding_policy": "must_use_kb_document_context",
       "handoff_policy": "none",
-      "tags": ["pricing", "objection", "floor_pivot"]
+      "tags": ["pricing", "objection", "floor_pivot", "retention_3_stage"]
     },
     {
       "id": "PB-SPA-TRIAL-ACCEPT-001",
@@ -438,23 +444,21 @@
       "quality_label": "APPROVED_GOOD",
       "turns": [
         {
-          "user": "Báo giá cả 2 gói 60 phút với 90 phút cho chị nhé, Giá 580k hơi cao em ơi, có gói nào mềm hơn không?",
+          "user": "Báo giá gói massage trị liệu giúp chị nhé",
           "assistant": [
-            "Dạ gói Massage Cổ Vai Gáy Chuyên Sâu bên em đang có mức giá 350k cho 60 phút và 480k cho 90 phút (tại Hà Nội có các gói niêm yết 399.000đ, 530.000đ, 580.000đ), trọn gói không nhận tip ạ.",
-            "Gói 60 phút tập trung giải phóng điểm căng vùng cổ vai gáy, còn gói 90 phút có thêm thời gian đắp thảo dược ấm và thư giãn sâu vùng lưng trên ạ.",
-            "Chị đang nghiêng về gói 60 phút vừa vặn hay muốn thả lỏng sâu với gói 90 phút ạ?"
+            "Dạ gói Massage Trị Liệu Cơ Bản (NS01) 60 phút bên em đang có mức giá niêm yết 399.000đ (ngoài ra có gói Massage Ngâm Thảo Dược NS02 80 phút 530.000đ và Massage Phục Hồi VIP NS03 100 phút 580.000đ), trọn gói không nhận tip ạ.",
+            "Liệu trình tập trung giải phóng điểm căng vùng cổ vai gáy kết hợp xông hơi, ngâm chân thảo dược và ăn nhẹ giúp mình nhẹ người hơn sau buổi làm ạ."
           ]
         },
         {
-          "user": "580k hơi cao em ơi, có gói nào mềm hơn không?",
+          "user": "Giá hơi cao nhỉ",
           "assistant": [
-            "Dạ em rất hiểu mình cân nhắc chi phí cho buổi đầu trải nghiệm ạ.",
-            "Liệu trình bên em đi sâu đúng điểm mỏi trong không gian yên tĩnh và trọn gói không phát sinh tiền tip nên rất xứng đáng ạ.",
-            "Mình thử trải nghiệm 1 buổi lẻ trước để cảm nhận trực tiếp tay nghề kỹ thuật viên bên em nha 🥰?"
+            "Dạ em rất hiểu mình cân nhắc chi phí cho buổi đầu trải nghiệm ạ. Liệu trình bên em đi sâu đúng điểm mỏi trong không gian yên tĩnh và trọn gói không phát sinh tiền tip nên rất xứng đáng ạ.",
+            "Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha 🥰"
           ]
         }
       ],
-      "why_good": "Bước 1 chê đắt lần 1: giữ nguyên gói đang tư vấn, bảo vệ giá trị kèm no-tip và mời trải nghiệm thử 1 buổi lẻ kèm 🥰 với nhịp nghỉ 2000ms.",
+      "why_good": "Nhịp 1 chê đắt lần 1: giữ nguyên gói đang tư vấn, bảo vệ giá trị kèm no-tip và mời trải nghiệm thử 1 buổi lẻ kèm 🥰 với nhịp nghỉ 2000ms.",
       "do_not_copy_literally": true,
       "tags": ["pricing", "objection", "value_defense"]
     },
@@ -468,17 +472,22 @@
       "quality_label": "APPROVED_GOOD",
       "turns": [
         {
-          "user": "Vẫn cao quá em ơi, còn gói nào nhẹ tiền hơn nữa không?",
+          "user": "Để chị cân nhắc thêm nhé",
           "assistant": [
-            "Dạ gói thời lượng dài có đơn giá theo phút tiết kiệm hơn vì thời lượng dài trên cùng một lần chuẩn bị phòng và thảo dược ấm cho mình ạ.",
-            "Nếu hôm nay chị muốn phương án nhẹ nhàng nhất về chi phí để giảm mỏi nhanh vùng cổ vai, bên em có gói 30 phút (200k) rất gọn và êm ái ạ.",
-            "Chị muốn đặt thử gói 30 phút (200k) này để thư giãn nhẹ nhàng trước không ạ?"
+            "Dạ mình cứ thoải mái cân nhắc ạ. Không biết mình đang lăn tăn chủ yếu về chi phí cho buổi đầu hay còn điểm nào trong liệu trình chưa yên tâm để em giải đáp đúng điều mình cần ạ?",
+            "Nếu mình muốn bắt đầu với mức chi phí nhẹ hơn, em có thể giới thiệu gói Gội Đầu Dưỡng Sinh Cơ Bản (DS02) 60 phút giá 239.000đ, gồm rửa mặt, massage mặt, gội thảo dược, chườm thảo dược cổ vai và ăn nhẹ ạ."
+          ]
+        },
+        {
+          "user": "Thôi để lúc khác chị ghé sau nhé",
+          "assistant": [
+            "Dạ vâng ạ, em cảm ơn chị đã quan tâm đến Nàng Sen Spa. Khi nào chị muốn thư giãn hoặc cần tư vấn thêm về liệu trình chăm sóc cơ thể, chị cứ nhắn em bất cứ lúc nào nhé, chúc chị một ngày thật nhẹ nhàng ạ 🌿"
           ]
         }
       ],
-      "why_good": "Bước 2 chê đắt lần 2: giải thích hợp lý logic đơn giá theo phút và hạ bậc 1 nấc sang gói 30 phút (200k) mà không nhắc lại gói đã bị từ chối.",
+      "why_good": "Nhịp 2: tôn trọng quyết định cân nhắc + hỏi nhẹ 1 câu làm rõ + gợi ý đúng 1 gói nhẹ chi phí hơn trong KB (Gội đầu dưỡng sinh 60 phút 239.000đ với đúng quyền lợi). Nhịp 3: khi khách vẫn từ chối sau khi đã gợi ý gói thay thế thì dừng thuyết phục, 0 câu hỏi, đóng lại ấm áp.",
       "do_not_copy_literally": true,
-      "tags": ["pricing", "objection_repeat", "unit_value"]
+      "tags": ["pricing", "objection_repeat", "unit_value", "retention_3_stage"]
     },
     {
       "id": "FD-SPA-TRIAL-001",

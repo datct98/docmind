@@ -1,6 +1,7 @@
 package com.example.docmind.service.llm;
 
 import com.example.docmind.config.LlmProperties;
+import com.example.docmind.service.bot.ThinkingMode;
 import com.example.docmind.service.reasoning.QueryComplexity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -32,7 +34,7 @@ import java.util.Map;
  *   <li>Tối ưu kết nối HTTP/2 Keep-Alive Pool và truyền {@code reasoning_effort} để giảm độ trễ cho model suy luận (Grok 4.x, o1/o3).</li>
  *   <li>Giới hạn read-timeout mỗi lượt thử (tối đa 90s khi bật {@code reasoning_effort}) kèm cơ chế tự động retry khi proxy trung gian bị treo kênh (timeout / 502 / 503 / 504).</li>
  *   <li>Tự động bóc tách và loại bỏ thẻ {@code <think>...</think>} cho các mô hình suy luận (DeepSeek-R1, reasoning).</li>
- *   <li>Hỗ trợ fallback sang trường {@code reasoning_content} nếu {@code content} để trống.</li>
+ *   <li>Tự động strip trường {@code reasoning_brief} khỏi JSON phản hồi trước khi trả ra ngoài và tuyệt đối không gửi trường {@code think} đặc thù của Ollama.</li>
  *   <li>Xử lý lỗi và HTTP status linh hoạt, fallback an toàn không làm crash luồng nghiệp vụ.</li>
  * </ul>
  */
@@ -40,6 +42,28 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleLlmClient.class);
     private static final int FAST_REASONING_ATTEMPT_TIMEOUT_MS = 90_000;
+
+    public record OpenAiCallTelemetry(
+            String provider,
+            String model,
+            ThinkingMode thinkingMode,
+            int maxTokens,
+            boolean containedThinkField,
+            String reasoningBrief,
+            long latencyMs
+    ) {
+        public int thinkingChars() {
+            return reasoningBrief != null ? reasoningBrief.length() : 0;
+        }
+
+        public long thinkingLatencyMs() {
+            return 0L;
+        }
+
+        public long contentLatencyMs() {
+            return latencyMs;
+        }
+    }
 
     private final LlmProperties props;
     private final ObjectMapper objectMapper;
@@ -50,6 +74,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private final String model;
     private final String endpoint;
     private final String reasoningEffort;
+    private volatile OpenAiCallTelemetry lastCallTelemetry = null;
 
     public OpenAiCompatibleLlmClient(LlmProperties props, ObjectMapper objectMapper) {
         this(props, objectMapper, null);
@@ -96,6 +121,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 this.provider, this.model, this.endpoint, this.reasoningEffort != null ? this.reasoningEffort : "default");
     }
 
+    public OpenAiCallTelemetry getLastCallTelemetry() {
+        return lastCallTelemetry;
+    }
+
     @Override
     public String complete(String prompt) {
         return complete(prompt, null);
@@ -108,12 +137,18 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         String effort = (budget != null && budget.reasoningEffort() != null)
                 ? budget.reasoningEffort()
                 : (reasoningEffort != null ? reasoningEffort : "default");
-        int targetTokens = (budget != null && budget.maxTokens() > 0) ? budget.maxTokens() : props.getMaxTokens();
-        log.info("[LLM] Calling provider={}, model={}, endpoint={}, reasoningEffort={}, maxTokens={}, budgetTier={}, promptChars={}",
-                provider, model, endpoint, effort, targetTokens,
-                budget != null ? budget.complexity().name() : "DEFAULT", safePrompt.length());
+        ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
+        int targetTokens = (budget != null && budget.maxTokens() > 0)
+                ? budget.maxTokens()
+                : (thinkingMode != null ? thinkingMode.maxOutputTokens() : props.getMaxTokens());
+        log.info("[LLM] Calling provider={}, model={}, endpoint={}, thinkingMode={}, reasoningEffort={}, maxTokens={}, budgetTier={}, promptChars={}",
+                provider, model, endpoint,
+                thinkingMode != null ? thinkingMode.name() : "NONE",
+                effort, targetTokens,
+                budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT", safePrompt.length());
         try {
             Map<String, Object> body = buildRequestBody(safePrompt, true, budget);
+            boolean hasThinkField = body.containsKey("think");
             String rawJson;
             try {
                 rawJson = executePostWithRetry(body, budget);
@@ -134,8 +169,18 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 parsed = parseCompletion(rawJson, prompt);
             }
 
-            String result = parsed.text();
+            StrippedReasoningResult stripped = stripReasoningBriefFromJson(parsed.text());
+            String result = stripped.cleanedText();
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            this.lastCallTelemetry = new OpenAiCallTelemetry(
+                    provider,
+                    model,
+                    thinkingMode,
+                    targetTokens,
+                    hasThinkField,
+                    stripped.reasoningBrief(),
+                    latencyMs
+            );
             boolean isFallback = result != null && result.startsWith("[" + provider + "-error]");
             log.info("[LLM] Response received from provider={}, model={}, latencyMs={}, promptTokens={}, completionTokens={}, reasoningTokens={}, cachedTokens={}, status={}",
                     provider, model, latencyMs,
@@ -144,6 +189,15 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             return result;
         } catch (Exception e) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            this.lastCallTelemetry = new OpenAiCallTelemetry(
+                    provider,
+                    model,
+                    thinkingMode,
+                    targetTokens,
+                    false,
+                    "",
+                    latencyMs
+            );
             log.warn("[LLM] Response received from provider={}, model={}, latencyMs={}, status=fallback (error={})",
                     provider, model, latencyMs, e.getMessage());
             return buildFallbackAnswer(prompt, e.getMessage());
@@ -168,9 +222,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             if (effort != null && !effort.isBlank()) {
                 body.put("reasoning_effort", effort);
             }
+            ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
             int maxToks = (budget != null && budget.maxTokens() > 0)
                     ? budget.maxTokens()
-                    : props.getMaxTokens();
+                    : (thinkingMode != null ? thinkingMode.maxOutputTokens() : props.getMaxTokens());
             if (maxToks > 0) {
                 body.put("max_tokens", maxToks);
             }
@@ -184,6 +239,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         if (endpoint != null && endpoint.toLowerCase().endsWith("/messages") && !body.containsKey("max_tokens")) {
             body.put("max_tokens", props.getMaxTokens() > 0 ? props.getMaxTokens() : 1024);
         }
+        // Tuyệt đối không gửi trường "think" đặc thù của Ollama sang OpenAI-compatible API
+        body.remove("think");
         return body;
     }
 
@@ -351,6 +408,36 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             log.warn("[{}] Lỗi parse JSON phản hồi LLM: {}", provider, e.getMessage());
             return new ParsedCompletion(buildFallbackAnswer(prompt, "Lỗi giải mã JSON phản hồi: " + e.getMessage()), 0, 0, 0, 0, false);
         }
+    }
+
+    private record StrippedReasoningResult(String cleanedText, String reasoningBrief) {
+    }
+
+    private StrippedReasoningResult stripReasoningBriefFromJson(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return new StrippedReasoningResult(rawText, "");
+        }
+        String candidate = rawText.strip();
+        int braceStart = candidate.indexOf('{');
+        int braceEnd = candidate.lastIndexOf('}');
+        if (braceStart >= 0 && braceEnd > braceStart && candidate.contains("reasoning_brief")) {
+            String jsonSegment = candidate.substring(braceStart, braceEnd + 1);
+            try {
+                JsonNode parsed = objectMapper.readTree(jsonSegment);
+                if (parsed != null && parsed.isObject() && parsed.has("reasoning_brief")) {
+                    ObjectNode objNode = (ObjectNode) parsed;
+                    String brief = objNode.path("reasoning_brief").asText("").strip();
+                    objNode.remove("reasoning_brief");
+                    String cleanedJson = objectMapper.writeValueAsString(objNode);
+                    return new StrippedReasoningResult(cleanedJson, brief);
+                }
+            } catch (Exception ignored) {
+                // Fallback regex strip if JSON was wrapped or partially formatted
+                String regexStripped = candidate.replaceAll("\"reasoning_brief\"\\s*:\\s*\"(?:\\\\.|[^\"\\\\])*\"\\s*,?\\s*", "");
+                return new StrippedReasoningResult(regexStripped.strip(), "");
+            }
+        }
+        return new StrippedReasoningResult(rawText, "");
     }
 
     /**

@@ -396,7 +396,7 @@ public record ConversationState(
             "(?iU)\\b(ngồi\\s+lâu|ngồi\\s+máy\\s+tính|máy\\s+tính|văn\\s+phòng|vận\\s+động|sai\\s+tư\\s+thế|mang\\s+vác|tập\\s+gym|chơi\\s+thể\\s+thao)\\b"
     );
     private static final Pattern TRIAL_INVITE_BOT_PATTERN = Pattern.compile(
-            "(?isU).*(?:thử\\s+1\\s+buổi|trải\\s+nghiệm\\s+lẻ\\s+1\\s+buổi|thử\\s+xem\\s+sao|cảm\\s+nhận\\s+tay\\s+nghề).*"
+            "(?isU).*(?:thử\\s+1\\s+buổi|thử\\s+một\\s+buổi|trải\\s+nghiệm\\s+lẻ\\s+1\\s+buổi|thử\\s+xem\\s+sao|cảm\\s+nhận\\s+tay\\s+nghề|cảm\\s+nhận\\s+trực\\s+tiếp).*"
     );
     private static final Map<String, String> CANONICAL_TO_DISPLAY_CACHE = new ConcurrentHashMap<>();
 
@@ -807,7 +807,9 @@ public record ConversationState(
                     String prevHeldDur = heldDuration;
                     BigDecimal prevQuotedPrice = lastQuotedPrice;
 
-                    boolean isDownsellBubble = (objectionCount > 0 || explicitDownsellRequest || lower.contains("gọn chi phí") || lower.contains("gói ngắn"))
+                    boolean isDownsellBubble = (objectionCount > 0 || explicitDownsellRequest
+                            || lower.contains("gọn chi phí") || lower.contains("gói ngắn")
+                            || lower.contains("chi phí nhẹ hơn") || lower.contains("lăn tăn chủ yếu về chi phí"))
                             && ((prevHeldDur != null && turnDuration != null && parseDurationInt(turnDuration) < parseDurationInt(prevHeldDur))
                                 || (prevQuotedPrice != null && turnPriceVal != null && turnPriceVal.compareTo(prevQuotedPrice) < 0));
 
@@ -922,10 +924,16 @@ public record ConversationState(
                     if ("NONE".equals(objectionStage)) {
                         objectionStage = trialInviteOffered ? "TRIAL_INVITED" : "VALUE_DEFENSE";
                     }
-                } else if (lower.contains("vẫn đang cân nhắc") || lower.contains("gọn chi phí cho lần đầu") || lower.contains("chi phí gọn trước")) {
+                } else if (lower.contains("vẫn đang cân nhắc")
+                        || lower.contains("gọn chi phí cho lần đầu")
+                        || lower.contains("chi phí gọn trước")
+                        || lower.contains("mức chi phí nhẹ hơn")
+                        || lower.contains("lăn tăn chủ yếu về chi phí")) {
                     usedTemplates.add("PRICE_OBJECTION_REPEAT");
                     lastBotAction = "HANDLE_PRICE_OBJECTION_REPEAT";
                     stage = ConversationStage.OBJECTION;
+                    downsellOffered = true;
+                    objectionStage = "DOWNSELL_OFFERED";
                 } else if (lower.contains("đơn giá") || lower.contains("tính theo phút") || lower.contains("trên mỗi phút")) {
                     usedTemplates.add("EXPLAIN_UNIT_VALUE");
                     lastBotAction = "EXPLAIN_UNIT_VALUE";
@@ -969,6 +977,7 @@ public record ConversationState(
                 boolean isPkgRejectHere = SentimentIntentLayer.isPackageRejection(content);
                 boolean isExplicitDownsellHere = SentimentIntentLayer.isExplicitDownsellRequest(content, null);
                 boolean isPriceObjHere = SentimentIntentLayer.isPriceObjection(content);
+                boolean isHesitationAfterObjHere = SentimentIntentLayer.isHesitationAfterObjection(content);
                 boolean isAltReqHere = SentimentIntentLayer.isAlternativePackageRequest(content);
                 boolean isDetailFaqHere = SentimentIntentLayer.isDetailOrFaqQuestion(content, lastAssistantMessage, activePkgForContext);
                 boolean isComprehensionFailHere = SentimentIntentLayer.isComprehensionFailureMessage(content);
@@ -1033,11 +1042,19 @@ public record ConversationState(
                 }
 
                 // Rule: extract_objection_history_corrected
-                if (!isMismatchHere && (isPriceObjHere || isExplicitDownsellHere || isPkgRejectHere)
+                if (!isMismatchHere && downsellOffered
+                        && (isPriceObjHere || isHesitationAfterObjHere || SentimentIntentLayer.isStrongRejection(content))
+                        && !isAltReqHere && !isDetailFaqHere) {
+                    objectionCount++;
+                    lastIntent = "STAGE_3_GRACEFUL_EXIT";
+                    objectionStage = "STAGE_3_GRACEFUL_EXIT";
+                } else if (!isMismatchHere && (isPriceObjHere || isExplicitDownsellHere || isPkgRejectHere
+                        || (objectionCount >= 1 && !downsellOffered && isHesitationAfterObjHere))
                         && (!pricesShown.isEmpty() || (cached != null && cached.priceDiscussed()))) {
                     objectionCount++;
                     lastIntent = isExplicitDownsellHere ? "EXPLICIT_DOWNSELL_REQUEST"
-                            : (isPkgRejectHere ? "PACKAGE_REJECTION" : "PRICE_OBJECTION");
+                            : (isPkgRejectHere ? "PACKAGE_REJECTION"
+                                : (isHesitationAfterObjHere && !isPriceObjHere ? "HESITATION_AFTER_OBJECTION" : "PRICE_OBJECTION"));
                     usedTemplates.add("PRICE_OBJECTION_FIRST_TIME");
                 } else if (!isMismatchHere && isAltReqHere) {
                     lastIntent = "ALTERNATIVE_PACKAGE_REQUEST";
@@ -1750,6 +1767,12 @@ public record ConversationState(
             nextDownsellOffered = false;
             nextObjectionStage = "NO_LOWER_PACKAGE_HANDOFF";
             nextTelemetrySubtype = "NO_LOWER_PACKAGE_HANDOFF";
+        } else if ("spa_stage3_graceful_exit".equalsIgnoreCase(skillCode)
+                || "STAGE_3_GRACEFUL_EXIT".equalsIgnoreCase(detectedIntent)) {
+            nextObjectionCount = base.objectionCount() + 1;
+            nextDownsellOffered = true;
+            nextObjectionStage = "STAGE_3_GRACEFUL_EXIT";
+            nextTelemetrySubtype = "STAGE_3_GRACEFUL_EXIT";
         } else if ("spa_price_escalation_handoff".equalsIgnoreCase(skillCode)
                 || "PRICE_ESCALATION_HANDOFF".equalsIgnoreCase(detectedIntent)) {
             nextObjectionCount = base.objectionCount() + 1;
@@ -2560,7 +2583,8 @@ public record ConversationState(
             }
         }
         String maskedText = cleanText.replaceAll("(?iU)\\bchân\\s+răng\\b", "răng")
-                .replaceAll("(?iU)\\bchân\\s+không\\b", " ");
+                .replaceAll("(?iU)\\bchân\\s+không\\b", " ")
+                .replaceAll("(?iU)\\b(?:gội|lần|bắt|ban)\\s+đầu\\b", " ");
         Matcher areaM = BODY_AREA_TOKEN_PATTERN.matcher(maskedText);
         while (areaM.find()) {
             String raw = areaM.group(1);
@@ -2576,6 +2600,7 @@ public record ConversationState(
             for (String kw : domainKeywords) {
                 if (kw == null || kw.isBlank()) continue;
                 String kwLower = Normalizer.normalize(kw.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+                if (kwLower.contains("gội đầu")) continue;
                 if (kwLower.split("\\s+").length <= 2 && lowerClean.contains(kwLower)) {
                     Matcher km = BODY_AREA_TOKEN_PATTERN.matcher(kwLower);
                     if (km.find()) {
@@ -2698,6 +2723,9 @@ public record ConversationState(
                 }
             }
         }
+        if (lower.matches("(?isU).*\\b(gội\\s+đầu(?:\\s+dưỡng\\s+sinh)?)\\b.*")) {
+            return "gội đầu";
+        }
         if (lower.matches("(?isU).*\\b(vệ\\s+sinh\\s+tai)\\b.*")) {
             return "ear_care";
         }
@@ -2769,5 +2797,45 @@ public record ConversationState(
             return null;
         }
         return (pageId != null ? pageId.toString() : "default") + "::" + senderId.strip();
+    }
+
+    public int retentionAttemptCount() {
+        return downsellOffered ? 1 : 0;
+    }
+
+    public String lastServiceOffered() {
+        if (heldPackage != null && !heldPackage.isBlank()) {
+            return heldPackage;
+        }
+        if (lastQuotedPackage != null && !lastQuotedPackage.isBlank()) {
+            return lastQuotedPackage;
+        }
+        return knownRecommendedPackage;
+    }
+
+    public BigDecimal lastPriceOffered() {
+        return lastQuotedPrice != null ? lastQuotedPrice : downsellPrice;
+    }
+
+    public String lastObjectionResponse() {
+        if (stage == ConversationStage.OBJECTION
+                || (lastBotAction != null && lastBotAction.contains("OBJECTION"))
+                || "STAGE_3_GRACEFUL_EXIT".equals(objectionStage)) {
+            return lastAssistantMessage;
+        }
+        return null;
+    }
+
+    public List<String> unresolvedQuestions() {
+        if (outstandingRequests == null || outstandingRequests.isEmpty()) {
+            return List.of();
+        }
+        List<String> unresolved = new ArrayList<>();
+        for (UnresolvedCustomerRequest item : outstandingRequests) {
+            if (item != null && !item.resolved() && item.rawCustomerMessage() != null && !item.rawCustomerMessage().isBlank()) {
+                unresolved.add(item.rawCustomerMessage());
+            }
+        }
+        return Collections.unmodifiableList(unresolved);
     }
 }

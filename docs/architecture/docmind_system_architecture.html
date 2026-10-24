@@ -1336,13 +1336,15 @@
                 &bull; <strong>Ngành</strong>: Spa &amp; Dưỡng sinh Đông y (<code>BEAUTY_SPA</code>)<br>
                 &bull; <strong>Bot</strong>: <code>nhân viên chăm sóc</code> (<code>em - mình/Anh/Chị</code>)<br>
                 &bull; <strong>Post-Price Delay</strong>: <code>10000ms</code><br>
-                &bull; <strong>Active Prompt Compact</strong>: <code>859 chars &le; 900 chars</code> (<code>v3.2.1-FINAL</code>)
+                &bull; <strong>Active Prompt Compact</strong>: <code>897 chars &le; 900 chars</code> (<code>v3.2.4-ADAPTIVE-THINKING</code>)
               </td>
               <td>
-                <strong>Bundle <code>SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED</code> (<code>v3.2.1-FINAL</code>) &mdash; 1 Always-On (<code>774 chars</code>) + 11 Contextual Rules (<code>always_on=false</code>)</strong>:<br>
+                <strong>Bundle <code>SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED</code> (<code>v3.2.4-ADAPTIVE-THINKING</code>) &mdash; 1 Always-On (<code>227 chars</code>) + 13 Contextual Rules (<code>always_on=false</code>)</strong>:<br>
                 &bull; <code>SAFE-NEURO-001</code> (P100, <code>HANDOFF</code>, <code>always_on=true</code>)<br>
                 &bull; <code>PB-SPA-SAFETY-001</code> (P100, <code>HANDOFF</code>)<br>
+                &bull; <code>PB-SPA-FRUSTRATION-RECOVERY-001</code> (P100, <code>VALUE_CONSULTATION</code>)<br>
                 &bull; <code>PB-SPA-CORRECTION-001</code> (P99, <code>VALUE_CONSULTATION</code>)<br>
+                &bull; <code>PB-SPA-FAQ-DETAIL-001</code> (P98, <code>VALUE_CONSULTATION</code>)<br>
                 &bull; <code>PB-SPA-PRICE-OBJECTION-002</code> (P98, <code>OBJECTION</code>)<br>
                 &bull; <code>PB-SPA-PRICE-OBJECTION-001</code> (P97, <code>OBJECTION</code>)<br>
                 &bull; <code>PB-SPA-DISCOVER-001</code> (P96, <code>DISCOVERY</code>)<br>
@@ -1354,16 +1356,16 @@
                 &bull; <code>PB-SPA-EAR-001</code> (P88, <code>VALUE_CONSULTATION</code>)
               </td>
               <td>
-                <strong>23 Active Micro-Skills</strong>:<br>
+                <strong>24 Active Micro-Skills</strong>:<br>
                 &bull; <strong>Safety/Handoff</strong>: <code>spa_neurological_safety_handoff</code>, <code>safety_handoff_high_risk</code>, <code>complaint_immediate_handoff</code>, <code>spa_objection_no_lower_package_handoff</code>, <code>spa_price_escalation_handoff</code><br>
                 &bull; <strong>Discovery</strong>: <code>spa_condition_first_discovery</code>, <code>spa_service_family_shortcut</code>, <code>spa_clarify_duration_once</code>, <code>spa_clarify_service_type_once</code>, <code>greeting_warm_intro</code>, <code>spa_ambiguous_confirm_once</code><br>
-                &bull; <strong>Psych/Rescue</strong>: <code>spa_frustration_rescue</code><br>
+                &bull; <strong>FAQ/Rescue</strong>: <code>spa_frustration_rescue</code>, <code>spa_service_detail_faq_qa</code><br>
                 &bull; <strong>Sales/Pricing</strong>: <code>price_answer_from_docs</code>, <code>spa_recommend_and_quote_if_requested</code>, <code>spa_recommend_after_condition</code>, <code>spa_price_repeat_guard</code>, <code>upsell_one_addon</code><br>
                 &bull; <strong>Objection/Closing</strong>: <code>spa_objection_value_trial</code>, <code>spa_objection_dynamic_downsell</code>, <code>spa_objection_explicit_downsell</code>, <code>price_objection_soft_anchor</code>, <code>spa_trial_acceptance_booking</code>, <code>spa_booking_advance_after_ack</code>
               </td>
               <td>
-                <strong>9 Active (<code>APPROVED_GOOD</code>)</strong>:<br>
-                <code>FD-SPA-OPEN-001</code>, <code>FD-SPA-DISCOVER-001</code>, <code>FD-SPA-PRICE-001</code>, <code>FD-SPA-PRICE-002</code>, <code>FD-SPA-TRIAL-001</code>, <code>FD-SPA-CORRECTION-001</code>, <code>FD-SPA-SAFETY-001</code>, <code>FD-SPA-HERBAL-001</code>, <code>FD-SPA-EAR-001</code><br><br>
+                <strong>11 Active (<code>APPROVED_GOOD</code>)</strong>:<br>
+                <code>FD-SPA-OPEN-001</code>, <code>FD-SPA-DISCOVER-001</code>, <code>FD-SPA-PRICE-001</code>, <code>FD-SPA-PRICE-002</code>, <code>FD-SPA-TRIAL-001</code>, <code>FD-SPA-CORRECTION-001</code>, <code>FD-SPA-SAFETY-001</code>, <code>FD-SPA-HERBAL-001</code>, <code>FD-SPA-EAR-001</code>, <code>FD-SPA-FAQ-001</code>, <code>FD-SPA-FRUSTRATION-RECOVERY-001</code><br><br>
                 <strong>2 Quarantined (<code>QUARANTINED_BAD</code>, <code>active=false</code>)</strong>:<br>
                 <code>FD-SPA-BAD-001</code> (Medical cure + PII), <code>FD-SPA-BAD-002</code> (Prompt injection + 0đ)
               </td>
@@ -1374,11 +1376,13 @@
                 &bull; <a href="../test_pages/nang_sen_spa/03_khuyến_mãi_phiếu_vouchers (tùy chọn).html.chunks.md"><code>03_khuyến_mãi_phiếu_vouchers (tùy chọn).html</code></a> (<code>228b6a40-48c7-4efb-86a5-5ce52c290c10</code>, 1 chunk)<br>
                 &bull; <a href="../test_pages/nang_sen_spa/04_chính_sách.html.chunks.md"><code>04_chính_sách.html</code></a> (<code>23152b65-130e-4521-982f-e5e011a21aa9</code>, 6 chunks)<br>
                 &bull; <a href="../test_pages/nang_sen_spa/NANG_SEN_SPA_FULL_TRACE_MANIFEST.json"><code>NANG_SEN_SPA_FULL_TRACE_MANIFEST.json</code></a> (Full JSON Snapshot)<br>
+                &bull; <a href="../benchmarks/SPA_SKILL_ABC_BENCHMARK_REPORT.md"><code>SPA_SKILL_ABC_BENCHMARK_REPORT.md</code></a> (A/B/C Benchmark Report)<br>
                 <em>(Deactivated <code>is_active=false</code>: <code>SPA_PRICE_LIST_V2_ACTIVE.md</code>, <code>gemini-code-1792714816775.md</code>)</em>
               </td>
               <td>
-                &bull; <code>SpaV321RealHtmlKbTest</code> (<code>BT-SPA-001..004</code>)<br>
-                &bull; <code>test_office_parser.py</code> (7 tests)<br>
+                &bull; <code>ThinkingModePolicyAndAdaptiveRouterTest</code> (8 tests, live <code>qwen3:14b</code> multi-turn benchmark)<br>
+                &bull; <code>SpaV321RealHtmlKbTest</code> (<code>BT-SPA-001..011</code>)<br>
+                &bull; <code>test_office_parser.py</code> (10 tests)<br>
                 &bull; <code>PlaybookUploadServiceTest</code><br>
                 &bull; <code>FanpageBotServiceTest</code><br>
                 &bull; <code>EmpiricalAdversarialTest</code>
@@ -1420,8 +1424,8 @@
 
       <!-- END-TO-END TRACEABILITY TABLE FOR NANG SEN SPA -->
       <div class="section-banner" style="margin-top: 2rem;">
-        <h2>6. Bảng Trace Luồng Thực Thi Từng Lượt (End-to-End Turn-by-Turn Trace — Nàng Sen Spa <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>)</h2>
-        <p>Đối chiếu trực tiếp từ tin nhắn khách &rarr; biến đổi <code>ConversationState</code> &rarr; Rule/Micro-Skill nạp On-Demand &rarr; Chunk bảng giá trong <code>01_giá_dịch_vụ.html</code> &rarr; đầu ra <code>reply_bubbles</code> và <code>typing_delay_ms</code>.</p>
+        <h2>6. Bảng Trace Luồng Thực Thi Từng Lượt (End-to-End Turn-by-Turn Trace &mdash; Nàng Sen Spa <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>, <code>v3.2.4-ADAPTIVE-THINKING</code>)</h2>
+        <p>Đối chiếu trực tiếp từ tin nhắn khách &rarr; biến đổi <code>ConversationState</code> &amp; <code>ThinkingMode</code> (<code>FAST_NO_THINK=250</code>, <code>PRICE_ANCHOR_THINK=500</code>, <code>OBJECTION_REFRAME_THINK=500</code>, <code>REPAIR_FIRST=500</code>, <code>maxWordsPerBubble=65</code>) &rarr; Rule/Micro-Skill nạp On-Demand &rarr; Chunk bảng giá trong <code>01_giá_dịch_vụ.html</code> &rarr; đầu ra <code>reply_bubbles</code>, <code>Dynamic Post-Price Delay</code> và bộ <code>TurnTelemetry</code> chuẩn v3.2.4 (<code>promptBuildMs</code>, <code>retrievalMs</code>, <code>llmElapsedMs</code>, <code>validationMs</code>, <code>retryCount</code>, <code>firstBubbleSendMs</code>, <code>interBubbleGapMs</code>, <code>totalTurnMs</code>).</p>
       </div>
 
       <div class="matrix-wrapper">
@@ -1430,7 +1434,7 @@
             <tr>
               <th>Lượt (Scenario &amp; Turn)</th>
               <th>Tin Nhắn Khách (<code>message</code>)</th>
-              <th>Ý Định &amp; Cập Nhật <code>ConversationState</code></th>
+              <th>Ý Định, <code>ThinkingMode</code> &amp; <code>ConversationState</code></th>
               <th>Scoped Rule &amp; Skill (<code>On-Demand</code>)</th>
               <th>Chunk &amp; Gói Khớp Trong <code>01_giá_dịch_vụ.html</code></th>
               <th>Kết Quả <code>reply_bubbles</code> &amp; <code>typing_delay_ms</code></th>
@@ -1440,7 +1444,7 @@
             <tr>
               <td><strong>BT-SPA-002 Turn 1</strong></td>
               <td><code>&ldquo;Giá&rdquo;</code></td>
-              <td><code>intent = GENERAL_PRICE_INQUIRY</code><br><code>priceRequestedInSession = true</code><br><code>preferredRegion = "HN"</code></td>
+              <td><code>intent = GENERAL_PRICE_INQUIRY</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>priceRequestedInSession = true</code></td>
               <td>&bull; Rule: <code>PB-SPA-OPEN-001</code><br>&bull; Skill: <code>spa_clarify_service_type_once</code><br><em>(0 Price Objection rules loaded)</em></td>
               <td>Nhóm dịch vụ trích xuất từ <code>PackageCatalogService</code>: <code>massage</code> và <code>gội đầu dưỡng sinh</code></td>
               <td>&bull; <strong>B1 (<code>0ms</code>)</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên, nhân viên chăm sóc của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>1200ms</code>)</strong>: <em>&ldquo;Bên em chuyên massage thư giãn, ngâm thảo dược và vệ sinh tai ngoài nhẹ nhàng, thoải mái.&rdquo;</em><br>&bull; <strong>B3 (<code>2500ms</code>)</strong>: <em>&ldquo;Dạ mình đang quan tâm massage hay gội đầu dưỡng sinh để em gửi đúng mức giá theo thời lượng cho mình nha?&rdquo;</em></td>
@@ -1448,7 +1452,7 @@
             <tr>
               <td><strong>BT-SPA-002 Turn 2</strong></td>
               <td><code>&ldquo;Toi bbi đau mỏi cổ , nhức vai&rdquo;</code></td>
-              <td><code>intent = SYMPTOM_OR_PAIN_SHARE</code><br><code>knownSymptoms = ["đau mỏi cổ", "nhức vai"]</code><br><code>knownBodyAreas = ["cổ", "vai"]</code><br><code>conditionAskedCount = 1</code></td>
+              <td><code>intent = SYMPTOM_OR_PAIN_SHARE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>knownSymptoms = ["đau mỏi cổ", "nhức vai"]</code><br><code>knownBodyAreas = ["cổ", "vai"]</code></td>
               <td>&bull; Rule: <code>PB-SPA-DISCOVER-001</code><br>&bull; Skill: <code>spa_condition_first_discovery</code></td>
               <td>Cổng <code>R02</code> Condition-First: Đồng cảm tự nhiên (cấm <code>&ldquo;Dạ em ghi nhận&rdquo;</code>), hỏi 1 câu thời điểm/mức độ mỏi</td>
               <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ tình trạng đau mỏi cổ và nhức vai chắc đang làm mình khá khó chịu ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Mình bị lâu chưa hay mới gần đây, và thường căng sau ngồi lâu hay vận động nhiều ạ?&rdquo;</em></td>
@@ -1456,15 +1460,15 @@
             <tr>
               <td><strong>BT-SPA-002 Turn 3</strong></td>
               <td><code>&ldquo;thi thoảng&rdquo;</code></td>
-              <td><code>intent = CONDITION_CLARIFICATION</code><br><code>conditionClarified = true</code><br><code>priceDiscussed = true</code><br><code>heldPackage = "massage cơ bản 60 phút"</code><br><code>heldPrice = 399000</code></td>
+              <td><code>intent = CONDITION_CLARIFICATION</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (think=true, 500 tok)</code><br><code>heldPackage = "massage cơ bản 60 phút"</code><br><code>heldPrice = 399000</code></td>
               <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
               <td>Khớp gói <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, <code>Full body massage trị liệu cơ bản, kèm buffet thực dưỡng</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ với tình trạng đau mỏi cổ và nhức vai thi thoảng xuất hiện của mình, em gợi ý gói massage cơ bản 60 phút có giá 399k theo bảng giá hiện tại ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Gói này gồm full body massage trị liệu cơ bản, giúp chăm sóc vùng cổ và vai đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ. Mình muốn ghé trải nghiệm gói 60 phút hôm nay hay ngày mai để em giữ lịch cho mình nhé?&rdquo;</em></td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ với tình trạng đau mỏi cổ và nhức vai thi thoảng xuất hiện của mình, em gợi ý gói massage cơ bản 60 phút có giá 399k theo bảng giá hiện tại ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Gói này gồm full body massage trị liệu cơ bản, giúp chăm sóc vùng cổ và vai đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ. Mình thấy hướng chăm sóc này có hợp với nhu cầu hiện tại của mình không ạ?&rdquo;</em></td>
             </tr>
             <tr>
               <td><strong>BT-SPA-002 Turn 4</strong></td>
               <td><code>&ldquo;đắt nhỉ&rdquo;</code></td>
-              <td><code>intent = PRICE_OBJECTION_FIRST</code><br><code>priceObjectionCount = 1</code><br><code>downsellOffered = false</code><br><code>trialInviteOffered = true</code></td>
+              <td><code>intent = PRICE_OBJECTION_FIRST</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (think=true, 500 tok)</code><br><code>objectionRootCause = BUDGET_MISMATCH</code><br><code>priceObjectionCount = 1</code></td>
               <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-001</code><br>&bull; Skill: <code>spa_objection_value_trial</code></td>
               <td>Giữ nguyên <code>HN_NS01</code> (<code>399k</code>), bảo vệ giá trị thực tế (<code>buffet thực dưỡng</code> + <code>kỹ thuật viên làm kỹ đúng vùng mỏi</code>) + mời thử lẻ 1 buổi 🥰</td>
               <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em hiểu mình đang cân nhắc chi phí ạ. Gói bên em gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng, kỹ thuật viên làm kỹ đúng vùng mỏi ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Nếu mình còn chút băn khoăn, mình cứ trải nghiệm thử 1 buổi massage cơ bản 60 phút bên em xem sao ha 🥰&rdquo;</em></td>
@@ -1472,31 +1476,31 @@
             <tr>
               <td><strong>BT-SPA-002 Turn 5</strong></td>
               <td><code>&ldquo;mà hơi đắt&rdquo;</code></td>
-              <td><code>intent = PRICE_OBJECTION_REPEAT</code><br><code>priceObjectionCount = 2</code><br><code>downsellOffered = true</code><br><code>downsellPackage = "gói dưỡng sinh cơ bản 60 phút"</code><br><code>downsellPrice = 239000</code><br><code>rejectedPackages += ["massage cơ bản 60 phút"]</code></td>
+              <td><code>intent = PRICE_OBJECTION_REPEAT</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (think=true, 500 tok)</code><br><code>downsellPackage = "gói dưỡng sinh cơ bản 60 phút"</code><br><code>downsellPrice = 239000</code></td>
               <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-002</code><br>&bull; Skill: <code>spa_objection_dynamic_downsell</code></td>
               <td>Hạ 1 bậc từ <code>HN_NS01 (399k)</code> xuống <code>HN_DS02</code> (<code>Gói dưỡng sinh cơ bản 60 phút &mdash; 239k</code>, <code>gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em hiểu mình muốn gọn chi phí cho lần đầu. Bên em có gói dưỡng sinh cơ bản 60 phút có giá 239k gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Gói này giúp mình làm quen kỹ thuật trước mà vẫn thư giãn vùng mỏi nhé. Mình muốn em giữ lịch gói 60 phút hôm nay hay ngày mai ạ?&rdquo;</em></td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ mình cứ thoải mái cân nhắc ạ. Không biết mình đang lăn tăn chủ yếu về chi phí cho buổi đầu hay còn điểm nào trong liệu trình chưa yên tâm để em giải đáp đúng điều mình cần ạ?&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Nếu mình muốn bắt đầu với mức chi phí nhẹ hơn, em có thể giới thiệu gói dưỡng sinh cơ bản 60 phút có giá 239k gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ ạ.&rdquo;</em></td>
             </tr>
             <tr>
               <td><strong>BT-SPA-002 Turn 6</strong></td>
               <td><code>&ldquo;Có gói khác k&rdquo;</code></td>
-              <td><code>intent = ALTERNATIVE_PACKAGE_REQUEST</code><br><code>alternativeRequestCount = 1</code><br><code>mentionedPackages</code> loại trừ <code>NS01</code>, <code>DS02</code></td>
+              <td><code>intent = ALTERNATIVE_PACKAGE_REQUEST</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (think=true, 500 tok)</code><br><code>mentionedPackages</code> loại trừ <code>NS01</code>, <code>DS02</code></td>
               <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>price_answer_from_docs</code></td>
               <td>Chọn 2 gói chưa nhắc trong <code>availablePackageCatalog</code>: <code>HN_DS03</code> (<code>80p &mdash; 339k</code>) và <code>HN_NS02</code> (<code>80p &mdash; 530k</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ ngoài gói trên, bên em còn có gói dưỡng sinh cao cấp 80 phút giá 339k và gói massage cơ bản nâng cao 80 phút giá 530k ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Cả hai gói đều tập trung chăm sóc kỹ vùng mình đang cần ạ. Mình muốn chọn gói 339k hay 530k để em giữ lịch cho mình nhé?&rdquo;</em></td>
+              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ ngoài gói trên, bên em còn có gói dưỡng sinh cao cấp 80 phút giá 339k và gói massage cơ bản nâng cao 80 phút giá 530k ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Cả hai gói đều tập trung chăm sóc kỹ vùng mình đang cần ạ. Mình muốn chọn gói 339k hay 530k để em giữ lịch cho mình nhé?&rdquo;</em></td>
             </tr>
             <tr>
               <td><strong>BT-SPA-002 Turn 7</strong></td>
               <td><code>&ldquo;Dở à&rdquo;</code></td>
-              <td><code>emotion = FRUSTRATION</code><br><code>frustrationCount = 1</code><br><code>outstandingRequests</code> kiểm tra câu hỏi chưa giải đáp</td>
+              <td><code>emotion = FRUSTRATION</code><br><code>thinkingMode = REPAIR_FIRST (think=true, 500 tok)</code><br><code>outstandingRequests</code> kiểm tra câu hỏi chưa giải đáp</td>
               <td>&bull; Rule: <code>PB-SPA-FRUSTRATION-RECOVERY-001</code><br>&bull; Skill: <code>spa_frustration_rescue</code></td>
-              <td>Nhận lỗi ngắn gọn, tuyệt đối không đẩy template bán gói/ép chốt lịch; hỏi lại điều khách đang vướng hoặc đề nghị kết nối nhân viên hỗ trợ</td>
+              <td>Nhận lỗi ngắn gọn, tuyệt đối không đẩy template bán gói/ép chốt lịch; trả lời trực tiếp câu hỏi đang treo từ KB hoặc đề nghị kết nối nhân viên hỗ trợ</td>
               <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em xin lỗi vì phản hồi vừa rồi chưa đúng ý mình ạ. Mình cho em biết điểm mình đang băn khoăn hoặc cần kiểm tra lại để em giải đáp ngay, hoặc em kết nối nhân viên hỗ trợ trực tiếp cho mình nha ạ.&rdquo;</em></td>
             </tr>
             <tr>
               <td><strong>BT-SPA-005 Turn 5 &amp; 6</strong></td>
               <td><code>&ldquo;Thực dưỡng là j&rdquo;</code> &rarr; <code>&ldquo;K tôi thấy có buffet thực dưỡng, nó là j&rdquo;</code></td>
-              <td><code>intent = DETAIL_OR_FAQ_QUESTION</code><br><code>primaryAction = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>referencedConcept = "buffet thực dưỡng"</code><br><code>outstandingRequests</code>: <code>RESOLVED</code></td>
+              <td><code>intent = DETAIL_OR_FAQ_QUESTION</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>primaryAction = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>referencedConcept = "buffet thực dưỡng"</code></td>
               <td>&bull; Rule: <code>PB-SPA-FAQ-DETAIL-001</code><br>&bull; Skill: <code>spa_service_detail_faq_qa</code></td>
               <td>Neo ngữ cảnh từ quyền lợi <code>kèm buffet thực dưỡng</code> vừa nhắc ở Turn 4 + chunk FAQ <code>ca64440e-acc2-4afa-b29d-fa9bdf3231fd</code> (dòng 128&ndash;130 &amp; 155&ndash;160), giải thích trực tiếp 1 bong bóng không ép chốt lịch</td>
               <td>&bull; <strong>Turn 5 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ buffet thực dưỡng (điểm tâm ăn nhẹ phục hồi sau liệu trình) là phần điểm tâm miễn phí đi kèm các gói có ghi quyền lợi buffet thực dưỡng/ăn nhẹ tại spa ạ. Thực đơn tại spa gồm các món như bánh mì bò sốt vang, trứng ngải cứu, chè đậu đen, bún dọc mùng, cháo sườn, hoa quả theo mùa cùng trà thảo mộc/nước ép để mình nạp lại năng lượng sau buổi trị liệu ạ.&rdquo;</em></td>
@@ -1504,10 +1508,18 @@
             <tr>
               <td><strong>BT-SPA-003 Turn 2 &amp; 3</strong></td>
               <td><code>&ldquo;Tôi bị chân đau, mỏi gối&rdquo;</code> &rarr; <code>&ldquo;thi thoảng&rdquo;</code></td>
-              <td><code>knownSymptoms = ["đau chân", "mỏi gối"]</code><br><code>knownBodyAreas = ["chân", "gối"]</code><br>Loại bỏ <code>DS01..DS06</code> (chỉ làm đầu/cổ vai)</td>
+              <td><code>knownSymptoms = ["đau chân", "mỏi gối"]</code><br><code>knownBodyAreas = ["chân", "gối"]</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (Turn 3, 500 tok)</code></td>
               <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
               <td>Khớp Cột N của <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, Full body chăm sóc vùng cổ-vai-gáy, lưng, chân, tay + buffet thực dưỡng)</td>
-              <td>&bull; <strong>Turn 2</strong>: Đồng cảm đủ <em>&ldquo;đau chân và mỏi gối&rdquo;</em> + hỏi 1 câu tình trạng (<code>2000ms</code>).<br>&bull; <strong>Turn 3</strong>: Gợi ý <em>&ldquo;gói massage cơ bản 60 phút có giá 399k&rdquo;</em> (<code>Full body massage trị liệu cơ bản, giúp chăm sóc vùng chân và gối đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ</code>, <code>10000ms</code>).</td>
+              <td>&bull; <strong>Turn 2</strong>: Đồng cảm đủ <em>&ldquo;đau chân và mỏi gối&rdquo;</em> + hỏi 1 câu tình trạng (<code>2000ms</code>).<br>&bull; <strong>Turn 3</strong>: Gợi ý <em>&ldquo;gói massage cơ bản 60 phút có giá 399k&rdquo;</em> (<code>Full body massage trị liệu cơ bản, giúp chăm sóc vùng chân và gối đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ</code>, <code>remainingDelayMs = max(0, 10000 - elapsedMs)</code>).</td>
+            </tr>
+            <tr>
+              <td><strong>BT-SPA-013 &amp; BT-SPA-014 (v3.2.4)</strong></td>
+              <td><code>&ldquo;339k hơi cao nhỉ&rdquo;</code> &rarr; <code>&ldquo;Để tôi cân nhắc thêm&rdquo;</code> &rarr; <code>&ldquo;Thôi để lúc khác vậy&rdquo;</code></td>
+              <td>&bull; <strong>Stage 1</strong>: <code>OBJECTION_REFRAME_THINK</code>, <code>downsellOffered = false</code><br>&bull; <strong>Stage 2</strong>: <code>OBJECTION_REFRAME_THINK</code>, <code>downsellOffered = true</code>, <code>retentionAttemptCount = 1</code><br>&bull; <strong>Stage 3</strong>: <code>STAGE_3_GRACEFUL_EXIT</code>, <code>FAST_NO_THINK</code>, <code>0</code> questions</td>
+              <td>&bull; <code>PB-SPA-PRICE-OBJECTION-001</code><br>&bull; <code>PB-SPA-PRICE-OBJECTION-002</code><br>&bull; <code>SAFE-NEURO-001</code></td>
+              <td>Giữ gói <code>HN_DS03 (339k)</code> ở Nhịp 1 + mời thử lẻ 1 buổi 🥰; Nhịp 2 hỏi rõ băn khoăn ở B1 + giới thiệu <code>HN_DS02 (239k Dưỡng sinh cơ bản 60 phút)</code> ở B2 (<code>&gt;= 10000ms</code>); Nhịp 3 dừng thuyết phục ấm áp (<code>0</code> dấu hỏi)</td>
+              <td>&bull; <strong>Split-Bubble Price Quote</strong>: B1 gửi ngay (<code>firstBubbleSendMs</code>), B2 sinh qua <code>PRICE_ANCHOR_THINK</code> (<code>GENERATE_PRICE_ANCHOR_BUBBLE</code>) và chờ <code>remainingDelayMs = max(0, 10000 - elapsedMs)</code>.<br>&bull; <strong>Stage 3 Exit</strong>: 1 bong bóng khép lại ấm áp, không hỏi thêm câu hỏi, không chào thêm gói.</td>
             </tr>
           </tbody>
         </table>

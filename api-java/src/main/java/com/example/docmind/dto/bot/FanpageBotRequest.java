@@ -50,8 +50,40 @@ public record FanpageBotRequest(
         Integer idleSeconds,
 
         @JsonProperty("action")
-        String action
+        String action,
+
+        @JsonProperty("split_price_bubbles")
+        @JsonAlias({"splitPriceBubbles"})
+        Boolean splitPriceBubbles,
+
+        @JsonProperty("pending_turn_sequence")
+        @JsonAlias({"pendingTurnSequence"})
+        Long pendingTurnSequence,
+
+        @JsonProperty("price_bubble_sent_at_ns")
+        @JsonAlias({"priceBubbleSentAtNs"})
+        Long priceBubbleSentAtNs
 ) {
+    /**
+     * Constructor tương thích ngược 12 tham số.
+     */
+    public FanpageBotRequest(
+            String pageId,
+            String senderId,
+            String customerName,
+            String message,
+            List<String> messages,
+            List<ConversationTurn> history,
+            List<UUID> documentIds,
+            Integer topK,
+            Integer previousTemperature,
+            Integer replyDelaySeconds,
+            Integer idleSeconds,
+            String action
+    ) {
+        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, previousTemperature, replyDelaySeconds, idleSeconds, action, null, null, null);
+    }
+
     /**
      * Constructor tương thích ngược cho các bài test và caller cũ (8 tham số).
      */
@@ -65,7 +97,7 @@ public record FanpageBotRequest(
             List<UUID> documentIds,
             Integer topK
     ) {
-        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, null, null, null, null);
+        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, null, null, null, null, null, null, null);
     }
 
     public record ConversationTurn(

@@ -809,7 +809,7 @@ public final class FanpageBotPromptBuilder {
             sb.append("# BỘ KỸ NĂNG AGENT ĐANG KÍCH HOẠT\n");
             if (isMicroSkillActive) {
                 sb.append("- Priority: Core safety > State machine > Tenant persona > Primary skill > Memory > Example > Playbook detail\n");
-                sb.append("- Always-On Layer: [core_safety] Không tư vấn y khoa/cam kết chữa bệnh | [anti_hallucination_grounding] Chỉ báo giá trong <DOCUMENT_CONTEXT> | [messenger_tone_short] Tối đa 3 bong bóng, <=2 câu/bong bóng, <=45 từ/bong bóng.\n");
+                sb.append("- Always-On Layer: [core_safety] Không tư vấn y khoa/cam kết chữa bệnh | [anti_hallucination_grounding] Chỉ báo giá trong <DOCUMENT_CONTEXT> | [messenger_tone_short] Tối đa 3 bong bóng, <=2 câu/bong bóng, <=65 từ/bong bóng.\n");
             }
             int sIdx = 1;
             int usedSkillChars = 0;
@@ -1505,6 +1505,48 @@ public final class FanpageBotPromptBuilder {
             PrimaryActionRouter.RoutingDecision actionDecision,
             List<com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble> dbGroundedReferenceBubbles
     ) {
+        return buildDynamicRuntimePrompt(
+                customerMessage,
+                customerName,
+                history,
+                chunks,
+                appliedRules,
+                pagePersona,
+                salesStage,
+                resolvedHonorific,
+                customerInsight,
+                activeSkills,
+                mocSummary,
+                priceLadderResult,
+                sampleDialogues,
+                convState,
+                actionDecision,
+                dbGroundedReferenceBubbles,
+                null,
+                false
+        );
+    }
+
+    public static String buildDynamicRuntimePrompt(
+            String customerMessage,
+            String customerName,
+            List<FanpageBotRequest.ConversationTurn> history,
+            List<ReciprocalRankFusion.FusedChunk> chunks,
+            List<LearnedRuleDto> appliedRules,
+            PromptBuilder.PagePersona pagePersona,
+            SalesStage salesStage,
+            String resolvedHonorific,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            String mocSummary,
+            PriceLadderResult priceLadderResult,
+            List<SampleDialogueDto> sampleDialogues,
+            ConversationState convState,
+            PrimaryActionRouter.RoutingDecision actionDecision,
+            List<com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble> dbGroundedReferenceBubbles,
+            ThinkingModePolicy.ThinkingDecision thinkingDecision,
+            boolean isOpenAiCompatibleProvider
+    ) {
         if (convState == null && actionDecision == null) {
             return build(
                     customerMessage,
@@ -1532,7 +1574,7 @@ public final class FanpageBotPromptBuilder {
                 : resolveCustomerHonorific(customerMessage, history, customerName, pagePersona);
         String selfPronoun = cfg.resolvedSelfPronoun();
 
-        StringBuilder sb = new StringBuilder(2400);
+        StringBuilder sb = new StringBuilder(2800);
         sb.append("# VAI TRÒ & QUY TẮC RUNTIME PAGE (").append(pageName).append(")\n");
         sb.append("- Xưng '").append(selfPronoun).append("', gọi khách là '").append(honorific).append("'.\n");
         if (cfg.activePromptCompact() != null && !cfg.activePromptCompact().isBlank()) {
@@ -1632,6 +1674,61 @@ public final class FanpageBotPromptBuilder {
             sb.append("</CONVERSATION_HISTORY>\n\n");
         }
 
+        // 5.5 <THINKING_MODE_STRATEGY> (Adaptive Thinking Router: Neo giá trị cảm xúc, Xử lý chê đắt đa lượt, Giải tỏa bức xúc)
+        ThinkingMode effectiveThinkingMode = thinkingDecision != null && thinkingDecision.thinkingMode() != null
+                ? thinkingDecision.thinkingMode()
+                : ThinkingMode.FAST_NO_THINK;
+        sb.append("<THINKING_MODE_STRATEGY>\n");
+        sb.append("- thinking_mode: ").append(effectiveThinkingMode.name()).append('\n');
+        sb.append("- max_sentences_per_bubble: ").append(effectiveThinkingMode.maxSentencesPerBubble()).append('\n');
+        sb.append("- max_words_per_bubble: 65\n");
+        if (thinkingDecision != null && thinkingDecision.triggerReason() != null) {
+            sb.append("- trigger_reason: ").append(thinkingDecision.triggerReason()).append('\n');
+        }
+        if (effectiveThinkingMode != ThinkingMode.FAST_NO_THINK) {
+            sb.append("- thinking_conciseness: Giữ suy luận nội bộ cực kỳ ngắn gọn (tối đa 2 ý chính dưới 40 từ), sau đó trả về ngay JSON hợp lệ.\n");
+        }
+        boolean isSplitSecondBubbleOnly = effectiveThinkingMode == ThinkingMode.PRICE_ANCHOR_THINK
+                && dbGroundedReferenceBubbles != null
+                && dbGroundedReferenceBubbles.size() == 1;
+        if (effectiveThinkingMode == ThinkingMode.PRICE_ANCHOR_THINK) {
+            if (isSplitSecondBubbleOnly) {
+                sb.append("- Chiến lược Sinh Bong Bóng 2 — Neo Giá Trị Cảm Xúc Sau Khi Đã Gửi Báo Giá (PRICE_ANCHOR_THINK):\n");
+                sb.append("  + Bong bóng 1 (báo giá gói dịch vụ) ĐÃ ĐƯỢC GỬI cho khách ngay trước đó. Lượt này CHỈ sinh ĐÚNG 1 bong bóng neo cảm xúc trong mảng reply_bubbles (độ dài mảng = 1).\n");
+                sb.append("  + Nội dung bong bóng neo cảm xúc: TUYỆT ĐỐI KHÔNG lặp lại con số giá đã gửi. Liên hệ trực tiếp tới nhu cầu/tình trạng khách vừa chia sẻ (known_symptoms / known_body_areas) + chọn đúng 1 lợi ích thực tế từ <DOCUMENT_CONTEXT> để tạo sự yên tâm, được thấu hiểu. KHÔNG thúc ép chốt lịch cứng kiểu 'hôm nay hay ngày mai' hay 'giữ lịch' khi khách chưa có tín hiệu đặt lịch.\n");
+            } else {
+                sb.append("- Chiến lược Báo Giá + Neo Giá Trị Cảm Xúc 2 Bong Bóng (PRICE_ANCHOR_THINK):\n");
+                sb.append("  + Bubble 1 (Báo giá): Báo tên gói/dịch vụ, thời lượng, mức giá chính xác và điều kiện đi kèm từ <DOCUMENT_CONTEXT>; rõ ràng, ngắn gọn.\n");
+                sb.append("  + Bubble 2 (Neo cảm xúc sau nhịp nghỉ post-price): TUYỆT ĐỐI KHÔNG lặp lại giá đã gửi. Liên hệ trực tiếp tới nhu cầu/tình trạng khách vừa chia sẻ (known_symptoms / known_body_areas) + chọn đúng 1 lợi ích thực tế từ KB để tạo sự yên tâm, được thấu hiểu (nếu khách chưa nêu triệu chứng thì neo vào sự minh bạch/chỉn chu, cấm tự giả định bệnh lý). KHÔNG thúc ép chốt lịch kiểu 'hôm nay hay ngày mai' ngay sau báo giá đầu tiên khi khách chưa có tín hiệu đặt lịch.\n");
+            }
+        } else if (effectiveThinkingMode == ThinkingMode.OBJECTION_REFRAME_THINK) {
+            int objTurn = thinkingDecision != null ? thinkingDecision.objectionTurnIndex() : 1;
+            ThinkingModePolicy.ObjectionRootCause rootCause = thinkingDecision != null && thinkingDecision.objectionRootCause() != null
+                    ? thinkingDecision.objectionRootCause()
+                    : ThinkingModePolicy.ObjectionRootCause.BUDGET_MISMATCH;
+            sb.append("- Chiến lược Giữ Chân Khách 3 Nhịp Khi Chê Đắt / Lưỡng Lự (OBJECTION_REFRAME_THINK):\n");
+            sb.append("  + objection_turn_index: ").append(objTurn).append('\n');
+            sb.append("  + objection_root_cause: ").append(rootCause.name()).append('\n');
+            if (thinkingDecision != null && thinkingDecision.previouslyUsedArguments() != null && !thinkingDecision.previouslyUsedArguments().isEmpty()) {
+                sb.append("  + previously_used_arguments (TUYỆT ĐỐI CẤM LẶP LẠI các câu/luận điểm này): ")
+                  .append(thinkingDecision.previouslyUsedArguments()).append('\n');
+            }
+            if (objTurn <= 1) {
+                sb.append("  + Nhịp 1 (Khách mới thấy giá hơi cao lần đầu): Đồng cảm tự nhiên với tâm lý cân nhắc chi phí -> Giữ nguyên gói đang tư vấn (KHÔNG tự động hạ gói hay giảm giá trừ khi khách chủ động xin gói rẻ hơn) -> Nhấn mạnh 1 giá trị thực tế từ <DOCUMENT_CONTEXT> (chỉ nhắc phản hồi khách hàng khi KB có dữ liệu thật, cấm bịa số liệu) và gợi ý nhẹ nhàng trải nghiệm thử 1 buổi 🥰.\n");
+            } else {
+                sb.append("  + Nhịp ").append(objTurn).append(" (Root-Cause ").append(rootCause.name()).append("): TUYỆT ĐỐI KHÔNG lặp lại nguyên văn câu trả lời trước. Nếu chưa gợi ý gói thấp hơn (downsell_offered=false): Bubble 1 tôn trọng quyết định cân nhắc và hỏi nhẹ 1 câu làm rõ khách đang lăn tăn về chi phí buổi đầu hay điểm nào trong liệu trình; Bubble 2 giới thiệu đúng 1 gói thấp hơn có thật trong <DOCUMENT_CONTEXT> với đúng quyền lợi của gói đó. Nếu đã gợi ý gói thay thế mà khách vẫn từ chối/chưa muốn làm (STAGE_3_GRACEFUL_EXIT): dừng thuyết phục, 0 câu hỏi, chúc khách ấm áp và mở đường quay lại.\n");
+            }
+        } else if (effectiveThinkingMode == ThinkingMode.REPAIR_FIRST) {
+            sb.append("- Chiến lược Giải Tỏa Bức Xúc & Trả Lời Nợ Câu Hỏi (REPAIR_FIRST):\n");
+            if (thinkingDecision != null && thinkingDecision.unresolvedQuestions() != null && !thinkingDecision.unresolvedQuestions().isEmpty()) {
+                sb.append("  + unresolved_questions_to_answer_now: ").append(thinkingDecision.unresolvedQuestions()).append('\n');
+            }
+            sb.append("  + Ưu tiên tuyệt đối: Nhận lỗi chân thành, ngắn gọn và trả lời TRỰC DIỆN câu hỏi/thắc mắc khách đang chờ dựa trên <DOCUMENT_CONTEXT>. CẤM văn mẫu sáo rỗng, CẤM lặp lại câu hỏi khảo sát cũ và CẤM chèo kéo bán gói khi khách chưa hết bức xúc.\n");
+        } else {
+            sb.append("- Chiến lược Phản Hồi Nhanh (FAST_NO_THINK): Trả lời tự nhiên, ấm áp, ngắn gọn tối đa 2 câu và 65 từ mỗi bong bóng.\n");
+        }
+        sb.append("</THINKING_MODE_STRATEGY>\n\n");
+
         // 6. <CONVERSATION_STATE_AND_ACTION_CONTRACT>
         sb.append("<CONVERSATION_STATE_AND_ACTION_CONTRACT>\n");
         if (actionDecision != null) {
@@ -1640,14 +1737,18 @@ public final class FanpageBotPromptBuilder {
             sb.append("- opening_required: ").append(actionDecision.openingRequired()).append('\n');
             sb.append("- active_skill_code: ").append(actionDecision.correspondingMicroSkillCode()).append('\n');
         }
+        sb.append("- thinking_mode: ").append(effectiveThinkingMode.name()).append('\n');
         if (convState != null) {
             ConversationState enriched = convState.enrichWithCurrentMessage(customerMessage, cfg.safeDomainKeywords());
             sb.append("- known_service: ").append(enriched.knownServiceFamily() != null ? enriched.knownServiceFamily() : "null").append('\n');
             sb.append("- known_symptoms: ").append(enriched.knownSymptoms()).append('\n');
             sb.append("- known_body_areas: ").append(enriched.knownBodyAreas()).append('\n');
             sb.append("- condition_clarified: ").append(enriched.conditionClarified()).append('\n');
-            sb.append("- price_discussed: ").append(convState.priceDiscussed()).append('\n');
+            sb.append("- price_discussed: ").append(convState.priceDiscussed() || isSplitSecondBubbleOnly).append('\n');
             sb.append("- price_objection_count: ").append(convState.objectionCount()).append('\n');
+            sb.append("- objection_stage: ").append(convState.objectionStage() != null ? convState.objectionStage() : "NONE").append('\n');
+            sb.append("- downsell_offered: ").append(convState.downsellOffered()).append('\n');
+            sb.append("- retention_attempt_count: ").append(convState.retentionAttemptCount()).append('\n');
             sb.append("- held_package: ").append(convState.knownRecommendedPackage() != null ? convState.knownRecommendedPackage() : "null").append('\n');
             sb.append("- downsell_package: ").append(convState.downsellPackage() != null ? convState.downsellPackage() : "null").append('\n');
             sb.append("- rejected_durations: ").append(convState.rejectedDurations()).append('\n');
@@ -1661,9 +1762,9 @@ public final class FanpageBotPromptBuilder {
             }
         }
         if (dbGroundedReferenceBubbles != null && !dbGroundedReferenceBubbles.isEmpty()) {
-            sb.append("- db_grounded_reference_bubbles (BẮT BUỘC giữ đúng số lượng ")
+            sb.append("- db_grounded_reference_bubbles (Dữ liệu chuẩn đã xác minh từ KB — giữ đúng số lượng ")
               .append(dbGroundedReferenceBubbles.size())
-              .append(" bong bóng, tên gói, thời lượng, mức giá, cảm xúc và typing_delay_ms từng bong bóng):\n");
+              .append(" bong bóng, đúng tên gói/thời lượng/mức giá và typing_delay_ms từng bong bóng, diễn đạt tự nhiên cá nhân hóa theo lời khách):\n");
             for (int i = 0; i < dbGroundedReferenceBubbles.size(); i++) {
                 var b = dbGroundedReferenceBubbles.get(i);
                 if (b != null && b.text() != null) {
@@ -1674,8 +1775,20 @@ public final class FanpageBotPromptBuilder {
             }
         }
         sb.append("- Trả về JSON hợp lệ đủ các bong bóng theo mẫu (KHÔNG giải thích thêm):\n");
-        sb.append("  {\"reply_bubbles\": [{\"text\": \"...\", \"typing_delay_ms\": 1000}, {\"text\": \"...\", \"typing_delay_ms\": 2000}], \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
-          .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
+        String bubblesJsonExample = (dbGroundedReferenceBubbles != null && dbGroundedReferenceBubbles.size() == 1)
+                ? "[{\"text\": \"...\", \"typing_delay_ms\": " + dbGroundedReferenceBubbles.get(0).typingDelayMs() + "}]"
+                : "[{\"text\": \"...\", \"typing_delay_ms\": 1000}, {\"text\": \"...\", \"typing_delay_ms\": 2000}]";
+        if (isOpenAiCompatibleProvider && effectiveThinkingMode != ThinkingMode.FAST_NO_THINK) {
+            sb.append("  {\"reasoning_brief\": \"1-2 câu tóm tắt góc tiếp cận tâm lý nội bộ\", \"reply_bubbles\": ")
+              .append(bubblesJsonExample)
+              .append(", \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
+              .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
+        } else {
+            sb.append("  {\"reply_bubbles\": ")
+              .append(bubblesJsonExample)
+              .append(", \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
+              .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
+        }
         sb.append("</CONVERSATION_STATE_AND_ACTION_CONTRACT>\n\n");
         sb.append("Khách hàng: ").append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage != null ? customerMessage : "")).append('\n');
         sb.append("Tin nhắn phản hồi khách hàng:");

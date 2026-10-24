@@ -70,13 +70,17 @@ public final class SentimentIntentLayer {
             "(?is).*\\b(dung\\s+nhan|khong\\s+can\\s+nua|thoi\\s+dung\\s+nhan|ngung\\s+nhan)\\b.*"
     );
 
-    // 2. NEUROLOGICAL_RISK
+    // 2. NEUROLOGICAL_RISK (SAFE-NEURO-001)
     private static final Pattern ACUTE_NEUROLOGICAL_RED_FLAG_PATTERN = Pattern.compile(
-            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|"
-            + "chóng\\s+mặt\\s+nhiều|hoa\\s+mắt\\s+chóng\\s+mặt|ù\\s+tai\\s+chóng\\s+mặt)\\b.*"
+            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|tê\\s+chân|"
+            + "chóng\\s+mặt\\s+nhiều|chóng\\s+mặt\\s+dữ\\s+dội|hoa\\s+mắt\\s+chóng\\s+mặt|ù\\s+tai\\s+chóng\\s+mặt|"
+            + "tê\\s+(?:tay\\s+|chân\\s+|bì\\s+)?lan\\b|lan\\s+xuống\\s+(?:cánh\\s+tay|bàn\\s+tay|tay|bắp\\s+chân|bàn\\s+chân|chân)|"
+            + "chèn\\s+ép\\s+(?:rễ\\s+|dây\\s+)?thần\\s+kinh|thoát\\s+vị\\s+đĩa\\s+đệm)\\b.*"
     );
     private static final Pattern ACUTE_NEUROLOGICAL_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(dau\\s+dau\\s+du\\s+doi|yeu\\s+tay|yeu\\s+chan|mat\\s+cam\\s+giac|hoa\\s+mat\\s+chong\\s+mat)\\b.*"
+            "(?is).*\\b(dau\\s+dau\\s+du\\s+doi|yeu\\s+tay|yeu\\s+chan|mat\\s+cam\\s+giac|hoa\\s+mat\\s+chong\\s+mat|te\\s+chan|"
+            + "te\\s+(?:tay\\s+|chan\\s+|bi\\s+)?lan\\b|lan\\s+xuong\\s+(?:canh\\s+tay|ban\\s+tay|tay|chan)|"
+            + "chen\\s+ep\\s+(?:re\\s+|day\\s+)?than\\s+kinh|thoat\\s+vi\\s+dia\\s+dem)\\b.*"
     );
     private static final Pattern NUMBNESS_OR_DIZZINESS_PATTERN = Pattern.compile(
             "(?isU).*\\b(tê\\s+tay|tê\\s+chân|tê\\s+bì|chóng\\s+mặt|ù\\s+tai|hoa\\s+mắt)\\b.*"
@@ -187,11 +191,11 @@ public final class SentimentIntentLayer {
 
     // 8. PRICE_OBJECTION
     private static final Pattern PRICE_OBJECTION_PATTERN = Pattern.compile(
-            "(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+thế|cao\\s+vậy|cao\\s+quá|đắt\\s+thế|đắt\\s+vậy|đắt\\s+quá|"
+            "(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+hơn|đắt\\s+hơn|cao\\s+thế|cao\\s+vậy|cao\\s+quá|đắt\\s+thế|đắt\\s+vậy|đắt\\s+quá|"
             + "vẫn\\s+đắt|nhiều\\s+tiền|chưa\\s+đủ\\s+ngân\\s+sách|chưa\\s+vừa\\s+túi|vượt\\s+ngân\\s+sách|hơi\\s+căng|mắc\\s+quá)\\b.*"
     );
     private static final Pattern PRICE_OBJECTION_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(dat\\s+the|dat\\s+qua|van\\s+dat|hoi\\s+cao|cao\\s+qua|nhieu\\s+tien|chua\\s+du\\s+ngan\\s+sach)\\b.*"
+            "(?is).*\\b(dat\\s+the|dat\\s+qua|dat\\s+hon|van\\s+dat|hoi\\s+cao|cao\\s+hon|cao\\s+qua|nhieu\\s+tien|chua\\s+du\\s+ngan\\s+sach)\\b.*"
     );
 
     private static final Pattern DURATION_IN_MESSAGE_PATTERN = Pattern.compile(
@@ -416,6 +420,30 @@ public final class SentimentIntentLayer {
         String ascii = removeDiacritics(message);
         return PRICE_OBJECTION_PATTERN.matcher(norm).matches()
                 || PRICE_OBJECTION_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
+    private static final Pattern HESITATION_AFTER_OBJECTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(cân\\s+nhắc(?:\\s+thêm)?|suy\\s+nghĩ(?:\\s+thêm)?|để\\s+(?:tôi|mình|chị|anh|em)?\\s*(?:xem|nghĩ|tính|cân\\s+nhắc|suy\\s+nghĩ|tham\\s+khảo)(?:\\s+thêm|\\s+đã|\\s+lại)?|"
+            + "thôi\\s+để\\s+lúc\\s+khác|để\\s+lúc\\s+khác|để\\s+hôm\\s+khác|thôi\\s+để\\s+sau|"
+            + "vẫn\\s+chưa\\s+muốn\\s+làm|chưa\\s+muốn\\s+làm|chưa\\s+quyết\\s+định)\\b.*"
+    );
+    private static final Pattern HESITATION_AFTER_OBJECTION_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(can\\s+nhac(?:\\s+them)?|suy\\s+nghi(?:\\s+them)?|de\\s+(?:toi|minh|chi|anh|em)?\\s*(?:xem|nghi|tinh|can\\s+nhac|suy\\s+nghi|tham\\s+khao)(?:\\s+them|\\s+da|\\s+lai)?|"
+            + "thoi\\s+de\\s+luc\\s+khac|de\\s+luc\\s+khac|de\\s+hom\\s+khac|thoi\\s+de\\s+sau|"
+            + "van\\s+chua\\s+muon\\s+lam|chua\\s+muon\\s+lam|chua\\s+quyet\\s+dinh)\\b.*"
+    );
+
+    public static boolean isHesitationAfterObjection(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        if (OPT_OUT_PATTERN.matcher(norm).matches() || OPT_OUT_ASCII_PATTERN.matcher(ascii).matches()) {
+            return false;
+        }
+        return HESITATION_AFTER_OBJECTION_PATTERN.matcher(norm).matches()
+                || HESITATION_AFTER_OBJECTION_ASCII_PATTERN.matcher(ascii).matches();
     }
 
     private static final Pattern COMPREHENSION_FAILURE_PATTERN = Pattern.compile(

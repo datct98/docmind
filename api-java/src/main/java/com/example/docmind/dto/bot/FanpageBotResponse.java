@@ -53,7 +53,16 @@ public record FanpageBotResponse(
         List<AgentSkillDto> activeSkills,
 
         @JsonProperty("triggered_hooks")
-        List<String> triggeredHooks
+        List<String> triggeredHooks,
+
+        @JsonProperty("pending_second_bubble")
+        boolean pendingSecondBubble,
+
+        @JsonProperty("pending_turn_sequence")
+        Long pendingTurnSequence,
+
+        @JsonProperty("price_bubble_sent_at_ns")
+        Long priceBubbleSentAtNs
 ) {
     public FanpageBotResponse {
         if (appliedRules == null) {
@@ -84,6 +93,41 @@ public record FanpageBotResponse(
             ExtractedLead extractedLead,
             List<LearnedRuleDto> appliedRules,
             CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            List<String> triggeredHooks
+    ) {
+        this(
+                replyText,
+                replyBubbles,
+                bubbleDelaysMs,
+                salesStage,
+                confidenceScore,
+                needsHumanHandoff,
+                handoffCategory,
+                handoffReason,
+                extractedLead,
+                appliedRules,
+                customerInsight,
+                activeSkills,
+                triggeredHooks,
+                false,
+                null,
+                null
+        );
+    }
+
+    public FanpageBotResponse(
+            String replyText,
+            List<ReplyBubble> replyBubbles,
+            List<Integer> bubbleDelaysMs,
+            String salesStage,
+            double confidenceScore,
+            boolean needsHumanHandoff,
+            String handoffCategory,
+            String handoffReason,
+            ExtractedLead extractedLead,
+            List<LearnedRuleDto> appliedRules,
+            CustomerInsightDto customerInsight,
             List<AgentSkillDto> activeSkills
     ) {
         this(
@@ -99,7 +143,10 @@ public record FanpageBotResponse(
                 appliedRules,
                 customerInsight,
                 activeSkills,
-                List.of()
+                List.of(),
+                false,
+                null,
+                null
         );
     }
 
@@ -130,6 +177,31 @@ public record FanpageBotResponse(
                 customerInsight,
                 activeSkills,
                 List.of()
+        );
+    }
+
+    public FanpageBotResponse withPendingSecondBubble(
+            boolean pendingSecondBubble,
+            Long pendingTurnSequence,
+            Long priceBubbleSentAtNs
+    ) {
+        return new FanpageBotResponse(
+                this.replyText,
+                this.replyBubbles,
+                this.bubbleDelaysMs,
+                this.salesStage,
+                this.confidenceScore,
+                this.needsHumanHandoff,
+                this.handoffCategory,
+                this.handoffReason,
+                this.extractedLead,
+                this.appliedRules,
+                this.customerInsight,
+                this.activeSkills,
+                this.triggeredHooks,
+                pendingSecondBubble,
+                pendingTurnSequence,
+                priceBubbleSentAtNs
         );
     }
 
@@ -204,7 +276,10 @@ public record FanpageBotResponse(
                 .appliedRules(this.appliedRules)
                 .customerInsight(this.customerInsight)
                 .activeSkills(this.activeSkills)
-                .triggeredHooks(this.triggeredHooks);
+                .triggeredHooks(this.triggeredHooks)
+                .pendingSecondBubble(this.pendingSecondBubble)
+                .pendingTurnSequence(this.pendingTurnSequence)
+                .priceBubbleSentAtNs(this.priceBubbleSentAtNs);
     }
 
     public static class Builder {
@@ -221,6 +296,9 @@ public record FanpageBotResponse(
         private CustomerInsightDto customerInsight;
         private List<AgentSkillDto> activeSkills = new ArrayList<>();
         private List<String> triggeredHooks = new ArrayList<>();
+        private boolean pendingSecondBubble = false;
+        private Long pendingTurnSequence;
+        private Long priceBubbleSentAtNs;
 
         public Builder replyText(String replyText) {
             this.replyText = replyText;
@@ -294,6 +372,21 @@ public record FanpageBotResponse(
             return this;
         }
 
+        public Builder pendingSecondBubble(boolean pendingSecondBubble) {
+            this.pendingSecondBubble = pendingSecondBubble;
+            return this;
+        }
+
+        public Builder pendingTurnSequence(Long pendingTurnSequence) {
+            this.pendingTurnSequence = pendingTurnSequence;
+            return this;
+        }
+
+        public Builder priceBubbleSentAtNs(Long priceBubbleSentAtNs) {
+            this.priceBubbleSentAtNs = priceBubbleSentAtNs;
+            return this;
+        }
+
         public FanpageBotResponse build() {
             return new FanpageBotResponse(
                     replyText,
@@ -308,7 +401,10 @@ public record FanpageBotResponse(
                     appliedRules,
                     customerInsight,
                     activeSkills,
-                    triggeredHooks
+                    triggeredHooks,
+                    pendingSecondBubble,
+                    pendingTurnSequence,
+                    priceBubbleSentAtNs
             );
         }
     }

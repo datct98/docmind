@@ -665,7 +665,10 @@ export const api = {
     replyDelaySeconds = null,
     previousTemperature = null,
     action = null,
-    isIdleReengage = false
+    isIdleReengage = false,
+    splitPriceBubbles = null,
+    pendingTurnSequence = null,
+    priceBubbleSentAtNs = null
   }) {
     const payload = {
       page_id: pageId,
@@ -692,6 +695,15 @@ export const api = {
       payload.action = action
     } else if (isIdleReengage) {
       payload.action = 'REENGAGE'
+    }
+    if (splitPriceBubbles !== null && splitPriceBubbles !== undefined) {
+      payload.split_price_bubbles = Boolean(splitPriceBubbles)
+    }
+    if (pendingTurnSequence !== null && pendingTurnSequence !== undefined) {
+      payload.pending_turn_sequence = Number(pendingTurnSequence)
+    }
+    if (priceBubbleSentAtNs !== null && priceBubbleSentAtNs !== undefined) {
+      payload.price_bubble_sent_at_ns = Number(priceBubbleSentAtNs)
     }
 
     let res

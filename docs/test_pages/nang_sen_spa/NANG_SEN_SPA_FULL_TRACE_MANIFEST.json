@@ -1,7 +1,55 @@
 {
   "page_id": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
   "page_name": "Nàng Sen Spa",
-  "version": "3.2.2-DELTA",
+  "version": "3.2.4-ADAPTIVE-THINKING-SPLIT-BUBBLE-RETENTION",
+  "adaptive_thinking_router": {
+    "llm_model": "qwen3:14b",
+    "fallback_model": "qwen3:14b",
+    "modes": {
+      "FAST_NO_THINK": {"think": false, "max_output_tokens": 250, "max_sentences": 2, "max_words": 65},
+      "PRICE_ANCHOR_THINK": {"think": true, "max_output_tokens": 500, "max_sentences": 3, "max_words": 65},
+      "OBJECTION_REFRAME_THINK": {"think": true, "max_output_tokens": 500, "max_sentences": 3, "max_words": 65},
+      "REPAIR_FIRST": {"think": true, "max_output_tokens": 500, "max_sentences": 3, "max_words": 65}
+    },
+    "split_bubble_price_quote_policy": {
+      "bubble_1_action": "ANSWER_PRICE_ONCE (splitPriceBubbles=true -> FAST_NO_THINK, immediate price quote)",
+      "bubble_2_action": "GENERATE_PRICE_ANCHOR_BUBBLE (PRICE_ANCHOR_THINK, 1 emotional anchor bubble, 0 price repeat, 0 hard booking push)",
+      "dynamic_post_price_delay_formula": "max(0, configuredPostPriceDelayMs - elapsedSincePriceBubbleMs)",
+      "concurrent_turn_cancellation": "isPendingSecondBubbleSuperseded(pageId, senderId, expectedTurnSequence)"
+    },
+    "three_stage_retention_policy": {
+      "stage_1": "HANDLE_PRICE_OBJECTION_FIRST_TIME (OBJECTION_REFRAME_THINK, hold package, reinforce KB value, invite 1-session trial 🥰, downsellOffered=false)",
+      "stage_2": "HANDLE_PRICE_OBJECTION_REPEAT (OBJECTION_REFRAME_THINK, Bubble 1 respects consideration + 1 clarifying question, Bubble 2 offers 1 strictly cheaper verified KB option, downsellOffered=true, retentionAttemptCount=1)",
+      "stage_3": "STAGE_3_GRACEFUL_EXIT (FAST_NO_THINK, 1 warm closing bubble, 0 questions, 0 package pitch)"
+    },
+    "dynamic_post_price_delay_formula": "max(0, configuredPostPriceDelayMs - elapsedSincePriceBubbleMs)",
+    "turn_telemetry_section_vi_fields": [
+      "primaryAction",
+      "thinkingMode",
+      "detectedIntent",
+      "unresolvedQuestionIds",
+      "retrievedSourceIds",
+      "responseValidated",
+      "fallbackReason",
+      "promptBuildMs",
+      "retrievalMs",
+      "llmElapsedMs",
+      "validationMs",
+      "retryCount",
+      "priceBubbleShownAt",
+      "secondBubbleSentAt",
+      "firstBubbleSendMs",
+      "timeToFirstBubbleMs",
+      "interBubbleGapMs",
+      "totalTurnMs"
+    ],
+    "ollama_call_telemetry_fields": [
+      "thinkingChars",
+      "thinkingLatencyMs",
+      "contentLatencyMs",
+      "thinkingPreview"
+    ]
+  },
   "documents": [
     {
       "id": "c9481efb-f3a9-4613-a2e0-fe50e9b99b39",
