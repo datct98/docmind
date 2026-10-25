@@ -102,6 +102,12 @@ public final class PrimaryActionRouter {
             if ("PUSHBACK_ON_ASSUMPTION_REPAIR".equals(i)) {
                 return "R00B-PUSHBACK-ON-ASSUMPTION";
             }
+            if ("WORDING_FEEDBACK_REPAIR".equals(i)) {
+                return "R00W-WORDING-FEEDBACK-REPAIR";
+            }
+            if ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(i)) {
+                return "R12L-MID-FUNNEL-LUKEWARM-REENGAGE";
+            }
             if (i.startsWith("META_")) {
                 return "R00C-META-CONVERSATION";
             }
@@ -452,6 +458,21 @@ public final class PrimaryActionRouter {
             );
         }
 
+        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4): Khách bắt bẻ / trêu cách Bot dùng từ
+        // ("Đau lưng chứ đau lòng đâu mà nhẹ nhõm"). Phải đứng TRƯỚC R00-MISMATCH vì cấu trúc "chứ (có phải) ... đâu"
+        // trùng mẫu phản bác tư vấn lệch, và TRƯỚC R00B vì không phải khách phủ nhận triệu chứng.
+        // Chỉ áp dụng khi Bot đã thực sự nói chuyện trước đó (có lời Bot để bắt bẻ).
+        if (priorState.greetingSent() && SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
+            return new RoutingDecision(
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    false,
+                    1,
+                    "WORDING_FEEDBACK_REPAIR",
+                    "spa_frustration_rescue"
+            );
+        }
+
         // R00-MISMATCH-CORRECTION-RESCUE (Priority 5: Khách phản ứng vì bot tư vấn lệch vùng đau / lệch nhu cầu)
         if (classified == DetectedIntent.ENTITY_MISMATCH_CORRECTION || SentimentIntentLayer.isEntityMismatchCorrection(msg)) {
             boolean harshOrRepeated = SentimentIntentLayer.hasHarshPronouns(msg) || priorState.frustrationCount() >= 1;
@@ -566,7 +587,9 @@ public final class PrimaryActionRouter {
         // R01A-CONTEXTUAL-SERVICE-DETAIL-AND-FAQ-QA ("Thực dưỡng là j", "K tôi thấy có buffet thực dưỡng, nó là j", "Buffet có món gì?")
         else if (isDetailFaqQuestion) {
             ConversationState.UnresolvedCustomerRequest detailReq = enriched.latestUnresolvedRequest();
-            if (fusedChunks != null
+            boolean groundedByHeldCatalog = fusedChunks != null && fusedChunks.isEmpty()
+                    && hasHeldPackageCatalogEvidence(msg, enriched);
+            if (fusedChunks != null && !groundedByHeldCatalog
                     && (fusedChunks.isEmpty()
                         || detectConflictingCatalogOrFaqEvidence(msg, enriched, fusedChunks)
                         || !hasGroundedEvidenceForDetailRequest(detailReq, enriched, fusedChunks))) {
@@ -702,6 +725,14 @@ public final class PrimaryActionRouter {
                 intent = "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT";
                 skillCode = "spa_frustration_rescue";
             }
+        }
+        // R12L-MID-FUNNEL-LUKEWARM-REENGAGE (v3.3.4): Khách trả lời hời hợt giữa phễu ("Ừm để xem đã", "Vậy à",
+        // "Ok em" khi Bot không có câu hỏi đang chờ). Không được rơi vào AMBIGUOUS hay ép chốt lịch: giữ nguyên gói
+        // đang thảo luận, khơi gợi 1 chi tiết cảm xúc đã xác minh + 1 câu hỏi mở nhẹ. KHÔNG lặp lại giá.
+        else if (SentimentIntentLayer.isMidFunnelLukewarmReply(msg, priorState)) {
+            coreAction = PrimaryAction.RECOMMEND_ONE_PACKAGE;
+            intent = "MID_FUNNEL_LUKEWARM_REENGAGE";
+            skillCode = "spa_lukewarm_mood_boost";
         }
         // R12-ACK-ADVANCE
         else if (classified == DetectedIntent.ACK || isAcknowledgementMessage(msg)) {
@@ -1023,6 +1054,7 @@ public final class PrimaryActionRouter {
                 || "CONFIRM_PREVIOUS_INFO_ADVANCE".equals(intent)
                 || "CONDITION_FOLLOWUP_AFTER_QUOTE_ADVANCE".equals(intent)
                 || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(intent)
+                || "MID_FUNNEL_LUKEWARM_REENGAGE".equals(intent)
                 || "AMBIGUOUS_FOLLOWUP_ASSIST".equals(intent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(intent)
                 || "STRONG_REJECTION".equals(intent)
@@ -1105,6 +1137,17 @@ public final class PrimaryActionRouter {
                     : "Dạ không sao ạ, " + selfP + " cảm ơn " + h + " đã quan tâm " + shopName
                         + ". Khi nào " + h + " " + needVerb + " hay hỗ trợ thêm thì nhắn " + selfP + " bất cứ lúc nào nhé ạ.";
             return List.of(new ReplyBubble(breakupText, 0));
+        }
+
+        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4): 1 bubble, nhận câu chữ chưa khéo một cách duyên dáng rồi nói lại
+        // đúng ý về cảm giác cơ thể. KHÔNG báo lại giá, KHÔNG hỏi "nói lại cho em hiểu", KHÔNG đổi chủ đề sang gói khác.
+        if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
+            String areaPhrase = !enriched.knownBodyAreas().isEmpty()
+                    ? "vùng " + String.join(", ", enriched.knownBodyAreas()) + " đang mỏi"
+                    : (enriched.known().hasCustomerProblemOrNeed() ? "chỗ đang " + enriched.known().customerProblemOrNeed() : "cơ thể");
+            String wordingText = "Dạ " + h + " bắt lỗi chuẩn quá, " + selfP + " dùng từ chưa khéo rồi ạ. Ý " + selfP
+                    + " là sau buổi chăm sóc, " + areaPhrase + " sẽ được thả lỏng và dễ chịu hơn ạ.";
+            return List.of(new ReplyBubble(wordingText, 0));
         }
 
         // R00-MISMATCH-CORRECTION-HANDOFF & UNGROUNDED_SCOPE_HANDOFF (1 bubble, 0 questions)
@@ -1194,7 +1237,7 @@ public final class PrimaryActionRouter {
                 List<String> openTexts = cfg.resolvedOpeningBubbles(shopName, shopDesc, h);
                 String combinedOpen = String.join(" ", openTexts).strip();
                 String priceText = "Dạ " + matched.name() + " " + matched.unitLabel() + " bên " + selfP
-                        + " đang có giá " + matched.priceDisplay() + " theo bảng giá hiện tại ạ.";
+                        + " đang có giá " + matched.priceDisplay() + " ạ.";
                 String naturalAnchorSentence = buildNaturalGroundedEmotionalAnchorSentence(matched, enriched, cfg, h, selfP);
                 String anchorText = naturalAnchorSentence
                         + " Không biết với gói " + matched.unitLabel() + " này " + h
@@ -1288,6 +1331,17 @@ public final class PrimaryActionRouter {
                 String problemPhrase = enriched.known().hasCustomerProblemOrNeed()
                         ? enriched.known().customerProblemOrNeed()
                         : "nhu cầu của " + h;
+                if ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(intent)) {
+                    // v3.3.4: 1 bubble, giữ gói đang thảo luận, khơi 1 chi tiết cảm xúc đã xác minh + 1 câu hỏi mở. KHÔNG lặp giá.
+                    String heldRaw = priorState.heldPackage() != null ? priorState.heldPackage() : priorState.lastQuotedPackage();
+                    CatalogOption heldOpt = heldRaw != null
+                            ? matchSpecificCatalogOption(ConversationState.toDisplayPackageName(heldRaw, priorState.heldDuration()), enriched, fusedChunks)
+                            : null;
+                    String anchor = buildNaturalGroundedEmotionalAnchorSentence(heldOpt != null ? heldOpt : best, enriched, cfg, h, selfP);
+                    String lukewarmText = "Dạ " + h + " cứ thong thả cân nhắc nha. " + anchor
+                            + " Không biết " + h + " còn băn khoăn điểm nào để " + selfP + " chia sẻ thêm không ạ?";
+                    yield List.of(new ReplyBubble(lukewarmText, 0));
+                }
                 if ("META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(intent)) {
                     String pkgLabel = ("gói " + best.name() + " " + best.unitLabel()).replaceAll("(?iU)^gói\\s+gói\\s+", "gói ");
                     String priceHint = (!priorState.priceDiscussed() && best.priceDisplay() != null && !best.priceDisplay().isBlank())
@@ -3066,7 +3120,9 @@ public final class PrimaryActionRouter {
             List<ReciprocalRankFusion.FusedChunk> fusedChunks
     ) {
         if (fusedChunks == null || fusedChunks.isEmpty()) {
-            return false;
+            // v3.3.4 RC-04: Lượt FAQ có thể không truy xuất lại chunk bảng giá; khi đó chỉ được dựa vào
+            // catalog đã xác minh đang lưu trong state cho đúng gói đang giữ, và chỉ với thuộc tính catalog trả lời được.
+            return hasHeldPackageCatalogEvidence(req != null ? req.rawCustomerMessage() : null, state);
         }
         String refEntity = req != null && req.referencedEntity() != null
                 ? req.referencedEntity()
@@ -3763,19 +3819,86 @@ public final class PrimaryActionRouter {
         return false;
     }
 
+    // v3.3.4 RC-04: Thuộc tính gói mà catalog (bảng giá đã trích xuất) THỰC SỰ chứa: thời lượng, quyền lợi/bao gồm, không gian phòng.
+    private static final Pattern HELD_PACKAGE_ATTRIBUTE_QUESTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(thời\\s+lượng|bao\\s+lâu|mấy\\s+phút|\\d{2,3}\\s*(?:p|phút)|quyền\\s+lợi|bao\\s+gồm|"
+            + "gồm\\s+(?:những\\s+)?(?:gì|j)|phòng|không\\s+gian|rèm)\\b.*"
+    );
+    // Câu hỏi về món ăn / thực đơn KHÔNG được trả lời từ catalog (catalog không liệt kê món) -> tránh bịa đặt.
+    private static final Pattern MENU_OR_FOOD_QUESTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(món|thực\\s+đơn|menu|buffet|đồ\\s+ăn|đồ\\s+uống|ăn\\s+gì|uống\\s+gì)\\b.*"
+    );
+
+    /**
+     * v3.3.4 RC-04: Có bằng chứng từ catalog đã lưu trong state cho câu hỏi thuộc tính của gói ĐANG GIỮ hay không.
+     */
+    static boolean hasHeldPackageCatalogEvidence(String question, ConversationState state) {
+        if (question == null || question.isBlank() || state == null) {
+            return false;
+        }
+        if (resolveHeldPackageFromStateCatalog(state) == null) {
+            return false;
+        }
+        String q = VietnameseQueryNormalizer.normalizeForSearch(question);
+        return HELD_PACKAGE_ATTRIBUTE_QUESTION_PATTERN.matcher(q).matches()
+                && !MENU_OR_FOOD_QUESTION_PATTERN.matcher(q).matches();
+    }
+
+    /**
+     * v3.3.4 RC-04: Tìm gói đang giữ trong catalog đã cache ở state, ưu tiên khớp đúng giá + thời lượng đã báo.
+     */
+    static PackageCatalogService.PackageSummary resolveHeldPackageFromStateCatalog(ConversationState state) {
+        if (state == null || state.availablePackageCatalog() == null || state.availablePackageCatalog().isEmpty()) {
+            return null;
+        }
+        if (state.lastOfferedPriceVnd() != null && state.lastOfferedPriceVnd().longValue() > 0L) {
+            long activePrice = state.lastOfferedPriceVnd().longValue();
+            int activeDur = ConversationState.parseDurationInt(state.lastOfferedDuration());
+            for (PackageCatalogService.PackageSummary s : state.availablePackageCatalog()) {
+                if (s != null && s.priceVnd() == activePrice
+                        && (activeDur <= 0 || (s.durationMinutes() != null && s.durationMinutes() == activeDur))) {
+                    return s;
+                }
+            }
+        }
+        String heldRaw = state.heldPackage() != null ? state.heldPackage() : state.lastQuotedPackage();
+        if (heldRaw != null && !heldRaw.isBlank()) {
+            String heldDisp = ConversationState.toDisplayPackageName(heldRaw, state.heldDuration()).toLowerCase(Locale.ROOT);
+            int heldDur = ConversationState.parseDurationInt(state.heldDuration());
+            for (PackageCatalogService.PackageSummary s : state.availablePackageCatalog()) {
+                String nameLower = s != null && s.displayName() != null ? s.displayName().toLowerCase(Locale.ROOT) : "";
+                if (!nameLower.isBlank() && heldDisp.contains(nameLower)
+                        && (heldDur <= 0 || (s.durationMinutes() != null && s.durationMinutes() == heldDur))) {
+                    return s;
+                }
+            }
+        }
+        return null;
+    }
+
     private static PackageCatalogService.PackageSummary resolveTargetPackageSummaryForDetailQa(
             String userMessage,
             ConversationState state,
             List<ReciprocalRankFusion.FusedChunk> fusedChunks
     ) {
-        if (fusedChunks == null || fusedChunks.isEmpty()) {
-            return null;
-        }
         String region = state != null && state.preferredRegion() != null ? state.preferredRegion() : "HN";
-        List<PackageCatalogService.PackageSummary> all =
-                PackageCatalogService.filterByRegion(PackageCatalogService.extractCatalog(fusedChunks, List.of()), region);
-        if (all.isEmpty()) {
-            all = PackageCatalogService.extractCatalog(fusedChunks, List.of());
+        List<PackageCatalogService.PackageSummary> all = new ArrayList<>();
+        if (fusedChunks != null && !fusedChunks.isEmpty()) {
+            all.addAll(PackageCatalogService.filterByRegion(PackageCatalogService.extractCatalog(fusedChunks, List.of()), region));
+            if (all.isEmpty()) {
+                all.addAll(PackageCatalogService.extractCatalog(fusedChunks, List.of()));
+            }
+        }
+        // v3.3.4 RC-04: CHỈ khi lượt FAQ không truy xuất lại chunk bảng giá mới dùng catalog đã xác minh trong state.
+        // Khi có chunk, giữ nguyên hành vi cũ để không đè lên gói khách vừa gọi tên trong câu hỏi.
+        boolean usingStateCatalogOnly = fusedChunks == null || fusedChunks.isEmpty();
+        if (usingStateCatalogOnly && state != null && state.availablePackageCatalog() != null) {
+            for (PackageCatalogService.PackageSummary cachedPkg : state.availablePackageCatalog()) {
+                if (cachedPkg != null && all.stream().noneMatch(p -> p.code() != null && p.code().equalsIgnoreCase(cachedPkg.code())
+                        && p.priceVnd() == cachedPkg.priceVnd())) {
+                    all.add(cachedPkg);
+                }
+            }
         }
         if (all.isEmpty()) {
             return null;
@@ -3826,6 +3949,13 @@ public final class PrimaryActionRouter {
                 if (nameLower.contains("ngâm") || incLower.contains("ngâm bồn") || procLower.contains("ngâm bồn")) {
                     return s;
                 }
+            }
+        }
+        // v3.3.4 RC-04: Không có tín hiệu nào khác -> ưu tiên gói đang giữ (khớp giá + thời lượng đã báo) thay vì gói đầu bảng
+        if (usingStateCatalogOnly) {
+            PackageCatalogService.PackageSummary activeFromState = resolveHeldPackageFromStateCatalog(state);
+            if (activeFromState != null) {
+                return activeFromState;
             }
         }
         return all.get(0);

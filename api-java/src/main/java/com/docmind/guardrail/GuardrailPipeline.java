@@ -314,7 +314,7 @@ public class GuardrailPipeline {
                     break;
                 }
             }
-            updated.set(targetIdx, new ReplyBubble(updated.get(targetIdx).text(), 15_000));
+            updated.set(targetIdx, new ReplyBubble(updated.get(targetIdx).text(), 10_000));
             finalBubbles = Collections.unmodifiableList(updated);
         }
 

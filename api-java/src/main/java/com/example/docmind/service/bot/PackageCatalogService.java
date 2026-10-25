@@ -254,7 +254,8 @@ public final class PackageCatalogService {
                     || roomLower.contains("khu dưỡng sinh")
                     || ("HN".equalsIgnoreCase(region) && priceVnd > 0L && priceVnd < 580_000L && !roomLower.contains("vip"));
             if (roomLower.contains("phòng chung")) {
-                normalizedRoomCell = "Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo";
+                // v3.3.4 RC-07: GIỮ rõ nhãn "Phòng chung" để LLM không thể diễn giải thành phòng riêng/VIP
+                normalizedRoomCell = "Phòng chung yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo";
             }
             String safeHighlightCell = highlightCell != null ? highlightCell.strip() : "";
             if (isSharedOrCurtainRoom && !safeHighlightCell.isBlank()) {

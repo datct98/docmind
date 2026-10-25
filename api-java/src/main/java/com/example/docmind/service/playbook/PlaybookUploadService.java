@@ -1016,8 +1016,8 @@ public class PlaybookUploadService {
                     List.of("Giá massage body 60 phút bao nhiêu?", "Massage cổ vai 45 phút giá sao shop?", "Ngâm chân thảo dược 20 phút bao nhiêu tiền?"),
                     List.of(
                             "Nếu là lượt đầu tiên: Bong bóng 1 chào ngắn và giới thiệu {bot_name} của {shop_name}.",
-                            "Bong bóng giá: Dạ {service_name} {duration} bên em đang có giá {price} theo bảng giá hiện tại ạ.",
-                            "Sau bong bóng giá bắt buộc delay 15000ms trước khi gửi bong bóng neo cảm xúc nhẹ nhàng."
+                            "Bong bóng giá: Dạ {service_name} {duration} bên em đang có giá {price} ạ.",
+                            "Sau bong bóng giá bắt buộc delay 10000ms trước khi gửi bong bóng neo cảm xúc nhẹ nhàng."
                     ),
                     List.of(
                             "Không bịa giá ngoài product knowledge active",

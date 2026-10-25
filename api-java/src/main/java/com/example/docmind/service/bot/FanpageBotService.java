@@ -1313,6 +1313,10 @@ public class FanpageBotService {
             }
         }
 
+        // v3.3.4 GAP-03: Chuẩn hóa bất biến cờ always_on trước mọi bước dùng rule (prompt, scoped selection, telemetry)
+        if (appliedRules != null && !appliedRules.isEmpty()) {
+            appliedRules = PromptBudgetGuard.enforceAlwaysOnBudget(appliedRules);
+        }
         if (hasRuntimeControlPolicy && appliedRules != null && !appliedRules.isEmpty()) {
             List<LearnedRuleDto> guardedAlwaysOn = PromptBudgetGuard.validateAlwaysOnRules(appliedRules);
             LearnedRuleDto scopedContextual = PromptBudgetGuard.selectScopedContextualRule(
@@ -2204,6 +2208,17 @@ public class FanpageBotService {
                 rawReply != null ? rawReply.replaceAll("\\s+", " ").strip() : "null",
                 finalCleanText != null ? finalCleanText.replaceAll("\\s+", " ").strip() : "null",
                 finalUiBubbleTexts);
+        // v3.3.4 GAP-05: telemetry có cấu trúc 1 dòng/lượt để theo dõi ma trận Selective Thinking & ngân sách prompt
+        log.info("DOCMIND_V334_TELEMETRY pageId={} action={} intent={} routerRuleId={} thinkingMode={} thinkingReason={} safetyHandoff={} bubblesCount={} alwaysOnChars={}",
+                pageId,
+                actionDecision != null ? actionDecision.effectiveResponseAction() : "NONE",
+                actionDecision != null ? actionDecision.detectedIntent() : "NONE",
+                actionDecision != null ? actionDecision.routerRuleId() : "NONE",
+                thinkingDecision != null ? thinkingDecision.thinkingMode() : "NONE",
+                thinkingDecision != null ? thinkingDecision.triggerReason() : "NONE",
+                finalResponse != null ? finalResponse.needsHumanHandoff() : finalHandoff,
+                finalUiBubbleTexts.size(),
+                PromptBudgetGuard.validateAlwaysOnRules(appliedRules, "").alwaysOnRuleChars());
 
         if (agentBrainService != null) {
             try {
@@ -6114,6 +6129,89 @@ public class FanpageBotService {
         return null;
     }
 
+    // v3.3.4 RC-01: Câu chào lặp CHỈ được cắt khi nằm ở ĐẦU bong bóng (neo ^), tuyệt đối không đụng tới
+    // "mình"/"ạ" ở giữa hay cuối câu. Hỗ trợ đuôi "nha/nhé/ạ/ơi" mà regex cũ bỏ sót ("Em chào mình nha, ...").
+    private static final Pattern REDUNDANT_GREETING_CLAUSE_PATTERN = Pattern.compile(
+            "(?iu)^\\s*(?:dạ[,\\s]+)?(?:(?:em|bên\\s+em|shop|page)\\s+)?(?:xin\\s+|kính\\s+)?chào\\s+"
+            + "(?:anh\\s*/\\s*chị|chị\\s*/\\s*anh|anh|chị|mình|bạn|quý\\s+khách)"
+            + "(?:\\s+(?:nhé\\s+ạ|nha\\s+ạ|nha|nhé|ạ|ơi|hen|nghen))?"
+            + "(?:\\s*[,!.?~…🥰🌿✨]+\\s*|\\s+(?=(?:bên\\s+em|hiện|giá|với|để|hôm\\s+nay|mình|chị|anh|em\\s+xin|em\\s+gợi\\s+ý)))"
+    );
+
+    private static final Pattern SELF_INTRO_CLAUSE_PATTERN = Pattern.compile(
+            "(?iu)^\\s*(?:dạ[,\\s]+)?(?:em|mình)\\s+là\\s+[^.!?\\n]{2,60}?(?:của|từ|tại)\\s+[^.!?\\n]{2,50}?[.!?~]+\\s*"
+    );
+
+    /**
+     * v3.3.4 RC-01: Cắt mệnh đề chào hỏi / tự giới thiệu lặp lại ở ĐẦU bong bóng mà vẫn giữ nguyên ngữ pháp.
+     * Nếu bong bóng không có lời chào ở đầu, trả về nguyên văn (đã strip khoảng trắng).
+     * Nếu cắt xong mà không còn nội dung, giữ nguyên câu gốc thay vì trả về bong bóng rỗng.
+     */
+    public static String stripRedundantGreetingPrefixPreservingGrammar(String text, String honorific) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String working = text.strip();
+        boolean modified = false;
+        for (int pass = 0; pass < 2; pass++) {
+            Matcher m1 = REDUNDANT_GREETING_CLAUSE_PATTERN.matcher(working);
+            if (m1.find()) {
+                String remainder = working.substring(m1.end()).strip();
+                if (!remainder.isEmpty()) {
+                    working = remainder;
+                    modified = true;
+                }
+            }
+            Matcher m2 = SELF_INTRO_CLAUSE_PATTERN.matcher(working);
+            if (m2.find()) {
+                String remainder = working.substring(m2.end()).strip();
+                if (!remainder.isEmpty()) {
+                    working = remainder;
+                    modified = true;
+                }
+            }
+        }
+        if (modified && !working.isEmpty()) {
+            String low = working.toLowerCase(Locale.ROOT);
+            String honLow = (honorific != null && !honorific.isBlank()) ? honorific.strip().toLowerCase(Locale.ROOT) : "mình";
+            if (!low.startsWith("dạ") && !low.startsWith("hôm nay") && !low.startsWith("hiện")
+                    && !low.startsWith("bên em") && !low.startsWith(honLow)) {
+                working = "Dạ " + Character.toLowerCase(working.charAt(0)) + working.substring(1);
+            }
+            working = BubbleCapHook.capitalizeFirstLetter(working);
+        }
+        return working;
+    }
+
+    /**
+     * v3.3.4 Selective Thinking: điểm vào ổn định cho ma trận tâm lý (dùng cho test &amp; telemetry).
+     * Ủy quyền cho {@link ThinkingModePolicy#decide} ở chế độ ADAPTIVE để runtime và test dùng CHUNG một logic,
+     * không có nhánh quyết định riêng rẽ. Không gọi LLM, chạy hoàn toàn bằng regex/state (&lt; 5ms).
+     */
+    public static ThinkingMode resolveSelectiveThinkingMode(
+            PrimaryActionRouter.RoutingDecision decision,
+            ConversationState state,
+            String rawCustomerMessage
+    ) {
+        if (decision == null) {
+            return ThinkingMode.FAST_NO_THINK;
+        }
+        return ThinkingModePolicy.decide(
+                rawCustomerMessage,
+                state,
+                decision,
+                null,
+                ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
+        ).thinkingMode();
+    }
+
+    public static ThinkingMode resolveSelectiveThinkingMode(
+            PrimaryActionRouter.RoutingDecision decision,
+            ConversationState state
+    ) {
+        return resolveSelectiveThinkingMode(decision, state, null);
+    }
+
     private static List<FanpageBotResponse.ReplyBubble> buildCandidateBubblesFromLlmOutput(
             StructuredLlmOutput structuredLlmOutput,
             String sanitizedReply,
@@ -6194,18 +6292,7 @@ public class FanpageBotService {
             String b2Text = openingCfg.get(1) != null ? openingCfg.get(1).strip() : "";
             FanpageBotResponse.ReplyBubble llmBubble3 = normalizedBubbles.get(normalizedBubbles.size() - 1);
             String b3Text = llmBubble3.text() != null ? llmBubble3.text().strip() : "";
-            String strippedIntroB3 = b3Text
-                    .replaceFirst("(?iu)^(?:dạ\\s+)?(?:chào\\s+[^,.!?]+[,!\\s]*)?em\\s+là\\s+[^.!?]+[.!?]\\s*", "")
-                    .replaceFirst("(?iu)^(?:dạ[,\\s]+)?(?:em\\s+)?(?:xin\\s+)?chào\\s+(?:chị|anh|mình|bạn|quý\\s+khách)(?:\\s+ạ)?\\s*[,!.]+\\s*", "")
-                    .strip();
-            if (!strippedIntroB3.isBlank() && !strippedIntroB3.equals(b3Text)) {
-                if (!strippedIntroB3.toLowerCase(Locale.ROOT).startsWith("dạ ")
-                        && !strippedIntroB3.toLowerCase(Locale.ROOT).startsWith("chị ")
-                        && !strippedIntroB3.toLowerCase(Locale.ROOT).startsWith("anh ")) {
-                    strippedIntroB3 = "Dạ " + Character.toLowerCase(strippedIntroB3.charAt(0)) + strippedIntroB3.substring(1);
-                }
-                b3Text = BubbleCapHook.capitalizeFirstLetter(strippedIntroB3);
-            }
+            b3Text = stripRedundantGreetingPrefixPreservingGrammar(b3Text, honorific);
             List<FanpageBotResponse.ReplyBubble> turn1ThreeBubbles = new ArrayList<>(3);
             if (!b1Text.isBlank()) {
                 turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b1Text, 0));
@@ -6219,9 +6306,7 @@ public class FanpageBotService {
         if (actionDecision != null && !actionDecision.openingRequired() && !normalizedBubbles.isEmpty()) {
             FanpageBotResponse.ReplyBubble firstB = normalizedBubbles.get(0);
             String firstText = firstB.text() != null ? firstB.text().strip() : "";
-            String strippedFirst = firstText
-                    .replaceFirst("(?iu)^(?:dạ[,\\s]+)?(?:em\\s+)?(?:xin\\s+)?chào\\s+(?:chị|anh|mình|bạn|quý\\s+khách)(?:\\s+ạ)?\\s*[,!.]+\\s*", "Dạ ")
-                    .strip();
+            String strippedFirst = stripRedundantGreetingPrefixPreservingGrammar(firstText, honorific);
             if (!strippedFirst.isBlank() && !strippedFirst.equals(firstText)) {
                 List<FanpageBotResponse.ReplyBubble> adjusted = new ArrayList<>(normalizedBubbles);
                 adjusted.set(0, new FanpageBotResponse.ReplyBubble(BubbleCapHook.capitalizeFirstLetter(strippedFirst), firstB.typingDelayMs()));
@@ -6295,6 +6380,8 @@ public class FanpageBotService {
                         || "MECHANICAL_BENEFIT_CONCAT".equals(err)
                         || "WRONG_ACTION_FOR_ACK".equals(err)
                         || "UNIT_PRICE_LOGIC_ERROR".equals(err)
+                        || "CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT".equals(err)
+                        || "FORBIDDEN_HISTORY_DEFLECTION_OR_REPEAT_PROMPT".equals(err)
                         || "EMPTY_BUBBLES".equals(err)) {
                     return false;
                 }

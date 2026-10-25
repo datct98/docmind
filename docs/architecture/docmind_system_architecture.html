@@ -1658,6 +1658,22 @@
           </tbody>
         </table>
       </div>
+      <div class="card" style="margin-top: 20px;">
+        <h3>4.5. v3.3.4 — Selective Thinking theo Ma Trận Tâm Lý (live <code>qwen3:14b</code>, log <code>DOCMIND_V334_TELEMETRY</code>)</h3>
+        <p>Mode mới <code>EMOTIONAL_WARM_THINK</code>. Quyết định duy nhất ở <code>ThinkingModePolicy.decide</code>: STRONG_REJECTION/an toàn &rarr; FAST_NO_THINK; bắt bẻ câu chữ, hời hợt giữa phễu, bực bội không kèm nội dung tồn đọng &rarr; EMOTIONAL_WARM_THINK; bực bội có câu hỏi nội dung &rarr; REPAIR_FIRST; chê đắt &rarr; OBJECTION_REFRAME_THINK; báo giá &rarr; PRICE_ANCHOR_THINK. Detector chỉ dùng regex/state (&lt;1ms), không gọi LLM lần 2.</p>
+        <table>
+          <thead><tr><th>Lượt</th><th>Tin nhắn khách</th><th>routerRuleId / Action</th><th>thinkingMode</th><th>Hành vi xác nhận</th></tr></thead>
+          <tbody>
+<tr><td><strong>T1</strong></td><td><code>&ldquo;giá&rdquo;</code></td><td><code>R06-CLARIFY-SERVICE-TYPE-ONCE / CLARIFY_SERVICE_DURATION</code></td><td><code>FAST_NO_THINK</code></td><td>2 opening + 1 câu hỏi nhóm dịch vụ (chào đúng 1 lần)</td></tr>
+<tr><td><strong>T2</strong></td><td><code>&ldquo;tôi bị đau lưng mỏi vai&rdquo;</code></td><td><code>R02-CONDITION-FIRST-DISCOVERY / ACKNOWLEDGE_AND_ASK_PREFERENCE</code></td><td><code>FAST_NO_THINK</code></td><td>Đồng cảm + hỏi thời gian/tần suất</td></tr>
+<tr><td><strong>T3</strong></td><td><code>&ldquo;thi thỉang bị&rdquo;</code></td><td><code>R03-RECOMMEND-AND-QUOTE / ANSWER_PRICE_ONCE (split B1+B2)</code></td><td><code>PRICE_ANCHOR_THINK</code></td><td>B1 báo gói 60 phút 399k; B2 neo cảm xúc (validator mới chặn 'Dạ em hiểu rồi ạ' + lặp tên gói)</td></tr>
+<tr><td><strong>T4</strong></td><td><code>&ldquo;Đau lưng chứ đau lòng đâu mà nhẹ nhõm&rdquo;</code></td><td><code>R00W-WORDING-FEEDBACK-REPAIR / GENERIC_SHORT_DISCOVERY</code></td><td><code>EMOTIONAL_WARM_THINK</code></td><td>Nhận dùng từ chưa khéo, không lặp giá, không chào lại</td></tr>
+<tr><td><strong>T5</strong></td><td><code>&ldquo;Ừm để xem đã&rdquo;</code></td><td><code>R12L-MID-FUNNEL-LUKEWARM-REENGAGE / RECOMMEND_ONE_PACKAGE</code></td><td><code>EMOTIONAL_WARM_THINK</code></td><td>Tôn trọng cân nhắc + gợi cảm giác thư giãn đã xác minh + hỏi mở, không lặp giá</td></tr>
+<tr><td><strong>T6</strong></td><td><code>&ldquo;Trả lời linh tinh cái quái gì đấy&rdquo;</code></td><td><code>R01-FRUSTRATION-RESCUE / FRUSTRATION_CONCERN_ACKNOWLEDGEMENT</code></td><td><code>EMOTIONAL_WARM_THINK (NEGATIVE_MOOD_DEESCALATION)</code></td><td>Nhận lỗi ngắn, tóm lại gói đang trao đổi</td></tr>
+<tr><td><strong>T7</strong></td><td><code>&ldquo;Tụt hứng tghooi rẹp&rdquo;</code></td><td><code>R00-STRONG-REJECTION-GRACEFUL-EXIT</code></td><td><code>FAST_NO_THINK</code></td><td>1 bubble xin lỗi + dừng, 0 câu hỏi</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
   </main>

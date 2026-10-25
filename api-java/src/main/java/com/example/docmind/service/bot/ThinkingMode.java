@@ -32,7 +32,15 @@ public enum ThinkingMode {
      * Mode 4: Suy luận khôi phục niềm tin và giải quyết câu hỏi tồn đọng trước khi bán hàng.
      * Kích hoạt khi khách hàng bức xúc, phàn nàn bot trả lời lệch ý hoặc còn câu hỏi chưa được trả lời.
      */
-    REPAIR_FIRST(true, 500, 3, 65);
+    REPAIR_FIRST(true, 500, 3, 65),
+
+    /**
+     * Mode 5 (v3.3.4): Suy luận cảm xúc ấm áp (De-escalation &amp; Re-engagement).
+     * Kích hoạt khi khách tiêu cực/bực bội/bắt bẻ câu chữ nhưng KHÔNG còn câu hỏi nội dung tồn đọng cần
+     * giải quyết (trường hợp đó thuộc {@link #REPAIR_FIRST}), hoặc khi khách trả lời hời hợt giữa phễu
+     * ("ừm", "để xem đã", "vậy à") khiến nhiệt độ mua hàng nguội dần. Không bao giờ dùng cho từ chối dứt khoát.
+     */
+    EMOTIONAL_WARM_THINK(true, 500, 3, 65);
 
     private final boolean thinkEnabled;
     private final int maxOutputTokens;

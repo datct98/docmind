@@ -734,6 +734,19 @@ public record ConversationState(
                             .withCatalogAndRegion(regCat, snap.preTurnState().preferredRegion());
                 }
             }
+            // v3.3.4 RC-01: Kênh webhook (Messenger) thường gửi history rỗng và không có conversationId ổn định.
+            // Nếu phiên của đúng (page, sender) đã gửi lời chào, khôi phục phiên thay vì reset -> tránh chào lặp lại.
+            // Phiên mới thật sự vẫn được tạo khi resetSession = true hoặc chưa từng chào.
+            if (!resetSession && !hasStableConversationId && sessionKey != null) {
+                ConversationState existingSession = SESSION_STORE.get(sessionKey);
+                if (existingSession != null && existingSession.greetingSent()) {
+                    String reg = existingSession.preferredRegion() != null ? existingSession.preferredRegion() : "HN";
+                    List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
+                    return existingSession
+                            .withDocFlags(docsFeedback, docsRelaxation, docsPrivateRoom)
+                            .withCatalogAndRegion(regCat, reg);
+                }
+            }
             if (sessionKey != null) {
                 SESSION_STORE.remove(sessionKey);
                 LAST_TURN_PRE_STATE_STORE.remove(sessionKey);
@@ -2139,7 +2152,8 @@ public record ConversationState(
                 Collections.unmodifiableSet(usedQIntents),
                 effAction,
                 base.known(),
-                base.priceDiscussed() || anyPriceInReply,
+                // v3.3.4 RC-01: chỉ coi là "đã báo giá" khi giá THỰC SỰ được giao tới khách (không tính lượt handoff)
+                base.priceDiscussed() || (!needsHumanHandoff && anyPriceInReply),
                 Collections.unmodifiableList(new ArrayList<>(prices)),
                 Collections.unmodifiableList(new ArrayList<>(options)),
                 nextObjectionCount,

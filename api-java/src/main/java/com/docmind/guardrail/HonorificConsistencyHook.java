@@ -101,6 +101,58 @@ public class HonorificConsistencyHook implements GuardrailHook {
         return working;
     }
 
+    /**
+     * v3.3.4 GAP-02: Sửa đảo ngược đại từ có NGỮ CẢNH, chống "đóng băng" sai câu đúng vai.
+     * <p>
+     * {@link #repairInvertedCustomerPronoun} chỉ nhìn cụm "em + động từ" nên có thể đảo nhầm câu Bot đang tự nói
+     * về hành động của mình ("Em đang tìm khung giờ trống cho mình" -> "Mình đang tìm khung giờ trống cho mình").
+     * Quy tắc tổng quát ở đây: trong CÙNG một mệnh đề, nếu sau cụm động từ khách hàng xuất hiện ở vai
+     * tân ngữ ("cho/giúp/với/hỗ trợ/tư vấn/chăm sóc + đại từ khách"), thì chủ ngữ "em" chính là Bot -> giữ nguyên.
+     * Các trường hợp còn lại ủy quyền cho {@link #repairInvertedCustomerPronoun}.
+     */
+    public static String repairIfReversed(String text, String customerHonorific) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String target = (customerHonorific != null && !customerHonorific.isBlank()) ? customerHonorific.strip() : "mình";
+        String cap = Character.toUpperCase(target.charAt(0)) + target.substring(1);
+        Pattern customerAsObject = Pattern.compile(
+                "(?iU)\\b(?:cho|giúp|với|tới|đến|hỗ\\s+trợ|tư\\s+vấn|chăm\\s+sóc|gửi)\\s+(?:"
+                        + Pattern.quote(target) + "|anh|chị|mình|bạn)(?!\\p{L})"
+        );
+        Matcher m = INVERTED_PRONOUN_PATTERN.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        boolean anyChange = false;
+        while (m.find()) {
+            int clauseEnd = text.length();
+            for (int i = m.end(); i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (c == '.' || c == '!' || c == '?' || c == '\n') {
+                    clauseEnd = i;
+                    break;
+                }
+            }
+            String restOfClause = text.substring(m.end(), clauseEnd);
+            // Chỉ nhóm động từ có thể là hành động của chính Bot ("em đang/muốn/cần ...") mới được bảo vệ theo ngữ cảnh.
+            // Nhóm "có thể tham khảo/chọn/trải nghiệm", "nên ...", "sẽ nhận được ..." luôn là hành động của KHÁCH.
+            String verbGroup = m.group(2) != null ? m.group(2).toLowerCase(Locale.ROOT) : "";
+            boolean agentAmbiguousVerb = verbGroup.startsWith("đang") || verbGroup.startsWith("muốn") || verbGroup.startsWith("cần");
+            if (agentAmbiguousVerb && customerAsObject.matcher(restOfClause).find()) {
+                m.appendReplacement(sb, Matcher.quoteReplacement(m.group(0)));
+            } else {
+                m.appendReplacement(sb, Matcher.quoteReplacement(m.group(1) + cap + " " + m.group(2)));
+                anyChange = true;
+            }
+        }
+        m.appendTail(sb);
+        String working = anyChange ? sb.toString() : text;
+        working = INVERTED_APOLOGY_PATTERN.matcher(working)
+                .replaceAll(mr -> (mr.group(1) != null ? mr.group(1) : "") + "em xin lỗi " + target + " vì");
+        working = INVERTED_CONSULTANT_ASK_PATTERN.matcher(working)
+                .replaceAll(mr -> mr.group(1) + "Em có thể hỏi " + target + " một chút để tư vấn");
+        return working;
+    }
+
     private static boolean hasInvertedPronoun(String lower) {
         return lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")
                 || lower.contains("em đang") || lower.contains("em muốn") || lower.contains("em cần")
@@ -190,7 +242,7 @@ public class HonorificConsistencyHook implements GuardrailHook {
 
         // 1. Sửa lỗi đảo ngược đại từ ("Em có thể tham khảo..." / "Em đang quan tâm..." / "xin lỗi em vì" -> "Anh/Chị/Mình ...")
         if (hasInvertedPronoun(lower)) {
-            working = repairInvertedCustomerPronoun(working, honorific);
+            working = repairIfReversed(working, honorific);
         }
 
         // 1.5. Dọn câu dịch máy "Liệu mình/Chị/Anh có muốn..." -> "Mình/Chị/Anh có muốn..."

@@ -217,12 +217,12 @@ public record AgentSkillDto(
             case "greeting_warm_intro" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
             case "discovery_ask_one_need" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
             case "price_clarify_service_duration" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
-            case "price_answer_from_docs" -> new SkillOutputContract(3, 2, 45, 1, false, true, 15000);
+            case "price_answer_from_docs" -> new SkillOutputContract(3, 2, 45, 1, false, true, 10000);
             case "price_objection_soft_anchor" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
             case "booking_soft_confirm" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
             case "upsell_one_addon" -> new SkillOutputContract(2, 2, 45, 1, false, false, 0);
             case "safety_handoff_high_risk", "complaint_immediate_handoff" -> new SkillOutputContract(1, 2, 45, 0, true, false, 0);
-            default -> new SkillOutputContract(3, 2, 45, 1, false, false, 15000);
+            default -> new SkillOutputContract(3, 2, 45, 1, false, false, 10000);
         };
     }
 
@@ -245,7 +245,7 @@ public record AgentSkillDto(
                     "Dạ bên em có vài mức giá theo từng gói dịch vụ và thời lượng ạ.\n\n"
                     + capH + " đang quan tâm gói cơ bản hay gói chuyên sâu ạ?";
             case "price_answer_from_docs" ->
-                    "Dạ gói dịch vụ tiêu chuẩn bên em đang áp dụng mức giá niêm yết theo bảng giá hiện tại ạ.\n\n"
+                    "Dạ gói dịch vụ tiêu chuẩn bên em đang áp dụng mức giá niêm yết theo từng gói và thời lượng ạ.\n\n"
                     + "Bên em luôn ưu tiên điều chỉnh theo cảm giác của " + h + " trong suốt quá trình trải nghiệm ạ. "
                     + capH + " muốn chọn gói phù hợp với thời gian nào để em chuẩn bị sẵn cho " + h + " nhé.";
             case "price_objection_soft_anchor" ->

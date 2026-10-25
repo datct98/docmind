@@ -84,6 +84,41 @@ public final class PromptBudgetGuard {
         return validateAlwaysOnRules(rules, "").globalCriticalRules();
     }
 
+    /**
+     * v3.3.4 GAP-03: Cưỡng chế ngân sách Always-On một cách bất biến (không mutate DTO đầu vào).
+     * <ul>
+     *   <li>Chỉ quy tắc Global Critical ({@code SAFE-*}, {@code CRIT-*}, {@code SEC-*}, {@code SAFETY_MEDICAL}) được giữ {@code always_on = true}.</li>
+     *   <li>Tổng chi phí ký tự Always-On không vượt {@link #HARD_LIMIT_ALWAYS_ON_CHARS}; quy tắc critical vượt trần bị hạ xuống on-demand.</li>
+     *   <li>Mọi quy tắc tình huống ({@code PB-*} ...) đang bật {@code always_on} đều bị hạ thành {@code always_on = false}.</li>
+     * </ul>
+     * Thứ tự đầu vào được giữ nguyên để không làm đổi thứ tự ưu tiên truy xuất.
+     */
+    public static List<LearnedRuleDto> enforceAlwaysOnBudget(List<LearnedRuleDto> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return List.of();
+        }
+        List<LearnedRuleDto> result = new ArrayList<>(rules.size());
+        int accumulatedAlwaysOnChars = 0;
+        for (LearnedRuleDto r : rules) {
+            if (r == null) {
+                continue;
+            }
+            if (!r.alwaysOn()) {
+                result.add(r);
+                continue;
+            }
+            int cost = computeRuleCharCost(r);
+            boolean isCritical = isGlobalCriticalRuleCode(r.ruleCode(), r.category());
+            if (isCritical && accumulatedAlwaysOnChars + cost <= HARD_LIMIT_ALWAYS_ON_CHARS) {
+                result.add(r);
+                accumulatedAlwaysOnChars += cost;
+            } else {
+                result.add(r.withAlwaysOn(false));
+            }
+        }
+        return List.copyOf(result);
+    }
+
     public static BudgetCheckResult validateAlwaysOnRules(List<LearnedRuleDto> rules, String activePromptCompact) {
         int coreChars = activePromptCompact != null ? activePromptCompact.strip().length() : 0;
         List<LearnedRuleDto> critical = new ArrayList<>();

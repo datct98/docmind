@@ -121,7 +121,7 @@ public class BubbleCapHook implements GuardrailHook {
         // bong bóng ngay sau bong bóng chứa giá được giữ nguyên nhịp chờ >= 10.000ms.
         boolean hasPostPriceThinkingDelay = currentBubbles != null
                 && currentBubbles.stream().anyMatch(b -> b != null && b.typingDelayMs() >= 9000);
-        int configuredPostPriceDelayMs = 15_000;
+        int configuredPostPriceDelayMs = 10_000;
         int targetPostPriceBubbleIndex = -1;
         if (hasPostPriceThinkingDelay) {
             for (ReplyBubble b : currentBubbles) {

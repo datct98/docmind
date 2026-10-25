@@ -64,6 +64,10 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "tụt\\s+hứng\\s+tghooi\\s+rẹp", "tụt hứng thôi dẹp");
         addBoundaryPattern(phrases, "tut\\s+hung\\s+tghooi\\s+rep", "tụt hứng thôi dẹp");
         addBoundaryPattern(phrases, "tụt\\s+hứng\\s+(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "tụt hứng thôi dẹp");
+        // v3.3.4 RC-05: tổng quát hóa cho cả "mất/hết hứng", dấu phẩy và gõ không dấu
+        addBoundaryPattern(phrases, "(?:tụt|tut|mất|mat|hết|het)\\s+(?:hứng|hung)[,\\s]+(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "tụt hứng thôi dẹp");
+        addBoundaryPattern(phrases, "(?:chán|chan)\\s+(?:quá|qua)[,\\s]+(?:thôi|thoi)\\s+(?:nghỉ|nghi|dẹp|dep)", "chán quá thôi nghỉ");
+        addBoundaryPattern(phrases, "đau\\s+lưng\\s+chứ\\s+(?:có\\s+phải\\s+)?đau\\s+lòng\\s+đâu", "đau lưng chứ đau lòng đâu");
         addBoundaryPattern(phrases, "(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "thôi dẹp");
         addBoundaryPattern(phrases, "tụt\\s+hứng", "tụt hứng");
         addBoundaryPattern(phrases, "tut\\s+hung", "tụt hứng");

@@ -187,6 +187,20 @@ public record LearnedRuleDto(
                 quarantinedReason, lastAppliedAt, createdAt, updatedAt, "DOM", "", null, false);
     }
 
+    /**
+     * v3.3.4 GAP-03: Bản sao bất biến với cờ {@code always_on} mới (dùng bởi {@code PromptBudgetGuard.enforceAlwaysOnBudget}).
+     */
+    public LearnedRuleDto withAlwaysOn(boolean newAlwaysOn) {
+        return new LearnedRuleDto(
+                id, category, triggerCondition, rootCause, generalizedRule, retrievalKeywords, active, pageId,
+                confidenceScore, appliedCount, successCount, failCount, version, previousRuleText,
+                quarantinedReason, lastAppliedAt, createdAt, updatedAt, dimension, cueSignal,
+                contrastiveEvidence, newAlwaysOn, reviewStatus, securityAuditNotes,
+                ruleCode, title, intent, stage, priority, doActions, dontActions,
+                groundingPolicy, handoffPolicy, sourceFormat
+        );
+    }
+
     public boolean hasExperience() {
         return cueSignal != null && !cueSignal.isBlank()
                 && generalizedRule != null && !generalizedRule.isBlank()

@@ -445,7 +445,55 @@ public final class ReplyContractValidator {
                 errors.add("UNIT_PRICE_LOGIC_ERROR");
             }
 
+            // 12 (v3.3.4 RC-03). Cấm đẩy trách nhiệm cho khách / bắt khách nói lại thay vì tự hiểu ngữ cảnh
+            if (lower.matches("(?isU).*(?:kiểm\\s+tra\\s+lại\\s+lịch\\s+sử\\s+trò\\s+chuyện|nói\\s+lại\\s+cho\\s+em\\s+hiểu\\s+rõ\\s+hơn|mình\\s+có\\s+thể\\s+nói\\s+lại).*")) {
+                errors.add("FORBIDDEN_HISTORY_DEFLECTION_OR_REPEAT_PROMPT");
+            }
+
             working.set(i, new ReplyBubble(text, b.typingDelayMs()));
+        }
+
+        // v3.3.4 RC-02: Bubble 2 sau báo giá / chê đắt phải là neo cảm xúc MỚI, không lặp lại Bubble 1.
+        //  - Không mở đầu máy móc "Dạ em hiểu rồi ạ".
+        //  - Không nhắc lại tên gói đã nêu ở Bubble 1 (tên gói lấy ĐỘNG từ catalog đang active của tenant, không hardcode).
+        //  - Ở lần chê đắt đầu tiên, Bubble 1 không được lặp lại con số giá.
+        if (working.size() >= 2
+                && (effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
+                    || effectiveAction == PrimaryAction.RECOMMEND_ONE_PACKAGE
+                    || effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME)) {
+            String b1Lower = working.get(0) != null && working.get(0).text() != null ? working.get(0).text().toLowerCase(Locale.ROOT) : "";
+            String b2Lower = working.get(1) != null && working.get(1).text() != null ? working.get(1).text().toLowerCase(Locale.ROOT) : "";
+            boolean b2MechanicalOpening = b2Lower.strip().startsWith("dạ em hiểu rồi ạ");
+            boolean b2RepeatsPackageName = false;
+            if (safeState.availablePackageCatalog() != null) {
+                for (com.example.docmind.service.bot.PackageCatalogService.PackageSummary pkg : safeState.availablePackageCatalog()) {
+                    String name = pkg != null && pkg.displayName() != null ? pkg.displayName().strip().toLowerCase(Locale.ROOT) : "";
+                    if (name.length() >= 6 && b1Lower.contains(name) && b2Lower.contains(name)) {
+                        b2RepeatsPackageName = true;
+                        break;
+                    }
+                }
+            }
+            boolean objectionB1RepeatsPrice = effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME
+                    && PRICE_PATTERN.matcher(b1Lower).find();
+            if (b2MechanicalOpening || b2RepeatsPackageName || objectionB1RepeatsPrice) {
+                errors.add("CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT");
+            }
+        }
+        // v3.3.4 RC-02 (split-bubble): Bubble 2 được sinh ở request riêng (GENERATE_PRICE_ANCHOR_BUBBLE) nên validator chỉ
+        // thấy 1 bong bóng. Bubble 1 đã nêu tên gói đang báo giá (lưu trong state) -> Bubble 2 không được mở đầu máy móc
+        // hay gọi lại đúng tên gói đó.
+        if (working.size() == 1 && effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE && hasDynamicElapsed
+                && working.get(0) != null && working.get(0).text() != null) {
+            String anchorLower = working.get(0).text().toLowerCase(Locale.ROOT).strip();
+            String quotedName = safeState.lastOfferedPackageName() != null
+                    ? safeState.lastOfferedPackageName().strip().toLowerCase(Locale.ROOT)
+                    : "";
+            boolean anchorMechanicalOpening = anchorLower.startsWith("dạ em hiểu rồi ạ") || anchorLower.startsWith("em hiểu rồi ạ");
+            boolean anchorRepeatsQuotedName = quotedName.length() >= 6 && anchorLower.contains(quotedName);
+            if (anchorMechanicalOpening || anchorRepeatsQuotedName) {
+                errors.add("CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT");
+            }
         }
 
         // Enforce total question marks across all bubbles <= 1 (or 0 on handoff / Stage 3 graceful exit / strong rejection)

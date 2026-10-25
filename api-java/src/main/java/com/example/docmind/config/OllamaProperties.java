@@ -25,13 +25,13 @@ public class OllamaProperties {
     private String model = new LlmProperties().resolveModel();
 
     /** Nhiệt độ sinh văn bản (0.25 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh RAG). */
-    private double temperature = 0.25;
+    private double temperature = 0.3;
 
     /** Giới hạn cửa sổ ngữ cảnh vừa đủ (3072 tokens) để tăng tốc prompt eval và giữ KV-cache trên máy 16GB RAM. */
-    private int numCtx = 3072;
+    private int numCtx = 8192;
 
     /** Giới hạn số token sinh ra tối đa (550 tokens cho tư vấn bán hàng Fanpage) để cân bằng tốc độ và độ chi tiết. */
-    private int numPredict = 550;
+    private int numPredict = 2048;
 
     /** Top-P sampling (mặc định 0.9 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh). */
     private double topP = 0.9;

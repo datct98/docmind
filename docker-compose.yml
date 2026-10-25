@@ -123,11 +123,11 @@ services:
       - OLLAMA_BASE_URL=${LLM_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
       - OLLAMA_MODEL=${LLM_MODEL:-${OLLAMA_MODEL:-}}
       - OLLAMA_FALLBACK_MODEL=${OLLAMA_FALLBACK_MODEL:-}
-      - OLLAMA_TEMPERATURE=${LLM_TEMPERATURE:-${OLLAMA_TEMPERATURE:-0.2}}
+      - OLLAMA_TEMPERATURE=${LLM_TEMPERATURE:-${OLLAMA_TEMPERATURE:-0.3}}
       - OLLAMA_TOP_P=${LLM_TOP_P:-${OLLAMA_TOP_P:-0.9}}
       - OLLAMA_REPEAT_PENALTY=${OLLAMA_REPEAT_PENALTY:-1.08}
-      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-3072}
-      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-450}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
+      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-2048}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
     volumes:
       # Mount trực tiếp ./api-java/.env (thư mục Spring Boot) vào /app/.env để khi sửa api-java/.env và bấm Restart container,

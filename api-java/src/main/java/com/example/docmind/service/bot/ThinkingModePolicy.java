@@ -38,6 +38,13 @@ public final class ThinkingModePolicy {
             + "cân\\s+nhắc\\s+(?:đã|thêm)|để\\s+xem\\s+đã|chưa\\s+quyết\\s+định|chưa\\s+cần\\s+đâu|khi\\s+khác\\s+nhé).*"
     );
 
+    // v3.3.4: Câu hỏi NỘI DUNG cụ thể trong tin nhắn (dù khách đang bực) -> vẫn phải REPAIR_FIRST để trả lời trực diện.
+    // "cái quái gì đấy" KHÔNG khớp vì "quái" không phải danh từ/động từ nội dung.
+    private static final Pattern CONCRETE_CONTENT_QUESTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\b(?:gồm|là|có|món|bước|loại|quyền\\s+lợi)\\s+(?:những\\s+)?(?:gì|j|nào)\\b"
+            + "|\\bbao\\s+nhiêu\\b|\\bmấy\\s+(?:phút|giờ|bước|món|tiếng)\\b|\\bở\\s+đâu\\b|\\bkhi\\s+nào\\b|\\bthế\\s+nào\\b).*"
+    );
+
     private static final Pattern MISMATCH_OR_REPAIR_COMPLAINT_PATTERN = Pattern.compile(
             "(?isU).*(?:sao\\s+hỏi\\s+[^?]{1,40}\\s+mà\\s+(?:cứ|lại)|hỏi\\s+một\\s+đằng\\s+trả\\s+lời\\s+một\\s+nẻo|"
             + "trả\\s+lời\\s+lạc\\s+đề|không\\s+trả\\s+lời\\s+câu\\s+hỏi|chưa\\s+trả\\s+lời|"
@@ -809,6 +816,49 @@ public final class ThinkingModePolicy {
             ), effectiveBench);
         }
 
+        // 0B (v3.3.4). Từ chối dứt khoát ("tụt hứng thôi dẹp", "không cần nữa") -> dừng bán hàng ngay, TẮT thinking.
+        // Trước đây nhánh này rơi vào OBJECTION_REFRAME_THINK, khiến model cố "thuyết phục lại" khách đã muốn dừng.
+        if ("STRONG_REJECTION".equals(detectedIntent) || SentimentIntentLayer.isStrongRejection(rawMsg)) {
+            return applyBenchmarkOverrideIfNeeded(new ThinkingDecision(
+                    ThinkingMode.FAST_NO_THINK,
+                    ThinkingMode.FAST_NO_THINK.maxOutputTokens(),
+                    "STRONG_REJECTION_GRACEFUL_EXIT_FAST",
+                    ObjectionRootCause.NONE,
+                    0,
+                    priorArgs,
+                    unresolvedIds
+            ), effectiveBench);
+        }
+
+        // 0C (v3.3.4). Khách bắt bẻ câu chữ của Bot ("đau lưng chứ đau lòng đâu mà nhẹ nhõm") -> EMOTIONAL_WARM_THINK
+        if ("WORDING_FEEDBACK_REPAIR".equals(detectedIntent)) {
+            return new ThinkingDecision(
+                    ThinkingMode.EMOTIONAL_WARM_THINK,
+                    ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
+                    "WORDING_FEEDBACK_WARM_REPAIR",
+                    ObjectionRootCause.NONE,
+                    0,
+                    priorArgs,
+                    unresolvedIds
+            );
+        }
+
+        // 0D (v3.3.4). Trả lời hời hợt giữa phễu ("ừm để xem đã", "vậy à") khi KHÔNG còn câu hỏi tồn đọng
+        // -> EMOTIONAL_WARM_THINK để khơi lại cảm xúc thay vì trả lời cụt hoặc ép chốt lịch.
+        if (!safeState.hasUnresolvedCustomerRequest()
+                && ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(detectedIntent)
+                    || SentimentIntentLayer.isMidFunnelLukewarmReply(rawMsg, safeState))) {
+            return new ThinkingDecision(
+                    ThinkingMode.EMOTIONAL_WARM_THINK,
+                    ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
+                    "MID_FUNNEL_LUKEWARM_REENGAGE",
+                    ObjectionRootCause.NONE,
+                    0,
+                    priorArgs,
+                    unresolvedIds
+            );
+        }
+
         // 1. Mode 4: REPAIR_FIRST — Khách bức xúc, phàn nàn bot tư vấn lệch ý, bác bỏ giả định, hoặc còn câu hỏi tồn đọng chưa được giải quyết
         boolean insightFrustrated = customerInsight != null
                 && ((customerInsight.temperatureDelta() != null && customerInsight.temperatureDelta() <= -10)
@@ -824,6 +874,7 @@ public final class ThinkingModePolicy {
                 || safeState.frustrationCount() >= 1
                 || MISMATCH_OR_REPAIR_COMPLAINT_PATTERN.matcher(normMsg).matches()
                 || PrimaryActionRouter.isFrustrationMessage(rawMsg)
+                || SentimentIntentLayer.isNegativeOrFrustratedMood(rawMsg)
                 || SentimentIntentLayer.isEntityMismatchCorrection(rawMsg)
                 || SentimentIntentLayer.isComprehensionFailureMessage(rawMsg)
                 || SentimentIntentLayer.isNegationOrPushbackOnAssumption(rawMsg)
@@ -837,6 +888,35 @@ public final class ThinkingModePolicy {
         boolean hasUnresolvedQuestionFromPriorTurns = safeState.hasUnresolvedCustomerRequest();
 
         if (!isPriceObjectionAction && !isNonRepairMetaOrAckAdvance && (hasRepairComplaint || hasUnresolvedQuestionFromPriorTurns)) {
+            // v3.3.4: Tách 2 chiến lược tâm lý:
+            //  - REPAIR_FIRST: còn NỘI DUNG phải giải quyết (câu hỏi tồn đọng, câu hỏi chi tiết ngay trong tin nhắn,
+            //    khách không hiểu, khách sửa sai/bác bỏ giả định của Bot) -> nhận lỗi ngắn + trả lời trực diện.
+            //  - EMOTIONAL_WARM_THINK: chỉ là CẢM XÚC tiêu cực với cách tư vấn, không có nội dung tồn đọng
+            //    -> hạ cái tôi, xoa dịu và kéo lại thiện cảm.
+            boolean hasConcreteContentToResolve = hasUnresolvedQuestionFromPriorTurns
+                    || SentimentIntentLayer.isDetailOrFaqQuestion(rawMsg, safeState)
+                    || CONCRETE_CONTENT_QUESTION_PATTERN.matcher(normMsg).matches()
+                    || SentimentIntentLayer.isComprehensionFailureMessage(rawMsg)
+                    || SentimentIntentLayer.isEntityMismatchCorrection(rawMsg)
+                    || SentimentIntentLayer.isNegationOrPushbackOnAssumption(rawMsg)
+                    || detectedIntent.contains("COMPREHENSION_RECOVERY")
+                    || detectedIntent.contains("COMPREHENSION_REPAIR")
+                    || detectedIntent.contains("MISMATCH_CORRECTION")
+                    || detectedIntent.contains("PENDING_PRICE")
+                    || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(detectedIntent)
+                    || "CLARIFICATION_DETAIL_OR_FAQ_QA".equals(detectedIntent)
+                    || effectiveAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA;
+            if (!hasConcreteContentToResolve && SentimentIntentLayer.isNegativeOrFrustratedMood(rawMsg)) {
+                return new ThinkingDecision(
+                        ThinkingMode.EMOTIONAL_WARM_THINK,
+                        ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
+                        "NEGATIVE_MOOD_DEESCALATION",
+                        ObjectionRootCause.NONE,
+                        Math.max(1, safeState.objectionCount()),
+                        priorArgs,
+                        unresolvedIds
+                );
+            }
             return new ThinkingDecision(
                     ThinkingMode.REPAIR_FIRST,
                     ThinkingMode.REPAIR_FIRST.maxOutputTokens(),

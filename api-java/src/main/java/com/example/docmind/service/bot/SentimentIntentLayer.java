@@ -134,11 +134,51 @@ public final class SentimentIntentLayer {
     private static final Pattern STRONG_REJECTION_PATTERN = Pattern.compile(
             "(?isU).*\\b(thôi\\s+khỏi(?:\\s+cần)?|thôi\\s+không\\s+cần|thôi\\s+không\\s+làm|không\\s+cần\\s+nữa|"
             + "không\\s+làm\\s+nữa|không\\s+mua\\s+đâu|thôi\\s+để\\s+sau|thôi\\s+bỏ\\s+đi|khỏi\\s+cần\\s+tư\\s+vấn|"
-            + "tụt\\s+hứng|mất\\s+hứng|hết\\s+hứng|thôi\\s+dẹp|dẹp\\s+đi|thôi\\s+nghỉ|nghỉ\\s+khỏe|hết\\s+muốn\\s+làm)\\b.*"
+            + "tụt\\s+hứng|mất\\s+hứng|hết\\s+hứng|thôi\\s+dẹp|dẹp\\s+đi|thôi\\s+nghỉ|nghỉ\\s+khỏe|hết\\s+muốn\\s+làm|"
+            + "chán\\s+quá\\s+thôi)\\b.*"
     );
     private static final Pattern STRONG_REJECTION_ASCII_PATTERN = Pattern.compile(
             "(?is).*\\b(thoi\\s+khoi(?:\\s+can)?|thoi\\s+khong\\s+can|thoi\\s+khong\\s+lam|khong\\s+mua\\s+dau|thoi\\s+de\\s+sau|"
-            + "tut\\s+hung|mat\\s+hung|het\\s+hung|thoi\\s+dep|dep\\s+di|thoi\\s+nghi|nghi\\s+khoe|het\\s+muon\\s+lam)\\b.*"
+            + "tut\\s+hung|mat\\s+hung|het\\s+hung|thoi\\s+dep|dep\\s+di|thoi\\s+nghi|nghi\\s+khoe|het\\s+muon\\s+lam|"
+            + "chan\\s+qua\\s+thoi)\\b.*"
+    );
+
+    // 3B (v3.3.4). WORDING / EXPRESSION FEEDBACK — khách bắt bẻ hoặc trêu cách Bot dùng từ
+    // (ví dụ: "Đau lưng chứ đau lòng đâu mà nhẹ nhõm"). Đây là phản hồi về CÂU CHỮ, không phải tin nhắn mơ hồ.
+    private static final Pattern WORDING_OR_EXPRESSION_FEEDBACK_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\bchứ\\s+(?:có\\s+phải\\s+)?đau\\s+lòng\\s+đâu\\b"
+            + "|\\bđau\\s+lòng\\s+đâu\\s+mà\\s+(?:nhẹ\\s+nhõm|an\\s+ủi|tâm\\s+sự)\\b"
+            + "|\\b(?:cơ\\s+thể|đau\\s+lưng|mỏi\\s+gối|tê\\s+tay|nhức\\s+mỏi).*?\\bchứ\\s+.*?\\bđâu\\s+mà\\s+(?:nhẹ\\s+nhõm|tâm\\s+hồn|buồn)\\b"
+            + "|\\bdùng\\s+từ\\s+.*?\\bnghe\\s+(?:cứ\\s+như|giống)\\b).*"
+    );
+
+    // 3C (v3.3.4). NEGATIVE / FRUSTRATED MOOD hướng vào CÁCH TƯ VẤN (chưa phải STRONG_REJECTION).
+    // "khó chịu" / "nhức đầu quá" chỉ được tính khi hướng vào cuộc trò chuyện, vì trong miền Spa
+    // hai cụm này thường là mô tả TRIỆU CHỨNG ("mỏi cổ khó chịu lắm") chứ không phải bực bội với Bot.
+    private static final Pattern NEGATIVE_OR_FRUSTRATED_MOOD_PATTERN = Pattern.compile(
+            "(?isU).*\\b(linh\\s+tinh|quái\\s+gì|lằng\\s+nhằng|vòng\\s+vo|hỏi\\s+nhiều|hỏi\\s+lắm|"
+            + "hỏi\\s+mãi|trả\\s+lời\\s+chán|tư\\s+vấn\\s+chán|bực\\s+mình|mất\\s+thời\\s+gian|"
+            + "không\\s+hiểu\\s+à|nói\\s+mãi\\s+không\\s+hiểu|sao\\s+lâu\\s+thế|rắc\\s+rối\\s+quá|phiền\\s+quá|"
+            + "mệt\\s+với\\s+em|sao\\s+phức\\s+tạp\\s+thế|"
+            + "khó\\s+chịu\\s+(?:với|vì)\\s+(?:em|shop|bên\\s+em|cách)|"
+            + "(?:nói\\s+chuyện|tư\\s+vấn|trả\\s+lời|hỏi\\s+han)\\s+(?:gì\\s+mà\\s+)?khó\\s+chịu|"
+            + "(?:nghe|đọc)\\s+nhức\\s+đầu|nhức\\s+đầu\\s+quá\\s+với\\s+(?:em|shop|bên\\s+em))\\b.*"
+    );
+
+    // 3D (v3.3.4). MID-FUNNEL LUKEWARM — trả lời cụt lủn/hời hợt khi đã qua giai đoạn đầu.
+    // Chia 2 nhóm: (a) tín hiệu chần chừ/nguội ("để xem", "vậy à", "tính sau") luôn được tính;
+    // (b) tín hiệu xác nhận trơn ("ừ", "ok", "cũng được") chỉ tính khi Bot KHÔNG có câu hỏi đang chờ trả lời,
+    //     vì "ok" sau câu hỏi giữ lịch / mời thử là CHẤP NHẬN chứ không phải hời hợt.
+    private static final Pattern MID_FUNNEL_HESITANT_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:(?:ừ|ừm|ờ|ờm|uh|uhm|uk|ukm|ok|oke|okay)[,\\s]+)?"
+            + "(?:vậy\\s+à|vậy\\s+hả|thế\\s+à|thế\\s+hả|à\\s+vậy|à\\s+ừ|"
+            + "để\\s+xem(?:\\s+đã|\\s+sao|\\s+thêm)?|để\\s+(?:chị|anh|mình|tôi|em)\\s+xem(?:\\s+đã|\\s+thêm)?|"
+            + "để\\s+tính(?:\\s+sau)?|biết\\s+rồi|xem\\s+đã|tính\\s+sau)"
+            + "(?:\\s+(?:em|nha|nhé|ạ))?[\\s.!?…]*$"
+    );
+    private static final Pattern MID_FUNNEL_PLAIN_ACK_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:ừ|ừm|ờ|ờm|uh|uhm|uk|ukm|ok|oke|okay|cũng\\s+được|cũng\\s+ổn|nghe\\s+cũng\\s+được)"
+            + "(?:\\s+(?:em|nha|nhé|ạ))?[\\s.!?…]*$"
     );
 
     // 4. TRIAL_ACCEPTANCE
@@ -384,6 +424,66 @@ public final class SentimentIntentLayer {
 
     public static boolean isStrongRejectionMessage(String message) {
         return isStrongRejection(message);
+    }
+
+    /** v3.3.4: Khách bắt bẻ / trêu cách dùng từ của Bot ("đau lưng chứ đau lòng đâu mà nhẹ nhõm"). */
+    public static boolean isWordingOrExpressionFeedback(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return WORDING_OR_EXPRESSION_FEEDBACK_PATTERN.matcher(norm).matches();
+    }
+
+    /**
+     * v3.3.4: Cảm xúc tiêu cực / bực bội / mất kiên nhẫn với cách tư vấn, nhưng CHƯA phải từ chối dứt khoát.
+     * Từ chối dứt khoát luôn trả về {@code false} để không bị kéo vào luồng xoa dịu tiếp tục bán hàng.
+     */
+    public static boolean isNegativeOrFrustratedMood(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isStrongRejection(message)) {
+            return false;
+        }
+        String normalized = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        String candidate = (normalized != null && !normalized.isBlank()) ? normalized : message;
+        String norm = Normalizer.normalize(candidate.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return NEGATIVE_OR_FRUSTRATED_MOOD_PATTERN.matcher(norm).matches()
+                || isWordingOrExpressionFeedback(message);
+    }
+
+    /**
+     * v3.3.4: Trả lời hời hợt / tụt nhiệt độ mua hàng ở giữa hoặc cuối phễu.
+     * <ul>
+     *   <li>Chỉ áp dụng khi đã qua giai đoạn đầu: đã chào VÀ (đã rõ tình trạng HOẶC đã báo giá HOẶC đã gợi ý gói).</li>
+     *   <li>Nếu Bot vừa hỏi tình trạng ({@code ASK_CONDITION}) và chưa báo giá, câu ngắn của khách là CÂU TRẢ LỜI, không phải hời hợt.</li>
+     *   <li>Xác nhận trơn ("ok", "ừ", "cũng được") chỉ là hời hợt khi Bot không có câu hỏi quyết định đang chờ.</li>
+     *   <li>Từ chối dứt khoát không bao giờ là hời hợt.</li>
+     * </ul>
+     */
+    public static boolean isMidFunnelLukewarmReply(String message, ConversationState state) {
+        if (message == null || message.isBlank() || state == null) {
+            return false;
+        }
+        boolean isPastInitialStage = state.greetingSent()
+                && (state.conditionClarified() || state.priceDiscussed() || state.packageRecommended());
+        if (!isPastInitialStage) {
+            return false;
+        }
+        String pendingQuestion = state.lastBotQuestionType();
+        if ("ASK_CONDITION".equals(pendingQuestion) && !state.priceDiscussed()) {
+            return false;
+        }
+        if (isStrongRejection(message)) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (MID_FUNNEL_HESITANT_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        boolean botHasPendingDecisionQuestion = pendingQuestion != null && !"NONE".equals(pendingQuestion);
+        return !botHasPendingDecisionQuestion && MID_FUNNEL_PLAIN_ACK_PATTERN.matcher(norm).matches();
     }
 
     public static boolean isTrialAcceptanceMessage(String message) {

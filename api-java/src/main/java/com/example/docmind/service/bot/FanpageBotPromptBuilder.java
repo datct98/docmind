@@ -1708,15 +1708,40 @@ public final class FanpageBotPromptBuilder {
                 sb.append("- unresolved_questions_to_answer_now: ").append(thinkingDecision.unresolvedQuestions()).append('\n');
             }
             sb.append("- Chiến lược REPAIR_FIRST: Nhận lỗi chân thành, ngắn gọn và giải quyết TRỰC DIỆN phản bác hoặc câu hỏi đang treo của khách dựa trên <GROUNDED_TURN_FACTS>. CẤM lặp lại câu cũ.\n");
+        } else if (effectiveThinkingMode == ThinkingMode.EMOTIONAL_WARM_THINK) {
+            sb.append("- Chiến lược EMOTIONAL_WARM_THINK: Ưu tiên cảm xúc của khách trước nội dung bán hàng. CẤM lặp lại con số giá đã báo, CẤM ép chốt lịch, CẤM yêu cầu khách nói lại hay kiểm tra lại lịch sử trò chuyện.\n");
         }
         sb.append("</THINKING_MODE_STRATEGY>\n\n");
+
+        // 5.6 (v3.3.4) <QWEN3_SELECTIVE_THINKING_PROTOCOL>: chỉ chèn khi lượt này thực sự bật thinking.
+        // Các client Ollama/OpenAI-compatible đều bóc thẻ <think>...</think> khỏi câu trả lời cuối.
+        if (effectiveThinkingMode.thinkEnabled()) {
+            sb.append("<QWEN3_SELECTIVE_THINKING_PROTOCOL>\n")
+              .append("Lượt này thuộc nhóm TÌNH HUỐNG TÂM LÝ QUAN TRỌNG (").append(effectiveThinkingMode.name()).append(").\n")
+              .append("Trước khi xuất JSON, suy nghĩ NGẮN (tối đa 60 từ) trong thẻ <think>...</think> theo 4 bước:\n")
+              .append("1. ĐỌC VỊ NHIỆT ĐỘ CẢM XÚC: khách đang đau mỏi cần vỗ về, đang đắn đo giá, đang bực bội/khó chịu, hay đang trả lời hời hợt ('ừm', 'để xem', 'vậy à') vì tụt mood?\n")
+              .append("2. CHỌN ĐÚNG CHIẾN THUẬT:\n")
+              .append("   - [VỪA BÁO GIÁ Ở BUBBLE 1]: Bubble 1 gọn, rõ tên gói, thời lượng, giá. Bubble 2 (sau nhịp nghỉ) là lúc khách đang ngẫm về giá -> vẽ ra trải nghiệm thư giãn cụ thể từ quyền lợi ĐÃ XÁC MINH; không mở đầu bằng 'Dạ em hiểu rồi ạ', không lặp lại triệu chứng, tên gói hay giá của Bubble 1.\n")
+              .append("   - [KHÁCH CHÊ ĐẮT]: Chưa hạ gói, không lặp lại con số giá. Bubble 1 đồng cảm + giá trị thực tế đã xác minh; Bubble 2 (2000ms) mời trải nghiệm thử 1 buổi nhẹ nhàng.\n")
+              .append("   - [KHÁCH TIÊU CỰC / TỨC GIẬN / BẮT BẺ CÂU CHỮ]: Hạ cái tôi, nhận lỗi chân thành và duyên dáng trong 1 câu ngắn, bỏ giọng máy móc, rồi đi thẳng vào điều khách đang quan tâm.\n")
+              .append("   - [KHÁCH TRẢ LỜI HỜI HỢT GIỮA PHỄU]: Nhiệt độ mua đang nguội. Không trả lời cụt 'Dạ vâng', không ép chốt lịch. Khơi gợi 1 chi tiết giàu cảm xúc CÓ TRONG quyền lợi đã xác minh của gói đang trao đổi, kèm 1 câu hỏi mở nhẹ nhàng.\n")
+              .append("3. NGÔN TỪ: Tiếng Việt mềm mại, có hồn, như chuyên viên tận tâm; cấm văn mẫu robot; tuyệt đối không bịa quyền lợi, món ăn hay cam kết chữa khỏi ngoài tài liệu.\n")
+              .append("4. KIỂM TRA HỢP ĐỒNG: Đóng thẻ </think> rồi chỉ xuất DUY NHẤT khối JSON hợp lệ.\n")
+              .append("</QWEN3_SELECTIVE_THINKING_PROTOCOL>\n\n");
+        }
 
         // 6. <CONVERSATION_STATE_AND_ACTION_CONTRACT> & <GROUNDED_TURN_FACTS>
         sb.append("<CONVERSATION_STATE_AND_ACTION_CONTRACT>\n");
         if (actionDecision != null) {
+            boolean hasConfiguredOpeningBubbles = actionDecision.openingRequired()
+                    && cfg.openingBubbles() != null
+                    && !cfg.openingBubbles().isEmpty();
             sb.append("- primary_action: ").append(effAction).append('\n');
             sb.append("- detected_intent: ").append(detIntent).append('\n');
             sb.append("- opening_required: ").append(actionDecision.openingRequired()).append('\n');
+            // v3.3.4 RC-01: nói rõ cho LLM biết lời chào đã được gửi để không chào/tự giới thiệu lặp lại
+            sb.append("- opening_already_sent: ").append(hasConfiguredOpeningBubbles || (convState != null && convState.greetingSent())).append('\n');
+            sb.append("- llm_must_generate_greeting: ").append(actionDecision.openingRequired() && !hasConfiguredOpeningBubbles).append('\n');
             sb.append("- active_skill_code: ").append(actionDecision.correspondingMicroSkillCode()).append('\n');
         }
         sb.append("- thinking_mode: ").append(effectiveThinkingMode.name()).append('\n');
@@ -1853,7 +1878,7 @@ public final class FanpageBotPromptBuilder {
                   .append(enriched != null ? enriched.knownSymptoms() : List.of())
                   .append(" của ").append(honorific).append(" và quyền lợi thực tế trong verified_package_benefits, rồi hỏi nhẹ 1 câu xem ")
                   .append(honorific).append(" thấy gói ").append(matchedOpt != null ? matchedOpt.unitLabel() : "này")
-                  .append(" đã hợp ý mình hay muốn ").append(selfPronoun).append(" chia sẻ thêm về quyền lợi đi kèm ạ. TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM xin lỗi, CẤM yêu cầu khách nói lại!\n");
+                  .append(" đã hợp ý mình hay muốn ").append(selfPronoun).append(" chia sẻ thêm về quyền lợi đi kèm ạ. TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM xin lỗi, CẤM yêu cầu khách nói lại, CẤM mở đầu bằng 'Dạ em hiểu rồi ạ', CẤM nhắc lại tên gói hay liệt kê lại triệu chứng đã nói ở Bong bóng 1!\n");
             } else if ("CONDITION_FOLLOWUP_AFTER_QUOTE_ADVANCE".equals(detIntent)) {
                 sb.append("- tactical_goal: Khách vừa bổ sung tần suất/thời gian đau mỏi cho gói ")
                   .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "đang tư vấn")
@@ -1861,6 +1886,18 @@ public final class FanpageBotPromptBuilder {
                   .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "này")
                   .append(" rất vừa vặn để thả lỏng vùng mỏi, rồi hỏi nhẹ xem ").append(honorific)
                   .append(" muốn tìm hiểu thêm về các bước trong gói hay khung giờ trống để ghé trải nghiệm ạ.\n");
+            } else if ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(detIntent)) {
+                String activeLukewarmPkg = convState != null && convState.lastOfferedPackageName() != null
+                        ? convState.lastOfferedPackageName()
+                          + (convState.lastOfferedDuration() != null && !convState.lastOfferedPackageName().toLowerCase(Locale.ROOT).contains("phút")
+                              ? " " + convState.lastOfferedDuration() + " phút" : "")
+                        : (matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "đang trao đổi");
+                sb.append("- active_discussed_package: ").append(activeLukewarmPkg).append('\n');
+                sb.append("- tactical_goal: Khách vừa trả lời hời hợt ('").append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage))
+                  .append("') -> nhiệt độ mua hàng đang nguội. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM ép chốt khung giờ, CẤM trả lời cụt 'Dạ vâng', CẤM yêu cầu khách nói lại): ")
+                  .append("Tôn trọng việc ").append(honorific).append(" cân nhắc bằng 1 câu thật nhẹ, rồi khơi gợi 1 chi tiết giàu cảm xúc CÓ TRONG verified_package_benefits của gói ")
+                  .append(activeLukewarmPkg).append(" (cảm giác cơ thể được thả lỏng, không gian, quyền lợi đi kèm) và kết bằng 1 câu hỏi mở nhẹ nhàng về điều ")
+                  .append(honorific).append(" còn băn khoăn.\n");
             } else if ("META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(detIntent)) {
                 sb.append("- tactical_goal: Khách vừa khen dịch vụ nghe hay vừa trêu việc bạn xin lỗi. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM dùng từ 'xin lỗi', CẤM lặp lại con số giá đã báo): Đáp lại vui vẻ, duyên dáng ('Dạ tại ")
                   .append(selfPronoun).append(" quen miệng nói năng cẩn thận quá đó ").append(honorific).append(" ơi, ").append(selfPronoun).append(" rút kinh nghiệm liền nha.') và dẫn dắt tiếp về gói ")
@@ -1903,6 +1940,13 @@ public final class FanpageBotPromptBuilder {
                   .append("'). Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, 0 câu hỏi, TUYỆT ĐỐI CẤM có dấu '?', CẤM hỏi 'có phải mình đang cảm thấy hơi mệt mỏi không', CẤM chèo kéo, CẤM viết cụm 'Xin lỗi nhẹ nhàng'): Hãy đóng vai chuyên viên xưng '")
                   .append(selfPronoun).append("', mở đầu bằng 'Dạ ").append(selfPronoun).append(" xin lỗi ").append(honorific)
                   .append(" vì phần tư vấn vừa rồi chưa làm ").append(honorific).append(" hài lòng ạ.', sau đó xin phép dừng làm phiền và cảm ơn ").append(honorific).append(" đã nhắn tin cho bên ").append(selfPronoun).append(" nha.\n");
+            } else if ("WORDING_FEEDBACK_REPAIR".equals(detIntent)) {
+                // v3.3.4 RC-03: khách bắt bẻ/trêu cách dùng từ của Bot -> nhận câu chữ chưa khéo một cách duyên dáng
+                sb.append("- tactical_goal: Khách đang bắt bẻ hoặc trêu cách bạn dùng từ ('")
+                  .append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage))
+                  .append("'). Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0): Thừa nhận duyên dáng, hóm hỉnh rằng ").append(selfPronoun)
+                  .append(" dùng từ chưa khéo (không xin lỗi rườm rà), rồi nói lại đúng ý bằng cảm giác CƠ THỂ cụ thể ở vùng khách đang mỏi. ")
+                  .append("TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM hỏi 'mình có thể nói lại', CẤM nhắc 'kiểm tra lại lịch sử trò chuyện', CẤM đổi sang gói khác.\n");
             } else if ("META_COMMENT_ON_GREETING".equals(detIntent)) {
                 sb.append("- tactical_goal: Khách nhận xét bạn chào hơi nhiều. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM dùng từ 'xin lỗi'): Đáp lại vui vẻ, tự nhiên ('Dạ tại ")
                   .append(selfPronoun).append(" hào hứng đón ").append(honorific).append(" ghé thăm quá nên chào hơi kỹ một chút ạ.') rồi hỏi nhẹ xem hôm nay ")
@@ -1928,16 +1972,18 @@ public final class FanpageBotPromptBuilder {
             }
         } else if (effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME && convState != null) {
             long heldVnd = convState.lastOfferedPriceVnd() != null ? convState.lastOfferedPriceVnd().longValue() : 0L;
-            String heldName = convState.lastOfferedPackageName() != null ? convState.lastOfferedPackageName() : "Massage cơ bản";
-            String heldDur = convState.lastOfferedDuration() != null ? convState.lastOfferedDuration() + " phút" : "60 phút";
-            String heldPrice = convState.lastOfferedPrice() != null ? convState.lastOfferedPrice() : "399k";
-            sb.append("- held_package_to_defend: ").append(heldName).append(" ").append(heldDur).append(" giá ").append(heldPrice).append('\n');
+            String heldName = convState.lastOfferedPackageName() != null ? convState.lastOfferedPackageName() : "gói đang tư vấn";
+            String heldDur = convState.lastOfferedDuration() != null ? convState.lastOfferedDuration() + " phút" : "";
+            String heldPrice = convState.lastOfferedPrice() != null ? convState.lastOfferedPrice() : "";
+            sb.append("- held_package_to_defend: ").append(heldName).append(heldDur.isBlank() ? "" : " " + heldDur)
+              .append(heldPrice.isBlank() ? "" : " giá " + heldPrice).append('\n');
             appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, null, heldVnd);
-            sb.append("- tactical_goal: Khách chê đắt lần 1. Sinh 1 bong bóng (typing_delay_ms=0): Đồng cảm tự nhiên với việc ")
-              .append(honorific).append(" cân nhắc chi phí, GIỮ NGUYÊN gói ").append(heldName).append(" ").append(heldDur).append(" giá ").append(heldPrice)
-              .append(" (chỉ viết '").append(heldPrice).append("', KHÔNG viết '399.000đ' hay mã '(NS01)'), làm rõ mức ").append(heldPrice)
-              .append(" đã trọn gói các quyền lợi thực tế trong verified_package_benefits và không nhận tiền Tip, đồng thời gợi ý nhẹ nhàng ")
-              .append(honorific).append(" trải nghiệm thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé ạ.\n");
+            // v3.3.4 RC-08: đồng bộ với PrimaryActionRouter (2 bong bóng, Bubble 1 KHÔNG lặp giá, Bubble 2 = 2000ms mời thử)
+            sb.append("- tactical_goal: Khách chê đắt lần 1. GIỮ NGUYÊN gói ").append(heldName).append(heldDur.isBlank() ? "" : " " + heldDur)
+              .append(", chưa hạ gói. Sinh ĐÚNG 2 bong bóng. Bubble 1 (typing_delay_ms=0): Đồng cảm tự nhiên với việc ")
+              .append(honorific).append(" cân nhắc chi phí, nêu 1-2 quyền lợi thực tế trong verified_package_benefits và chính sách trọn gói không nhận Tip ")
+              .append("(TUYỆT ĐỐI KHÔNG lặp lại con số giá, KHÔNG viết mã gói nội bộ). Bubble 2 (typing_delay_ms=2000): Mời ")
+              .append(honorific).append(" trải nghiệm thử 1 buổi thật nhẹ nhàng, không ép buộc, kết câu bằng biểu tượng 🥰 đúng như playbook.\n");
         } else if (effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT && convState != null) {
             PrimaryActionRouter.CatalogOption lowerOpt = PrimaryActionRouter.selectLowerCatalogOption(convState, chunks, customerMessage);
             if (lowerOpt != null) {
