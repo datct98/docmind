@@ -220,15 +220,15 @@ public record PagePersonaConfig(
                 : resolvedDefaultCustomerPronoun();
         String capH = Character.toUpperCase(h.charAt(0)) + h.substring(1);
         if (conditionDiscoveryPrompt != null && !conditionDiscoveryPrompt.isBlank()) {
-            return conditionDiscoveryPrompt.strip()
+            String custom = conditionDiscoveryPrompt.strip()
                     .replace("{customer_pronoun}", h)
                     .replace("{honorific}", h)
                     .replace("{CapHonorific}", capH);
+            if (!custom.toLowerCase(java.util.Locale.ROOT).contains("thường căng sau")) {
+                return custom;
+            }
         }
-        if (isNonSpaIndustry()) {
-            return capH + " gặp tình trạng này lâu chưa hay mới gần đây để " + resolvedSelfPronoun() + " tư vấn gói phù hợp nhất ạ?";
-        }
-        return capH + " bị lâu chưa hay mới gần đây, và thường căng sau ngồi lâu hay vận động nhiều ạ?";
+        return capH + " gặp tình trạng này lâu chưa hay mới gần đây để " + resolvedSelfPronoun() + " tư vấn gói phù hợp nhất cho mình ạ?";
     }
 
     public String resolvedPreferenceDiscoveryPrompt(String customerHonorific) {

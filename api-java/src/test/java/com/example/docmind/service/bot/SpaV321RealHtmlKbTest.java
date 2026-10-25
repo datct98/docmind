@@ -1334,4 +1334,232 @@ class SpaV321RealHtmlKbTest {
                     .doesNotContain("?");
         }
     }
+
+    @Test
+    @DisplayName("BT-SPA-006-V326-8-TURN-META-GROUNDING-AND-STATE-SEPARATION: 8-turn new scenario verifies greeting dedup, meta-comment handling without apology, herb grounding (530k, 0 invented herbs), confirmation advance, ACK advance, and symptom/service separation")
+    void v326EightTurnMetaGroundingAndStateSeparation() {
+        String senderId = "user-v326-eight-turn-new-scenario";
+        List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
+        List<String> userMessages = List.of(
+                "Tư vấn giúp chị",
+                "Sao chào lắm thế",
+                "Báo giá cho chị đi",
+                "Ngâm thảo dược là ngâm loại gì vậy?",
+                "Nghe hay đấy cơ mà làm gì mà phải xin lỗi",
+                "Hiểu đúng rồi còn gì, có phải hiểu lầm đâu",
+                "Uk",
+                "Ô hay, nói linh ta linh tinh gì đấy"
+        );
+        List<PrimaryActionRouter.RoutingDecision> decisions = new ArrayList<>();
+        List<ReplyContractValidator.ValidationResult> validations = new ArrayList<>();
+
+        for (String msg : userMessages) {
+            ConversationState state = ConversationState.hydrate(
+                    NANG_SEN_PAGE_ID, senderId, history,
+                    nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+            );
+            PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.route(
+                    msg, state, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+            );
+            decisions.add(dec);
+
+            List<FanpageBotResponse.ReplyBubble> rawBubbles = PrimaryActionRouter.executeActionBubbles(
+                    dec, msg, state, "chị", nangSenPersona, realHtmlChunks, null
+            );
+            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+                    rawBubbles, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
+            );
+            validations.add(valRes);
+
+            ConversationState.updateAfterSend(
+                    NANG_SEN_PAGE_ID, senderId, state, msg, dec, valRes.validatedBubbles(), false
+            );
+            history.add(new FanpageBotRequest.ConversationTurn("user", msg));
+            valRes.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+        }
+
+        // Turn 1 ("Tư vấn giúp chị"): 3 bubbles (2 opening + 1 discovery), B3 does NOT start with "Dạ chào chị ạ"
+        assertThat(decisions.get(0).openingRequired()).isTrue();
+        assertThat(validations.get(0).validatedBubbles()).hasSize(3);
+        assertThat(validations.get(0).validatedBubbles().get(2).text().toLowerCase(Locale.ROOT))
+                .doesNotStartWith("dạ chào chị")
+                .doesNotStartWith("chào chị");
+
+        // Turn 2 ("Sao chào lắm thế"): META_COMMENT_ON_GREETING, 1 bubble, 0 apology, asks need
+        assertThat(decisions.get(1).detectedIntent()).isEqualTo("META_COMMENT_ON_GREETING");
+        assertThat(validations.get(1).validatedBubbles()).hasSize(1);
+        assertThat(validations.get(1).combinedText().toLowerCase(Locale.ROOT))
+                .doesNotContain("xin lỗi")
+                .doesNotContain("thông cảm");
+
+        // Turn 3 ("Báo giá cho chị đi"): CLARIFY_SERVICE_DURATION, 1 bubble, asks service group/area
+        assertThat(decisions.get(2).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION);
+        assertThat(validations.get(2).validatedBubbles()).hasSize(1);
+
+        // Turn 4 ("Ngâm thảo dược là ngâm loại gì vậy?"): SERVICE_DETAIL_AND_FAQ_QA, matches HN_NS02 (80 phút - 530k), 0 invented herbs
+        assertThat(decisions.get(3).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
+        assertThat(validations.get(3).validatedBubbles()).hasSize(1);
+        assertThat(validations.get(3).combinedText().toLowerCase(Locale.ROOT))
+                .contains("530k")
+                .containsAnyOf("80 phút", "90 phút")
+                .doesNotContain("tía tô")
+                .doesNotContain("trà xanh")
+                .doesNotContain("lá lốt")
+                .doesNotContain("xin lỗi");
+
+        // Turn 5 ("Nghe hay đấy cơ mà làm gì mà phải xin lỗi"): META_APOLOGY_POSITIVE_INTEREST_ADVANCE, 0 apology, advances consultation on 80-min package
+        assertThat(decisions.get(4).detectedIntent()).startsWith("META_APOLOGY_POSITIVE_INTEREST_");
+        assertThat(validations.get(4).combinedText().toLowerCase(Locale.ROOT))
+                .doesNotContain("xin lỗi")
+                .doesNotContain("thông cảm");
+
+        // Turn 6 ("Hiểu đúng rồi còn gì, có phải hiểu lầm đâu"): CONFIRM_PREVIOUS_INFO_ADVANCE, 0 apology, does NOT re-ask confirmation
+        assertThat(decisions.get(5).detectedIntent()).startsWith("CONFIRM_PREVIOUS_INFO_");
+        assertThat(validations.get(5).combinedText().toLowerCase(Locale.ROOT))
+                .doesNotContain("xin lỗi")
+                .doesNotContain("đúng không ạ");
+
+        // Turn 7 ("Uk"): ADVANCE_AFTER_ACK, 0 "em ghi nhận", 0 apology, soft next step
+        assertThat(decisions.get(6).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ADVANCE_AFTER_ACK);
+        assertThat(validations.get(6).combinedText().toLowerCase(Locale.ROOT))
+                .doesNotContain("em ghi nhận")
+                .doesNotContain("xin lỗi");
+
+        // Turn 8 ("Ô hay, nói linh ta linh tinh gì đấy"): FRUSTRATION_CONCERN_ACKNOWLEDGEMENT, never calls "ngâm" a symptom, never switches to 239k
+        assertThat(decisions.get(7).detectedIntent()).isEqualTo("FRUSTRATION_CONCERN_ACKNOWLEDGEMENT");
+        assertThat(validations.get(7).combinedText().toLowerCase(Locale.ROOT))
+                .doesNotContain("tình trạng ngâm")
+                .doesNotContain("239k");
+    }
+
+    @Test
+    @DisplayName("BT-SPA-007-V327-P0-PROVENANCE-AND-CONTEXTUAL-STATE: Verifies 6-turn sale flow ('giá' -> 'tôi bị đau lưng mỏi vai' -> 'thi thỉang bị' -> 'thời lượng j nữa nhỉ tưởng 60p' -> 'quyền lợi' -> 'tụt hứng tghooi rẹp'), zero template strings, and standalone SAFE-NEURO-001 safety gate")
+    void v327P0ProvenanceAndContextualStateVerification() {
+        String senderId = "user-v327-p0-six-turn-sale";
+        List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
+        List<String> userMessages = List.of(
+                "giá",
+                "tôi bị đau lưng mỏi vai",
+                "thi thỉang bị",
+                "thời lượng j nữa nhỉ tưởng 60p",
+                "quyền lợi",
+                "tụt hứng tghooi rẹp"
+        );
+        List<PrimaryActionRouter.RoutingDecision> decisions = new ArrayList<>();
+        List<ReplyContractValidator.ValidationResult> validations = new ArrayList<>();
+        List<ConversationState> statesAfter = new ArrayList<>();
+
+        List<String> bannedExactTemplates = List.of(
+                "theo bảng giá hiện tại ạ",
+                "Dạ em xin lỗi, mình có thể nói lại cho em hiểu rõ hơn được không ạ?",
+                "Dạ với massage cơ bản, mình đang muốn ưu tiên giảm mỏi vùng nào hay tham khảo thời lượng gói để em tư vấn sát nhất cho mình ạ?",
+                "Dạ mình đang muốn hỏi chi tiết phần nào của massage cơ bản hay cần em giải thích rõ hơn về quyền lợi trong gói ạ?",
+                "Liệu trình kết hợp chăm sóc êm ái vùng lưng, vai, kỹ thuật viên điều chỉnh lực theo cảm nhận của mình và có kèm buffet thực dưỡng sau buổi làm ạ. Không biết với gói 60 phút này mình thấy phù hợp với nhu cầu hiện tại hay cần em giải thích rõ hơn bước nào ạ?"
+        );
+
+        for (String msg : userMessages) {
+            ConversationState state = ConversationState.hydrate(
+                    NANG_SEN_PAGE_ID, senderId, history,
+                    nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+            );
+            PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.route(
+                    msg, state, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+            );
+            decisions.add(dec);
+
+            List<FanpageBotResponse.ReplyBubble> rawBubbles = PrimaryActionRouter.executeActionBubbles(
+                    dec, msg, state, "mình", nangSenPersona, realHtmlChunks, null
+            );
+            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+                    rawBubbles, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
+            );
+            validations.add(valRes);
+
+            ConversationState afterState = ConversationState.updateAfterSend(
+                    NANG_SEN_PAGE_ID, senderId, state, msg, dec, valRes.validatedBubbles(), false
+            );
+            statesAfter.add(afterState);
+            history.add(new FanpageBotRequest.ConversationTurn("user", msg));
+            valRes.validatedBubbles().forEach(b -> history.add(new FanpageBotRequest.ConversationTurn("assistant", b.text())));
+
+            for (String banned : bannedExactTemplates) {
+                assertThat(valRes.combinedText()).doesNotContain(banned);
+            }
+        }
+
+        // Turn 1 ("giá")
+        assertThat(decisions.get(0).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION);
+        assertThat(decisions.get(0).routerRuleId()).isEqualTo("R06-CLARIFY-SERVICE-TYPE-ONCE");
+
+        // Turn 2 ("tôi bị đau lưng mỏi vai") -> Condition Discovery first, asks ASK_CONDITION
+        assertThat(decisions.get(1).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE);
+        assertThat(decisions.get(1).detectedIntent()).isEqualTo("ASK_CONDITION_ONCE");
+        assertThat(decisions.get(1).routerRuleId()).isEqualTo("R02-CONDITION-FIRST-DISCOVERY");
+        assertThat(statesAfter.get(1).lastBotQuestionType()).isEqualTo("ASK_CONDITION");
+
+        // Turn 3 ("thi thỉang bị") -> Normalized typo, completes ASK_CONDITION -> R03-RECOMMEND-AND-QUOTE-WHEN-PRICE-REQUESTED (399k), NEVER AMBIGUOUS_CONFIRM_ONCE
+        assertThat(decisions.get(2).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE);
+        assertThat(decisions.get(2).routerRuleId()).isEqualTo("R03-RECOMMEND-AND-QUOTE-WHEN-PRICE-REQUESTED");
+        assertThat(decisions.get(2).detectedIntent()).isNotEqualTo("AMBIGUOUS_CONFIRM_ONCE");
+        assertThat(validations.get(2).combinedText().toLowerCase(Locale.ROOT))
+                .contains("399k")
+                .contains("60 phút")
+                .doesNotContain("nói lại cho em");
+
+        // Verify that if customer repeats "thi thoảng bị" right after Turn 3 (when priceDiscussed == true), it advances via R04B and never hits AMBIGUOUS_CONFIRM_ONCE
+        PrimaryActionRouter.RoutingDecision repeatConditionDec = PrimaryActionRouter.route(
+                "thi thoảng bị", statesAfter.get(2), realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(repeatConditionDec.routerRuleId()).isEqualTo("R04B-CONDITION-FOLLOWUP-AFTER-QUOTE");
+        assertThat(repeatConditionDec.detectedIntent()).isEqualTo("CONDITION_FOLLOWUP_AFTER_QUOTE_ADVANCE");
+        assertThat(repeatConditionDec.correspondingMicroSkillCode()).isNotEqualTo("spa_ambiguous_confirm_once");
+
+        // Turn 4 ("thời lượng j nữa nhỉ tưởng 60p") -> SERVICE_DETAIL_AND_FAQ_QA, confirms 60 phút, no price repetition
+        assertThat(decisions.get(3).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
+        assertThat(decisions.get(3).routerRuleId()).isEqualTo("R01A-CONTEXTUAL-DETAIL-FAQ");
+        assertThat(validations.get(3).combinedText().toLowerCase(Locale.ROOT))
+                .contains("60 phút")
+                .doesNotContain("399k")
+                .doesNotContain("nói lại cho em");
+
+        // Turn 5 ("quyền lợi") -> knownBodyAreas must NOT contain "lợi", routes to SERVICE_DETAIL_AND_FAQ_QA, explains benefits without repeating 399k
+        assertThat(statesAfter.get(4).knownBodyAreas()).doesNotContain("lợi");
+        assertThat(decisions.get(4).effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
+        assertThat(decisions.get(4).routerRuleId()).isEqualTo("R01A-CONTEXTUAL-DETAIL-FAQ");
+        assertThat(validations.get(4).combinedText().toLowerCase(Locale.ROOT))
+                .containsAnyOf("buffet", "xông", "rèm riêng", "full body")
+                .doesNotContain("399k");
+
+        // Turn 6 ("tụt hứng tghooi rẹp") -> STRONG_REJECTION, 1 bubble, 0 questions (?), no "mệt mỏi không"
+        assertThat(decisions.get(5).detectedIntent()).isEqualTo("STRONG_REJECTION");
+        assertThat(decisions.get(5).routerRuleId()).isEqualTo("R00-STRONG-REJECTION-GRACEFUL-EXIT");
+        assertThat(validations.get(5).validatedBubbles()).hasSize(1);
+        assertThat(validations.get(5).combinedText().toLowerCase(Locale.ROOT))
+                .contains("xin lỗi")
+                .doesNotContain("?")
+                .doesNotContain("mệt mỏi không");
+
+        // Standalone SAFE-NEURO-001 test: "tôi bị thoát vị đĩa đệm cổ, tê lan xuống hai bàn tay"
+        ConversationState safetyState = ConversationState.hydrate(
+                NANG_SEN_PAGE_ID, "user-v327-p0-safety", List.of(),
+                nangSenPersona.resolvedConfig().safeDomainKeywords(), realHtmlChunks
+        );
+        String safetyMsg = "tôi bị thoát vị đĩa đệm cổ, tê lan xuống hai bàn tay";
+        PrimaryActionRouter.RoutingDecision safetyDec = PrimaryActionRouter.route(
+                safetyMsg, safetyState, realHtmlChunks, nangSenPersona.resolvedConfig().safeDomainKeywords()
+        );
+        assertThat(safetyDec.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY);
+        assertThat(safetyDec.routerRuleId()).isIn("PRE-01-NEUROLOGICAL-SAFETY-GATE", "PRE-02-HIGH-RISK-SAFETY-GATE");
+        List<FanpageBotResponse.ReplyBubble> safetyBubbles = PrimaryActionRouter.executeActionBubbles(
+                safetyDec, safetyMsg, safetyState, "mình", nangSenPersona, realHtmlChunks, null
+        );
+        ReplyContractValidator.ValidationResult safetyVal = ReplyContractValidator.validateAndEnforce(
+                safetyBubbles, safetyState, safetyMsg, safetyDec.effectiveResponseAction(), safetyDec.openingRequired(), 10000
+        );
+        assertThat(safetyVal.validatedBubbles()).hasSize(1);
+        assertThat(safetyVal.combinedText().toLowerCase(Locale.ROOT))
+                .contains("chuyên viên")
+                .doesNotContain("399k")
+                .doesNotContain("?");
+    }
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sơ Đồ Kiến Trúc Hệ Thống DocMind v3.2.0 — Multi-Tenant Zero-Hardcode &amp; Scope-Grounded Conversational Sales AI</title>
+  <title>Sơ Đồ Kiến Trúc Hệ Thống DocMind v3.2.5-FINAL-MASTER — Multi-Tenant Zero-Hardcode &amp; Scope-Grounded Conversational Sales AI</title>
   <style>
     :root {
       --bg-primary: #0b1020;
@@ -570,21 +570,21 @@
       <div class="brand-title">
         <div class="brand-badge">DM</div>
         <div>
-          <h1>Kiến Trúc Hệ Thống DocMind v3.2.0 (Multi-Tenant Zero-Hardcode Conversational Sales AI)</h1>
-          <p>Zero Domain Hardcode Gate &bull; Multi-Entity &amp; Scope-Grounded Matching &bull; Entity Mismatch Rescue (R00) &bull; Veteran Two-Step Price Objection (R11/R12)</p>
+          <h1>Kiến Trúc Hệ Thống DocMind v3.2.5-FINAL-MASTER (Multi-Tenant Zero-Hardcode Conversational Sales AI)</h1>
+          <p>Turn 1 Warm 3-Bubble Brand Opening &bull; Stable Session Store &bull; Ollama KV Prefix Cache Optimization &bull; Per-Bubble Telemetry (<code>bubbleSources</code>)</p>
         </div>
       </div>
       <div class="kpi-pills">
         <div class="kpi-pill"><span class="dot dot-green"></span> Đa Ngành Nghề (0 Lines Hardcode in Java)</div>
-        <div class="kpi-pill"><span class="dot dot-blue"></span> Scope-Grounded &bull; Anti-Keyword-Hijacking (R00)</div>
-        <div class="kpi-pill"><span class="dot dot-amber"></span> Active Prompt &le; 900 Chars &bull; Post-Price &ge; 10s / Value &equals; 2s</div>
-        <div class="kpi-pill"><span class="dot dot-purple"></span> Regression: 22/22 (Spa + Dental) + 6/6 + 96/96 JUnit PASS (100%)</div>
+        <div class="kpi-pill"><span class="dot dot-blue"></span> Turn 1 Warm Opening (<code>[CONFIGURED_OPENING, CONFIGURED_OPENING, LLM_LIVE]</code>)</div>
+        <div class="kpi-pill"><span class="dot dot-amber"></span> Ollama <code>qwen3:14b</code> Latency: p50 &equals; 12.7s &bull; p95 &equals; 18.9s (KV Prefix Split)</div>
+        <div class="kpi-pill"><span class="dot dot-purple"></span> Regression: 11/11 Adaptive Router JUnit + 7-Turn Live Verification PASS</div>
       </div>
     </div>
 
     <nav class="nav-tabs">
       <button class="tab-btn active" onclick="switchTab('tab-topology', this)">1. Tổng Quan Kiến Trúc &amp; Microservices</button>
-      <button class="tab-btn" onclick="switchTab('tab-pipeline', this)">2. Luồng Xử Lý Tin Nhắn 10 Bước (Runtime v3.2.0)</button>
+      <button class="tab-btn" onclick="switchTab('tab-pipeline', this)">2. Luồng Xử Lý Tin Nhắn 10 Bước (Runtime v3.2.5-FINAL-MASTER)</button>
       <button class="tab-btn" onclick="switchTab('tab-router', this)">3. Ma Trận Định Tuyến PRE/R00..R13D &amp; 30 Quy Tắc VR</button>
       <button class="tab-btn" onclick="switchTab('tab-schema', this)">4. Mô Hình Dữ Liệu Đa Ngành &amp; 34-Field State</button>
     </nav>
@@ -951,51 +951,51 @@
         <div class="step-card">
           <div class="step-num">06</div>
           <div class="step-body">
-            <h3>Tự Động Ghép 2 Bong Bóng Chào Mở Đầu Ở Lượt Đầu Tiên (Code-Injected Opening Bubbles)</h3>
-            <p>Nếu <code>greetingSent == false</code> (Turn 1) và không phải ca cấp cứu/khiếu nại: Backend tự động lấy 2 bong bóng mở đầu từ <code>persona_config.opening_bubbles</code> của Page (Bubble 1 ở <code>0ms</code>, Bubble 2 ở <code>1200ms</code>) và chỉ sinh thêm tối đa <strong>1 bong bóng phản hồi</strong> ở <code>2500ms</code> (tổng cộng đúng 3 bong bóng).</p>
+            <h3>Mở Đầu Theo Ý Định Khách Hàng &amp; Gỡ Bỏ Prepend Bong Bóng Cứng (Intent-Driven Turn 1 Opening v3.2.4-FINAL)</h3>
+            <p>Loại bỏ hoàn toàn <code>isPureTurn1GreetingFastPath</code> và cơ chế tự động ghép cứng 2 <code>opening_bubbles</code> ở Turn 1. Khi khách hỏi thẳng vào vấn đề (VD: <code>&ldquo;giá&rdquo;</code>), LLM tự sinh 1&ndash;2 bong bóng mở đầu ngắn gọn gắn trực tiếp với ý định khách hàng kèm 1 câu hỏi làm rõ nhu cầu (<code>reply_bubbles[0].typing_delay_ms = 0</code>).</p>
             <div class="code-tags">
-              <span class="code-tag">openingRequired = !state.greetingSent()</span>
-              <span class="code-tag">OPENING_GREETING_1 (0ms)</span>
-              <span class="code-tag">OPENING_INTRO_2 (1200ms)</span>
+              <span class="code-tag">generationSource = LLM_LIVE</span>
+              <span class="code-tag">reply_bubbles[0].typing_delay_ms = 0</span>
+              <span class="code-tag">FAST_NO_THINK (think=false, 400 tok)</span>
             </div>
           </div>
           <div class="step-meta">
-            <div><strong>Turn 1:</strong> 2 Opening + 1 Response = <code>3 bubbles</code></div>
-            <div><strong>Turn 2+:</strong> Không chào lại, tối đa <code>2 bubbles</code></div>
-            <div><strong>Cấu hình:</strong> Từ <code>persona_config</code></div>
+            <div><strong>Turn 1:</strong> Intent-driven <code>1&ndash;2 bubbles</code></div>
+            <div><strong>Turn 2+:</strong> Không chào lại, <code>1&ndash;3 bubbles</code></div>
+            <div><strong>Provenance:</strong> <code>LLM_LIVE</code></div>
           </div>
         </div>
 
         <div class="step-card">
           <div class="step-num">07</div>
           <div class="step-body">
-            <h3>Thực Thi Phản Hồi Động Từ DB Qua Multi-Provider LLM (Action Execution)</h3>
-            <p>Truyền 100% dữ liệu thực tế từ DB (<code>fusedChunks</code>, <code>learned_rules</code>, <code>agent_skills</code>, <code>sample_dialogues</code>, <code>history[]</code>) kèm hợp đồng <code>PrimaryAction</code> vào LLM được cấu hình trong <code>.env</code> để sinh JSON <code>reply_bubbles</code> (chỉ giữ cố định 2 câu chào mở đầu ở Turn 1 từ <code>persona_config.opening_bubbles</code> và <code>OPT_OUT</code>).</p>
+            <h3>Thực Thi Phản Hồi Động Từ DB Qua Multi-Provider LLM &amp; <code>&lt;GROUNDED_TURN_FACTS&gt;</code> (Action Execution)</h3>
+            <p>Truyền dữ kiện sự thật từ DB qua khối <code>&lt;GROUNDED_TURN_FACTS&gt;</code> (<code>canonical_package_name</code>, <code>canonical_price</code>, <code>canonical_duration</code>, <code>verified_inclusions</code>, <code>do_not_copy_literally: true</code>) thay vì ép chép văn mẫu <code>db_grounded_reference_bubbles</code>, giúp LLM giữ trọn văn phong tư vấn tự nhiên (Sales Voice) trên <code>qwen3:14b</code>.</p>
             <div class="code-tags">
-              <span class="code-tag">FanpageBotPromptBuilder.build()</span>
-              <span class="code-tag">OpenAiCompatibleLlmClient / OllamaLlmClient</span>
-              <span class="code-tag">PrimaryActionRouter.route()</span>
+              <span class="code-tag">FanpageBotPromptBuilder.buildDynamicRuntimePrompt()</span>
+              <span class="code-tag">&lt;GROUNDED_TURN_FACTS&gt;</span>
+              <span class="code-tag">OllamaLlmClient (/api/chat)</span>
             </div>
           </div>
           <div class="step-meta">
             <div><strong>Grounding:</strong> 100% từ Active DB Chunks/Rules/Skills</div>
-            <div><strong>Bịa giá / khuyến mãi:</strong> <code>0%</code></div>
+            <div><strong>Ghi đè template ngầm:</strong> <code>0%</code></div>
           </div>
         </div>
 
         <div class="step-card">
           <div class="step-num">08</div>
           <div class="step-body">
-            <h3>Kiểm Định Hợp Đồng 12 Quy Tắc &amp; Nhịp Nghỉ 10 Giây Sau Báo Giá (ReplyContractValidator)</h3>
-            <p>Kiểm tra từng bong bóng qua 12 quy tắc của <code>ReplyContractValidator</code>: cắt gọn nếu quá 2 câu hoặc 45 từ, giữ tối đa 1 dấu <code>?</code> ở bong bóng cuối, xóa câu lặp giá nếu <code>priceDiscussed == true</code>, và ép cứng <code>typing_delay_ms &ge; 10000ms</code> cho bong bóng neo cảm xúc ngay sau bong bóng báo giá.</p>
+            <h3>Kiểm Định Thuần Túy (Pure Validation) &amp; Nhịp Nghỉ Động Sau Báo Giá (ReplyContractValidator v3.2.4-FINAL)</h3>
+            <p><code>ReplyContractValidator</code> kiểm tra tính hợp lệ của dữ kiện (giá chuẩn từ KB, tối đa 65 từ/bong bóng, tối đa 1 dấu <code>?</code>, không bịa đặt y khoa, không tự ý nối câu hỏi đóng hay gắn thêm <code>🥰</code>) và chuẩn hóa <code>typing_delay_ms</code> (bong bóng đầu tiên <code>0ms</code>, bong bóng downsell/neo cảm xúc <code>remainingDelayMs = max(0, 10000 - elapsedMs)</code>).</p>
             <div class="code-tags">
               <span class="code-tag">ReplyContractValidator.validateAndEnforce()</span>
-              <span class="code-tag">post_price_delay_ms = 10000</span>
+              <span class="code-tag">TurnTelemetry Provenance</span>
             </div>
           </div>
           <div class="step-meta">
-            <div><strong>Post-Price Delay:</strong> <code>10.000ms</code> (10 giây)</div>
-            <div><strong>Mục tiêu:</strong> Giữ nhịp cảm xúc khách hàng</div>
+            <div><strong>Post-Price Delay:</strong> <code>max(0, 10000 - elapsedMs)</code></div>
+            <div><strong>Mục tiêu:</strong> Bảo toàn 100% văn phong <code>LLM_LIVE</code></div>
           </div>
         </div>
 
@@ -1190,7 +1190,11 @@
         </div>
         <div class="rule-box">
           <h4><span>v3.2.1-FINAL: Prompt Budget Guard, Real HTML Price List &amp; Dynamic Catalog</span> <code>PROMPT_BUDGET_GUARD_V321</code></h4>
-          <p>Quản trị ngân sách Prompt qua <code>PromptBudgetGuard</code> (<code>MAX_ALWAYS_ON_CHARS = 1200</code>, <code>TARGET_ALWAYS_ON_CHARS = 900</code>; chỉ giữ <code>SAFE-NEURO-001</code> <code>774 chars</code> là <code>always_on = true</code>, nạp <code>PB-SPA-*</code> theo ngữ cảnh <code>max_1_rule_per_turn</code>; <code>active_prompt_compact = 859 chars</code>). Ngắt kích hoạt <code>SPA_PRICE_LIST_V2_ACTIVE.md</code> + lọc <code>d.active = true</code> tại <code>ChunkRepository.findByPageId</code>, kích hoạt bảng giá thực tế <code>01_giá_dịch_vụ.html</code> (Hà Nội &amp; Sài Gòn: <code>NS01..NS07, DS01..DS06, ADD01</code>) kèm <code>PackageCatalogService</code> phục vụ <code>ALTERNATIVE_PACKAGE_REQUEST</code> (<code>Có gói khác k</code>, <code>Còn gói nào nữa không</code>) và định dạng giá gọn duy nhất (<code>399k</code>, <code>239k</code>, <code>530k</code>).</p>
+          <p>Quản trị ngân sách Prompt qua <code>PromptBudgetGuard</code> (<code>MAX_ALWAYS_ON_CHARS = 1200</code>, <code>TARGET_ALWAYS_ON_CHARS = 900</code>; chỉ giữ <code>SAFE-NEURO-001</code> <code>227 chars</code> là <code>always_on = true</code>, nạp <code>PB-SPA-*</code> theo ngữ cảnh <code>max_1_rule_per_turn</code>; <code>active_prompt_compact = 897 chars</code>). Ngắt kích hoạt <code>SPA_PRICE_LIST_V2_ACTIVE.md</code> + lọc <code>d.active = true</code> tại <code>ChunkRepository.findByPageId</code>, kích hoạt bảng giá thực tế <code>01_giá_dịch_vụ.html</code> (Hà Nội &amp; Sài Gòn: <code>NS01..NS07, DS01..DS06, ADD01</code>) kèm <code>PackageCatalogService</code>.</p>
+        </div>
+        <div class="rule-box">
+          <h4><span>v3.2.5-FINAL-MASTER: Turn 1 Warm 3-Bubble Opening, Session Store &amp; Ollama KV Prefix Split</span> <code>V325_FINAL_MASTER</code></h4>
+          <p>Khôi phục lời chào mở đầu 3 bong bóng ấm áp ở Turn 1 (<code>B1 0ms CONFIGURED_OPENING</code>, <code>B2 1000ms CONFIGURED_OPENING</code>, <code>B3 2000ms LLM_LIVE</code>; <code>bubbleSources = ["CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE"]</code>). Quản lý phiên bền vững theo <code>pageId + "::" + conversationId</code> kèm cờ <code>resetSession=true</code> (không reset mù quáng khi <code>history</code> rỗng). Tối ưu KV Prefix Cache của Ollama (<code>&lt;!-- SYSTEM_USER_SPLIT --&gt;</code>, <code>keep_alive="30m"</code>, <code>num_ctx=3072</code>, <code>num_predict=450/550</code>, <code>suppressRedundantThinkWhenGrounded=true</code>), giảm <code>promptEvalDurationMs</code> từ <code>8.0s&ndash;10.7s</code> xuống <code>2.9s&ndash;5.5s</code> (<code>p50=12.7s</code>, <code>p95=18.9s</code>). Kiểm tra chặt chẽ quyền lợi theo từng mã gói (<code>HN_NS01 399k</code> vs <code>HN_DS02 239k</code>) và đồng nhất đại từ khách hàng <code>mình</code> 100%.</p>
         </div>
       </div>
     </section>
@@ -1221,14 +1225,14 @@
 
         <div class="table-card">
           <div class="table-card-header">
-            <h3>persona_config (JSONB Schema v3.2.1-FINAL)</h3>
+            <h3>persona_config (JSONB Schema v3.2.5-FINAL-MASTER)</h3>
             <span class="layer-badge">Per-Page Runtime Config</span>
           </div>
           <ul class="field-list">
-            <li><span class="field-name">policy_version / bot_name / self_pronoun</span> <span class="field-type">STRING (3.2.1-FINAL / nhân viên chăm sóc / em / mình)</span></li>
-            <li><span class="field-name">opening_bubbles / post_price_delay_ms</span> <span class="field-type">ARRAY&lt;STRING&gt; / INT (10000ms)</span></li>
+            <li><span class="field-name">policy_version / bot_name / self_pronoun</span> <span class="field-type">STRING (3.2.5-FINAL-MASTER / An Nhiên / em / mình)</span></li>
+            <li><span class="field-name">opening_bubbles / post_price_delay_ms</span> <span class="field-type">ARRAY&lt;STRING&gt; (0ms, 1000ms) / INT (10000ms)</span></li>
             <li><span class="field-name">condition_discovery_prompt</span> <span class="field-type">STRING (Hỏi tình trạng trước, lực sau)</span></li>
-            <li><span class="field-name">active_prompt_compact</span> <span class="field-type">STRING (859 chars &le; 900 chars chống cắt tỉa DOM)</span></li>
+            <li><span class="field-name">active_prompt_compact</span> <span class="field-type">STRING (897 chars &le; 900 chars chống cắt tỉa DOM)</span></li>
             <li><span class="field-name">symptom / body_area / service_family_keywords</span> <span class="field-type">ARRAY / MAP (Đa ngành)</span></li>
             <li><span class="field-name">emotion_signals</span> <span class="field-type">MAP (frustration + neuro_red_flags)</span></li>
           </ul>
@@ -1236,16 +1240,16 @@
 
         <div class="table-card">
           <div class="table-card-header">
-            <h3>ConversationState (Memory v3.2.1-FINAL)</h3>
-            <span class="layer-badge">Dual-Hydration State</span>
+            <h3>ConversationState (Memory v3.2.5-FINAL-MASTER)</h3>
+            <span class="layer-badge">Stable Session Store</span>
           </div>
           <ul class="field-list">
+            <li><span class="field-name">conversationId / greetingSent</span> <span class="field-type">STRING (pageId::conversationId) / BOOLEAN</span></li>
             <li><span class="field-name">preferredRegion / availablePackageCatalog</span> <span class="field-type">STRING (HN/SG) / LIST&lt;PackageSummary&gt;</span></li>
             <li><span class="field-name">heldPackage / heldDuration / heldPrice</span> <span class="field-type">STRING / INT (Gói đang giữ ở lần chê 1)</span></li>
             <li><span class="field-name">downsellOffered / downsellPackage / downsellPrice</span> <span class="field-type">BOOLEAN / STRING / INT (Hạ bậc gói)</span></li>
             <li><span class="field-name">mentionedPackages / quotedPackages / rejectedPackages</span> <span class="field-type">LIST&lt;STRING&gt; (Theo dõi gói đã nhắc / báo / chê)</span></li>
             <li><span class="field-name">priceObjectionCount / alternativeRequestCount</span> <span class="field-type">INTEGER (Theo dõi 2 bước chê đắt &amp; hỏi gói khác)</span></li>
-            <li><span class="field-name">lastBotBubbleHashes / customerCorrectionDetected</span> <span class="field-type">LIST&lt;STRING&gt; / BOOLEAN (Chống lặp bubble &amp; sửa sai)</span></li>
           </ul>
         </div>
 
@@ -1270,10 +1274,10 @@
           </div>
           <ul class="field-list">
             <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID (NULL = Global, UUID = Page)</span></li>
-            <li><span class="field-name">code / name / category</span> <span class="field-type">VARCHAR (23 Active Skills/Page)</span></li>
+            <li><span class="field-name">code / name / category</span> <span class="field-type">VARCHAR (24 Active Skills/Page)</span></li>
             <li><span class="field-name">trigger_signals</span> <span class="field-type">TEXT (Tín hiệu kích hoạt)</span></li>
             <li><span class="field-name">tactical_instructions</span> <span class="field-type">TEXT (Must Do + Output Contract)</span></li>
-            <li><span class="field-name">anti_pattern / good_example</span> <span class="field-type">TEXT (Must Not Do &amp; Fallback)</span></li>
+            <li><span class="field-name">anti_pattern / good_example</span> <span class="field-type">TEXT (Must Not Do &amp; Reference)</span></li>
             <li><span class="field-name">applied_count / conversion_count</span> <span class="field-type">INTEGER (Tự chấm điểm hiệu quả)</span></li>
           </ul>
         </div>
@@ -1281,7 +1285,7 @@
         <div class="table-card">
           <div class="table-card-header">
             <h3>learned_rules</h3>
-            <span class="layer-badge">AI Playbook Rules (v3.2.1-FINAL)</span>
+            <span class="layer-badge">AI Playbook Rules (v3.2.5-FINAL-MASTER)</span>
           </div>
           <ul class="field-list">
             <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID</span></li>
@@ -1299,7 +1303,7 @@
           </div>
           <ul class="field-list">
             <li><span class="field-name">id (PK) / page_id (FK)</span> <span class="field-type">UUID</span></li>
-            <li><span class="field-name">dialogue_code / intent / stage</span> <span class="field-type">FD-SPA-* (9 Active, 2 Quarantined)</span></li>
+            <li><span class="field-name">dialogue_code / intent / stage</span> <span class="field-type">FD-SPA-* (11 Active, 2 Quarantined)</span></li>
             <li><span class="field-name">turns_json / expected_bot_answer</span> <span class="field-type">TEXT</span></li>
             <li><span class="field-name">quality_label</span> <span class="field-type">APPROVED_GOOD / QUARANTINED_BAD</span></li>
             <li><span class="field-name">active / review_status</span> <span class="field-type">BOOLEAN / APPROVED | REJECTED</span></li>
@@ -1334,12 +1338,13 @@
               </td>
               <td>
                 &bull; <strong>Ngành</strong>: Spa &amp; Dưỡng sinh Đông y (<code>BEAUTY_SPA</code>)<br>
-                &bull; <strong>Bot</strong>: <code>nhân viên chăm sóc</code> (<code>em - mình/Anh/Chị</code>)<br>
+                &bull; <strong>Bot</strong>: <code>An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa</code> (<code>em - mình</code> 100%)<br>
+                &bull; <strong>Turn 1 Opening Bubbles</strong>: 2 <code>CONFIGURED_OPENING</code> (<code>0ms</code>, <code>1000ms</code>) + 1 <code>LLM_LIVE</code> (<code>2000ms</code>)<br>
                 &bull; <strong>Post-Price Delay</strong>: <code>10000ms</code><br>
-                &bull; <strong>Active Prompt Compact</strong>: <code>897 chars &le; 900 chars</code> (<code>v3.2.4-ADAPTIVE-THINKING</code>)
+                &bull; <strong>Active Prompt Compact</strong>: <code>897 chars &le; 900 chars</code> (<code>v3.2.5-FINAL-MASTER</code>)
               </td>
               <td>
-                <strong>Bundle <code>SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED</code> (<code>v3.2.4-ADAPTIVE-THINKING</code>) &mdash; 1 Always-On (<code>227 chars</code>) + 13 Contextual Rules (<code>always_on=false</code>)</strong>:<br>
+                <strong>Bundle <code>SPA-PLAYBOOK-NANG-SEN-V3-0-1-UNIFIED</code> (<code>v3.2.5-FINAL-MASTER</code>) &mdash; 1 Always-On (<code>227 chars</code>) + 13 Contextual Rules (<code>always_on=false</code>)</strong>:<br>
                 &bull; <code>SAFE-NEURO-001</code> (P100, <code>HANDOFF</code>, <code>always_on=true</code>)<br>
                 &bull; <code>PB-SPA-SAFETY-001</code> (P100, <code>HANDOFF</code>)<br>
                 &bull; <code>PB-SPA-FRUSTRATION-RECOVERY-001</code> (P100, <code>VALUE_CONSULTATION</code>)<br>
@@ -1380,7 +1385,7 @@
                 <em>(Deactivated <code>is_active=false</code>: <code>SPA_PRICE_LIST_V2_ACTIVE.md</code>, <code>gemini-code-1792714816775.md</code>)</em>
               </td>
               <td>
-                &bull; <code>ThinkingModePolicyAndAdaptiveRouterTest</code> (8 tests, live <code>qwen3:14b</code> multi-turn benchmark)<br>
+                &bull; <code>ThinkingModePolicyAndAdaptiveRouterTest</code> (11 tests PASS, inkl. session store + package attribute check)<br>
                 &bull; <code>SpaV321RealHtmlKbTest</code> (<code>BT-SPA-001..011</code>)<br>
                 &bull; <code>test_office_parser.py</code> (10 tests)<br>
                 &bull; <code>PlaybookUploadServiceTest</code><br>
@@ -1424,102 +1429,231 @@
 
       <!-- END-TO-END TRACEABILITY TABLE FOR NANG SEN SPA -->
       <div class="section-banner" style="margin-top: 2rem;">
-        <h2>6. Bảng Trace Luồng Thực Thi Từng Lượt (End-to-End Turn-by-Turn Trace &mdash; Nàng Sen Spa <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>, <code>v3.2.4-ADAPTIVE-THINKING</code>)</h2>
-        <p>Đối chiếu trực tiếp từ tin nhắn khách &rarr; biến đổi <code>ConversationState</code> &amp; <code>ThinkingMode</code> (<code>FAST_NO_THINK=250</code>, <code>PRICE_ANCHOR_THINK=500</code>, <code>OBJECTION_REFRAME_THINK=500</code>, <code>REPAIR_FIRST=500</code>, <code>maxWordsPerBubble=65</code>) &rarr; Rule/Micro-Skill nạp On-Demand &rarr; Chunk bảng giá trong <code>01_giá_dịch_vụ.html</code> &rarr; đầu ra <code>reply_bubbles</code>, <code>Dynamic Post-Price Delay</code> và bộ <code>TurnTelemetry</code> chuẩn v3.2.4 (<code>promptBuildMs</code>, <code>retrievalMs</code>, <code>llmElapsedMs</code>, <code>validationMs</code>, <code>retryCount</code>, <code>firstBubbleSendMs</code>, <code>interBubbleGapMs</code>, <code>totalTurnMs</code>).</p>
+        <h2>6. Bảng Trace Luồng Thực Thi Thực Tế 7 Lượt (End-to-End 7-Turn Live Regression &mdash; Nàng Sen Spa <code>b23cd382-4f7a-4829-8c54-1d410da14bf8</code>, <code>v3.2.5-FINAL-MASTER</code> trên <code>qwen3:14b</code>)</h2>
+        <p>Đối chiếu trực tiếp từ tin nhắn khách &rarr; biến đổi <code>ConversationState</code> &amp; <code>ThinkingMode</code> (<code>keep_alive="30m"</code>, <code>num_ctx=3072</code>, <code>num_predict=450/550</code>, <code>suppressRedundantThinkWhenGrounded=true</code>, KV Prefix Split <code>&lt;!-- SYSTEM_USER_SPLIT --&gt;</code>) &rarr; đầu ra <code>reply_bubbles</code> thực tế kèm <code>bubbleSources</code> từng bong bóng và số đo gốc từ Ollama (<code>loadDurationMs=4&ndash;10ms</code>, <code>promptEvalCount=1288&ndash;1844</code>, <code>promptEvalDurationMs=2917&ndash;5463ms</code>, <code>evalCount=59&ndash;164</code>, <code>evalDurationMs=4367&ndash;12780ms</code>, <code>p50=12,710ms</code>, <code>p95=18,881ms</code>).</p>
       </div>
 
       <div class="matrix-wrapper">
         <table class="router-table">
           <thead>
             <tr>
-              <th>Lượt (Scenario &amp; Turn)</th>
+              <th>Lượt (Turn)</th>
               <th>Tin Nhắn Khách (<code>message</code>)</th>
               <th>Ý Định, <code>ThinkingMode</code> &amp; <code>ConversationState</code></th>
-              <th>Scoped Rule &amp; Skill (<code>On-Demand</code>)</th>
-              <th>Chunk &amp; Gói Khớp Trong <code>01_giá_dịch_vụ.html</code></th>
-              <th>Kết Quả <code>reply_bubbles</code> &amp; <code>typing_delay_ms</code></th>
+              <th><code>TurnTelemetry</code>, <code>bubbleSources</code> &amp; Ollama Native Latency</th>
+              <th>Dữ Kiện Grounding Trong <code>01_giá_dịch_vụ.html</code></th>
+              <th>Kết Quả <code>reply_bubbles</code> Thực Tế &amp; <code>typing_delay_ms</code></th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><strong>BT-SPA-002 Turn 1</strong></td>
+              <td><strong>Turn 1</strong></td>
               <td><code>&ldquo;Giá&rdquo;</code></td>
-              <td><code>intent = GENERAL_PRICE_INQUIRY</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>priceRequestedInSession = true</code></td>
-              <td>&bull; Rule: <code>PB-SPA-OPEN-001</code><br>&bull; Skill: <code>spa_clarify_service_type_once</code><br><em>(0 Price Objection rules loaded)</em></td>
-              <td>Nhóm dịch vụ trích xuất từ <code>PackageCatalogService</code>: <code>massage</code> và <code>gội đầu dưỡng sinh</code></td>
-              <td>&bull; <strong>B1 (<code>0ms</code>)</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên, nhân viên chăm sóc của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>1200ms</code>)</strong>: <em>&ldquo;Bên em chuyên massage thư giãn, ngâm thảo dược và vệ sinh tai ngoài nhẹ nhàng, thoải mái.&rdquo;</em><br>&bull; <strong>B3 (<code>2500ms</code>)</strong>: <em>&ldquo;Dạ mình đang quan tâm massage hay gội đầu dưỡng sinh để em gửi đúng mức giá theo thời lượng cho mình nha?&rdquo;</em></td>
+              <td><code>primaryAction = CLARIFY_SERVICE_DURATION</code><br><code>intent = CLARIFY_SERVICE_TYPE_ONCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>greetingSent = true</code>, <code>priceRequestedInSession = true</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE"]</code><br><code>loadDurationMs = 10ms</code><br><code>promptEval = 1288 tok / 5463ms</code><br><code>eval = 59 tok / 4367ms</code><br><code>firstBubbleSendMs = 240ms</code><br><code>totalTurnMs = 10572ms</code></td>
+              <td>2 bong bóng mở đầu ấm áp từ <code>persona_config.opening_bubbles</code> + Bong bóng 3 (<code>LLM_LIVE</code>) hỏi phân loại nhóm dịch vụ</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>CONFIGURED_OPENING</code>)</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>1000ms</code>, <code>CONFIGURED_OPENING</code>)</strong>: <em>&ldquo;Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ.&rdquo;</em><br>&bull; <strong>B3 (<code>2000ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Mình đang quan tâm đến nhóm dịch vụ nào hoặc vùng cơ thể nào ạ?&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 2</strong></td>
-              <td><code>&ldquo;Toi bbi đau mỏi cổ , nhức vai&rdquo;</code></td>
-              <td><code>intent = SYMPTOM_OR_PAIN_SHARE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>knownSymptoms = ["đau mỏi cổ", "nhức vai"]</code><br><code>knownBodyAreas = ["cổ", "vai"]</code></td>
-              <td>&bull; Rule: <code>PB-SPA-DISCOVER-001</code><br>&bull; Skill: <code>spa_condition_first_discovery</code></td>
-              <td>Cổng <code>R02</code> Condition-First: Đồng cảm tự nhiên (cấm <code>&ldquo;Dạ em ghi nhận&rdquo;</code>), hỏi 1 câu thời điểm/mức độ mỏi</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ tình trạng đau mỏi cổ và nhức vai chắc đang làm mình khá khó chịu ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Mình bị lâu chưa hay mới gần đây, và thường căng sau ngồi lâu hay vận động nhiều ạ?&rdquo;</em></td>
+              <td><strong>Turn 2</strong></td>
+              <td><code>&ldquo;tôi bị đau đầu, mất ngủ, nhức vai gáy&rdquo;</code></td>
+              <td><code>primaryAction = ACKNOWLEDGE_AND_ASK_PREFERENCE</code><br><code>intent = ASK_CONDITION_ONCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>knownSymptoms = ["đau đầu", "mất ngủ", "nhức vai gáy"]</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE", "LLM_LIVE"]</code><br><code>loadDurationMs = 4ms</code><br><code>promptEval = 1437 tok / 2917ms</code><br><code>eval = 93 tok / 6986ms</code><br><code>totalTurnMs = 10342ms</code></td>
+              <td>Cổng <code>R02</code> Condition-First: Đồng cảm tự nhiên với đủ 3 triệu chứng, hỏi 1 câu thời gian xuất hiện, xưng hô <code>em - mình</code>, không suy diễn <code>&ldquo;căng&rdquo;</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ vừa bị đau đầu, mất ngủ, nhức vai gáy cùng lúc chắc hẳn làm mình mệt mỏi và khó chịu lắm ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Mình mới xuất hiện tình trạng này hay đã kéo dài một thời gian rồi ạ?&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 3</strong></td>
-              <td><code>&ldquo;thi thoảng&rdquo;</code></td>
-              <td><code>intent = CONDITION_CLARIFICATION</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (think=true, 500 tok)</code><br><code>heldPackage = "massage cơ bản 60 phút"</code><br><code>heldPrice = 399000</code></td>
-              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
-              <td>Khớp gói <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, <code>Full body massage trị liệu cơ bản, kèm buffet thực dưỡng</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ với tình trạng đau mỏi cổ và nhức vai thi thoảng xuất hiện của mình, em gợi ý gói massage cơ bản 60 phút có giá 399k theo bảng giá hiện tại ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Gói này gồm full body massage trị liệu cơ bản, giúp chăm sóc vùng cổ và vai đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ. Mình thấy hướng chăm sóc này có hợp với nhu cầu hiện tại của mình không ạ?&rdquo;</em></td>
+              <td><strong>Turn 3</strong></td>
+              <td><code>&ldquo;Căng gì, tôi bị căng đâu&rdquo;</code></td>
+              <td><code>primaryAction = ACKNOWLEDGE_AND_ASK_PREFERENCE</code><br><code>intent = PUSHBACK_ON_ASSUMPTION_REPAIR</code><br><code>thinkingMode = REPAIR_FIRST (Grounded No-Think, 450 tok)</code><br>Bảo toàn <code>knownSymptoms = ["đau đầu", "mất ngủ", "nhức vai gáy"]</code>, không thêm <code>"căng"</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 6ms</code><br><code>promptEval = 1458 tok / 3118ms</code><br><code>eval = 95 tok / 7438ms</code><br><code>totalTurnMs = 10949ms</code></td>
+              <td>Nhận diện phủ định <code>NEGATION</code>, xin lỗi tự nhiên vì diễn đạt chưa chuẩn làm khách hiểu nhầm, xác nhận lại đúng 3 triệu chứng</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ em xin lỗi mình vì vừa diễn đạt chưa chuẩn làm mình hiểu nhầm ạ. Mình đang bị đau đầu, mất ngủ và nhức vai gáy đúng không ạ? Em muốn hỏi thêm chút, tình trạng này của mình mới bắt đầu gần đây hay đã kéo dài một thời gian rồi ạ?&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 4</strong></td>
-              <td><code>&ldquo;đắt nhỉ&rdquo;</code></td>
-              <td><code>intent = PRICE_OBJECTION_FIRST</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (think=true, 500 tok)</code><br><code>objectionRootCause = BUDGET_MISMATCH</code><br><code>priceObjectionCount = 1</code></td>
-              <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-001</code><br>&bull; Skill: <code>spa_objection_value_trial</code></td>
-              <td>Giữ nguyên <code>HN_NS01</code> (<code>399k</code>), bảo vệ giá trị thực tế (<code>buffet thực dưỡng</code> + <code>kỹ thuật viên làm kỹ đúng vùng mỏi</code>) + mời thử lẻ 1 buổi 🥰</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em hiểu mình đang cân nhắc chi phí ạ. Gói bên em gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng, kỹ thuật viên làm kỹ đúng vùng mỏi ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>2000ms</code>)</strong>: <em>&ldquo;Nếu mình còn chút băn khoăn, mình cứ trải nghiệm thử 1 buổi massage cơ bản 60 phút bên em xem sao ha 🥰&rdquo;</em></td>
+              <td><strong>Turn 4</strong></td>
+              <td><code>&ldquo;NS linh ta linh tỉnh, vớ vânr&rdquo;</code></td>
+              <td><code>primaryAction = ANSWER_PRICE_ONCE</code><br><code>intent = FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE</code><br><code>thinkingMode = REPAIR_FIRST (Grounded No-Think, 450 tok)</code><br><code>lastOfferedPackageId = "NS01"</code>, <code>lastOfferedPrice = 399000</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE", "LLM_LIVE"]</code><br><code>loadDurationMs = 6ms</code><br><code>promptEval = 1810 tok / 5071ms</code><br><code>eval = 164 tok / 12780ms</code><br><code>firstBubbleSendMs = 404ms</code><br><code>interBubbleGapMs = 10000ms</code><br><code>totalTurnMs = 19188ms</code></td>
+              <td>Chuẩn hóa tiếng lóng, xin lỗi ngắn vì câu hỏi trước làm khách sốt ruột + báo giá ngay <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code> trọn gói không nhận Tip) + B2 (<code>10000ms</code>) neo cảm xúc (full body massage trị liệu cơ bản, kèm buffet thực dưỡng)</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ em xin lỗi mình vì câu hỏi trước chưa rõ ý làm mình sốt ruột ạ. Em thấy mình đang bị đau đầu, mất ngủ, nhức vai gáy chắc hẳn rất mệt mỏi ạ. Gói massage cơ bản 60 phút giá 399k trọn gói không nhận Tip có thể giúp mình dịu vùng mỏi và dễ ngủ hơn ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Gói này gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng. Mình thấy gói 60 phút này phù hợp với thời gian của mình không ạ?&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 5</strong></td>
-              <td><code>&ldquo;mà hơi đắt&rdquo;</code></td>
-              <td><code>intent = PRICE_OBJECTION_REPEAT</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (think=true, 500 tok)</code><br><code>downsellPackage = "gói dưỡng sinh cơ bản 60 phút"</code><br><code>downsellPrice = 239000</code></td>
-              <td>&bull; Rule: <code>PB-SPA-PRICE-OBJECTION-002</code><br>&bull; Skill: <code>spa_objection_dynamic_downsell</code></td>
-              <td>Hạ 1 bậc từ <code>HN_NS01 (399k)</code> xuống <code>HN_DS02</code> (<code>Gói dưỡng sinh cơ bản 60 phút &mdash; 239k</code>, <code>gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ mình cứ thoải mái cân nhắc ạ. Không biết mình đang lăn tăn chủ yếu về chi phí cho buổi đầu hay còn điểm nào trong liệu trình chưa yên tâm để em giải đáp đúng điều mình cần ạ?&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Nếu mình muốn bắt đầu với mức chi phí nhẹ hơn, em có thể giới thiệu gói dưỡng sinh cơ bản 60 phút có giá 239k gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ ạ.&rdquo;</em></td>
+              <td><strong>Turn 5</strong></td>
+              <td><code>&ldquo;Đắt&rdquo;</code></td>
+              <td><code>primaryAction = HANDLE_PRICE_OBJECTION_FIRST_TIME</code><br><code>intent = PRICE_OBJECTION_VALUE_TRIAL</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (Grounded No-Think, 550 tok)</code><br><code>downsellOffered = false</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 9ms</code><br><code>promptEval = 1709 tok / 4806ms</code><br><code>eval = 93 tok / 7194ms</code><br><code>totalTurnMs = 12710ms</code></td>
+              <td>Nhịp 1 giữ nguyên <code>HN_NS01 (399k)</code>, đồng cảm băn khoăn chi phí + làm rõ đúng quyền lợi của <code>HN_NS01</code> (toàn thân thư giãn, buffet thực dưỡng, không gian riêng tư sạch sẽ) + mời thử 1 buổi</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Em hiểu mình đang cân nhắc chi phí ạ. Gói massage cơ bản 60 phút giá 399k đã bao gồm toàn thân thư giãn, buffet thực dưỡng và không gian riêng tư sạch sẽ rồi ạ. Mình thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé?&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 6</strong></td>
-              <td><code>&ldquo;Có gói khác k&rdquo;</code></td>
-              <td><code>intent = ALTERNATIVE_PACKAGE_REQUEST</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (think=true, 500 tok)</code><br><code>mentionedPackages</code> loại trừ <code>NS01</code>, <code>DS02</code></td>
-              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>price_answer_from_docs</code></td>
-              <td>Chọn 2 gói chưa nhắc trong <code>availablePackageCatalog</code>: <code>HN_DS03</code> (<code>80p &mdash; 339k</code>) và <code>HN_NS02</code> (<code>80p &mdash; 530k</code>)</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ ngoài gói trên, bên em còn có gói dưỡng sinh cao cấp 80 phút giá 339k và gói massage cơ bản nâng cao 80 phút giá 530k ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>max(0, 10000 - elapsedMs)</code>)</strong>: <em>&ldquo;Cả hai gói đều tập trung chăm sóc kỹ vùng mình đang cần ạ. Mình muốn chọn gói 339k hay 530k để em giữ lịch cho mình nhé?&rdquo;</em></td>
+              <td><strong>Turn 6</strong></td>
+              <td><code>&ldquo;để tôi cân nhắc thêm&rdquo;</code></td>
+              <td><code>primaryAction = HANDLE_PRICE_OBJECTION_REPEAT</code><br><code>intent = SECOND_OBJECTION_DOWNSELL</code><br><code>thinkingMode = OBJECTION_REFRAME_THINK (Grounded No-Think, 550 tok)</code><br><code>lastOfferedPackageId = "DS02"</code>, <code>lastOfferedPrice = 239000</code>, <code>downsellOffered = true</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE", "LLM_LIVE"]</code><br><code>loadDurationMs = 5ms</code><br><code>promptEval = 1844 tok / 5382ms</code><br><code>eval = 156 tok / 12173ms</code><br><code>interBubbleGapMs = 10000ms</code><br><code>totalTurnMs = 18881ms</code></td>
+              <td>Nhịp 2 hỏi lý do phân vân + hạ xuống <code>HN_DS02</code> (<code>Gói dưỡng sinh cơ bản 60 phút &mdash; 239k</code>, gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ và trái cây theo mùa, giường có rèm che riêng kín đáo, trọn gói không nhận Tip &mdash; tuyệt đối không trộn quyền lợi full body/buffet của <code>NS01</code>)</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Em hiểu mình đang cần thời gian cân nhắc ạ. Mình đang phân vân về mức chi phí buổi đầu hay thời gian liệu trình ạ?&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Nếu mình muốn tiết kiệm hơn, em gợi ý gói dưỡng sinh cơ bản 60 phút giá 239k, gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ và trái cây theo mùa. Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo, trọn gói không nhận Tip ạ.&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-002 Turn 7</strong></td>
-              <td><code>&ldquo;Dở à&rdquo;</code></td>
-              <td><code>emotion = FRUSTRATION</code><br><code>thinkingMode = REPAIR_FIRST (think=true, 500 tok)</code><br><code>outstandingRequests</code> kiểm tra câu hỏi chưa giải đáp</td>
-              <td>&bull; Rule: <code>PB-SPA-FRUSTRATION-RECOVERY-001</code><br>&bull; Skill: <code>spa_frustration_rescue</code></td>
-              <td>Nhận lỗi ngắn gọn, tuyệt đối không đẩy template bán gói/ép chốt lịch; trả lời trực tiếp câu hỏi đang treo từ KB hoặc đề nghị kết nối nhân viên hỗ trợ</td>
-              <td>&bull; <strong>B1 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ em xin lỗi vì phản hồi vừa rồi chưa đúng ý mình ạ. Mình cho em biết điểm mình đang băn khoăn hoặc cần kiểm tra lại để em giải đáp ngay, hoặc em kết nối nhân viên hỗ trợ trực tiếp cho mình nha ạ.&rdquo;</em></td>
+              <td><strong>Turn 7</strong></td>
+              <td><code>&ldquo;thôi cũng được, thử xem&rdquo;</code></td>
+              <td><code>primaryAction = CONFIRM_BOOKING_DETAILS</code><br><code>intent = TRIAL_ACCEPTANCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br>Chốt <code>DS02 (239k)</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 4ms</code><br><code>promptEval = 1679 tok / 4942ms</code><br><code>eval = 78 tok / 6043ms</code><br><code>totalTurnMs = 12929ms</code></td>
+              <td>Xác nhận đúng gói vừa được khách đồng ý ở Turn 6 (<code>Gói dưỡng sinh cơ bản 60 phút &mdash; 239k</code>), hỏi khung giờ tự nhiên để lễ tân giữ chỗ, không dùng giọng hành chính <code>&ldquo;ghi nhận mình chọn&rdquo;</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Em hiểu mình muốn thử gói dưỡng sinh cơ bản 60 phút giá 239k ạ. Mình dự kiến ghé bên em vào khung giờ nào hôm nay hay ngày mai để lễ tân giữ chỗ chu đáo cho mình nhé?&rdquo;</em></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- END-TO-END 8-TURN V3.2.6-FINAL TRACEABILITY TABLE -->
+      <div class="section-banner" style="margin-top: 2rem;">
+        <h2>7. Bảng Trace Luồng Thực Thi Thực Tế 8 Lượt (End-to-End 8-Turn Live Regression &mdash; <code>v3.2.6-FINAL</code> Conversational Intelligence, Herb Grounding &amp; State Separation trên <code>qwen3:14b</code>)</h2>
+        <p>Kiểm chứng toàn diện 8 lượt hội thoại phức tạp: Khử trùng lặp lời chào Turn 1 &rarr; Phản hồi meta về lời chào (<code>META_COMMENT_ON_GREETING</code>) &rarr; Hỏi làm rõ dịch vụ (<code>CLARIFY_SERVICE_TYPE_ONCE</code>) &rarr; Giải đáp ngâm thảo dược bám sát <code>01_giá_dịch_vụ.html</code> (<code>HN_NS02 530k</code>, cấm bịa nguyên liệu ngoài KB, không nhầm <code>&ldquo;ngâm&rdquo;</code> thành triệu chứng) &rarr; Đa tín hiệu góp ý xin lỗi + quan tâm gói (<code>META_APOLOGY_POSITIVE_INTEREST_ADVANCE</code>) &rarr; Xác nhận hiểu đúng + tiến bước tư vấn (<code>CONFIRM_PREVIOUS_INFO_ADVANCE</code>) &rarr; Đồng thuận ngắn <code>&ldquo;Uk&rdquo;</code> (<code>ADVANCE_AFTER_ACK</code>, không nhảy cóc chốt giờ) &rarr; Xử lý bức xúc có ngữ cảnh (<code>FRUSTRATION_CONCERN_ACKNOWLEDGEMENT</code>). Toàn bộ <strong>8/8 lượt đạt <code>100% LLM_LIVE</code> (<code>validationOutcome=PASS</code>, <code>usedTemplateFallback=false</code>)</strong>.</p>
+      </div>
+
+      <div class="matrix-wrapper">
+        <table class="router-table">
+          <thead>
+            <tr>
+              <th>Lượt (Turn)</th>
+              <th>Tin Nhắn Khách (<code>message</code>)</th>
+              <th>Ý Định, <code>ThinkingMode</code> &amp; <code>ConversationState</code></th>
+              <th><code>TurnTelemetry</code>, <code>bubbleSources</code> &amp; Ollama Native Latency</th>
+              <th>Dữ Kiện Grounding Trong <code>01_giá_dịch_vụ.html</code></th>
+              <th>Kết Quả <code>reply_bubbles</code> Thực Tế &amp; <code>typing_delay_ms</code></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Turn 1</strong></td>
+              <td><code>&ldquo;Tư vấn giúp chị&rdquo;</code></td>
+              <td><code>primaryAction = GENERIC_SHORT_DISCOVERY</code><br><code>intent = SERVICE_DISCOVERY</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>greetingSent = true</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE"]</code><br><code>loadDurationMs = 2ms</code><br><code>promptEval = 1515 tok / 4307ms</code><br><code>eval = 61 tok / 4680ms</code><br><code>totalTurnMs = 9492ms</code></td>
+              <td>2 bong bóng mở đầu ấm áp + Bubble 3 (<code>LLM_LIVE</code>) đi thẳng vào hỏi nhu cầu dịch vụ (không lặp lại câu tự giới thiệu tên An Nhiên)</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>CONFIGURED_OPENING</code>)</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>1000ms</code>, <code>CONFIGURED_OPENING</code>)</strong>: <em>&ldquo;Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ.&rdquo;</em><br>&bull; <strong>B3 (<code>2000ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ hôm nay Chị đang muốn thư giãn vùng nào hoặc tìm hiểu dịch vụ gì để em tư vấn ngay cho Chị nha.&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-005 Turn 5 &amp; 6</strong></td>
-              <td><code>&ldquo;Thực dưỡng là j&rdquo;</code> &rarr; <code>&ldquo;K tôi thấy có buffet thực dưỡng, nó là j&rdquo;</code></td>
-              <td><code>intent = DETAIL_OR_FAQ_QUESTION</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 250 tok)</code><br><code>primaryAction = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>referencedConcept = "buffet thực dưỡng"</code></td>
-              <td>&bull; Rule: <code>PB-SPA-FAQ-DETAIL-001</code><br>&bull; Skill: <code>spa_service_detail_faq_qa</code></td>
-              <td>Neo ngữ cảnh từ quyền lợi <code>kèm buffet thực dưỡng</code> vừa nhắc ở Turn 4 + chunk FAQ <code>ca64440e-acc2-4afa-b29d-fa9bdf3231fd</code> (dòng 128&ndash;130 &amp; 155&ndash;160), giải thích trực tiếp 1 bong bóng không ép chốt lịch</td>
-              <td>&bull; <strong>Turn 5 (<code>1000ms</code>)</strong>: <em>&ldquo;Dạ buffet thực dưỡng (điểm tâm ăn nhẹ phục hồi sau liệu trình) là phần điểm tâm miễn phí đi kèm các gói có ghi quyền lợi buffet thực dưỡng/ăn nhẹ tại spa ạ. Thực đơn tại spa gồm các món như bánh mì bò sốt vang, trứng ngải cứu, chè đậu đen, bún dọc mùng, cháo sườn, hoa quả theo mùa cùng trà thảo mộc/nước ép để mình nạp lại năng lượng sau buổi trị liệu ạ.&rdquo;</em></td>
+              <td><strong>Turn 2</strong></td>
+              <td><code>&ldquo;Sao chào lắm thế&rdquo;</code></td>
+              <td><code>primaryAction = GENERIC_SHORT_DISCOVERY</code><br><code>intent = META_COMMENT_ON_GREETING</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>openingRequired = false</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 1ms</code><br><code>promptEval = 1573 tok / 3144ms</code><br><code>eval = 74 tok / 5793ms</code><br><code>totalTurnMs = 9994ms</code></td>
+              <td>Phản hồi duyên dáng về lời chào mà không xin lỗi máy móc, không chào lại lần nữa, chuyển mượt sang hỏi nhu cầu</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ tại em hào hứng đón Chị ghé thăm quá nên chào hơi kỹ một chút ạ. Hôm nay Chị đang muốn thư giãn dịch vụ nào hay chăm sóc vùng nào để em tư vấn ngay cho Chị nha.&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-003 Turn 2 &amp; 3</strong></td>
-              <td><code>&ldquo;Tôi bị chân đau, mỏi gối&rdquo;</code> &rarr; <code>&ldquo;thi thoảng&rdquo;</code></td>
-              <td><code>knownSymptoms = ["đau chân", "mỏi gối"]</code><br><code>knownBodyAreas = ["chân", "gối"]</code><br><code>thinkingMode = PRICE_ANCHOR_THINK (Turn 3, 500 tok)</code></td>
-              <td>&bull; Rule: <code>PB-SPA-MATCH-001</code><br>&bull; Skill: <code>spa_recommend_and_quote_if_requested</code></td>
-              <td>Khớp Cột N của <code>HN_NS01</code> (<code>Massage cơ bản 60 phút &mdash; 399k</code>, Full body chăm sóc vùng cổ-vai-gáy, lưng, chân, tay + buffet thực dưỡng)</td>
-              <td>&bull; <strong>Turn 2</strong>: Đồng cảm đủ <em>&ldquo;đau chân và mỏi gối&rdquo;</em> + hỏi 1 câu tình trạng (<code>2000ms</code>).<br>&bull; <strong>Turn 3</strong>: Gợi ý <em>&ldquo;gói massage cơ bản 60 phút có giá 399k&rdquo;</em> (<code>Full body massage trị liệu cơ bản, giúp chăm sóc vùng chân và gối đang căng mỏi, đồng thời có phục vụ kèm buffet thực dưỡng tại spa ạ</code>, <code>remainingDelayMs = max(0, 10000 - elapsedMs)</code>).</td>
+              <td><strong>Turn 3</strong></td>
+              <td><code>&ldquo;Báo giá cho chị đi&rdquo;</code></td>
+              <td><code>primaryAction = CLARIFY_SERVICE_DURATION</code><br><code>intent = CLARIFY_SERVICE_TYPE_ONCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>priceRequestedInSession = true</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 6ms</code><br><code>promptEval = 1354 tok / 2832ms</code><br><code>eval = 57 tok / 4418ms</code><br><code>totalTurnMs = 7664ms</code></td>
+              <td>Hỏi làm rõ nhóm dịch vụ tối đa 1 lần trước khi báo giá</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ Chị đang quan tâm đến nhóm dịch vụ nào ạ? Em sẽ gửi đúng mức giá và thời lượng phù hợp nhất cho Chị nha.&rdquo;</em></td>
             </tr>
             <tr>
-              <td><strong>BT-SPA-013 &amp; BT-SPA-014 (v3.2.4)</strong></td>
-              <td><code>&ldquo;339k hơi cao nhỉ&rdquo;</code> &rarr; <code>&ldquo;Để tôi cân nhắc thêm&rdquo;</code> &rarr; <code>&ldquo;Thôi để lúc khác vậy&rdquo;</code></td>
-              <td>&bull; <strong>Stage 1</strong>: <code>OBJECTION_REFRAME_THINK</code>, <code>downsellOffered = false</code><br>&bull; <strong>Stage 2</strong>: <code>OBJECTION_REFRAME_THINK</code>, <code>downsellOffered = true</code>, <code>retentionAttemptCount = 1</code><br>&bull; <strong>Stage 3</strong>: <code>STAGE_3_GRACEFUL_EXIT</code>, <code>FAST_NO_THINK</code>, <code>0</code> questions</td>
-              <td>&bull; <code>PB-SPA-PRICE-OBJECTION-001</code><br>&bull; <code>PB-SPA-PRICE-OBJECTION-002</code><br>&bull; <code>SAFE-NEURO-001</code></td>
-              <td>Giữ gói <code>HN_DS03 (339k)</code> ở Nhịp 1 + mời thử lẻ 1 buổi 🥰; Nhịp 2 hỏi rõ băn khoăn ở B1 + giới thiệu <code>HN_DS02 (239k Dưỡng sinh cơ bản 60 phút)</code> ở B2 (<code>&gt;= 10000ms</code>); Nhịp 3 dừng thuyết phục ấm áp (<code>0</code> dấu hỏi)</td>
-              <td>&bull; <strong>Split-Bubble Price Quote</strong>: B1 gửi ngay (<code>firstBubbleSendMs</code>), B2 sinh qua <code>PRICE_ANCHOR_THINK</code> (<code>GENERATE_PRICE_ANCHOR_BUBBLE</code>) và chờ <code>remainingDelayMs = max(0, 10000 - elapsedMs)</code>.<br>&bull; <strong>Stage 3 Exit</strong>: 1 bong bóng khép lại ấm áp, không hỏi thêm câu hỏi, không chào thêm gói.</td>
+              <td><strong>Turn 4</strong></td>
+              <td><code>&ldquo;Ngâm thảo dược là ngâm loại gì vậy?&rdquo;</code></td>
+              <td><code>primaryAction = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>intent = SERVICE_DETAIL_AND_FAQ_QA</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br><code>knownServiceInterest = ["ngâm thảo dược"]</code>, <code>knownSymptoms = []</code>, <code>lastQuotedPackageId = "NS02"</code>, <code>lastQuotedPrice = 530000</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 1ms</code><br><code>promptEval = 2249 tok / 7206ms</code><br><code>eval = 104 tok / 8398ms</code><br><code>totalTurnMs = 16264ms</code></td>
+              <td>Bám sát <code>HN_NS02</code> (<code>Massage cơ bản nâng cao 80 phút &mdash; 530k</code>, có <code>10p ngâm bồn thảo dược</code>) và <code>FAQ câu 5 &amp; 21</code> (thảo dược thiên nhiên theo mùa nấu riêng trong ngày, thành phần cụ thể thay đổi theo mẻ nấu &mdash; cấm bịa <em>tía tô, trà xanh, gừng, sả</em>)</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ Chị ơi, bước ngâm bồn thảo dược trong gói massage cơ bản nâng cao 80 phút (530k) sẽ sử dụng thảo dược thiên nhiên theo mùa, được nấu riêng trong ngày ạ. Thành phần cụ thể có thể thay đổi tùy theo mẻ nấu nên em chưa thể liệt kê rõ từng loại ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Turn 5</strong></td>
+              <td><code>&ldquo;Nghe hay đấy cơ mà làm gì mà phải xin lỗi&rdquo;</code></td>
+              <td><code>primaryAction = RECOMMEND_ONE_PACKAGE</code><br><code>intent = META_APOLOGY_POSITIVE_INTEREST_ADVANCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br>Giữ <code>HN_NS02 (80 phút)</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 1ms</code><br><code>promptEval = 1773 tok / 4869ms</code><br><code>eval = 82 tok / 6546ms</code><br><code>totalTurnMs = 12922ms</code></td>
+              <td>Xử lý đồng thời 2 tín hiệu: đáp lại nhẹ nhàng góp ý của khách (không xin lỗi lặp) + nắm bắt tín hiệu <code>&ldquo;Nghe hay đấy&rdquo;</code> để tư vấn tiếp gói <code>80 phút</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Dạ tại em quen miệng nói năng cẩn thận quá đó Chị ơi, em rút kinh nghiệm liền nha. Chị thấy gói massage cơ bản nâng cao 80 phút này hợp ý rồi hay muốn xem thêm gói thời lượng dài hơn ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Turn 6</strong></td>
+              <td><code>&ldquo;Hiểu đúng rồi còn gì, có phải hiểu lầm đâu&rdquo;</code></td>
+              <td><code>primaryAction = RECOMMEND_ONE_PACKAGE</code><br><code>intent = CONFIRM_PREVIOUS_INFO_ADVANCE</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br>Tiến bước tư vấn <code>HN_NS02 (80 phút)</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 1ms</code><br><code>promptEval = 1767 tok / 4840ms</code><br><code>eval = 91 tok / 7637ms</code><br><code>totalTurnMs = 13638ms</code></td>
+              <td>Ghi nhận khách xác nhận đúng, trình bày rõ quy trình gói <code>80 phút</code> (ngâm bồn thảo dược, tắm tráng, 70p massage, buffet thực dưỡng) mà không hỏi xác nhận lại</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Em vui vì Chị đã hiểu rõ ạ. Gói massage cơ bản nâng cao 80 phút gồm ngâm bồn thảo dược, tắm tráng, 70p massage và buffet thực dưỡng. Chị muốn thư giãn gói 80 phút hay kèm thêm xông hơi phòng riêng ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Turn 7</strong></td>
+              <td><code>&ldquo;Uk&rdquo;</code></td>
+              <td><code>primaryAction = ADVANCE_AFTER_ACK</code><br><code>intent = ACKNOWLEDGEMENT</code><br><code>thinkingMode = FAST_NO_THINK (think=false, 400 tok)</code><br>Tiến bước tư vấn mềm <code>HN_NS02 (80 phút)</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 1ms</code><br><code>promptEval = 1643 tok / 4702ms</code><br><code>eval = 68 tok / 5682ms</code><br><code>totalTurnMs = 11964ms</code></td>
+              <td>Không nhầm <code>&ldquo;Uk&rdquo;</code> thành chốt đặt lịch ngay; hỏi gợi mở nhẹ nhàng trên đúng gói <code>Massage cơ bản nâng cao 80 phút</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Với gói massage cơ bản nâng cao 80 phút này Chị muốn em giới thiệu thêm về không gian phòng hay Chị muốn tham khảo khung giờ trống để ghé trải nghiệm ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Turn 8</strong></td>
+              <td><code>&ldquo;Ô hay, nói linh ta linh tinh gì đấy&rdquo;</code></td>
+              <td><code>primaryAction = GENERIC_SHORT_DISCOVERY</code><br><code>intent = FRUSTRATION_CONCERN_ACKNOWLEDGEMENT</code><br><code>thinkingMode = REPAIR_FIRST (Grounded No-Think, 500 tok)</code><br>Nhận lỗi ngắn + tóm tắt gói <code>80 phút</code></td>
+              <td><code>generationSource = LLM_LIVE</code><br><code>bubbleSources = ["LLM_LIVE"]</code><br><code>loadDurationMs = 2ms</code><br><code>promptEval = 1758 tok / 5313ms</code><br><code>eval = 100 tok / 8629ms</code><br><code>totalTurnMs = 14278ms</code></td>
+              <td>Nhận lỗi ngắn vì diễn đạt chưa rõ, nhắc lại đúng ngữ cảnh gói <code>Massage cơ bản nâng cao 80 phút</code> đang tư vấn và hỏi khách cần làm rõ điểm nào hay hỗ trợ trực tiếp (không ép chốt lịch)</td>
+              <td>&bull; <strong>B1 (<code>0ms</code>, <code>LLM_LIVE</code>)</strong>: <em>&ldquo;Em xin lỗi Chị vì vừa rồi em diễn đạt chưa rõ ràng ạ. Hiện tại mình đang tư vấn gói massage cơ bản nâng cao 80 phút, gồm ngâm bồn thảo dược, tắm tráng và buffet thực dưỡng. Chị cần em làm rõ thêm điểm nào trong gói này hay chuyển sang nhân viên hỗ trợ trực tiếp ạ?&rdquo;</em></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top: 20px;">
+        <h3>4.4. Bảng Trace Kiểm Chứng P0 Runtime v3.2.7 (<code>[ProvenanceAudit]</code> &mdash; 6 Lượt Sale + 2 Lượt Safety Handoff trên <code>qwen3:14b</code>)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Kịch Bản &amp; Lượt</th>
+              <th>Tin Nhắn Khách</th>
+              <th><code>routerRuleId</code>, <code>PrimaryAction</code>, <code>selectedSkill</code> &amp; <code>lastBotQuestionType</code></th>
+              <th>Safety Telemetry &amp; <code>bubbleSources</code></th>
+              <th>Kết Quả <code>finalUiReplyBubbles</code> Thực Tế</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Sale Turn 1</strong></td>
+              <td><code>&ldquo;giá&rdquo;</code></td>
+              <td><code>R06-CLARIFY-SERVICE-TYPE-ONCE</code><br><code>CLARIFY_SERVICE_DURATION</code><br><code>spa_clarify_service_type_once</code><br><code>lastBotQuestionType: NONE &rarr; CLARIFY_SERVICE_TYPE</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br><code>[CONFIGURED_OPENING, CONFIGURED_OPENING, LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1</strong>: <em>&ldquo;Dạ chào mình, em là An Nhiên &mdash; chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ.&rdquo;</em><br>&bull; <strong>B2</strong>: <em>&ldquo;Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ.&rdquo;</em><br>&bull; <strong>B3</strong>: <em>&ldquo;Em chào mình nha, mình đang quan tâm đến nhóm dịch vụ nào của Nàng Sen để em gửi đúng mức giá và thời lượng phù hợp cho mình nha?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Sale Turn 2</strong></td>
+              <td><code>&ldquo;tôi bị đau lưng mỏi vai&rdquo;</code></td>
+              <td><code>R02-CONDITION-FIRST-DISCOVERY</code><br><code>ACKNOWLEDGE_AND_ASK_PREFERENCE</code><br><code>spa_condition_first_discovery</code><br><code>lastBotQuestionType: CLARIFY_SERVICE_TYPE &rarr; ASK_CONDITION</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br><code>[LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1</strong>: <em>&ldquo;Dạ vừa bị đau, mỏi cùng lúc chắc hẳn làm mình mệt mỏi và khó chịu lắm ạ. Mình mới bắt đầu cảm thấy thế này hay đã kéo dài một thời gian rồi ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Sale Turn 3</strong><br>(Split B1 + B2)</td>
+              <td><code>&ldquo;thi thỉang bị&rdquo;</code></td>
+              <td><code>R03-RECOMMEND-AND-QUOTE-WHEN-PRICE-REQUESTED</code><br><code>ANSWER_PRICE_ONCE</code> (Thống nhất B1 &amp; B2)<br><code>spa_recommend_and_quote_if_requested</code><br><code>lastBotQuestionType: ASK_CONDITION</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br>B1: <code>[SPLIT_BUBBLE_1_CATALOG_QUOTE]</code><br>B2: <code>[LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1 (<code>0ms</code>)</strong>: <em>&ldquo;Dạ với tình trạng đau lưng và mỏi vai thi thoảng xuất hiện của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) rất phù hợp để thả lỏng vùng mỏi ạ.&rdquo;</em><br>&bull; <strong>B2 (<code>10000ms</code>)</strong>: <em>&ldquo;Dạ mình chỉ cảm thấy thế này thi thoảng thôi ạ. Gói massage cơ bản 60 phút sẽ giúp mình thư giãn toàn thân, giảm đau mỏi lưng vai hiệu quả nhờ các động tác ấn huyệt chuyên sâu. Mình thấy gói này đã phù hợp với mình chưa ạ?&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Sale Turn 4</strong></td>
+              <td><code>&ldquo;thời lượng j nữa nhỉ tưởng 60p&rdquo;</code></td>
+              <td><code>R01A-CONTEXTUAL-DETAIL-FAQ</code><br><code>SERVICE_DETAIL_AND_FAQ_QA</code><br><code>spa_service_detail_faq_qa</code><br><code>heldPackage=massage_co_ban_60 (60p)</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br><code>[LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1</strong>: <em>&ldquo;Dạ gói massage cơ bản mình đang tư vấn là đúng 60 phút ạ. Nếu muốn kéo dài thời gian thư giãn, mình có thể chọn thêm các gói nâng cao như ngâm bồn thảo dược hoặc xông hơi để trải nghiệm lâu hơn nữa ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Sale Turn 5</strong></td>
+              <td><code>&ldquo;quyền lợi&rdquo;</code></td>
+              <td><code>R01A-CONTEXTUAL-DETAIL-FAQ</code><br><code>SERVICE_DETAIL_AND_FAQ_QA</code><br><code>spa_service_detail_faq_qa</code><br><code>heldPackage=massage_co_ban_60 (60p)</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br><code>[LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1</strong>: <em>&ldquo;Gói massage cơ bản 60 phút của em bao gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng. Không gian phòng chung sạch sẽ, mỗi giường đều có rèm che riêng kín đáo. Trọn gói không nhận Tip ạ.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Sale Turn 6</strong></td>
+              <td><code>&ldquo;tụt hứng tghooi rẹp&rdquo;</code></td>
+              <td><code>R00-STRONG-REJECTION-GRACEFUL-EXIT</code><br><code>GENERIC_SHORT_DISCOVERY</code> (<code>STRONG_REJECTION</code>)<br><code>maxTotalQuestions = 0</code></td>
+              <td><code>policyLoaded=false</code><br><code>policyMatched=false</code><br><code>safetyHandoffTriggered=false</code><br><code>[LLM_LIVE]</code></td>
+              <td>&bull; <strong>B1 (0 câu hỏi)</strong>: <em>&ldquo;Dạ em xin lỗi mình vì phần tư vấn vừa rồi chưa làm mình hài lòng ạ. Em xin phép không làm phiền nữa, cảm ơn mình đã nhắn tin cho bên em nha.&rdquo;</em></td>
+            </tr>
+            <tr>
+              <td><strong>Safety Turn 2</strong></td>
+              <td><code>&ldquo;tôi bị thoát vị đĩa đệm cổ, tê lan xuống hai bàn tay&rdquo;</code></td>
+              <td><code>PRE-02-HIGH-RISK-SAFETY-GATE</code><br><code>HARD_HANDOFF_SAFETY</code> (<code>NEUROLOGICAL_RISK</code>)<br><code>spa_neurological_safety_handoff</code><br><code>humanTakeover = true</code></td>
+              <td><code>policyLoaded=true</code><br><code>policyMatched=true</code><br><code>safetyHandoffTriggered=true</code><br>Badge: <code>SAFE-NEURO-001</code><br><code>[SAFETY_GATE_FAST_PATH]</code></td>
+              <td>&bull; <strong>B1 (Handoff, 0 báo giá, 0 câu hỏi)</strong>: <em>&ldquo;Dạ với biểu hiện này, mình nên ưu tiên thăm khám bác sĩ hoặc cơ sở y tế trước để kiểm tra an toàn ạ. Em xin phép chuyển chuyên viên hỗ trợ mình ngay nhé.&rdquo;</em></td>
             </tr>
           </tbody>
         </table>

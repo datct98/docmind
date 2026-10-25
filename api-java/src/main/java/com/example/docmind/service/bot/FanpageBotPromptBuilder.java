@@ -1380,10 +1380,11 @@ public final class FanpageBotPromptBuilder {
 
         // 3. Mặc định theo cấu hình Persona hoặc ngành hàng của PagePersona
         if (pagePersona != null && pagePersona.hasContent()) {
-            if (pagePersona.personaConfig() != null
-                    && pagePersona.personaConfig().defaultCustomerPronoun() != null
-                    && !pagePersona.personaConfig().defaultCustomerPronoun().isBlank()) {
-                return pagePersona.personaConfig().defaultCustomerPronoun().strip();
+            PagePersonaConfig cfg = pagePersona.resolvedConfig();
+            if (cfg != null
+                    && cfg.defaultCustomerPronoun() != null
+                    && !cfg.defaultCustomerPronoun().isBlank()) {
+                return cfg.defaultCustomerPronoun().strip();
             }
             String combinedPersona = ((pagePersona.name() != null ? pagePersona.name() : "") + " "
                     + (pagePersona.industry() != null ? pagePersona.industry() : "") + " "
@@ -1573,92 +1574,39 @@ public final class FanpageBotPromptBuilder {
                 ? resolvedHonorific.strip()
                 : resolveCustomerHonorific(customerMessage, history, customerName, pagePersona);
         String selfPronoun = cfg.resolvedSelfPronoun();
+        String defaultHonorific = cfg.resolvedDefaultCustomerPronoun();
 
-        StringBuilder sb = new StringBuilder(2800);
+        StringBuilder sb = new StringBuilder(2400);
         sb.append("# VAI TRÒ & QUY TẮC RUNTIME PAGE (").append(pageName).append(")\n");
-        sb.append("- Xưng '").append(selfPronoun).append("', gọi khách là '").append(honorific).append("'.\n");
+        sb.append("- Đại từ mặc định của Page: xưng '").append(selfPronoun).append("', gọi khách theo resolved_customer_pronoun của lượt (mặc định '").append(defaultHonorific).append("').\n");
+        sb.append("- Giọng văn tư vấn (Universal Sales Voice Engine): Tự nhiên, ấm áp, tinh tế như chuyên viên thật đang nhắn tin trực tiếp. Mỗi bong bóng ngắn gọn 1-2 câu (tối đa 45 từ). TUYỆT ĐỐI CẤM văn dịch máy hoặc sáo rỗng ('đang gặp phải tình trạng... khiến mình mệt mỏi hẳn luôn ạ', 'Liệu Chị/mình có muốn...', 'Dạ em ghi nhận mình đang...'), CẤM viết mã gói nội bộ (NS01, DS02), CẤM dùng dấu '+' hay dấu '…', chỉ dùng định dạng giá gọn (399k, 239k).\n");
+        sb.append("- Nhất quán đại từ 100%: Trong cùng một câu và toàn bộ lượt trả lời chỉ dùng ĐÚNG 1 đại từ gọi khách (resolved_customer_pronoun); TUYỆT ĐỐI KHÔNG trộn lẫn 2 đại từ ('Chị đang... khiến mình...') và KHÔNG gọi khách là 'Em'.\n");
         if (cfg.activePromptCompact() != null && !cfg.activePromptCompact().isBlank()) {
             sb.append(PromptSecurityGuard.sanitizeUntrustedContent(cfg.activePromptCompact().strip())).append('\n');
         }
-        sb.append('\n');
-
-        // 1. <DOCUMENT_CONTEXT> từ bảng chunks (FusedChunk)
-        sb.append("<DOCUMENT_CONTEXT>\n");
-        if (chunks != null && !chunks.isEmpty()) {
-            int maxChunks = Math.min(chunks.size(), 4);
-            int maxChunkChars = (actionDecision != null
-                    && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA)
-                    ? 520
-                    : 340;
-            for (int i = 0; i < maxChunks; i++) {
-                ReciprocalRankFusion.FusedChunk fc = chunks.get(i);
-                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
-                    String chunkText = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(fc.chunk().text()), maxChunkChars);
-                    sb.append("[Chunk ").append(i + 1).append("] ").append(chunkText).append('\n');
-                }
-            }
-        }
-        sb.append("</DOCUMENT_CONTEXT>\n\n");
-
-        // 2. <PAGE_LEARNED_RULES> từ bảng learned_rules (quản trị bởi PromptBudgetGuard: <=1200 always-on + tối đa 1 contextual rule)
-        if (appliedRules != null && !appliedRules.isEmpty()) {
-            List<LearnedRuleDto> guardedAlwaysOn = PromptBudgetGuard.validateAlwaysOnRules(appliedRules);
-            LearnedRuleDto scopedContextual = PromptBudgetGuard.selectScopedContextualRule(
-                    appliedRules,
-                    actionDecision != null ? actionDecision.detectedIntent() : null,
-                    customerMessage
-            );
-            List<LearnedRuleDto> rulesForTurn = new ArrayList<>(guardedAlwaysOn);
-            if (scopedContextual != null && rulesForTurn.stream().noneMatch(r -> r.id() != null && r.id().equals(scopedContextual.id()))) {
-                rulesForTurn.add(scopedContextual);
-            }
-            if (!rulesForTurn.isEmpty()) {
-                sb.append("<PAGE_LEARNED_RULES>\n");
-                for (LearnedRuleDto r : rulesForTurn) {
-                    if (r == null || r.generalizedRule() == null || r.generalizedRule().isBlank()) continue;
-                    sb.append("- [").append(r.ruleCode() != null ? r.ruleCode() : "RULE").append("] ")
-                      .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(r.generalizedRule()), 220))
-                      .append('\n');
-                }
-                sb.append("</PAGE_LEARNED_RULES>\n\n");
-            }
-        }
-
-        // 3. <TACTICAL_SALES_SKILLS> từ bảng agent_skills
-        if (activeSkills != null && !activeSkills.isEmpty()) {
-            sb.append("<TACTICAL_SALES_SKILLS>\n");
-            for (AgentSkillDto skill : activeSkills) {
-                if (skill == null) continue;
-                sb.append("- Skill [").append(skill.code()).append("]: ")
-                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(skill.tacticalInstructions()), 240))
+        // Static Always-On learned_rules placed inside SYSTEM prefix so Ollama KV cache reuses them across turns
+        List<LearnedRuleDto> guardedAlwaysOn = (appliedRules != null && !appliedRules.isEmpty())
+                ? PromptBudgetGuard.validateAlwaysOnRules(appliedRules)
+                : List.of();
+        if (!guardedAlwaysOn.isEmpty()) {
+            sb.append("<PAGE_ALWAYS_ON_RULES>\n");
+            for (LearnedRuleDto r : guardedAlwaysOn) {
+                if (r == null || r.generalizedRule() == null || r.generalizedRule().isBlank()) continue;
+                sb.append("- [").append(r.ruleCode() != null ? r.ruleCode() : "RULE").append("] ")
+                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(r.generalizedRule()), 200))
                   .append('\n');
-                if (skill.goodExample() != null && !skill.goodExample().isBlank()) {
-                    sb.append("  Mẫu tham khảo: ")
-                      .append(compactPromptText(adaptHonorificInSkillText(PromptSecurityGuard.sanitizeUntrustedContent(skill.goodExample()), honorific), 200))
-                      .append('\n');
-                }
             }
-            sb.append("</TACTICAL_SALES_SKILLS>\n\n");
+            sb.append("</PAGE_ALWAYS_ON_RULES>\n");
         }
+        sb.append("<!-- SYSTEM_USER_SPLIT -->\n");
+        sb.append("- ĐẠI TỪ XƯNG HÔ BẮT BUỘC LƯỢT NÀY: Xưng '").append(selfPronoun)
+          .append("', gọi khách là '").append(honorific)
+          .append("'. TUYỆT ĐỐI KHÔNG đảo ngược đại từ và KHÔNG trộn '").append(honorific).append("' với đại từ khác.\n\n");
 
-        // 4. <SAMPLE_DIALOGUES> từ bảng sample_dialogues (tối đa 1 mẫu <= 450 ký tự, chỉ lấy APPROVED_GOOD & active)
-        if (sampleDialogues != null && !sampleDialogues.isEmpty()) {
-            sb.append("<SAMPLE_DIALOGUES>\n");
-            int dlgCount = 0;
-            for (SampleDialogueDto d : sampleDialogues) {
-                String card = formatSampleDialogueCard(d, honorific);
-                if (!card.isBlank()) {
-                    if (card.length() > SAMPLE_DIALOGUES_MAX_CHARS) {
-                        card = compactPromptText(card, SAMPLE_DIALOGUES_MAX_CHARS);
-                    }
-                    sb.append(card).append('\n');
-                    if (++dlgCount >= 1) break;
-                }
-            }
-            sb.append("</SAMPLE_DIALOGUES>\n\n");
-        }
+        PrimaryActionRouter.PrimaryAction effAction = actionDecision != null ? actionDecision.effectiveResponseAction() : null;
+        String detIntent = actionDecision != null && actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "";
 
-        // 5. <CONVERSATION_HISTORY>
+        // 1. <CONVERSATION_HISTORY> (Đặt đầu phần user để tận dụng KV prefix cache giữa các lượt kế tiếp)
         if (history != null && !history.isEmpty()) {
             sb.append("<CONVERSATION_HISTORY>\n");
             int start = Math.max(0, history.size() - 4);
@@ -1667,90 +1615,131 @@ public final class FanpageBotPromptBuilder {
                 if (t != null && t.content() != null && !t.content().isBlank()) {
                     String roleLabel = "assistant".equalsIgnoreCase(t.role()) ? "Tư vấn viên" : "Khách hàng";
                     sb.append(roleLabel).append(": ")
-                      .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(t.content()), 180))
+                      .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(t.content()), 160))
                       .append('\n');
                 }
             }
             sb.append("</CONVERSATION_HISTORY>\n\n");
         }
 
-        // 5.5 <THINKING_MODE_STRATEGY> (Adaptive Thinking Router: Neo giá trị cảm xúc, Xử lý chê đắt đa lượt, Giải tỏa bức xúc)
+        // 2. <DOCUMENT_CONTEXT> từ bảng chunks (FusedChunk) — Scoped theo PrimaryAction để giảm prompt_eval_duration
+        boolean isNoQuoteDiscoveryTurn = effAction == PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION
+                || effAction == PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE;
+        boolean isPreGroundedCatalogTurn = effAction == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
+                || effAction == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
+                || effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME
+                || effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT
+                || effAction == PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS;
+        if (!isNoQuoteDiscoveryTurn && chunks != null && !chunks.isEmpty()) {
+            sb.append("<DOCUMENT_CONTEXT>\n");
+            int maxChunks = (effAction == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA)
+                    ? Math.min(chunks.size(), 3)
+                    : (isPreGroundedCatalogTurn ? 1 : Math.min(chunks.size(), 2));
+            int maxChunkChars = (effAction == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA)
+                    ? 480
+                    : 240;
+            for (int i = 0; i < maxChunks; i++) {
+                ReciprocalRankFusion.FusedChunk fc = chunks.get(i);
+                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
+                    String chunkText = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(fc.chunk().text()), maxChunkChars);
+                    sb.append("[Chunk ").append(i + 1).append("] ").append(chunkText).append('\n');
+                }
+            }
+            sb.append("</DOCUMENT_CONTEXT>\n\n");
+        }
+
+        // 3. Contextual Rule & Micro-Skill (Tối giản, không nhồi câu mẫu dài khi đã có GROUNDED_TURN_FACTS)
+        if (appliedRules != null && !appliedRules.isEmpty()) {
+            LearnedRuleDto scopedContextual = PromptBudgetGuard.selectScopedContextualRule(
+                    appliedRules,
+                    detIntent,
+                    customerMessage
+            );
+            if (scopedContextual != null && scopedContextual.generalizedRule() != null && !scopedContextual.generalizedRule().isBlank()
+                    && guardedAlwaysOn.stream().noneMatch(r -> r.id() != null && r.id().equals(scopedContextual.id()))) {
+                sb.append("<CONTEXTUAL_RULE>\n- [")
+                  .append(scopedContextual.ruleCode() != null ? scopedContextual.ruleCode() : "RULE").append("] ")
+                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(scopedContextual.generalizedRule()), 180))
+                  .append("\n</CONTEXTUAL_RULE>\n\n");
+            }
+        }
+        if (activeSkills != null && !activeSkills.isEmpty()) {
+            sb.append("<TACTICAL_SALES_SKILLS do_not_copy_literally=\"true\">\n");
+            for (AgentSkillDto skill : activeSkills) {
+                if (skill == null) continue;
+                sb.append("- Skill [").append(skill.code()).append("]: ")
+                  .append(compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(skill.tacticalInstructions()), 180))
+                  .append('\n');
+            }
+            sb.append("</TACTICAL_SALES_SKILLS>\n\n");
+        }
+
+        // 5.5 <THINKING_MODE_STRATEGY> (Adaptive Thinking Router)
         ThinkingMode effectiveThinkingMode = thinkingDecision != null && thinkingDecision.thinkingMode() != null
                 ? thinkingDecision.thinkingMode()
                 : ThinkingMode.FAST_NO_THINK;
         sb.append("<THINKING_MODE_STRATEGY>\n");
         sb.append("- thinking_mode: ").append(effectiveThinkingMode.name()).append('\n');
-        sb.append("- max_sentences_per_bubble: ").append(effectiveThinkingMode.maxSentencesPerBubble()).append('\n');
-        sb.append("- max_words_per_bubble: 65\n");
+        sb.append("- max_sentences_per_bubble: ").append(effectiveThinkingMode.maxSentencesPerBubble()).append(", max_words_per_bubble: 45\n");
         if (thinkingDecision != null && thinkingDecision.triggerReason() != null) {
             sb.append("- trigger_reason: ").append(thinkingDecision.triggerReason()).append('\n');
-        }
-        if (effectiveThinkingMode != ThinkingMode.FAST_NO_THINK) {
-            sb.append("- thinking_conciseness: Giữ suy luận nội bộ cực kỳ ngắn gọn (tối đa 2 ý chính dưới 40 từ), sau đó trả về ngay JSON hợp lệ.\n");
         }
         boolean isSplitSecondBubbleOnly = effectiveThinkingMode == ThinkingMode.PRICE_ANCHOR_THINK
                 && dbGroundedReferenceBubbles != null
                 && dbGroundedReferenceBubbles.size() == 1;
         if (effectiveThinkingMode == ThinkingMode.PRICE_ANCHOR_THINK) {
             if (isSplitSecondBubbleOnly) {
-                sb.append("- Chiến lược Sinh Bong Bóng 2 — Neo Giá Trị Cảm Xúc Sau Khi Đã Gửi Báo Giá (PRICE_ANCHOR_THINK):\n");
-                sb.append("  + Bong bóng 1 (báo giá gói dịch vụ) ĐÃ ĐƯỢC GỬI cho khách ngay trước đó. Lượt này CHỈ sinh ĐÚNG 1 bong bóng neo cảm xúc trong mảng reply_bubbles (độ dài mảng = 1).\n");
-                sb.append("  + Nội dung bong bóng neo cảm xúc: TUYỆT ĐỐI KHÔNG lặp lại con số giá đã gửi. Liên hệ trực tiếp tới nhu cầu/tình trạng khách vừa chia sẻ (known_symptoms / known_body_areas) + chọn đúng 1 lợi ích thực tế từ <DOCUMENT_CONTEXT> để tạo sự yên tâm, được thấu hiểu. KHÔNG thúc ép chốt lịch cứng kiểu 'hôm nay hay ngày mai' hay 'giữ lịch' khi khách chưa có tín hiệu đặt lịch.\n");
+                sb.append("- Chiến lược PRICE_ANCHOR_THINK (Bubble 2 duy nhất): Không lặp lại giá đã gửi. Liên hệ trực tiếp tới vùng đau/mỏi khách vừa chia sẻ + quyền lợi đã xác minh trong <GROUNDED_TURN_FACTS>. Không ép hỏi khung giờ đặt lịch cứng.\n");
             } else {
-                sb.append("- Chiến lược Báo Giá + Neo Giá Trị Cảm Xúc 2 Bong Bóng (PRICE_ANCHOR_THINK):\n");
-                sb.append("  + Bubble 1 (Báo giá): Báo tên gói/dịch vụ, thời lượng, mức giá chính xác và điều kiện đi kèm từ <DOCUMENT_CONTEXT>; rõ ràng, ngắn gọn.\n");
-                sb.append("  + Bubble 2 (Neo cảm xúc sau nhịp nghỉ post-price): TUYỆT ĐỐI KHÔNG lặp lại giá đã gửi. Liên hệ trực tiếp tới nhu cầu/tình trạng khách vừa chia sẻ (known_symptoms / known_body_areas) + chọn đúng 1 lợi ích thực tế từ KB để tạo sự yên tâm, được thấu hiểu (nếu khách chưa nêu triệu chứng thì neo vào sự minh bạch/chỉn chu, cấm tự giả định bệnh lý). KHÔNG thúc ép chốt lịch kiểu 'hôm nay hay ngày mai' ngay sau báo giá đầu tiên khi khách chưa có tín hiệu đặt lịch.\n");
+                sb.append("- Chiến lược PRICE_ANCHOR_THINK (2 bong bóng): Bubble 1 báo tên gói, thời lượng, mức giá gọn (vd 399k). Bubble 2 (sau nhịp nghỉ) không lặp lại giá, liên hệ trực tiếp tới triệu chứng của khách và quyền lợi đã xác minh trong <GROUNDED_TURN_FACTS>, không ép hỏi khung giờ đặt lịch cứng.\n");
             }
         } else if (effectiveThinkingMode == ThinkingMode.OBJECTION_REFRAME_THINK) {
             int objTurn = thinkingDecision != null ? thinkingDecision.objectionTurnIndex() : 1;
             ThinkingModePolicy.ObjectionRootCause rootCause = thinkingDecision != null && thinkingDecision.objectionRootCause() != null
                     ? thinkingDecision.objectionRootCause()
                     : ThinkingModePolicy.ObjectionRootCause.BUDGET_MISMATCH;
-            sb.append("- Chiến lược Giữ Chân Khách 3 Nhịp Khi Chê Đắt / Lưỡng Lự (OBJECTION_REFRAME_THINK):\n");
-            sb.append("  + objection_turn_index: ").append(objTurn).append('\n');
-            sb.append("  + objection_root_cause: ").append(rootCause.name()).append('\n');
+            sb.append("- objection_turn_index: ").append(objTurn).append('\n');
+            sb.append("- objection_root_cause: ").append(rootCause.name()).append('\n');
             if (thinkingDecision != null && thinkingDecision.previouslyUsedArguments() != null && !thinkingDecision.previouslyUsedArguments().isEmpty()) {
-                sb.append("  + previously_used_arguments (TUYỆT ĐỐI CẤM LẶP LẠI các câu/luận điểm này): ")
-                  .append(thinkingDecision.previouslyUsedArguments()).append('\n');
-            }
-            if (objTurn <= 1) {
-                sb.append("  + Nhịp 1 (Khách mới thấy giá hơi cao lần đầu): Đồng cảm tự nhiên với tâm lý cân nhắc chi phí -> Giữ nguyên gói đang tư vấn (KHÔNG tự động hạ gói hay giảm giá trừ khi khách chủ động xin gói rẻ hơn) -> Nhấn mạnh 1 giá trị thực tế từ <DOCUMENT_CONTEXT> (chỉ nhắc phản hồi khách hàng khi KB có dữ liệu thật, cấm bịa số liệu) và gợi ý nhẹ nhàng trải nghiệm thử 1 buổi 🥰.\n");
-            } else {
-                sb.append("  + Nhịp ").append(objTurn).append(" (Root-Cause ").append(rootCause.name()).append("): TUYỆT ĐỐI KHÔNG lặp lại nguyên văn câu trả lời trước. Nếu chưa gợi ý gói thấp hơn (downsell_offered=false): Bubble 1 tôn trọng quyết định cân nhắc và hỏi nhẹ 1 câu làm rõ khách đang lăn tăn về chi phí buổi đầu hay điểm nào trong liệu trình; Bubble 2 giới thiệu đúng 1 gói thấp hơn có thật trong <DOCUMENT_CONTEXT> với đúng quyền lợi của gói đó. Nếu đã gợi ý gói thay thế mà khách vẫn từ chối/chưa muốn làm (STAGE_3_GRACEFUL_EXIT): dừng thuyết phục, 0 câu hỏi, chúc khách ấm áp và mở đường quay lại.\n");
+                sb.append("- previously_used_arguments (CẤM LẶP LẠI): ").append(thinkingDecision.previouslyUsedArguments()).append('\n');
             }
         } else if (effectiveThinkingMode == ThinkingMode.REPAIR_FIRST) {
-            sb.append("- Chiến lược Giải Tỏa Bức Xúc & Trả Lời Nợ Câu Hỏi (REPAIR_FIRST):\n");
             if (thinkingDecision != null && thinkingDecision.unresolvedQuestions() != null && !thinkingDecision.unresolvedQuestions().isEmpty()) {
-                sb.append("  + unresolved_questions_to_answer_now: ").append(thinkingDecision.unresolvedQuestions()).append('\n');
+                sb.append("- unresolved_questions_to_answer_now: ").append(thinkingDecision.unresolvedQuestions()).append('\n');
             }
-            sb.append("  + Ưu tiên tuyệt đối: Nhận lỗi chân thành, ngắn gọn và trả lời TRỰC DIỆN câu hỏi/thắc mắc khách đang chờ dựa trên <DOCUMENT_CONTEXT>. CẤM văn mẫu sáo rỗng, CẤM lặp lại câu hỏi khảo sát cũ và CẤM chèo kéo bán gói khi khách chưa hết bức xúc.\n");
-        } else {
-            sb.append("- Chiến lược Phản Hồi Nhanh (FAST_NO_THINK): Trả lời tự nhiên, ấm áp, ngắn gọn tối đa 2 câu và 65 từ mỗi bong bóng.\n");
+            sb.append("- Chiến lược REPAIR_FIRST: Nhận lỗi chân thành, ngắn gọn và giải quyết TRỰC DIỆN phản bác hoặc câu hỏi đang treo của khách dựa trên <GROUNDED_TURN_FACTS>. CẤM lặp lại câu cũ.\n");
         }
         sb.append("</THINKING_MODE_STRATEGY>\n\n");
 
-        // 6. <CONVERSATION_STATE_AND_ACTION_CONTRACT>
+        // 6. <CONVERSATION_STATE_AND_ACTION_CONTRACT> & <GROUNDED_TURN_FACTS>
         sb.append("<CONVERSATION_STATE_AND_ACTION_CONTRACT>\n");
         if (actionDecision != null) {
-            sb.append("- primary_action: ").append(actionDecision.effectiveResponseAction()).append('\n');
-            sb.append("- detected_intent: ").append(actionDecision.detectedIntent()).append('\n');
+            sb.append("- primary_action: ").append(effAction).append('\n');
+            sb.append("- detected_intent: ").append(detIntent).append('\n');
             sb.append("- opening_required: ").append(actionDecision.openingRequired()).append('\n');
             sb.append("- active_skill_code: ").append(actionDecision.correspondingMicroSkillCode()).append('\n');
         }
         sb.append("- thinking_mode: ").append(effectiveThinkingMode.name()).append('\n');
-        if (convState != null) {
-            ConversationState enriched = convState.enrichWithCurrentMessage(customerMessage, cfg.safeDomainKeywords());
+        ConversationState enriched = convState != null
+                ? convState.enrichWithCurrentMessage(customerMessage, cfg.safeDomainKeywords())
+                : null;
+        if (convState != null && enriched != null) {
             sb.append("- known_service: ").append(enriched.knownServiceFamily() != null ? enriched.knownServiceFamily() : "null").append('\n');
+            sb.append("- known_service_interest: ").append(enriched.knownServiceInterest() != null ? enriched.knownServiceInterest() : "null").append('\n');
             sb.append("- known_symptoms: ").append(enriched.knownSymptoms()).append('\n');
             sb.append("- known_body_areas: ").append(enriched.knownBodyAreas()).append('\n');
             sb.append("- condition_clarified: ").append(enriched.conditionClarified()).append('\n');
+            sb.append("- price_requested_in_session: ").append(enriched.priceRequestedInSession()).append('\n');
             sb.append("- price_discussed: ").append(convState.priceDiscussed() || isSplitSecondBubbleOnly).append('\n');
             sb.append("- price_objection_count: ").append(convState.objectionCount()).append('\n');
             sb.append("- objection_stage: ").append(convState.objectionStage() != null ? convState.objectionStage() : "NONE").append('\n');
             sb.append("- downsell_offered: ").append(convState.downsellOffered()).append('\n');
-            sb.append("- retention_attempt_count: ").append(convState.retentionAttemptCount()).append('\n');
-            sb.append("- held_package: ").append(convState.knownRecommendedPackage() != null ? convState.knownRecommendedPackage() : "null").append('\n');
-            sb.append("- downsell_package: ").append(convState.downsellPackage() != null ? convState.downsellPackage() : "null").append('\n');
+            sb.append("- last_offered_package_id: ").append(convState.lastOfferedPackageId() != null ? convState.lastOfferedPackageId() : "null").append('\n');
+            sb.append("- last_offered_package_name: ").append(convState.lastOfferedPackageName() != null ? convState.lastOfferedPackageName() : "null").append('\n');
+            sb.append("- last_offered_duration: ").append(convState.lastOfferedDuration() != null ? convState.lastOfferedDuration() : "null").append('\n');
+            sb.append("- last_offered_price: ").append(convState.lastOfferedPrice() != null ? convState.lastOfferedPrice() : "null").append('\n');
+            sb.append("- last_bot_question_type: ").append(convState.lastBotQuestionType()).append('\n');
+            sb.append("- bot_apologized_in_last_turn: ").append(convState.botApologizedInLastTurn()).append('\n');
             sb.append("- rejected_durations: ").append(convState.rejectedDurations()).append('\n');
             ConversationState.UnresolvedCustomerRequest activeUnresolved = enriched.mostRecentUnresolvedRequest();
             if (activeUnresolved != null) {
@@ -1761,37 +1750,311 @@ public final class FanpageBotPromptBuilder {
                   .append('\n');
             }
         }
-        if (dbGroundedReferenceBubbles != null && !dbGroundedReferenceBubbles.isEmpty()) {
-            sb.append("- db_grounded_reference_bubbles (Dữ liệu chuẩn đã xác minh từ KB — giữ đúng số lượng ")
-              .append(dbGroundedReferenceBubbles.size())
-              .append(" bong bóng, đúng tên gói/thời lượng/mức giá và typing_delay_ms từng bong bóng, diễn đạt tự nhiên cá nhân hóa theo lời khách):\n");
-            for (int i = 0; i < dbGroundedReferenceBubbles.size(); i++) {
-                var b = dbGroundedReferenceBubbles.get(i);
-                if (b != null && b.text() != null) {
-                    sb.append("  + Bubble ").append(i + 1)
-                      .append(" (typing_delay_ms=").append(b.typingDelayMs()).append("): ")
-                      .append(b.text()).append('\n');
-                }
+
+        // 6.5 <GROUNDED_TURN_FACTS> — Dữ liệu sự thật cấu trúc từ Catalog & State (KHÔNG nhồi câu mẫu)
+        int postPriceDelayMs = cfg.resolvedPostPriceDelayMs();
+        sb.append("<GROUNDED_TURN_FACTS>\n");
+        boolean hasConfiguredOpeningBubbles = actionDecision != null
+                && actionDecision.openingRequired()
+                && !cfg.openingBubbles().isEmpty();
+        if (actionDecision != null && actionDecision.openingRequired()) {
+            String agentName = cfg.botName();
+            if (hasConfiguredOpeningBubbles) {
+                sb.append("- turn_1_opening_guidance: Lượt đầu tiên. Hệ thống đã gửi 2 bong bóng chào mở đầu (CONFIGURED_OPENING). Bạn CHỈ sinh ĐÚNG 1 bong bóng thứ 3 trong reply_bubbles (độ dài mảng = 1) để phản hồi trực tiếp ý định của khách (xưng '")
+                  .append(selfPronoun).append("', gọi khách là '").append(honorific)
+                  .append("', TUYỆT ĐỐI KHÔNG bắt đầu bằng 'Dạ chào chị ạ' hay lặp lại lời chào/giới thiệu chung). ");
+            } else {
+                sb.append("- turn_1_opening_guidance: Lượt đầu tiên. Chào ngắn gọn với tư cách ")
+                  .append(agentName != null && !agentName.isBlank() ? agentName + " từ " + pageName : pageName)
+                  .append(" (xưng '").append(selfPronoun).append("', gọi khách là '").append(honorific)
+                  .append("') và đi thẳng vào trả lời ý định của khách. ");
+            }
+            if (effAction == PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION) {
+                sb.append("Khách đang hỏi giá chung: hỏi nhẹ 1 câu xem ")
+                  .append(honorific).append(" đang quan tâm nhóm dịch vụ nào hoặc đang mỏi vùng nào để ")
+                  .append(selfPronoun).append(" gửi đúng mức giá theo thời lượng, CHƯA báo con số giá ở lượt này.\n");
+            } else {
+                sb.append("Hỏi nhẹ 1 câu xem hôm nay ").append(honorific).append(" đang muốn thư giãn vùng nào hay tìm hiểu dịch vụ nào để ").append(selfPronoun).append(" tư vấn ngay cho ").append(honorific).append(" nha (KHÔNG mở đầu bằng 'Dạ chào ").append(honorific).append("').\n");
             }
         }
-        sb.append("- Trả về JSON hợp lệ đủ các bong bóng theo mẫu (KHÔNG giải thích thêm):\n");
-        String bubblesJsonExample = (dbGroundedReferenceBubbles != null && dbGroundedReferenceBubbles.size() == 1)
-                ? "[{\"text\": \"...\", \"typing_delay_ms\": " + dbGroundedReferenceBubbles.get(0).typingDelayMs() + "}]"
-                : "[{\"text\": \"...\", \"typing_delay_ms\": 1000}, {\"text\": \"...\", \"typing_delay_ms\": 2000}]";
+        if (effAction == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA && enriched != null) {
+            PrimaryActionRouter.CatalogOption detailOpt = PrimaryActionRouter.matchSpecificCatalogOption(customerMessage, enriched, chunks);
+            if (detailOpt == null) {
+                detailOpt = PrimaryActionRouter.selectBestSingleCatalogOption(customerMessage, enriched, chunks);
+            }
+            boolean shouldIncludePendingPrice = convState != null && convState.priceRequestedInSession() && !convState.priceDiscussed() && detailOpt != null;
+            if (detailOpt != null) {
+                sb.append("- target_catalog_package_name: ").append(detailOpt.name()).append('\n');
+                sb.append("- target_catalog_duration: ").append(detailOpt.unitLabel()).append('\n');
+                if (shouldIncludePendingPrice || convState == null || !convState.priceDiscussed()) {
+                    sb.append("- target_catalog_price: ").append(detailOpt.priceDisplay()).append('\n');
+                }
+                appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, detailOpt, detailOpt.priceVnd());
+            }
+            String normDetailMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(customerMessage);
+            boolean isDurationPushback = normDetailMsg.contains("thời lượng") || normDetailMsg.contains("tưởng");
+            boolean isBenefitQuestion = normDetailMsg.contains("quyền lợi") || normDetailMsg.contains("được hưởng");
+            sb.append("- tactical_goal: Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, KHÔNG xin lỗi");
+            if (convState != null && convState.priceDiscussed() && !shouldIncludePendingPrice) {
+                sb.append(", TUYỆT ĐỐI CẤM lặp lại con số giá đã báo");
+            }
+            sb.append("). Giải đáp trực tiếp câu hỏi chi tiết của ")
+              .append(honorific).append(" dựa 100% vào dữ liệu xác thực trong [Chunk] và verified_package_benefits ở trên");
+            if (shouldIncludePendingPrice) {
+                sb.append("; BẮT BUỘC nêu rõ bước này nằm trong gói ").append(detailOpt.name()).append(" ").append(detailOpt.unitLabel())
+                  .append(" (giá ").append(detailOpt.priceDisplay()).append(") gồm ").append(detailOpt.benefitSummary() != null ? detailOpt.benefitSummary().replace(" + ", ", ") : "");
+            } else if (isDurationPushback && detailOpt != null) {
+                sb.append("; xác nhận rõ gói ").append(detailOpt.name()).append(" đang tư vấn chuẩn là ").append(detailOpt.unitLabel())
+                  .append(", còn các mức 80 phút hay 100 phút chỉ là gói nâng cao có thêm ngâm bồn thảo dược nếu ").append(honorific).append(" muốn làm lâu hơn thôi ạ");
+            } else if (isBenefitQuestion && detailOpt != null) {
+                sb.append("; liệt kê tự nhiên, rõ ràng các quyền lợi và bước chăm sóc có trong gói ").append(detailOpt.name()).append(" ").append(detailOpt.unitLabel())
+                  .append(" theo đúng verified_package_benefits (không gian phòng, chăm sóc vùng đau mỏi, buffet thực dưỡng/ăn nhẹ sau buổi làm)");
+            }
+            sb.append(". Nếu khách hỏi thành phần cụ thể (ví dụ ngâm loại lá/thảo mộc gì) mà [Chunk] chỉ ghi bước quy trình chứ chưa liệt kê từng vị lá, hãy giải thích rõ bước quy trình có trong gói và nói thật tự nhiên rằng thành phần thảo mộc cụ thể theo mẻ nấu trong ngày nên bảng dịch vụ tiêu chuẩn chưa liệt kê từng vị (TUYỆT ĐỐI CẤM tự bịa tên nguyên liệu như tía tô, trà xanh, gừng, sả, lá lốt ngoài tài liệu!).\n");
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION) {
+            sb.append("- tactical_goal: Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, KHÔNG xin lỗi). Hỏi nhẹ 1 câu tự nhiên xem ")
+              .append(honorific).append(" đang quan tâm nhóm dịch vụ nào trong các dịch vụ của ").append(pageName)
+              .append(" để ").append(selfPronoun).append(" gửi đúng mức giá và thời lượng phù hợp cho ").append(honorific).append(" nha.\n");
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE && enriched != null) {
+            if ("PUSHBACK_ON_ASSUMPTION_REPAIR".equals(detIntent)) {
+                sb.append("- tactical_goal: Sinh 1 bong bóng. Mở đầu bằng lời xin lỗi ngắn gọn ('Dạ ")
+                  .append(selfPronoun).append(" xin lỗi ").append(honorific).append(" vì vừa diễn đạt chưa chuẩn làm ").append(honorific).append(" hiểu nhầm ạ'), xác nhận lại ĐÚNG các triệu chứng khách đã chia sẻ ")
+                  .append(enriched.knownSymptoms())
+                  .append(" (KHÔNG lặp lại câu của lượt trước, KHÔNG dùng lại từ khách vừa phủ định như 'căng'), và hỏi nhẹ xem tình trạng này của ")
+                  .append(honorific).append(" mới bị gần đây hay đã kéo dài để ").append(selfPronoun).append(" gợi ý gói sát nhất ạ. CHƯA báo giá ở lượt này.\n");
+            } else {
+                sb.append("- tactical_goal: Sinh 1 bong bóng. Câu 1: Đồng cảm ấm áp, tự nhiên và nhắc ĐẦY ĐỦ tên tất cả triệu chứng khách vừa chia sẻ ")
+                  .append(enriched.knownSymptoms())
+                  .append(" (ví dụ: 'Dạ vừa bị ").append(String.join(", ", enriched.knownSymptoms())).append(" cùng lúc chắc hẳn làm ")
+                  .append(honorific).append(" mệt mỏi và khó chịu lắm ạ.' — TUYỆT ĐỐI KHÔNG nói chung chung 'nhiều triệu chứng', KHÔNG viết 'em xin lỗi mình vì mình đang phải chịu đựng', KHÔNG viết 'đang gặp phải tình trạng... khiến mình mệt mỏi hẳn luôn ạ', KHÔNG chẩn đoán 'khí huyết kém lưu thông'). Câu 2: Hỏi nhẹ 1 câu làm rõ tình trạng này của ")
+                  .append(honorific).append(" mới xuất hiện gần đây hay đã kéo dài bao lâu để ").append(selfPronoun).append(" chọn liệu trình sát nhất ạ (KHÔNG dùng từ 'căng' nếu khách chưa nói, CHƯA báo giá).\n");
+            }
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
+                || effAction == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE) {
+            PrimaryActionRouter.CatalogOption matchedOpt = PrimaryActionRouter.matchSpecificCatalogOption(customerMessage, enriched, chunks);
+            if (matchedOpt == null) {
+                matchedOpt = PrimaryActionRouter.selectBestSingleCatalogOption(customerMessage, enriched, chunks);
+            }
+            if (matchedOpt != null) {
+                sb.append("- target_catalog_package_name: ").append(matchedOpt.name()).append('\n');
+                sb.append("- target_catalog_duration: ").append(matchedOpt.unitLabel()).append('\n');
+                if (!isSplitSecondBubbleOnly
+                        && !"CONDITION_FOLLOWUP_AFTER_QUOTE_ADVANCE".equals(detIntent)
+                        && (convState == null || !convState.priceDiscussed() || effAction == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE)) {
+                    sb.append("- target_catalog_price: ").append(matchedOpt.priceDisplay()).append('\n');
+                }
+                appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, matchedOpt, matchedOpt.priceVnd());
+            }
+            if (isSplitSecondBubbleOnly) {
+                sb.append("- Bong bóng 1 báo giá đã được gửi cho khách: Gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() + " (" + matchedOpt.priceDisplay() + ")" : "đang tư vấn")
+                  .append(".\n");
+                sb.append("- tactical_goal: Sinh ĐÚNG 1 bong bóng thứ 2 (Emotional Anchor) nối tiếp trực tiếp Bong bóng 1 vừa báo giá ở trên. Liên hệ tự nhiên tới tình trạng ")
+                  .append(enriched != null ? enriched.knownSymptoms() : List.of())
+                  .append(" của ").append(honorific).append(" và quyền lợi thực tế trong verified_package_benefits, rồi hỏi nhẹ 1 câu xem ")
+                  .append(honorific).append(" thấy gói ").append(matchedOpt != null ? matchedOpt.unitLabel() : "này")
+                  .append(" đã hợp ý mình hay muốn ").append(selfPronoun).append(" chia sẻ thêm về quyền lợi đi kèm ạ. TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM xin lỗi, CẤM yêu cầu khách nói lại!\n");
+            } else if ("CONDITION_FOLLOWUP_AFTER_QUOTE_ADVANCE".equals(detIntent)) {
+                sb.append("- tactical_goal: Khách vừa bổ sung tần suất/thời gian đau mỏi cho gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "đang tư vấn")
+                  .append(" đã báo trước đó. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM lặp lại con số giá, CẤM xin lỗi, CẤM yêu cầu khách nói lại): Đồng cảm tự nhiên rằng nếu tình trạng thi thoảng xuất hiện thì chăm sóc bằng gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "này")
+                  .append(" rất vừa vặn để thả lỏng vùng mỏi, rồi hỏi nhẹ xem ").append(honorific)
+                  .append(" muốn tìm hiểu thêm về các bước trong gói hay khung giờ trống để ghé trải nghiệm ạ.\n");
+            } else if ("META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(detIntent)) {
+                sb.append("- tactical_goal: Khách vừa khen dịch vụ nghe hay vừa trêu việc bạn xin lỗi. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM dùng từ 'xin lỗi', CẤM lặp lại con số giá đã báo): Đáp lại vui vẻ, duyên dáng ('Dạ tại ")
+                  .append(selfPronoun).append(" quen miệng nói năng cẩn thận quá đó ").append(honorific).append(" ơi, ").append(selfPronoun).append(" rút kinh nghiệm liền nha.') và dẫn dắt tiếp về gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "đang trao đổi")
+                  .append(" xem ").append(honorific).append(" thấy gói này hợp ý rồi hay muốn xem thêm gói thời lượng dài hơn ạ.\n");
+            } else if ("CONFIRM_PREVIOUS_INFO_ADVANCE".equals(detIntent)) {
+                sb.append("- tactical_goal: Khách xác nhận bạn đã hiểu đúng dịch vụ khách quan tâm. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM dùng từ 'xin lỗi', CẤM dùng cụm 'hiểu lầm', CẤM lặp lại con số giá đã báo, CẤM hỏi lại câu xác nhận dịch vụ): Nêu ngắn gọn lợi ích thư giãn của gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() : "đang trao đổi")
+                  .append(" từ verified_package_benefits và hỏi nhẹ xem ").append(honorific).append(" muốn thư giãn gói ")
+                  .append(matchedOpt != null ? matchedOpt.unitLabel() : "này").append(" hay muốn kèm thêm xông hơi phòng riêng ạ.\n");
+            } else if ("FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE".equals(detIntent)) {
+                sb.append("- tactical_goal: Sinh 2 bong bóng. Bubble 1 (typing_delay_ms=0): Nhận lỗi ngắn gọn ('Dạ ")
+                  .append(selfPronoun).append(" xin lỗi ").append(honorific).append(" vì câu hỏi trước chưa rõ ý làm ").append(honorific).append(" sốt ruột ạ.') và báo ngay gói ")
+                  .append(matchedOpt != null ? matchedOpt.name() + " " + matchedOpt.unitLabel() + " giá " + matchedOpt.priceDisplay() : "phù hợp")
+                  .append(" trọn gói không nhận Tip cho tình trạng ").append(enriched != null ? enriched.knownSymptoms() : List.of())
+                  .append(" của ").append(honorific).append(" ạ (KHÔNG dùng dấu '…', KHÔNG viết mã NS01). Bubble 2 (typing_delay_ms=")
+                  .append(postPriceDelayMs)
+                  .append("): Nêu ngắn gọn lợi ích thực tế trong verified_package_benefits giúp dịu vùng mỏi và dễ ngủ hơn, rồi hỏi nhẹ xem ")
+                  .append(honorific).append(" thấy gói 60 phút này phù hợp với thời gian của ").append(honorific).append(" không ạ.\n");
+            } else {
+                sb.append("- tactical_goal: Sinh 2 bong bóng. Bubble 1 (typing_delay_ms=0): Báo rõ tên gói, thời lượng và mức giá từ target_catalog_* ở trên. Bubble 2 (typing_delay_ms=")
+                  .append(postPriceDelayMs)
+                  .append("): Liên hệ tới tình trạng của khách và quyền lợi thực tế trong verified_package_benefits (không lặp lại giá ở Bubble 2, KHÔNG nêu quyền lợi trong forbidden_unverified_tier_perks).\n");
+            }
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.ADVANCE_AFTER_ACK && convState != null) {
+            String baseName = convState.lastOfferedPackageName();
+            String activePkg = baseName != null
+                    ? (convState.lastOfferedDuration() != null && !baseName.toLowerCase(Locale.ROOT).contains("phút")
+                        ? baseName + " " + convState.lastOfferedDuration() + " phút"
+                        : baseName)
+                    : (convState.knownRecommendedPackage() != null ? convState.knownRecommendedPackage() : "gói đang tư vấn");
+            sb.append("- active_discussed_package: ").append(activePkg).append('\n');
+            sb.append("- tactical_goal: Khách vừa nhắn xác nhận ngắn ('").append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage)).append("'). Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM viết 'em ghi nhận', CẤM dùng từ 'xin lỗi', CẤM tự ý coi là khách đã chốt đặt lịch): Hỏi nhẹ nhàng xem với gói ")
+              .append(activePkg).append(" này ").append(honorific).append(" muốn ").append(selfPronoun)
+              .append(" giới thiệu thêm về không gian phòng hay ").append(honorific).append(" muốn tham khảo khung giờ trống để ghé trải nghiệm ạ.\n");
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY) {
+            if ("STRONG_REJECTION".equals(detIntent) || "STAGE_3_GRACEFUL_EXIT".equals(detIntent) || "EXPLICIT_OPT_OUT".equals(detIntent)) {
+                sb.append("- tactical_goal: Khách vừa từ chối hoặc muốn dừng cuộc trò chuyện ('")
+                  .append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage))
+                  .append("'). Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, 0 câu hỏi, TUYỆT ĐỐI CẤM có dấu '?', CẤM hỏi 'có phải mình đang cảm thấy hơi mệt mỏi không', CẤM chèo kéo, CẤM viết cụm 'Xin lỗi nhẹ nhàng'): Hãy đóng vai chuyên viên xưng '")
+                  .append(selfPronoun).append("', mở đầu bằng 'Dạ ").append(selfPronoun).append(" xin lỗi ").append(honorific)
+                  .append(" vì phần tư vấn vừa rồi chưa làm ").append(honorific).append(" hài lòng ạ.', sau đó xin phép dừng làm phiền và cảm ơn ").append(honorific).append(" đã nhắn tin cho bên ").append(selfPronoun).append(" nha.\n");
+            } else if ("META_COMMENT_ON_GREETING".equals(detIntent)) {
+                sb.append("- tactical_goal: Khách nhận xét bạn chào hơi nhiều. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0, TUYỆT ĐỐI CẤM dùng từ 'xin lỗi'): Đáp lại vui vẻ, tự nhiên ('Dạ tại ")
+                  .append(selfPronoun).append(" hào hứng đón ").append(honorific).append(" ghé thăm quá nên chào hơi kỹ một chút ạ.') rồi hỏi nhẹ xem hôm nay ")
+                  .append(honorific).append(" đang muốn thư giãn dịch vụ nào hay chăm sóc vùng nào để ").append(selfPronoun).append(" tư vấn ngay cho ").append(honorific).append(" nha.\n");
+            } else if ("FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(detIntent)) {
+                String baseName = convState != null ? convState.lastOfferedPackageName() : null;
+                String activePkg = baseName != null
+                        ? (convState.lastOfferedDuration() != null && !baseName.toLowerCase(Locale.ROOT).contains("phút")
+                            ? baseName + " " + convState.lastOfferedDuration() + " phút"
+                            : baseName)
+                        : (convState != null && convState.knownRecommendedPackage() != null ? convState.knownRecommendedPackage() : null);
+                if (activePkg != null) {
+                    sb.append("- active_discussed_package: ").append(activePkg).append('\n');
+                    sb.append("- tactical_goal: Khách đang khó chịu vì câu trả lời trước chưa tự nhiên. Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0): Nhận lỗi ngắn gọn vì cách diễn đạt vừa rồi làm ")
+                      .append(honorific).append(" thấy rối, tóm tắt lại mạch đang tư vấn gói ").append(activePkg)
+                      .append(" (TUYỆT ĐỐI CẤM gọi dịch vụ là 'tình trạng ngâm', CẤM tự ý lôi gói khác như 239k vào báo giá!) và hỏi xem ")
+                      .append(honorific).append(" cần làm rõ lại điểm nào hay chuyển nhân viên hỗ trợ trực tiếp ngay ạ.\n");
+                } else {
+                    sb.append("- tactical_goal: Sinh ĐÚNG 1 bong bóng (typing_delay_ms=0): Nhận lỗi ngắn gọn vì làm ")
+                      .append(honorific).append(" chưa hài lòng và hỏi xem phần thông tin nào đang làm ").append(honorific)
+                      .append(" băn khoăn để ").append(selfPronoun).append(" giải đáp chuẩn xác hoặc chuyển nhân viên hỗ trợ ngay nhé.\n");
+                }
+            }
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME && convState != null) {
+            long heldVnd = convState.lastOfferedPriceVnd() != null ? convState.lastOfferedPriceVnd().longValue() : 0L;
+            String heldName = convState.lastOfferedPackageName() != null ? convState.lastOfferedPackageName() : "Massage cơ bản";
+            String heldDur = convState.lastOfferedDuration() != null ? convState.lastOfferedDuration() + " phút" : "60 phút";
+            String heldPrice = convState.lastOfferedPrice() != null ? convState.lastOfferedPrice() : "399k";
+            sb.append("- held_package_to_defend: ").append(heldName).append(" ").append(heldDur).append(" giá ").append(heldPrice).append('\n');
+            appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, null, heldVnd);
+            sb.append("- tactical_goal: Khách chê đắt lần 1. Sinh 1 bong bóng (typing_delay_ms=0): Đồng cảm tự nhiên với việc ")
+              .append(honorific).append(" cân nhắc chi phí, GIỮ NGUYÊN gói ").append(heldName).append(" ").append(heldDur).append(" giá ").append(heldPrice)
+              .append(" (chỉ viết '").append(heldPrice).append("', KHÔNG viết '399.000đ' hay mã '(NS01)'), làm rõ mức ").append(heldPrice)
+              .append(" đã trọn gói các quyền lợi thực tế trong verified_package_benefits và không nhận tiền Tip, đồng thời gợi ý nhẹ nhàng ")
+              .append(honorific).append(" trải nghiệm thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé ạ.\n");
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT && convState != null) {
+            PrimaryActionRouter.CatalogOption lowerOpt = PrimaryActionRouter.selectLowerCatalogOption(convState, chunks, customerMessage);
+            if (lowerOpt != null) {
+                sb.append("- verified_downsell_package_name: ").append(lowerOpt.name()).append('\n');
+                sb.append("- verified_downsell_duration: ").append(lowerOpt.unitLabel()).append('\n');
+                sb.append("- verified_downsell_price: ").append(lowerOpt.priceDisplay()).append('\n');
+                appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, lowerOpt, lowerOpt.priceVnd());
+                sb.append("- tactical_goal: Sinh 2 bong bóng. Bubble 1 (typing_delay_ms=0): Tôn trọng việc ")
+                  .append(honorific).append(" cân nhắc thêm và hỏi nhẹ 1 câu xem ").append(honorific).append(" đang phân vân về mức chi phí buổi đầu hay thời gian liệu trình ạ. Bubble 2 (typing_delay_ms=")
+                  .append(postPriceDelayMs)
+                  .append("): Gợi ý lựa chọn tiết kiệm hơn là ").append(lowerOpt.name()).append(" ").append(lowerOpt.unitLabel()).append(" giá ").append(lowerOpt.priceDisplay())
+                  .append(" với đúng các quyền lợi thực tế trong verified_package_benefits viết bằng câu văn tự nhiên (TUYỆT ĐỐI KHÔNG dùng dấu '+', KHÔNG viết mã DS02, KHÔNG gán nhầm quyền lợi trong forbidden_unverified_tier_perks).\n");
+            }
+        } else if (effAction == PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS && convState != null) {
+            String accName = convState.lastOfferedPackageName() != null ? convState.lastOfferedPackageName() : "Gói dưỡng sinh cơ bản";
+            String accDur = convState.lastOfferedDuration() != null ? convState.lastOfferedDuration() + " phút" : "60 phút";
+            String accPrice = convState.lastOfferedPrice() != null ? convState.lastOfferedPrice() : "239k";
+            sb.append("- accepted_package_name: ").append(accName).append('\n');
+            sb.append("- accepted_package_duration: ").append(accDur).append('\n');
+            sb.append("- accepted_package_price: ").append(accPrice).append('\n');
+            sb.append("- tactical_goal: Sinh 1 bong bóng (typing_delay_ms=0): Xác nhận lại ĐÚNG gói ").append(accName).append(" ").append(accDur).append(" giá ").append(accPrice)
+              .append(" mà ").append(honorific).append(" vừa chọn (TUYỆT ĐỐI KHÔNG nhắc lại gói giá cao đã từ chối) và hỏi nhẹ xem ")
+              .append(honorific).append(" dự kiến ghé bên ").append(selfPronoun).append(" vào khung giờ nào hôm nay hay ngày mai kèm xin Số điện thoại để lễ tân giữ chỗ chu đáo cho ").append(honorific).append(" nhé ạ.\n");
+        }
+        sb.append("</GROUNDED_TURN_FACTS>\n");
+
+        sb.append("- Trả về duy nhất 1 JSON hợp lệ trên 1 dòng theo mẫu (KHÔNG giải thích thêm):\n");
+        String bubblesJsonExample;
+        if (isSplitSecondBubbleOnly) {
+            bubblesJsonExample = "[{\"text\": \"...\", \"typing_delay_ms\": " + dbGroundedReferenceBubbles.get(0).typingDelayMs() + "}]";
+        } else if (hasConfiguredOpeningBubbles) {
+            bubblesJsonExample = "[{\"text\": \"...\", \"typing_delay_ms\": 2000}]";
+        } else if ((actionDecision != null && actionDecision.maxResponseBubblesForLlm() == 1)
+                || effAction == PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE
+                || effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME
+                || effAction == PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS) {
+            bubblesJsonExample = "[{\"text\": \"...\", \"typing_delay_ms\": 0}]";
+        } else {
+            bubblesJsonExample = "[{\"text\": \"...\", \"typing_delay_ms\": 0}, {\"text\": \"...\", \"typing_delay_ms\": " + (effAction == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE || effAction == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT ? postPriceDelayMs : 1200) + "}]";
+        }
         if (isOpenAiCompatibleProvider && effectiveThinkingMode != ThinkingMode.FAST_NO_THINK) {
-            sb.append("  {\"reasoning_brief\": \"1-2 câu tóm tắt góc tiếp cận tâm lý nội bộ\", \"reply_bubbles\": ")
+            sb.append("  {\"reasoning_brief\": \"1 câu tóm tắt ngắn\", \"reply_bubbles\": ")
               .append(bubblesJsonExample)
               .append(", \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
               .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
         } else {
             sb.append("  {\"reply_bubbles\": ")
               .append(bubblesJsonExample)
-              .append(", \"should_handoff\": false, \"handoff_reason\": null, \"state_updates\": {\"sales_stage\": \"")
-              .append(salesStage != null ? salesStage.code() : "DISCOVERY").append("\"}}\n");
+              .append(", \"should_handoff\": false}\n");
         }
         sb.append("</CONVERSATION_STATE_AND_ACTION_CONTRACT>\n\n");
-        sb.append("Khách hàng: ").append(PromptSecurityGuard.sanitizeUntrustedContent(customerMessage != null ? customerMessage : "")).append('\n');
+        String safeRawCust = PromptSecurityGuard.sanitizeUntrustedContent(customerMessage != null ? customerMessage : "");
+        String normCust = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(safeRawCust);
+        if (!normCust.isBlank() && !normCust.equalsIgnoreCase(safeRawCust.strip())) {
+            sb.append("Khách hàng: ").append(safeRawCust).append(" (ý nghĩa chuẩn hóa: ").append(normCust).append(")\n");
+        } else {
+            sb.append("Khách hàng: ").append(safeRawCust).append('\n');
+        }
         sb.append("Tin nhắn phản hồi khách hàng:");
         return sb.toString();
+    }
+
+    private static void appendVerifiedPackageBenefitsAndForbiddenPerks(
+            StringBuilder sb,
+            ConversationState convState,
+            PrimaryActionRouter.CatalogOption opt,
+            long targetPriceVnd
+    ) {
+        StringBuilder verified = new StringBuilder();
+        if (opt != null && opt.benefitSummary() != null && !opt.benefitSummary().isBlank()) {
+            verified.append(opt.benefitSummary().strip());
+        }
+        long effectivePrice = targetPriceVnd > 0 ? targetPriceVnd : (opt != null ? opt.priceVnd() : 0L);
+        if (convState != null && convState.availablePackageCatalog() != null && effectivePrice > 0) {
+            for (PackageCatalogService.PackageSummary pkg : convState.availablePackageCatalog()) {
+                if (pkg != null && pkg.priceVnd() == effectivePrice) {
+                    if (pkg.includesSummary() != null && !pkg.includesSummary().isBlank()) {
+                        if (!verified.isEmpty()) verified.append(", ");
+                        verified.append(pkg.includesSummary().strip());
+                    }
+                    if (pkg.roomType() != null && !pkg.roomType().isBlank()) {
+                        if (!verified.isEmpty()) verified.append(", ");
+                        verified.append(pkg.roomType().strip());
+                    }
+                    break;
+                }
+            }
+        }
+        String verifiedStr = verified.toString()
+                .replaceAll("\\s*\\+\\s*", ", ")
+                .replaceAll("\\s*&\\s*", " và ")
+                .replaceAll("…", "")
+                .strip();
+        if (!verifiedStr.isBlank()) {
+            sb.append("- verified_package_benefits: ").append(verifiedStr).append(", trọn gói không nhận Tip\n");
+        }
+        String lower = verified.toString().toLowerCase(Locale.ROOT);
+        List<String> forbidden = new ArrayList<>();
+        if (!lower.contains("xông")) {
+            forbidden.add("xông hơi / xông thảo dược / tắm xông thảo dược");
+        }
+        if (!lower.contains("ngâm bồn")) {
+            forbidden.add("ngâm bồn thảo dược");
+        }
+        if (!lower.contains("full body") && !lower.contains("toàn thân")) {
+            forbidden.add("massage toàn thân (full body)");
+        }
+        if (!lower.contains("thực dưỡng")) {
+            forbidden.add("buffet thực dưỡng");
+        }
+        if ((effectivePrice > 0 && effectivePrice < 580_000L) || lower.contains("phòng chung") || lower.contains("khu dưỡng sinh") || !lower.contains("vip")) {
+            forbidden.add("Phòng VIP riêng");
+        }
+        if (!forbidden.isEmpty()) {
+            sb.append("- forbidden_unverified_tier_perks: Gói này KHÔNG bao gồm [")
+              .append(String.join(", ", forbidden))
+              .append("] -> TUYỆT ĐỐI CẤM nêu các quyền lợi này cho gói đang tư vấn!\n");
+        }
     }
 }

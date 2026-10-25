@@ -655,6 +655,8 @@ export const api = {
   async sendFanpageBotMessage({
     pageId = null,
     senderId = 'fb-user-sim',
+    conversationId = null,
+    resetSession = false,
     customerName = null,
     message = '',
     messages = null,
@@ -678,6 +680,12 @@ export const api = {
       history,
       document_ids: documentIds,
       top_k: topK
+    }
+    if (conversationId) {
+      payload.conversation_id = conversationId
+    }
+    if (resetSession) {
+      payload.reset_session = true
     }
     if (messages && messages.length > 0) {
       payload.messages = messages

@@ -243,7 +243,7 @@ public final class ChunkBuilder {
     }
 
     private static boolean shouldDecomposeTableIntoAtomicRows(String blockText) {
-        if (blockText == null || !isMarkdownTable(blockText)) {
+        if (blockText == null || blockText.length() < 120 || !isMarkdownTable(blockText)) {
             return false;
         }
         String[] lines = blockText.strip().split("\r?\n");

@@ -62,8 +62,39 @@ public record FanpageBotRequest(
 
         @JsonProperty("price_bubble_sent_at_ns")
         @JsonAlias({"priceBubbleSentAtNs"})
-        Long priceBubbleSentAtNs
+        Long priceBubbleSentAtNs,
+
+        @JsonProperty("conversation_id")
+        @JsonAlias({"conversationId", "session_id", "sessionId"})
+        String conversationId,
+
+        @JsonProperty("reset_session")
+        @JsonAlias({"resetSession"})
+        Boolean resetSession
 ) {
+    /**
+     * Constructor tương thích ngược 15 tham số.
+     */
+    public FanpageBotRequest(
+            String pageId,
+            String senderId,
+            String customerName,
+            String message,
+            List<String> messages,
+            List<ConversationTurn> history,
+            List<UUID> documentIds,
+            Integer topK,
+            Integer previousTemperature,
+            Integer replyDelaySeconds,
+            Integer idleSeconds,
+            String action,
+            Boolean splitPriceBubbles,
+            Long pendingTurnSequence,
+            Long priceBubbleSentAtNs
+    ) {
+        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, previousTemperature, replyDelaySeconds, idleSeconds, action, splitPriceBubbles, pendingTurnSequence, priceBubbleSentAtNs, null, null);
+    }
+
     /**
      * Constructor tương thích ngược 12 tham số.
      */
@@ -81,7 +112,7 @@ public record FanpageBotRequest(
             Integer idleSeconds,
             String action
     ) {
-        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, previousTemperature, replyDelaySeconds, idleSeconds, action, null, null, null);
+        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, previousTemperature, replyDelaySeconds, idleSeconds, action, null, null, null, null, null);
     }
 
     /**
@@ -97,7 +128,13 @@ public record FanpageBotRequest(
             List<UUID> documentIds,
             Integer topK
     ) {
-        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, null, null, null, null, null, null, null);
+        this(pageId, senderId, customerName, message, messages, history, documentIds, topK, null, null, null, null, null, null, null, null, null);
+    }
+
+    public boolean isResetSessionRequested() {
+        return Boolean.TRUE.equals(resetSession)
+                || "RESET_SESSION".equalsIgnoreCase(action)
+                || "NEW_SESSION".equalsIgnoreCase(action);
     }
 
     public record ConversationTurn(

@@ -76,6 +76,8 @@ public class FanpageBotController {
                 ? com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
                         parsedPageId,
                         request.senderId(),
+                        request.conversationId(),
+                        request.isResetSessionRequested(),
                         request.message(),
                         request.history(),
                         null
@@ -172,9 +174,12 @@ public class FanpageBotController {
                     String explicitEventId = (mid != null && !mid.isBlank())
                             ? mid.strip()
                             : (entry.path("id").asText("") + ":" + eventTimestamp + ":" + text.strip());
+                    String stableWebhookConvId = "fb_webhook_" + senderId.strip();
                     String dedupKey = com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
                             parsedQueryPageId,
                             senderId,
+                            stableWebhookConvId,
+                            false,
                             text,
                             List.of(),
                             explicitEventId
@@ -193,7 +198,16 @@ public class FanpageBotController {
                             List.of(),
                             List.of(),
                             List.of(),
-                            5
+                            5,
+                            null,
+                            null,
+                            null,
+                            null,
+                            false,
+                            null,
+                            null,
+                            stableWebhookConvId,
+                            false
                     );
                     lastBotResponse = fanpageBotService.handleCustomerMessage(webhookReq);
                     if (dedupKey != null && lastBotResponse != null) {

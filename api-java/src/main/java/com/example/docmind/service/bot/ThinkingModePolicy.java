@@ -185,7 +185,7 @@ public final class ThinkingModePolicy {
     }
 
     /**
-     * Cấu trúc Telemetry đầy đủ cho mỗi lượt hội thoại (Section VI & VII.2).
+     * Cấu trúc Telemetry đầy đủ cho mỗi lượt hội thoại (Section VI, VII.2 & v3.2.4 Section 4).
      */
     public record TurnTelemetry(
             PrimaryAction primaryAction,
@@ -213,9 +213,269 @@ public final class ThinkingModePolicy {
             long promptBuildMs,
             long retrievalMs,
             long validationMs,
+            long repairElapsedMs,
             int retryCount,
-            long totalTurnMs
+            long totalTurnMs,
+            boolean usedTemplateFallback,
+            String fallbackTriggerRule,
+            String generationSource,
+            boolean repairApplied,
+            int repairAttemptCount,
+            String validationOutcome,
+            List<String> validationErrors,
+            String provider,
+            String model,
+            String endpoint,
+            List<String> bubbleSources,
+            long loadDurationMs,
+            int promptEvalCount,
+            long promptEvalDurationMs,
+            int evalCount,
+            long evalDurationMs,
+            long totalDurationMs
     ) {
+        public TurnTelemetry {
+            unresolvedQuestionIds = unresolvedQuestionIds != null ? List.copyOf(unresolvedQuestionIds) : List.of();
+            retrievedSourceIds = retrievedSourceIds != null ? List.copyOf(retrievedSourceIds) : List.of();
+            validationErrors = validationErrors != null ? List.copyOf(validationErrors) : List.of();
+            bubbleSources = bubbleSources != null ? List.copyOf(bubbleSources) : List.of();
+            if (generationSource == null || generationSource.isBlank()) {
+                generationSource = usedTemplateFallback ? "FALLBACK_TEMPLATE" : (repairApplied ? "LLM_REPAIRED" : "LLM_LIVE");
+            }
+            if (validationOutcome == null || validationOutcome.isBlank()) {
+                validationOutcome = responseValidated ? "PASS" : "FAIL";
+            }
+            if (provider == null || provider.isBlank()) {
+                provider = "ollama";
+            }
+        }
+
+        public TurnTelemetry(
+                PrimaryAction primaryAction,
+                ThinkingMode thinkingMode,
+                String detectedIntent,
+                List<String> unresolvedQuestionIds,
+                List<String> retrievedSourceIds,
+                boolean responseValidated,
+                String fallbackReason,
+                long llmElapsedMs,
+                long priceBubbleShownAt,
+                long secondBubbleSentAt,
+                long timeToFirstBubbleMs,
+                long interBubbleGapMs,
+                String reasonCode,
+                boolean thinkEnabled,
+                int maxOutputTokens,
+                int thinkingChars,
+                long thinkingLatencyMs,
+                long contentLatencyMs,
+                int configuredDelayMs,
+                long elapsedSincePriceBubbleMs,
+                int remainingDelayMs,
+                boolean cancelledSecondBubble,
+                long promptBuildMs,
+                long retrievalMs,
+                long validationMs,
+                long repairElapsedMs,
+                int retryCount,
+                long totalTurnMs,
+                boolean usedTemplateFallback,
+                String fallbackTriggerRule,
+                String generationSource,
+                boolean repairApplied,
+                int repairAttemptCount,
+                String validationOutcome,
+                List<String> validationErrors,
+                String provider,
+                String model,
+                String endpoint,
+                List<String> bubbleSources
+        ) {
+            this(
+                    primaryAction,
+                    thinkingMode,
+                    detectedIntent,
+                    unresolvedQuestionIds,
+                    retrievedSourceIds,
+                    responseValidated,
+                    fallbackReason,
+                    llmElapsedMs,
+                    priceBubbleShownAt,
+                    secondBubbleSentAt,
+                    timeToFirstBubbleMs,
+                    interBubbleGapMs,
+                    reasonCode,
+                    thinkEnabled,
+                    maxOutputTokens,
+                    thinkingChars,
+                    thinkingLatencyMs,
+                    contentLatencyMs,
+                    configuredDelayMs,
+                    elapsedSincePriceBubbleMs,
+                    remainingDelayMs,
+                    cancelledSecondBubble,
+                    promptBuildMs,
+                    retrievalMs,
+                    validationMs,
+                    repairElapsedMs,
+                    retryCount,
+                    totalTurnMs,
+                    usedTemplateFallback,
+                    fallbackTriggerRule,
+                    generationSource,
+                    repairApplied,
+                    repairAttemptCount,
+                    validationOutcome,
+                    validationErrors,
+                    provider,
+                    model,
+                    endpoint,
+                    bubbleSources,
+                    0L,
+                    0,
+                    0L,
+                    0,
+                    0L,
+                    llmElapsedMs
+            );
+        }
+
+        public TurnTelemetry(
+                PrimaryAction primaryAction,
+                ThinkingMode thinkingMode,
+                String detectedIntent,
+                List<String> unresolvedQuestionIds,
+                List<String> retrievedSourceIds,
+                boolean responseValidated,
+                String fallbackReason,
+                long llmElapsedMs,
+                long priceBubbleShownAt,
+                long secondBubbleSentAt,
+                long timeToFirstBubbleMs,
+                long interBubbleGapMs,
+                String reasonCode,
+                boolean thinkEnabled,
+                int maxOutputTokens,
+                int thinkingChars,
+                long thinkingLatencyMs,
+                long contentLatencyMs,
+                int configuredDelayMs,
+                long elapsedSincePriceBubbleMs,
+                int remainingDelayMs,
+                boolean cancelledSecondBubble,
+                long promptBuildMs,
+                long retrievalMs,
+                long validationMs,
+                long repairElapsedMs,
+                int retryCount,
+                long totalTurnMs
+        ) {
+            this(
+                    primaryAction,
+                    thinkingMode,
+                    detectedIntent,
+                    unresolvedQuestionIds,
+                    retrievedSourceIds,
+                    responseValidated,
+                    fallbackReason,
+                    llmElapsedMs,
+                    priceBubbleShownAt,
+                    secondBubbleSentAt,
+                    timeToFirstBubbleMs,
+                    interBubbleGapMs,
+                    reasonCode,
+                    thinkEnabled,
+                    maxOutputTokens,
+                    thinkingChars,
+                    thinkingLatencyMs,
+                    contentLatencyMs,
+                    configuredDelayMs,
+                    elapsedSincePriceBubbleMs,
+                    remainingDelayMs,
+                    cancelledSecondBubble,
+                    promptBuildMs,
+                    retrievalMs,
+                    validationMs,
+                    repairElapsedMs,
+                    retryCount,
+                    totalTurnMs,
+                    fallbackReason != null && !fallbackReason.isBlank(),
+                    fallbackReason,
+                    (fallbackReason != null && !fallbackReason.isBlank())
+                            ? "FALLBACK_TEMPLATE"
+                            : (retryCount > 0 ? "LLM_REPAIRED" : "LLM_LIVE"),
+                    retryCount > 0,
+                    retryCount,
+                    responseValidated ? (retryCount > 0 ? "REPAIRED_PASS" : "PASS") : "FALLBACK",
+                    List.of(),
+                    "ollama",
+                    "qwen3:14b",
+                    "/api/chat",
+                    List.of()
+            );
+        }
+
+        public TurnTelemetry(
+                PrimaryAction primaryAction,
+                ThinkingMode thinkingMode,
+                String detectedIntent,
+                List<String> unresolvedQuestionIds,
+                List<String> retrievedSourceIds,
+                boolean responseValidated,
+                String fallbackReason,
+                long llmElapsedMs,
+                long priceBubbleShownAt,
+                long secondBubbleSentAt,
+                long timeToFirstBubbleMs,
+                long interBubbleGapMs,
+                String reasonCode,
+                boolean thinkEnabled,
+                int maxOutputTokens,
+                int thinkingChars,
+                long thinkingLatencyMs,
+                long contentLatencyMs,
+                int configuredDelayMs,
+                long elapsedSincePriceBubbleMs,
+                int remainingDelayMs,
+                boolean cancelledSecondBubble,
+                long promptBuildMs,
+                long retrievalMs,
+                long validationMs,
+                int retryCount,
+                long totalTurnMs
+        ) {
+            this(
+                    primaryAction,
+                    thinkingMode,
+                    detectedIntent,
+                    unresolvedQuestionIds,
+                    retrievedSourceIds,
+                    responseValidated,
+                    fallbackReason,
+                    llmElapsedMs,
+                    priceBubbleShownAt,
+                    secondBubbleSentAt,
+                    timeToFirstBubbleMs,
+                    interBubbleGapMs,
+                    reasonCode,
+                    thinkEnabled,
+                    maxOutputTokens,
+                    thinkingChars,
+                    thinkingLatencyMs,
+                    contentLatencyMs,
+                    configuredDelayMs,
+                    elapsedSincePriceBubbleMs,
+                    remainingDelayMs,
+                    cancelledSecondBubble,
+                    promptBuildMs,
+                    retrievalMs,
+                    validationMs,
+                    0L,
+                    retryCount,
+                    totalTurnMs
+            );
+        }
+
         public TurnTelemetry(
                 PrimaryAction primaryAction,
                 ThinkingMode thinkingMode,
@@ -263,6 +523,7 @@ public final class ThinkingModePolicy {
                     elapsedSincePriceBubbleMs,
                     remainingDelayMs,
                     cancelledSecondBubble,
+                    0L,
                     0L,
                     0L,
                     0L,
@@ -548,25 +809,34 @@ public final class ThinkingModePolicy {
             ), effectiveBench);
         }
 
-        // 1. Mode 4: REPAIR_FIRST — Khách bức xúc, phàn nàn bot tư vấn lệch ý, hoặc còn câu hỏi tồn đọng chưa được giải quyết
+        // 1. Mode 4: REPAIR_FIRST — Khách bức xúc, phàn nàn bot tư vấn lệch ý, bác bỏ giả định, hoặc còn câu hỏi tồn đọng chưa được giải quyết
         boolean insightFrustrated = customerInsight != null
                 && ((customerInsight.temperatureDelta() != null && customerInsight.temperatureDelta() <= -10)
                     || "DECAYING".equalsIgnoreCase(customerInsight.momentum()));
+        boolean isPriceObjectionAction = effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME
+                || effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT
+                || effectiveAction == PrimaryAction.EXPLAIN_UNIT_VALUE;
+        boolean isNonRepairMetaOrAckAdvance = effectiveAction == PrimaryAction.ADVANCE_AFTER_ACK
+                || "META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(detectedIntent)
+                || "CONFIRM_PREVIOUS_INFO_ADVANCE".equals(detectedIntent)
+                || "META_COMMENT_ON_GREETING".equals(detectedIntent);
         boolean hasRepairComplaint = insightFrustrated
                 || safeState.frustrationCount() >= 1
                 || MISMATCH_OR_REPAIR_COMPLAINT_PATTERN.matcher(normMsg).matches()
                 || PrimaryActionRouter.isFrustrationMessage(rawMsg)
                 || SentimentIntentLayer.isEntityMismatchCorrection(rawMsg)
                 || SentimentIntentLayer.isComprehensionFailureMessage(rawMsg)
+                || SentimentIntentLayer.isNegationOrPushbackOnAssumption(rawMsg)
                 || detectedIntent.contains("FRUSTRATION_RECOVERY")
                 || detectedIntent.contains("COMPREHENSION_RECOVERY")
                 || detectedIntent.contains("COMPREHENSION_REPAIR")
                 || detectedIntent.contains("MISMATCH_CORRECTION")
+                || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(detectedIntent)
                 || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(detectedIntent)
                 || "CLARIFICATION_DETAIL_OR_FAQ_QA".equals(detectedIntent);
         boolean hasUnresolvedQuestionFromPriorTurns = safeState.hasUnresolvedCustomerRequest();
 
-        if (hasRepairComplaint || hasUnresolvedQuestionFromPriorTurns) {
+        if (!isPriceObjectionAction && !isNonRepairMetaOrAckAdvance && (hasRepairComplaint || hasUnresolvedQuestionFromPriorTurns)) {
             return new ThinkingDecision(
                     ThinkingMode.REPAIR_FIRST,
                     ThinkingMode.REPAIR_FIRST.maxOutputTokens(),
@@ -608,9 +878,10 @@ public final class ThinkingModePolicy {
             );
         }
 
-        // 3. Mode 2: PRICE_ANCHOR_THINK — Báo giá lần đầu / gợi ý gói kèm giá / gợi ý gói thay thế (chỉ khi thực sự báo giá, không bật khi đang hỏi làm rõ)
+        // 3. Mode 2: PRICE_ANCHOR_THINK — Báo giá lần đầu / gợi ý gói kèm giá / gợi ý gói thay thế (chỉ khi thực sự báo giá, không bật khi đang hỏi làm rõ hoặc khi tiến bước sau meta/confirm mà giá đã báo)
         boolean isClarifyingBeforePrice = effectiveAction == PrimaryAction.CLARIFY_SERVICE_DURATION
-                || effectiveAction == PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE;
+                || effectiveAction == PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE
+                || isNonRepairMetaOrAckAdvance;
         boolean isPriceAnchorTurn = !isClarifyingBeforePrice
                 && (effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
                     || effectiveAction == PrimaryAction.RECOMMEND_ONE_PACKAGE
@@ -729,6 +1000,9 @@ public final class ThinkingModePolicy {
             return List.of();
         }
         Set<String> used = new LinkedHashSet<>();
+        if (state.deliveredValueAngles() != null) {
+            used.addAll(state.deliveredValueAngles());
+        }
         List<String> sources = new ArrayList<>();
         if (state.lastAssistantMessage() != null && !state.lastAssistantMessage().isBlank()) {
             sources.add(state.lastAssistantMessage());

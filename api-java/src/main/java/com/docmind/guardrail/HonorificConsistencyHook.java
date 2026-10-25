@@ -33,7 +33,10 @@ public class HonorificConsistencyHook implements GuardrailHook {
     private static final Pattern INVERTED_PRONOUN_PATTERN = Pattern.compile(
             "(?iU)(^|[.!?\\n,;:\\-]\\s*)em\\s+(có\\s+thể\\s+(?:tham\\s+khảo|lựa\\s+chọn|chọn|trải\\s+nghiệm|dùng|sử\\s+dụng|đăng\\s+ký|cân\\s+nhắc)|"
             + "nên\\s+(?:tham\\s+khảo|lựa\\s+chọn|chọn|dùng|trải\\s+nghiệm)|"
-            + "sẽ\\s+(?:nhận\\s+được|được\\s+tặng|được\\s+giảm|được\\s+hưởng|được\\s+miễn\\s+phí))"
+            + "sẽ\\s+(?:nhận\\s+được|được\\s+tặng|được\\s+giảm|được\\s+hưởng|được\\s+miễn\\s+phí)|"
+            + "đang\\s+(?:quan\\s+tâm|tìm\\s+hiểu|tìm|bị|gặp|mỏi|đau|nhức|cần|muốn|lăn\\s+tăn|phân\\s+vân)|"
+            + "muốn\\s+(?:tìm\\s+hiểu|tham\\s+khảo|trải\\s+nghiệm|làm|chọn|đặt\\s+lịch|thư\\s+giãn|chăm\\s+sóc|ghé)|"
+            + "cần\\s+(?:tư\\s+vấn|chăm\\s+sóc|thư\\s+giãn|giải\\s+tỏa))"
     );
 
     // Chỉ bắt chữ thường 't' hoặc đại từ xưng hô, KHÔNG dùng [a-z] case-insensitive để tránh nuốt chữ cái tên viết tắt như 'Anh K'
@@ -67,6 +70,43 @@ public class HonorificConsistencyHook implements GuardrailHook {
         return HOOK_CODE;
     }
 
+    private static final Pattern INVERTED_APOLOGY_PATTERN = Pattern.compile(
+            "(?iU)\\b(dạ\\s+)?xin\\s+lỗi\\s+em\\s+vì\\b"
+    );
+    private static final Pattern INVERTED_CONSULTANT_ASK_PATTERN = Pattern.compile(
+            "(?iU)(^|[.!?\\n,;:\\-]\\s*)(?:mình|anh|chị)\\s+có\\s+thể\\s+hỏi\\s+(?:thêm\\s+)?một\\s+chút\\s+để\\s+em\\s+tư\\s+vấn"
+    );
+
+    public static boolean matchesInvertedCustomerPronoun(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        return INVERTED_PRONOUN_PATTERN.matcher(text).find()
+                || INVERTED_APOLOGY_PATTERN.matcher(text).find()
+                || INVERTED_CONSULTANT_ASK_PATTERN.matcher(text).find();
+    }
+
+    public static String repairInvertedCustomerPronoun(String text, String honorific) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String target = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "mình";
+        String cap = Character.toUpperCase(target.charAt(0)) + target.substring(1);
+        String working = INVERTED_PRONOUN_PATTERN.matcher(text)
+                .replaceAll(mr -> mr.group(1) + cap + " " + mr.group(2));
+        working = INVERTED_APOLOGY_PATTERN.matcher(working)
+                .replaceAll(mr -> (mr.group(1) != null ? mr.group(1) : "") + "em xin lỗi " + target + " vì");
+        working = INVERTED_CONSULTANT_ASK_PATTERN.matcher(working)
+                .replaceAll(mr -> mr.group(1) + "Em có thể hỏi " + target + " một chút để tư vấn");
+        return working;
+    }
+
+    private static boolean hasInvertedPronoun(String lower) {
+        return lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")
+                || lower.contains("em đang") || lower.contains("em muốn") || lower.contains("em cần")
+                || lower.contains("xin lỗi em vì") || lower.contains("hỏi một chút để em tư vấn");
+    }
+
     @Override
     public boolean isApplicable(GuardrailContext context, GuardrailDraft draft) {
         if (context == null || draft == null) {
@@ -80,22 +120,22 @@ public class HonorificConsistencyHook implements GuardrailHook {
         boolean isNeutralAnhChi = "Anh/Chị".equalsIgnoreCase(context.getCustomerHonorific());
         boolean isNeutralMinh = "mình".equalsIgnoreCase(context.getCustomerHonorific());
         if (context.isMale()) {
-            return lower.contains("chị") || lower.contains("bạn") || lower.contains("em có thể")
-                    || lower.contains("em nên") || lower.contains("em sẽ") || lower.contains("anh anh")
-                    || lower.contains("anh/chị") || lower.contains("anh chị");
+            return lower.contains("chị") || lower.contains("bạn") || hasInvertedPronoun(lower)
+                    || lower.contains("anh anh") || lower.contains("anh/chị") || lower.contains("anh chị")
+                    || lower.contains("liệu ");
         } else if (isNeutralMinh) {
-            return lower.contains("bạn") || lower.contains("em có thể")
-                    || lower.contains("em nên") || lower.contains("em sẽ")
+            return lower.contains("chị") || lower.contains("bạn") || hasInvertedPronoun(lower)
                     || lower.contains("anh/chị") || lower.contains("anh chị")
-                    || lower.contains("/chị") || lower.contains("/anh");
+                    || lower.contains("/chị") || lower.contains("/anh")
+                    || lower.contains("liệu ");
         } else if (isNeutralAnhChi) {
-            return lower.contains("bạn") || lower.contains("em có thể")
-                    || lower.contains("em nên") || lower.contains("em sẽ")
-                    || lower.contains("/chị") || lower.contains("/anh");
+            return lower.contains("bạn") || hasInvertedPronoun(lower)
+                    || lower.contains("/chị") || lower.contains("/anh")
+                    || lower.contains("liệu ");
         } else {
             return lower.contains("chị chị") || lower.contains("anh") || lower.contains("bạn")
-                    || lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")
-                    || lower.contains("anh/chị") || lower.contains("anh chị");
+                    || hasInvertedPronoun(lower) || lower.contains("anh/chị") || lower.contains("anh chị")
+                    || lower.contains("liệu ");
         }
     }
 
@@ -148,9 +188,14 @@ public class HonorificConsistencyHook implements GuardrailHook {
 
         String lower = working.toLowerCase(Locale.ROOT);
 
-        // 1. Sửa lỗi đảo ngược đại từ ("Em có thể tham khảo..." -> "Anh/Chị có thể tham khảo...")
-        if (lower.contains("em có thể") || lower.contains("em nên") || lower.contains("em sẽ")) {
-            working = INVERTED_PRONOUN_PATTERN.matcher(working).replaceAll("$1" + honorific + " $2");
+        // 1. Sửa lỗi đảo ngược đại từ ("Em có thể tham khảo..." / "Em đang quan tâm..." / "xin lỗi em vì" -> "Anh/Chị/Mình ...")
+        if (hasInvertedPronoun(lower)) {
+            working = repairInvertedCustomerPronoun(working, honorific);
+        }
+
+        // 1.5. Dọn câu dịch máy "Liệu mình/Chị/Anh có muốn..." -> "Mình/Chị/Anh có muốn..."
+        if (lower.contains("liệu ")) {
+            working = working.replaceAll("(?iU)(^|[.!?\\n,;:\\-]\\s*)liệu\\s+(mình|chị|anh)\\s+có\\s+muốn\\b", "$1$2 có muốn");
         }
 
         // 2. Xóa lỗi nhầm đại từ viết tắt đầu câu của khách thành tên riêng ("Dạ Chị t,", "Dạ Anh Mìn,")
@@ -218,9 +263,24 @@ public class HonorificConsistencyHook implements GuardrailHook {
             if (lower.contains("anh") && lower.contains("chị")) {
                 working = ANH_CHI_PATTERN.matcher(working).replaceAll("mình");
             }
+            if (lower.contains("chị")) {
+                working = CHI_REPLACEMENT_PATTERN.matcher(working).replaceAll(mr -> {
+                    String match = mr.group();
+                    if ("CHỊ".equals(match)) {
+                        return "MÌNH";
+                    } else if ("Chị".equals(match)) {
+                        return "Mình";
+                    } else {
+                        return "mình";
+                    }
+                });
+            }
             if (lower.contains("bạn")) {
                 working = BAN1_PATTERN.matcher(working).replaceAll(mr -> mr.group(1) + " mình");
                 working = BAN2_PATTERN.matcher(working).replaceAll("mình");
+            }
+            if (working.toLowerCase(Locale.ROOT).contains("mình")) {
+                working = working.replaceAll("(?iU)(?<!\\p{L})mình\\s*,?\\s+mình(?!\\p{L})", "mình");
             }
         } else if (isNeutralAnhChi) {
             if (lower.contains("bạn")) {

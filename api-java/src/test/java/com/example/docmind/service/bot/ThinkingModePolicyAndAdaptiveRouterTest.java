@@ -38,7 +38,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         String massageTable = """
                 | Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
                 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-                | NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu | Phòng cộng đồng có rèm riêng | KTV tiêu chuẩn | Tắm xông thảo dược, giảm căng cơ mỏi vai gáy lưng, buffet thực dưỡng miễn phí | Khách thư giãn nhanh, dân văn phòng |
+                | NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng cộng đồng có rèm riêng | KTV tiêu chuẩn | Massage trị liệu toàn thân 60 phút ấn huyệt giảm đau mỏi cổ vai gáy lưng, buffet thực dưỡng miễn phí | Khách thư giãn nhanh, dân văn phòng |
                 | NS02 | Massage ngâm thảo dược | 530.000VNĐ | 90 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 75p massage | Phòng cộng đồng có rèm | KTV tiêu chuẩn | Ngâm bồn thảo dược ấm giúp giãn cơ, giảm đau mỏi cổ vai gáy lưng | Khách mỏi cơ, lạnh người |
                 | DS02 | Dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Rửa mặt + massage mặt + gội thảo dược + chườm thảo dược cổ vai + ăn nhẹ | Khu dưỡng sinh chung | KTV dưỡng sinh | Thư giãn đầu cổ vai nhẹ nhàng | Khách cần thư giãn nhanh |
                 """;
@@ -112,7 +112,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     @DisplayName("1. ThinkingMode enum defines provider-agnostic token, sentence, and word budgets")
     void thinkingModeEnumDefinesProviderAgnosticBudgets() {
         assertThat(ThinkingMode.FAST_NO_THINK.thinkEnabled()).isFalse();
-        assertThat(ThinkingMode.FAST_NO_THINK.maxOutputTokens()).isEqualTo(250);
+        assertThat(ThinkingMode.FAST_NO_THINK.maxOutputTokens()).isEqualTo(400);
         assertThat(ThinkingMode.FAST_NO_THINK.maxSentencesPerBubble()).isEqualTo(2);
         assertThat(ThinkingMode.FAST_NO_THINK.maxWordsPerBubble()).isEqualTo(65);
 
@@ -122,7 +122,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(ThinkingMode.PRICE_ANCHOR_THINK.maxWordsPerBubble()).isEqualTo(65);
 
         assertThat(ThinkingMode.OBJECTION_REFRAME_THINK.thinkEnabled()).isTrue();
-        assertThat(ThinkingMode.OBJECTION_REFRAME_THINK.maxOutputTokens()).isEqualTo(500);
+        assertThat(ThinkingMode.OBJECTION_REFRAME_THINK.maxOutputTokens()).isEqualTo(550);
         assertThat(ThinkingMode.OBJECTION_REFRAME_THINK.maxSentencesPerBubble()).isEqualTo(3);
         assertThat(ThinkingMode.OBJECTION_REFRAME_THINK.maxWordsPerBubble()).isEqualTo(65);
 
@@ -355,7 +355,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
             assertThat(capturedOllamaPath.get()).isEqualTo("/api/chat");
             assertThat(capturedOllamaBody.get())
                     .contains("\"think\":true")
-                    .contains("\"num_predict\":500");
+                    .contains("\"num_predict\":550");
             // Internal thinking trace must NEVER leak into returned content
             assertThat(ollamaReply)
                     .doesNotContain("Khách đang chê đắt lần 1")
@@ -598,7 +598,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 .thenAnswer(inv -> {
                     String prompt = inv.getArgument(0, String.class);
                     if (prompt.contains("Bong bóng 1 báo giá đã được gửi cho khách")) {
-                        return "{\"reply_bubbles\":[{\"text\":\"Dạ sau 60 phút ấn huyệt giải cơ sâu kết hợp xông thảo dược ấm, vùng cổ vai gáy của mình sẽ nhẹ hẳn và dễ ngủ sâu giấc hơn ạ. Mình đang thiên về thư giãn nhẹ nhàng hay ấn huyệt sâu vùng cổ vai gáy ạ?\",\"typing_delay_ms\":10000}],\"should_handoff\":false}";
+                        return "{\"reply_bubbles\":[{\"text\":\"Dạ sau 60 phút ấn huyệt giải cơ sâu kết hợp dùng buffet thực dưỡng miễn phí, vùng cổ vai gáy của mình sẽ nhẹ hẳn và dễ ngủ sâu giấc hơn ạ. Mình đang thiên về thư giãn nhẹ nhàng hay ấn huyệt sâu vùng cổ vai gáy ạ?\",\"typing_delay_ms\":10000}],\"should_handoff\":false}";
                     }
                     return "[ollama-offline]";
                 });
@@ -957,7 +957,6 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         tools.jackson.databind.JsonNode j3 = mapper.readTree(resp3.body());
         System.out.println("[LIVE-BENCHMARK] Scenario A Turn 3 Stage 1 (" + t3Ms + "ms): " + j3.path("reply_text").asText());
         assertThat(j3.path("reply_text").asText())
-                .contains("🥰")
                 .doesNotContain("239k");
         histA.add(Map.of("role", "user", "content", "339k hơi cao nhỉ"));
         histA.add(Map.of("role", "assistant", "content", j3.path("reply_text").asText()));
@@ -1102,5 +1101,586 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 .doesNotContain("?")
                 .doesNotContain("239k")
                 .doesNotContain("339k");
+    }
+
+    @Test
+    @DisplayName("16. v3.2.4-MASTER: Progressive Value Reveal (deliveredValueAngles), <580k room disambiguation, and Fast Targeted Repair telemetry")
+    void v324MasterProgressiveValueRevealRoomDisambiguationAndFastTargetedRepair() throws Exception {
+        List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
+        List<String> keywords = List.of("cổ", "vai", "gáy", "lưng", "chân", "thảo dược", "massage", "dưỡng sinh", "239k", "399k");
+
+        // 1. Verify PackageCatalogService disambiguates conflicting room / highlight text for <580k HN packages
+        String conflictingTable = """
+                | Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Phòng | KTV | Điểm nổi bật | Phù hợp |
+                | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+                | NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu | Phòng chung | KTV tiêu chuẩn | Phòng Vip, tắm xông thảo dược, buffet thực dưỡng | Khách văn phòng |
+                | NS02 | Massage ngâm thảo dược | 530.000VNĐ | 90 phút | Ngâm bồn thảo dược + massage | Phòng chung | KTV tiêu chuẩn | Phòng VIP riêng tư, ngâm thảo dược | Khách mỏi cơ |
+                | NS03 | Massage VIP 1 | 580.000VNĐ | 80 phút | Xông hơi + ngâm chân + massage | Phòng VIP | KTV VIP | Phòng VIP riêng tư, chườm ngải cứu | Khách cần riêng tư |
+                | DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ, trái cây theo mùa | Khu dưỡng sinh | KTV dưỡng sinh | Thư giãn nhẹ nhàng | Khách thư giãn nhanh |
+                """;
+        ReciprocalRankFusion.FusedChunk tableChunk = new ReciprocalRankFusion.FusedChunk(
+                new RetrievedChunk(
+                        UUID.randomUUID(),
+                        DOC_ID,
+                        List.of("MASSAGE", "Cơ sở Hà Nội"),
+                        List.of(),
+                        1,
+                        new double[]{0, 0, 10, 10},
+                        conflictingTable,
+                        0.98
+                ),
+                0.98
+        );
+        List<PackageCatalogService.PackageSummary> parsedCatalog = PackageCatalogService.extractCatalog(
+                List.of(tableChunk),
+                keywords
+        );
+        PackageCatalogService.PackageSummary ns01 = parsedCatalog.stream()
+                .filter(p -> "NS01".equals(p.code())).findFirst().orElseThrow();
+        PackageCatalogService.PackageSummary ns02 = parsedCatalog.stream()
+                .filter(p -> "NS02".equals(p.code())).findFirst().orElseThrow();
+        PackageCatalogService.PackageSummary ns03 = parsedCatalog.stream()
+                .filter(p -> "NS03".equals(p.code())).findFirst().orElseThrow();
+        assertThat(ns01.roomType()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng Vip");
+        assertThat(ns01.processSummary()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng Vip");
+        assertThat(ns02.roomType()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng VIP");
+        assertThat(ns02.processSummary()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng VIP");
+        assertThat(ns03.roomType()).containsIgnoringCase("Phòng VIP");
+
+        // 2. Verify deliveredValueAngles() is NOT marked when Bubble 1 only is sent (splitPriceBubbles=true) or when Bubble 2 is superseded
+        List<FanpageBotRequest.ConversationTurn> hBeforeQuote = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Mình bị đau mỏi cổ vai gáy"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ tình trạng mỏi cổ vai gáy của mình mới gần đây hay đã kéo dài ạ?")
+        );
+        ConversationState stateBeforeQuote = ConversationState.hydrate(PAGE_ID, "u-val-angle", hBeforeQuote, keywords, List.of(tableChunk));
+        PrimaryActionRouter.RoutingDecision quoteDecision = PrimaryActionRouter.route(
+                "Mới bị mấy hôm nay thôi, báo giá giúp mình", stateBeforeQuote, List.of(tableChunk), keywords
+        );
+        List<FanpageBotResponse.ReplyBubble> bubble1Only = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ mình tham khảo gói Massage cơ bản 60 phút giá 399k ạ.", 0)
+        );
+        ConversationState afterBubble1Only = ConversationState.updateAfterSend(
+                PAGE_ID, "u-val-angle", stateBeforeQuote, "Mới bị mấy hôm nay thôi, báo giá giúp mình", quoteDecision, bubble1Only, false
+        );
+        assertThat(afterBubble1Only.deliveredValueAngles()).doesNotContain("VALUE_ANGLE_1");
+
+        // When Bubble 2 is superseded/cancelled (empty finalBubbles), VALUE_ANGLE_1 must still NOT be marked delivered
+        PrimaryActionRouter.RoutingDecision anchorDecision = new PrimaryActionRouter.RoutingDecision(
+                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
+                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
+                false,
+                1,
+                "GENERATE_PRICE_ANCHOR_BUBBLE",
+                "spa_price_quote"
+        );
+        ConversationState afterCancelledBubble2 = ConversationState.updateAfterSend(
+                PAGE_ID, "u-val-angle", afterBubble1Only, "__GENERATE_PRICE_ANCHOR_BUBBLE__", anchorDecision, List.of(), false
+        );
+        assertThat(afterCancelledBubble2.deliveredValueAngles()).doesNotContain("VALUE_ANGLE_1");
+
+        // When Bubble 2 is actually delivered, VALUE_ANGLE_1 IS marked delivered
+        List<FanpageBotResponse.ReplyBubble> deliveredBubble2 = List.of(
+                new FanpageBotResponse.ReplyBubble("Liệu trình kết hợp chăm sóc êm ái vùng cổ vai gáy, kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ.", 7200)
+        );
+        ConversationState afterDeliveredBubble2 = ConversationState.updateAfterSend(
+                PAGE_ID, "u-val-angle", afterBubble1Only, "__GENERATE_PRICE_ANCHOR_BUBBLE__", anchorDecision, deliveredBubble2, false
+        );
+        assertThat(afterDeliveredBubble2.deliveredValueAngles()).contains("VALUE_ANGLE_1");
+        assertThat(ThinkingModePolicy.extractPreviouslyUsedArgumentsFromState(afterDeliveredBubble2))
+                .contains("VALUE_ANGLE_1");
+
+        // Stage 1 objection marks VALUE_ANGLE_2 as delivered
+        PrimaryActionRouter.RoutingDecision stage1ObjDecision = PrimaryActionRouter.route(
+                "Giá 399k hơi cao nhỉ", afterDeliveredBubble2, List.of(tableChunk), keywords
+        );
+        List<FanpageBotResponse.ReplyBubble> stage1Bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ em rất hiểu băn khoăn của mình về chi phí ạ.", 0),
+                new FanpageBotResponse.ReplyBubble("Mình có thể trải nghiệm thử 1 buổi trước để cảm nhận trực tiếp nha 🥰", 2000)
+        );
+        ConversationState afterStage1Obj = ConversationState.updateAfterSend(
+                PAGE_ID, "u-val-angle", afterDeliveredBubble2, "Giá 399k hơi cao nhỉ", stage1ObjDecision, stage1Bubbles, false
+        );
+        assertThat(afterStage1Obj.deliveredValueAngles()).contains("VALUE_ANGLE_1", "VALUE_ANGLE_2");
+
+        // 3. Verify Fast Targeted Repair (max_regenerations = 1 with FAST_NO_THINK) repairs false VIP claim on 399k package
+        java.util.concurrent.atomic.AtomicInteger callCounter = new java.util.concurrent.atomic.AtomicInteger(0);
+        AtomicReference<String> secondCallBody = new AtomicReference<>("");
+        HttpServer repairServer = HttpServer.create(new InetSocketAddress(0), 0);
+        repairServer.createContext("/api/chat", exchange -> {
+            int attempt = callCounter.incrementAndGet();
+            String reqBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            if (attempt == 2) {
+                secondCallBody.set(reqBody);
+            }
+            String jsonContent;
+            if (attempt == 1) {
+                // Attempt 1 violates room disambiguation by falsely claiming Phòng VIP riêng for 399k
+                jsonContent = """
+                        {"reply_bubbles":[{"text":"Dạ gói Massage cơ bản 60 phút giá 399k có Phòng VIP riêng sang trọng ạ.","typing_delay_ms":0},{"text":"Liệu trình chăm sóc êm ái vùng cổ vai gáy, kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ.","typing_delay_ms":8000}],"should_handoff":false}
+                        """.strip();
+            } else {
+                // Attempt 2 (Fast Targeted Repair) fixes the violation
+                jsonContent = """
+                        {"reply_bubbles":[{"text":"Dạ với tình trạng mỏi cổ vai gáy mới xuất hiện, mình tham khảo gói Massage cơ bản 60 phút giá 399k trọn gói không nhận tip ạ.","typing_delay_ms":0},{"text":"Không gian yên tĩnh, mỗi giường đều có rèm che riêng kín đáo và kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ.","typing_delay_ms":8000}],"should_handoff":false}
+                        """.strip();
+            }
+            String escaped = jsonContent.replace("\\", "\\\\").replace("\"", "\\\"");
+            String resp = "{\"message\":{\"role\":\"assistant\",\"content\":\"" + escaped + "\"}}";
+            byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        });
+        repairServer.start();
+        try {
+            int port = repairServer.getAddress().getPort();
+            OllamaProperties ollamaProps = new OllamaProperties();
+            ollamaProps.setBaseUrl("http://localhost:" + port);
+            ollamaProps.setModel("qwen3:14b");
+            ollamaProps.setReadTimeoutMs(5000);
+            OllamaLlmClient ollamaClient = new OllamaLlmClient(ollamaProps);
+
+            PromptBuilder.PagePersona persona = buildTestPersona();
+            com.example.docmind.service.retrieval.RetrievalService retrievalService =
+                    org.mockito.Mockito.mock(com.example.docmind.service.retrieval.RetrievalService.class);
+            org.mockito.Mockito.when(retrievalService.retrieveWithRules(
+                    org.mockito.Mockito.anyList(),
+                    org.mockito.Mockito.anyString(),
+                    org.mockito.Mockito.anyInt(),
+                    org.mockito.Mockito.anyList(),
+                    org.mockito.Mockito.any()
+            )).thenReturn(new com.example.docmind.service.retrieval.RetrievalService.RetrievalResult(List.of(tableChunk), List.of()));
+
+            com.example.docmind.repository.KnowledgePageRepository pageRepo =
+                    org.mockito.Mockito.mock(com.example.docmind.repository.KnowledgePageRepository.class);
+            com.example.docmind.entity.KnowledgePageEntity pageEntity = new com.example.docmind.entity.KnowledgePageEntity();
+            pageEntity.setId(PAGE_ID);
+            pageEntity.setName(persona.name());
+            pageEntity.setIndustry(persona.industry());
+            pageEntity.setTargetAudience(persona.targetAudience());
+            pageEntity.setDescription(persona.description());
+            pageEntity.setPersonaConfig(persona.resolvedConfig());
+            org.mockito.Mockito.when(pageRepo.findById(PAGE_ID)).thenReturn(java.util.Optional.of(pageEntity));
+
+            FanpageBotService service = new FanpageBotService(
+                    retrievalService,
+                    ollamaClient,
+                    new com.example.docmind.config.ChatProperties(),
+                    null,
+                    pageRepo,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+            FanpageBotRequest req = new FanpageBotRequest(
+                    PAGE_ID.toString(),
+                    "u-repair-test",
+                    "Khách hàng",
+                    "Mới bị mấy hôm nay thôi, giá gói 60 phút bao nhiêu shop?",
+                    null,
+                    hBeforeQuote,
+                    List.of(DOC_ID),
+                    null,
+                    null,
+                    null,
+                    5,
+                    null,
+                    false,
+                    null,
+                    null
+            );
+            FanpageBotResponse resp = service.handleCustomerMessage(req);
+            assertThat(callCounter.get()).isEqualTo(2);
+            assertThat(secondCallBody.get())
+                    .contains("\"think\":false")
+                    .contains("\"num_predict\":400")
+                    .contains("/no_think")
+                    .contains("FAST_TARGETED_REPAIR_HINT");
+            assertThat(resp.replyText())
+                    .contains("399k")
+                    .contains("rèm che riêng kín đáo")
+                    .doesNotContainIgnoringCase("Phòng VIP");
+            ThinkingModePolicy.TurnTelemetry telemetry = service.getLastTurnTelemetry();
+            assertThat(telemetry).isNotNull();
+            assertThat(telemetry.retryCount()).isEqualTo(1);
+            assertThat(telemetry.repairElapsedMs()).isGreaterThanOrEqualTo(0L);
+            assertThat(telemetry.responseValidated()).isTrue();
+            assertThat(telemetry.usedTemplateFallback()).isFalse();
+            assertThat(telemetry.generationSource()).isEqualTo("LLM_REPAIRED");
+            assertThat(telemetry.repairApplied()).isTrue();
+            assertThat(telemetry.repairAttemptCount()).isEqualTo(1);
+            assertThat(telemetry.validationOutcome()).isEqualTo("REPAIRED_PASS");
+        } finally {
+            repairServer.stop(0);
+        }
+    }
+
+    @Test
+    @DisplayName("17. v3.2.4-FINAL: Preserves natural LLM_LIVE text across 7-turn scenario without template overwrite, plus negative guardrail tests")
+    void v324FinalSevenTurnScenarioPreservesLlmLiveAndEnforcesNegativeGuardrails() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
+        List<String> keywords = List.of("cổ", "vai", "gáy", "đầu", "lưng", "chân", "thảo dược", "massage", "dưỡng sinh", "239k", "399k");
+        PromptBuilder.PagePersona persona = buildTestPersona();
+
+        // Verify VietnameseQueryNormalizer contextual "ns" normalization preserves NS/NS01 codes
+        assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification("NS linh ta linh tỉnh, vớ vânr"))
+                .contains("nói linh ta linh tinh")
+                .contains("vớ vẩn");
+        assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification("Cho mình xem gói NS01 bên NS"))
+                .contains("ns01")
+                .doesNotContain("nói01");
+
+        com.example.docmind.service.retrieval.RetrievalService retrievalService =
+                org.mockito.Mockito.mock(com.example.docmind.service.retrieval.RetrievalService.class);
+        org.mockito.Mockito.when(retrievalService.retrieveWithRules(
+                org.mockito.Mockito.anyList(),
+                org.mockito.Mockito.anyString(),
+                org.mockito.Mockito.anyInt(),
+                org.mockito.Mockito.anyList(),
+                org.mockito.Mockito.any()
+        )).thenReturn(new com.example.docmind.service.retrieval.RetrievalService.RetrievalResult(chunks, List.of()));
+
+        com.example.docmind.repository.KnowledgePageRepository pageRepo =
+                org.mockito.Mockito.mock(com.example.docmind.repository.KnowledgePageRepository.class);
+        com.example.docmind.entity.KnowledgePageEntity pageEntity = new com.example.docmind.entity.KnowledgePageEntity();
+        pageEntity.setId(PAGE_ID);
+        pageEntity.setName(persona.name());
+        pageEntity.setIndustry(persona.industry());
+        pageEntity.setTargetAudience(persona.targetAudience());
+        pageEntity.setDescription(persona.description());
+        pageEntity.setPersonaConfig(persona.resolvedConfig());
+        org.mockito.Mockito.when(pageRepo.findById(PAGE_ID)).thenReturn(java.util.Optional.of(pageEntity));
+
+        AtomicReference<String> simulatedLlmJson = new AtomicReference<>();
+        com.example.docmind.service.llm.LlmClient llmClient =
+                org.mockito.Mockito.mock(com.example.docmind.service.llm.LlmClient.class);
+        org.mockito.Mockito.when(llmClient.name()).thenReturn("ollama:qwen3:14b");
+        org.mockito.Mockito.when(llmClient.complete(org.mockito.Mockito.anyString(), org.mockito.Mockito.any(ReasoningBudget.class)))
+                .thenAnswer(inv -> simulatedLlmJson.get());
+
+        FanpageBotService service = new FanpageBotService(
+                retrievalService,
+                llmClient,
+                new com.example.docmind.config.ChatProperties(),
+                null,
+                pageRepo,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        String senderId = "u-v324-final-7turns";
+        List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
+
+        // Turn 1: "giá" -> v3.2.5 Warm 3-Bubble Brand Opening: 2 CONFIGURED_OPENING bubbles (0ms, 1000ms) + 1 LLM_LIVE bubble (2000ms)
+        String t1LlmText = "Để em báo đúng gói phù hợp nhất, hiện mình đang muốn tìm hiểu massage trị liệu giảm đau mỏi hay gội đầu dưỡng sinh thư giãn ạ?";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t1LlmText + "\",\"typing_delay_ms\":2000}],\"should_handoff\":false}");
+        FanpageBotResponse r1 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "giá", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r1.replyBubbles()).hasSize(3);
+        assertThat(r1.replyBubbles().get(0).typingDelayMs()).isZero();
+        assertThat(r1.replyBubbles().get(1).typingDelayMs()).isEqualTo(1000);
+        assertThat(r1.replyBubbles().get(2).text()).isEqualTo(t1LlmText);
+        assertThat(r1.replyBubbles().get(2).typingDelayMs()).isEqualTo(2000);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        assertThat(service.getLastTurnTelemetry().bubbleSources())
+                .containsExactly("CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE");
+        assertThat(service.getLastTurnTelemetry().usedTemplateFallback()).isFalse();
+        history.add(new FanpageBotRequest.ConversationTurn("user", "giá"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r1.replyText()));
+
+        // Turn 2: "tôi bị đau đầu, mất ngủ, nhức vai gáy" -> Preserves all 3 symptoms, no "căng" assumption, no medical diagnosis
+        String t2LlmText = "Dạ vừa đau đầu, mất ngủ lại thêm nhức vai gáy cùng lúc chắc hẳn làm mình mệt mỏi và khó sâu giấc lắm ạ. Tình trạng này mình mới gặp vài hôm nay hay đã kéo dài lâu rồi để em chọn liệu trình sát nhất cho mình ạ?";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t2LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse r2 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "tôi bị đau đầu, mất ngủ, nhức vai gáy", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r2.replyBubbles()).hasSize(1);
+        assertThat(r2.replyBubbles().get(0).text()).isEqualTo(t2LlmText);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        ConversationState sAfterT2 = ConversationState.getSessionState(PAGE_ID, senderId);
+        assertThat(sAfterT2.knownSymptoms()).contains("đau đầu", "mất ngủ", "nhức vai gáy").doesNotContain("căng");
+        history.add(new FanpageBotRequest.ConversationTurn("user", "tôi bị đau đầu, mất ngủ, nhức vai gáy"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r2.replyText()));
+
+        // Turn 3: "Căng gì, tôi bị căng đâu" -> Pushback on assumption, REPAIR_FIRST, does NOT add "căng" to knownSymptoms, no premature price quote
+        String t3LlmText = "Dạ em xin lỗi mình vì em diễn đạt chưa chuẩn làm mình hiểu nhầm ạ. Em đã ghi nhận đúng tình trạng mình chia sẻ là đau đầu, mất ngủ và nhức vai gáy rồi ạ, mình muốn em gửi luôn thông tin và mức giá gói trị liệu phù hợp cho mình tham khảo nhé ạ?";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t3LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse r3 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "Căng gì, tôi bị căng đâu", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r3.replyBubbles()).hasSize(1);
+        assertThat(r3.replyBubbles().get(0).text()).isEqualTo(t3LlmText);
+        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
+        assertThat(service.getLastTurnTelemetry().detectedIntent()).isEqualTo("PUSHBACK_ON_ASSUMPTION_REPAIR");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        ConversationState sAfterT3 = ConversationState.getSessionState(PAGE_ID, senderId);
+        assertThat(sAfterT3.knownSymptoms()).doesNotContain("căng");
+        history.add(new FanpageBotRequest.ConversationTurn("user", "Căng gì, tôi bị căng đâu"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r3.replyText()));
+
+        // Turn 4: "NS linh ta linh tỉnh, vớ vânr" -> Frustration + unresolved price from Turn 1 -> apologizes briefly & quotes NS01 60 phút 399k
+        String t4b1 = "Dạ em thật sự xin lỗi mình vì hỏi hơi kỹ làm mình sốt ruột ạ! Với tình trạng đau đầu, mất ngủ và nhức vai gáy của mình, gói phù hợp nhất là Massage cơ bản 60 phút giá 399k trọn gói ạ.";
+        String t4b2 = "Liệu trình 60 phút tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy và đầu, kết hợp dùng buffet thực dưỡng miễn phí sau buổi làm giúp mình dịu cơn nhức và dễ ngủ hơn. Mình thấy gói 60 phút này hợp với thời gian của mình không ạ?";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t4b1 + "\",\"typing_delay_ms\":0},{\"text\":\"" + t4b2 + "\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        FanpageBotResponse r4 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "NS linh ta linh tỉnh, vớ vânr", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r4.replyBubbles()).hasSize(2);
+        assertThat(r4.replyBubbles().get(0).text()).isEqualTo(t4b1);
+        assertThat(r4.replyBubbles().get(0).typingDelayMs()).isZero();
+        assertThat(r4.replyBubbles().get(1).text()).isEqualTo(t4b2);
+        assertThat(r4.replyBubbles().get(1).typingDelayMs()).isEqualTo(10000);
+        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE);
+        assertThat(service.getLastTurnTelemetry().detectedIntent()).isEqualTo("FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE");
+        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        ConversationState sAfterT4 = ConversationState.getSessionState(PAGE_ID, senderId);
+        assertThat(sAfterT4.lastOfferedPackageId()).isEqualTo("massage_co_ban_60");
+        assertThat(sAfterT4.lastOfferedDuration()).isEqualTo("60");
+        assertThat(sAfterT4.lastOfferedPrice()).isEqualTo("399k");
+        history.add(new FanpageBotRequest.ConversationTurn("user", "NS linh ta linh tỉnh, vớ vânr"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r4.replyText()));
+
+        // Turn 5: "Đắt" -> Stage 1 objection, holds 399k NS01, natural LLM text preserved WITHOUT appending " 🥰" and WITHOUT higher-tier sauna claims
+        String t5LlmText = "Dạ em rất hiểu mình cân nhắc về chi phí ạ. Mức 399k cho 60 phút bên em đã bao gồm trọn gói massage trị liệu toàn thân ấn huyệt chuyên sâu vùng đầu vai gáy, dùng bữa nhẹ thực dưỡng miễn phí sau buổi làm và hoàn toàn không nhận tiền Tip, nên mình có thể yên tâm trải nghiệm thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé ạ.";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t5LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse r5 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "Đắt", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r5.replyBubbles()).hasSize(1);
+        // Must preserve exact LLM text without appending " 🥰"
+        assertThat(r5.replyBubbles().get(0).text()).isEqualTo(t5LlmText);
+        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME);
+        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        history.add(new FanpageBotRequest.ConversationTurn("user", "Đắt"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r5.replyText()));
+
+        // Turn 6: "để tôi cân nhắc thêm" -> Stage 2 downsell to DS02 Gói dưỡng sinh cơ bản 60 phút 239k
+        String t6b1 = "Dạ vâng, em hoàn toàn tôn trọng việc mình cân nhắc thêm ạ. Không biết hiện mình đang lăn tăn nhiều hơn về mức chi phí buổi đầu hay thời gian 60 phút của liệu trình ạ?";
+        String t6b2 = "Nếu mình muốn thử một lựa chọn nhẹ nhàng và tiết kiệm hơn trước, bên em có Gói dưỡng sinh cơ bản 60 phút giá 239k (gồm gội thảo dược, massage mặt và chườm thảo dược cổ vai kèm ăn nhẹ) cũng giúp dịu vùng đầu và dễ ngủ lắm ạ.";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t6b1 + "\",\"typing_delay_ms\":0},{\"text\":\"" + t6b2 + "\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        FanpageBotResponse r6 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "để tôi cân nhắc thêm", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r6.replyBubbles()).hasSize(2);
+        assertThat(r6.replyBubbles().get(0).text()).isEqualTo(t6b1);
+        assertThat(r6.replyBubbles().get(1).text()).isEqualTo(t6b2);
+        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        ConversationState sAfterT6 = ConversationState.getSessionState(PAGE_ID, senderId);
+        assertThat(sAfterT6.downsellOffered()).isTrue();
+        assertThat(sAfterT6.lastOfferedPackageId()).isEqualTo("duong_sinh_co_ban_60");
+        assertThat(sAfterT6.lastOfferedDuration()).isEqualTo("60");
+        assertThat(sAfterT6.lastOfferedPrice()).isEqualTo("239k");
+        history.add(new FanpageBotRequest.ConversationTurn("user", "để tôi cân nhắc thêm"));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", r6.replyText()));
+
+        // Turn 7: "thôi cũng được, thử xem" -> Confirm booking on DS02 60 phút 239k (must NOT repeat rejected 399k!)
+        String t7LlmText = "Dạ vâng ạ, vậy em xin phép ghi nhận mình chọn Gói dưỡng sinh cơ bản 60 phút giá 239k nhé ạ. Mình dự kiến ghé cơ sở bên em vào khung giờ nào và cho em xin Số điện thoại để lễ tân giữ chỗ chu đáo cho mình nha?";
+        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t7LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse r7 = service.handleCustomerMessage(new FanpageBotRequest(
+                PAGE_ID.toString(), senderId, "Khách", "thôi cũng được, thử xem", null, new ArrayList<>(history), List.of(DOC_ID), 5
+        ));
+        assertThat(r7.replyBubbles()).hasSize(1);
+        assertThat(r7.replyBubbles().get(0).text()).isEqualTo(t7LlmText);
+        assertThat(r7.replyText()).contains("239k").doesNotContain("399k");
+        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+
+        // Negative Guardrail Checks:
+        // (a) Repeating rejected 399k on Turn 7 after 239k downsell is flagged by ReplyContractValidator
+        ReplyContractValidator.ValidationResult rejectedRepeatRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ em chốt cho mình gói Massage cơ bản 60 phút giá 399k nhé ạ.", 0)),
+                sAfterT6,
+                "thôi cũng được, thử xem",
+                PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS,
+                false,
+                10000,
+                ThinkingMode.FAST_NO_THINK,
+                0L
+        );
+        assertThat(rejectedRepeatRes.errors()).contains("VR-004A_NO_REJECTED_PACKAGE_REPEAT");
+
+        // (b) Medical diagnosis ("khí huyết lên vùng đầu kém lưu thông") or unstated "căng" assumption is flagged by ReplyContractValidator
+        ReplyContractValidator.ValidationResult medAndCangRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ đau đầu mất ngủ là do khí huyết lên vùng đầu kém lưu thông, mình thường căng sau ngồi lâu hay vận động nhiều ạ?", 0)),
+                sAfterT2,
+                "tôi bị đau đầu, mất ngủ, nhức vai gáy",
+                PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
+                false,
+                10000,
+                ThinkingMode.FAST_NO_THINK,
+                0L
+        );
+        assertThat(medAndCangRes.errors()).contains("MEDICAL_CLAIM", "UNSTATED_CANG_ASSUMPTION");
+
+        // (c) False higher-tier benefit claim ("tắm xông thảo dược" / "xông hơi") on NS01 399k is flagged as UNGROUNDED_PACKAGE_BENEFIT
+        ReplyContractValidator.ValidationResult ungroundedPerkRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ gói Massage cơ bản 60 phút giá 399k đã bao gồm tắm xông thảo dược và ngâm bồn thảo dược ấm ạ.", 0)),
+                sAfterT4,
+                "Đắt",
+                PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME,
+                false,
+                10000,
+                ThinkingMode.OBJECTION_REFRAME_THINK,
+                0L
+        );
+        assertThat(ungroundedPerkRes.errors()).contains("UNGROUNDED_PACKAGE_BENEFIT");
+
+        // (d) Complex negation ("Tôi không bị căng vai đâu mà chỉ bị tê rần hai bàn chân thôi") strips negated "căng"/"vai" and preserves positive "tê rần"/"chân"
+        ConversationState complexNegState = ConversationState.hydrate(
+                PAGE_ID,
+                "u-complex-negation",
+                List.of(new FanpageBotRequest.ConversationTurn("user", "Tôi không bị căng vai đâu mà chỉ bị tê rần hai bàn chân thôi")),
+                keywords,
+                chunks
+        );
+        assertThat(complexNegState.knownSymptoms())
+                .anyMatch(s -> s.contains("tê rần"))
+                .noneMatch(s -> s.contains("căng") || s.contains("vai"));
+        assertThat(complexNegState.knownBodyAreas())
+                .contains("chân")
+                .doesNotContain("vai");
+
+        // (e) Inverted customer pronoun ("Em đang quan tâm dịch vụ nào ạ?") is flagged as INVERTED_CUSTOMER_PRONOUN
+        ReplyContractValidator.ValidationResult invertedPronounRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ chào mình! Em đang quan tâm đến dịch vụ nào của Nàng Sen Spa để em báo giá ạ?", 0)),
+                sAfterT2,
+                "giá",
+                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                true,
+                10000,
+                ThinkingMode.FAST_NO_THINK,
+                0L
+        );
+        assertThat(invertedPronounRes.errors()).contains("INVERTED_CUSTOMER_PRONOUN");
+
+        // (f) sanitizeRawMessage preserves raw input while normalizeForClassification preserves NS01 and SP-01
+        assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.sanitizeRawMessage("NS linh ta linh tỉnh, vớ vânr"))
+                .isEqualTo("NS linh ta linh tỉnh, vớ vânr");
+        assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification("Cho xem gói SP-01 và NS01"))
+                .contains("sp-01")
+                .contains("ns01");
+    }
+
+    @Test
+    @DisplayName("v3.2.5: 5 Session Management Scenarios + Turn 1 3-Bubble Warm Opening + DS02 239k vs NS01 399k Benefit Validation")
+    void v325SessionIsolationAndTurn1WarmOpeningAndPackageAttributeValidation() {
+        List<String> keywords = List.of("đau đầu", "mất ngủ", "nhức vai gáy", "mỏi vai", "mỏi cổ");
+        List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
+        String senderId = "u-v325-session-test";
+
+        // 1. Scenario 1: New conversation ("conv-session-1") -> greetingSent is false, openingRequired is true (3 bubbles: 0ms, 1000ms, 2000ms)
+        ConversationState s1Turn1 = ConversationState.hydrateForTurn(
+                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks);
+        assertThat(s1Turn1.greetingSent()).isFalse();
+        PrimaryActionRouter.RoutingDecision d1Turn1 = PrimaryActionRouter.route("Giá", s1Turn1, chunks, keywords);
+        assertThat(d1Turn1.openingRequired()).isTrue();
+
+        PromptBuilder.PagePersona persona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa & Chăm sóc sức khỏe",
+                "Khách văn phòng",
+                "Thư giãn trị liệu",
+                new com.example.docmind.dto.PagePersonaConfig(
+                        "spa_wellness",
+                        "An Nhiên",
+                        "em",
+                        "mình",
+                        "ấm áp, tinh tế",
+                        "MODERATE",
+                        List.of(),
+                        keywords,
+                        null,
+                        null,
+                        List.of(
+                                "Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ.",
+                                "Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ."
+                        ),
+                        10000,
+                        null
+                )
+        );
+        List<FanpageBotResponse.ReplyBubble> turn1RefBubbles = PrimaryActionRouter.executeActionBubbles(
+                d1Turn1, "Giá", s1Turn1, "mình", persona, chunks, null);
+        assertThat(turn1RefBubbles).hasSize(3);
+        assertThat(turn1RefBubbles.get(0).typingDelayMs()).isEqualTo(0);
+        assertThat(turn1RefBubbles.get(0).text()).contains("An Nhiên");
+        assertThat(turn1RefBubbles.get(1).typingDelayMs()).isEqualTo(1000);
+        assertThat(turn1RefBubbles.get(1).text()).contains("massage trị liệu giãn cơ");
+        assertThat(turn1RefBubbles.get(2).typingDelayMs()).isEqualTo(2000);
+
+        ConversationState.updateAfterSend(
+                PAGE_ID, senderId, "conv-session-1", s1Turn1, "Giá", d1Turn1, turn1RefBubbles, false, 0);
+
+        // 2. Scenario 2: Subsequent request on SAME conversationId ("conv-session-1") WITHOUT history (webhook mode)
+        // Must NOT reset state and must NOT re-send greeting!
+        ConversationState s1Turn2NoHistory = ConversationState.hydrateForTurn(
+                PAGE_ID, senderId, "conv-session-1", false, "tôi bị đau đầu, mất ngủ, nhức vai gáy", List.of(), keywords, chunks);
+        assertThat(s1Turn2NoHistory.greetingSent()).isTrue();
+        assertThat(s1Turn2NoHistory.priceRequestedInSession()).isTrue();
+        PrimaryActionRouter.RoutingDecision d1Turn2 = PrimaryActionRouter.route(
+                "tôi bị đau đầu, mất ngủ, nhức vai gáy", s1Turn2NoHistory, chunks, keywords);
+        assertThat(d1Turn2.openingRequired()).isFalse();
+
+        // 3. Scenario 5: Retry request on "conv-session-1" -> greetingSent remains true, never duplicates opening bubbles
+        ConversationState s1Retry = ConversationState.hydrateForTurn(
+                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks);
+        assertThat(s1Retry.greetingSent()).isTrue();
+        PrimaryActionRouter.RoutingDecision d1Retry = PrimaryActionRouter.route("Giá", s1Retry, chunks, keywords);
+        assertThat(d1Retry.openingRequired()).isFalse();
+
+        // 4. Scenario 4: Two concurrent sessions of the SAME senderId ("conv-session-1" vs "conv-session-2") -> isolated states!
+        ConversationState s2Turn1 = ConversationState.hydrateForTurn(
+                PAGE_ID, senderId, "conv-session-2", false, "Xin chào", List.of(), keywords, chunks);
+        assertThat(s2Turn1.greetingSent()).isFalse();
+        assertThat(s2Turn1.priceRequestedInSession()).isFalse();
+        assertThat(ConversationState.getSessionState(PAGE_ID, senderId, "conv-session-1").priceRequestedInSession()).isTrue();
+
+        // 5. Scenario 3: UI Reset (resetSession = true) on "conv-session-1" -> resets session and triggers 3-bubble opening again
+        ConversationState s1AfterReset = ConversationState.hydrateForTurn(
+                PAGE_ID, senderId, "conv-session-1", true, "Giá", List.of(), keywords, chunks);
+        assertThat(s1AfterReset.greetingSent()).isFalse();
+        PrimaryActionRouter.RoutingDecision d1AfterReset = PrimaryActionRouter.route("Giá", s1AfterReset, chunks, keywords);
+        assertThat(d1AfterReset.openingRequired()).isTrue();
+
+        // 6. Section 3.3: DS02 (239k) must NOT claim "massage toàn thân" / "full body" or "buffet thực dưỡng"
+        ReplyContractValidator.ValidationResult ds02FalseFullBody = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ bên em có Gói dưỡng sinh cơ bản 60 phút giá 239k bao gồm massage toàn thân và buffet thực dưỡng miễn phí ạ.", 0)),
+                s1Turn1,
+                "để tôi cân nhắc thêm",
+                PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT,
+                false,
+                10000,
+                ThinkingMode.OBJECTION_REFRAME_THINK,
+                0L
+        );
+        assertThat(ds02FalseFullBody.errors()).contains("UNGROUNDED_PACKAGE_BENEFIT");
+
+        // 7. Section 4.2: Robotic phrasing or mixed "Chị" + "mình" is flagged by ReplyContractValidator
+        ReplyContractValidator.ValidationResult mixedPronounRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new FanpageBotResponse.ReplyBubble("Chị đang gặp phải tình trạng đau đầu khiến mình mệt mỏi hẳn luôn ạ. Liệu Chị có muốn đặt lịch không ạ?", 0)),
+                s1Turn1,
+                "tôi bị đau đầu",
+                PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
+                false,
+                10000,
+                ThinkingMode.FAST_NO_THINK,
+                0L
+        );
+        assertThat(mixedPronounRes.errors()).contains("ROBOTIC_OR_MIXED_PRONOUN_VOICE");
     }
 }

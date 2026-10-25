@@ -44,6 +44,7 @@ public class OllamaLlmClient implements LlmClient {
      */
     public record OllamaCallTelemetry(
             String apiPath,
+            String endpoint,
             String model,
             ThinkingMode thinkingMode,
             Boolean thinkFlag,
@@ -52,8 +53,81 @@ public class OllamaLlmClient implements LlmClient {
             String internalThinkingPreview,
             long latencyMs,
             long thinkingLatencyMs,
-            long contentLatencyMs
+            long contentLatencyMs,
+            long loadDurationNs,
+            int promptEvalCount,
+            long promptEvalDurationNs,
+            int evalCount,
+            long evalDurationNs,
+            long totalDurationNs
     ) {
+        public OllamaCallTelemetry(
+                String apiPath,
+                String endpoint,
+                String model,
+                ThinkingMode thinkingMode,
+                Boolean thinkFlag,
+                int numPredict,
+                int thinkingChars,
+                String internalThinkingPreview,
+                long latencyMs,
+                long thinkingLatencyMs,
+                long contentLatencyMs
+        ) {
+            this(
+                    apiPath,
+                    endpoint,
+                    model,
+                    thinkingMode,
+                    thinkFlag,
+                    numPredict,
+                    thinkingChars,
+                    internalThinkingPreview,
+                    latencyMs,
+                    thinkingLatencyMs,
+                    contentLatencyMs,
+                    0L,
+                    0,
+                    0L,
+                    0,
+                    0L,
+                    latencyMs * 1_000_000L
+            );
+        }
+
+        public OllamaCallTelemetry(
+                String apiPath,
+                String model,
+                ThinkingMode thinkingMode,
+                Boolean thinkFlag,
+                int numPredict,
+                int thinkingChars,
+                String internalThinkingPreview,
+                long latencyMs,
+                long thinkingLatencyMs,
+                long contentLatencyMs
+        ) {
+            this(
+                    apiPath,
+                    apiPath,
+                    model,
+                    thinkingMode,
+                    thinkFlag,
+                    numPredict,
+                    thinkingChars,
+                    internalThinkingPreview,
+                    latencyMs,
+                    thinkingLatencyMs,
+                    contentLatencyMs,
+                    0L,
+                    0,
+                    0L,
+                    0,
+                    0L,
+                    latencyMs * 1_000_000L
+            );
+        }
+
         public OllamaCallTelemetry(
                 String apiPath,
                 String model,
@@ -65,6 +139,7 @@ public class OllamaLlmClient implements LlmClient {
                 long latencyMs
         ) {
             this(
+                    apiPath,
                     apiPath,
                     model,
                     thinkingMode,
@@ -78,12 +153,38 @@ public class OllamaLlmClient implements LlmClient {
                             : 0L,
                     (Boolean.TRUE.equals(thinkFlag) && thinkingChars > 0)
                             ? Math.max(0L, latencyMs - Math.max(1L, Math.round(latencyMs * 0.45)))
-                            : latencyMs
+                            : latencyMs,
+                    0L,
+                    0,
+                    0L,
+                    0,
+                    0L,
+                    latencyMs * 1_000_000L
             );
+        }
+
+        public String provider() {
+            return "ollama";
         }
 
         public boolean thinkRequested() {
             return Boolean.TRUE.equals(thinkFlag);
+        }
+
+        public long loadDurationMs() {
+            return loadDurationNs / 1_000_000L;
+        }
+
+        public long promptEvalDurationMs() {
+            return promptEvalDurationNs / 1_000_000L;
+        }
+
+        public long evalDurationMs() {
+            return evalDurationNs / 1_000_000L;
+        }
+
+        public long totalDurationMs() {
+            return totalDurationNs / 1_000_000L;
         }
     }
 
@@ -137,13 +238,20 @@ public class OllamaLlmClient implements LlmClient {
         String effectiveModel = activeRuntimeModel != null ? activeRuntimeModel : props.getModel();
         ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
         boolean useChatEndpoint = (thinkingMode != null) || isNativeThinkingCapableModel(effectiveModel);
+        boolean suppressModelThinkForGroundedTurn = props.isSuppressRedundantThinkWhenGrounded()
+                && prompt != null
+                && prompt.contains("<GROUNDED_TURN_FACTS>")
+                && !prompt.contains("benchmark_mode: FORCE_ALWAYS_THINK_B");
         Boolean thinkFlag = useChatEndpoint
-                ? Boolean.valueOf(thinkingMode != null && thinkingMode.isDeepThink())
+                ? Boolean.valueOf(thinkingMode != null && thinkingMode.isDeepThink() && !suppressModelThinkForGroundedTurn)
                 : null;
+        String effectiveKeepAlive = (props.getKeepAlive() != null && !props.getKeepAlive().isBlank())
+                ? props.getKeepAlive().strip()
+                : "30m";
         String apiPath = useChatEndpoint ? "/api/chat" : "/api/generate";
         String endpoint = base + apiPath;
 
-        int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 600;
+        int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 550;
         int numPredict;
         if (thinkingMode != null) {
             numPredict = (budget != null && budget.maxTokens() > 0)
@@ -151,7 +259,7 @@ public class OllamaLlmClient implements LlmClient {
                     : thinkingMode.maxOutputTokens();
         } else {
             numPredict = (budget != null && budget.maxTokens() > 0)
-                    ? (budget.maxTokens() <= 900 ? budget.maxTokens() : Math.max(configuredPredict, 700))
+                    ? (budget.maxTokens() <= 900 ? budget.maxTokens() : Math.max(configuredPredict, 550))
                     : configuredPredict;
         }
 
@@ -164,18 +272,20 @@ public class OllamaLlmClient implements LlmClient {
         double repeatPenalty = (budget != null && budget.repeatPenalty() != null && budget.repeatPenalty() > 0.0)
                 ? budget.repeatPenalty()
                 : (props.getRepeatPenalty() > 0 ? props.getRepeatPenalty() : 1.08);
-        int effectiveNumCtx = props.getNumCtx() > 0 ? props.getNumCtx() : 4096;
+        int effectiveNumCtx = props.getNumCtx() > 0 ? props.getNumCtx() : 3072;
 
-        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, thinkingMode={}, think={}, numPredict={}, numCtx={}, temp={}, topP={}, repeatPenalty={}, budgetTier={}",
+        log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, thinkingMode={}, think={}, keepAlive={}, numPredict={}, numCtx={}, temp={}, topP={}, repeatPenalty={}, budgetTier={}",
                 effectiveModel, endpoint,
                 thinkingMode != null ? thinkingMode.name() : "NONE",
                 thinkFlag,
+                effectiveKeepAlive,
                 numPredict, effectiveNumCtx, temp, topP, repeatPenalty,
                 budget != null && budget.complexity() != null ? budget.complexity().name() : "DEFAULT");
 
         long cooldownThresholdMs = Math.max(42_000L, (props.getReadTimeoutMs() > 0 ? props.getReadTimeoutMs() : 120_000L) - 3_000L);
         this.lastCallTelemetry = new OllamaCallTelemetry(
                 apiPath,
+                endpoint,
                 effectiveModel,
                 thinkingMode,
                 thinkFlag,
@@ -183,6 +293,12 @@ public class OllamaLlmClient implements LlmClient {
                 0,
                 "",
                 0L,
+                0L,
+                0L,
+                0L,
+                0,
+                0L,
+                0,
                 0L,
                 0L
         );
@@ -201,7 +317,7 @@ public class OllamaLlmClient implements LlmClient {
                     prompt,
                     useChatEndpoint,
                     thinkFlag,
-                    -1,
+                    effectiveKeepAlive,
                     temp,
                     topP,
                     repeatPenalty,
@@ -217,18 +333,27 @@ public class OllamaLlmClient implements LlmClient {
                     ? MAPPER.readValue(rawJson, Map.class)
                     : null;
             ExtractedOllamaMessage extracted = extractResponseMessage(resp, prompt);
+            long loadDurationNs = extractLongMetric(resp, "load_duration");
+            int promptEvalCount = (int) extractLongMetric(resp, "prompt_eval_count");
+            long promptEvalDurationNs = extractLongMetric(resp, "prompt_eval_duration");
+            int evalCount = (int) extractLongMetric(resp, "eval_count");
+            long evalDurationNs = extractLongMetric(resp, "eval_duration");
+            long totalDurationNs = extractLongMetric(resp, "total_duration");
             long firstCallLatencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             boolean usedTwoStepFollowup = false;
             boolean isFallback = extracted.content() != null && extracted.content().startsWith("[ollama-offline]");
-            if (Boolean.TRUE.equals(thinkFlag) && isFallback && extracted.thinkingChars() > 0) {
-                log.info("[LLM] Qwen3 thinking trace ({} chars) reached numPredict={} before JSON content -> completing JSON with think=false",
+            boolean isTruncatedByThink = Boolean.TRUE.equals(thinkFlag)
+                    && extracted.thinkingChars() > 0
+                    && (isFallback || isTruncatedAfterThinking(extracted.content(), resp, prompt));
+            if (isTruncatedByThink) {
+                log.info("[LLM] Qwen3 thinking trace ({} chars) reached numPredict={} before completing JSON content -> completing JSON with think=false",
                         extracted.thinkingChars(), numPredict);
                 Map<String, Object> fastFollowupBody = buildOllamaRequestBody(
                         effectiveModel,
                         prompt,
                         true,
                         Boolean.FALSE,
-                        -1,
+                        effectiveKeepAlive,
                         temp,
                         topP,
                         repeatPenalty,
@@ -250,6 +375,12 @@ public class OllamaLlmClient implements LlmClient {
                             extracted.thinkingChars(),
                             extracted.thinkingPreview()
                     );
+                    loadDurationNs += extractLongMetric(followupResp, "load_duration");
+                    promptEvalCount += (int) extractLongMetric(followupResp, "prompt_eval_count");
+                    promptEvalDurationNs += extractLongMetric(followupResp, "prompt_eval_duration");
+                    evalCount += (int) extractLongMetric(followupResp, "eval_count");
+                    evalDurationNs += extractLongMetric(followupResp, "eval_duration");
+                    totalDurationNs += extractLongMetric(followupResp, "total_duration");
                     isFallback = false;
                     usedTwoStepFollowup = true;
                 }
@@ -270,6 +401,7 @@ public class OllamaLlmClient implements LlmClient {
             }
             this.lastCallTelemetry = new OllamaCallTelemetry(
                     apiPath,
+                    endpoint,
                     effectiveModel,
                     thinkingMode,
                     thinkFlag,
@@ -278,13 +410,22 @@ public class OllamaLlmClient implements LlmClient {
                     extracted.thinkingPreview(),
                     latencyMs,
                     measuredThinkingLatencyMs,
-                    measuredContentLatencyMs
+                    measuredContentLatencyMs,
+                    loadDurationNs,
+                    promptEvalCount,
+                    promptEvalDurationNs,
+                    evalCount,
+                    evalDurationNs,
+                    totalDurationNs > 0 ? totalDurationNs : latencyMs * 1_000_000L
             );
             if (enableTimeoutCooldown && latencyMs >= cooldownThresholdMs) {
                 cooldownUntilEpochMs = System.currentTimeMillis() + 30_000L;
             }
-            log.info("[LLM] Response received from provider=ollama, model={}, apiPath={}, think={}, thinkingChars={}, latencyMs={}, status={}",
-                    effectiveModel, apiPath, thinkFlag, extracted.thinkingChars(), latencyMs, isFallback ? "fallback" : "ok");
+            log.info("[LLM] Response received from provider=ollama, model={}, endpoint={}, think={}, thinkingChars={}, loadMs={}, promptEvalCount={}, promptEvalMs={}, evalCount={}, evalMs={}, totalDurationMs={}, latencyMs={}, status={}",
+                    effectiveModel, endpoint, thinkFlag, extracted.thinkingChars(),
+                    loadDurationNs / 1_000_000L, promptEvalCount, promptEvalDurationNs / 1_000_000L,
+                    evalCount, evalDurationNs / 1_000_000L, totalDurationNs / 1_000_000L,
+                    latencyMs, isFallback ? "fallback" : "ok");
             return extracted.content();
         } catch (Exception e) {
             String errMsg = e.getMessage() != null ? e.getMessage() : "";
@@ -332,12 +473,15 @@ public class OllamaLlmClient implements LlmClient {
                     long totalMs = (System.nanoTime() - startNs) / 1_000_000L;
                     this.lastCallTelemetry = new OllamaCallTelemetry(
                             retryApiPath,
+                            base + retryApiPath,
                             fallbackCandidate,
                             thinkingMode,
                             retryThinkFlag,
                             numPredict,
                             retryExtracted.thinkingChars(),
                             retryExtracted.thinkingPreview(),
+                            totalMs,
+                            0L,
                             totalMs
                     );
                     log.info("[LLM] Auto-recovery succeeded with model={} in {} ms", fallbackCandidate, totalMs);
@@ -349,6 +493,7 @@ public class OllamaLlmClient implements LlmClient {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
             this.lastCallTelemetry = new OllamaCallTelemetry(
                     apiPath,
+                    endpoint,
                     effectiveModel,
                     thinkingMode,
                     thinkFlag,
@@ -362,8 +507,8 @@ public class OllamaLlmClient implements LlmClient {
             if (enableTimeoutCooldown && latencyMs >= cooldownThresholdMs) {
                 cooldownUntilEpochMs = System.currentTimeMillis() + 30_000L;
             }
-            log.warn("[LLM] Response received from provider=ollama, model={}, latencyMs={}, status=fallback (error={})",
-                    effectiveModel, latencyMs, e.getMessage());
+            log.warn("[LLM] Response received from provider=ollama, model={}, endpoint={}, latencyMs={}, status=fallback (error={})",
+                    effectiveModel, endpoint, latencyMs, e.getMessage());
             return buildFallbackAnswer(prompt, e.getMessage());
         } finally {
             concurrencyGate.release();
@@ -376,6 +521,23 @@ public class OllamaLlmClient implements LlmClient {
         }
         String lower = modelName.toLowerCase(Locale.ROOT);
         return lower.contains("qwen3") || lower.contains("deepseek-r1") || lower.contains("qwq");
+    }
+
+    private static long extractLongMetric(Map<String, Object> resp, String key) {
+        if (resp == null || key == null) {
+            return 0L;
+        }
+        Object val = resp.get(key);
+        if (val instanceof Number n) {
+            return n.longValue();
+        }
+        if (val != null) {
+            try {
+                return Long.parseLong(val.toString().strip());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0L;
     }
 
     private static Map<String, Object> buildOllamaRequestBody(
@@ -400,13 +562,29 @@ public class OllamaLlmClient implements LlmClient {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", modelName);
         if (useChatEndpoint) {
-            body.put("messages", List.of(Map.of(
-                    "role", "user",
-                    "content", prompt != null ? prompt : ""
-            )));
+            String effectivePrompt = prompt != null ? prompt : "";
+            if (Boolean.FALSE.equals(thinkFlag)
+                    && isNativeThinkingCapableModel(modelName)
+                    && !effectivePrompt.contains("/no_think")) {
+                effectivePrompt = effectivePrompt + "\n/no_think";
+            }
+            int splitIdx = effectivePrompt.indexOf("<!-- SYSTEM_USER_SPLIT -->");
+            if (splitIdx >= 0) {
+                String systemPart = effectivePrompt.substring(0, splitIdx).strip();
+                String userPart = effectivePrompt.substring(splitIdx + "<!-- SYSTEM_USER_SPLIT -->".length()).strip();
+                body.put("messages", List.of(
+                        Map.of("role", "system", "content", systemPart),
+                        Map.of("role", "user", "content", userPart)
+                ));
+            } else {
+                body.put("messages", List.of(Map.of(
+                        "role", "user",
+                        "content", effectivePrompt
+                )));
+            }
             body.put("think", Boolean.TRUE.equals(thinkFlag));
         } else {
-            body.put("prompt", prompt != null ? prompt : "");
+            body.put("prompt", prompt != null ? prompt.replace("<!-- SYSTEM_USER_SPLIT -->", "\n") : "");
         }
         body.put("stream", false);
         body.put("keep_alive", keepAlive);
@@ -499,6 +677,38 @@ public class OllamaLlmClient implements LlmClient {
                 fullThinking.length(),
                 abbreviateThinking(fullThinking)
         );
+    }
+
+    private static boolean isTruncatedAfterThinking(String content, Map<String, Object> resp, String prompt) {
+        if (content == null || content.isBlank()) {
+            return true;
+        }
+        if (resp != null && "length".equalsIgnoreCase(String.valueOf(resp.get("done_reason")))) {
+            String stripped = content.strip();
+            if (!stripped.endsWith("}")) {
+                return true;
+            }
+        }
+        boolean expectsStructuredJson = (prompt != null && prompt.contains("reply_bubbles"))
+                || content.contains("\"reply_bubbles\"")
+                || content.strip().startsWith("{");
+        if (expectsStructuredJson) {
+            String cleaned = content.strip()
+                    .replaceFirst("(?s)^```(?:json)?\\s*", "")
+                    .replaceFirst("(?s)\\s*```$", "")
+                    .strip();
+            int firstBrace = cleaned.indexOf('{');
+            int lastBrace = cleaned.lastIndexOf('}');
+            if (firstBrace < 0 || lastBrace <= firstBrace) {
+                return true;
+            }
+            try {
+                MAPPER.readValue(cleaned.substring(firstBrace, lastBrace + 1), Map.class);
+            } catch (Exception e) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String abbreviateThinking(String thinking) {

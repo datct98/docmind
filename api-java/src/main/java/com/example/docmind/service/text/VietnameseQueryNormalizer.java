@@ -57,6 +57,19 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "b\\s*nhieu", "bao nhiêu");
         addBoundaryPattern(phrases, "thi\\s+thaorng", "thi thoảng");
         addBoundaryPattern(phrases, "thi\\s+thoang", "thi thoảng");
+        addBoundaryPattern(phrases, "thi\\s+thỉang", "thi thoảng");
+        addBoundaryPattern(phrases, "thi\\s+thiang", "thi thoảng");
+        addBoundaryPattern(phrases, "thỉnh\\s+thỉang", "thỉnh thoảng");
+        addBoundaryPattern(phrases, "thinh\\s+thoang", "thỉnh thoảng");
+        addBoundaryPattern(phrases, "tụt\\s+hứng\\s+tghooi\\s+rẹp", "tụt hứng thôi dẹp");
+        addBoundaryPattern(phrases, "tut\\s+hung\\s+tghooi\\s+rep", "tụt hứng thôi dẹp");
+        addBoundaryPattern(phrases, "tụt\\s+hứng\\s+(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "tụt hứng thôi dẹp");
+        addBoundaryPattern(phrases, "(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "thôi dẹp");
+        addBoundaryPattern(phrases, "tụt\\s+hứng", "tụt hứng");
+        addBoundaryPattern(phrases, "tut\\s+hung", "tụt hứng");
+        addBoundaryPattern(phrases, "thoi\\s+luong", "thời lượng");
+        addBoundaryPattern(phrases, "quyen\\s+loi", "quyền lợi");
+        addBoundaryPattern(phrases, "(\\d{2,3})\\s*p\\b", "$1 phút");
         addBoundaryPattern(phrases, "trai\\s+nghiem", "trải nghiệm");
         addBoundaryPattern(phrases, "nhu\\s+the\\s+nao", "như thế nào");
         addBoundaryPattern(phrases, "bao\\s+lau", "bao lâu");
@@ -89,6 +102,19 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "(?:khong|ko|k)\\s+hieu", "không hiểu");
         addBoundaryPattern(phrases, "khong\\s+can\\s+nua", "không cần nữa");
         addBoundaryPattern(phrases, "toi\\s+thay", "tôi thấy");
+        addBoundaryPattern(phrases, "vớ\\s+vânr", "vớ vẩn");
+        addBoundaryPattern(phrases, "vớ\\s+vanr", "vớ vẩn");
+        addBoundaryPattern(phrases, "vo\\s+vanr", "vớ vẩn");
+        addBoundaryPattern(phrases, "vơ\\s+vẩn", "vớ vẩn");
+        addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tỉnh", "linh ta linh tinh");
+        addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tinh", "linh ta linh tinh");
+        addBoundaryPattern(phrases, "linh\\s+tỉnh", "linh tinh");
+        // Contextual "ns" -> "nói" ONLY before speech/complaint words (preserves standalone "NS" and package codes "NS01".."NS07")
+        addBoundaryPattern(
+                phrases,
+                "ns(?=\\s+(?:linh\\s+ta\\s+linh\\s+tinh|linh\\s+ta\\s+linh\\s+tỉnh|linh\\s+tinh|linh\\s+tỉnh|vớ\\s+vẩn|vớ\\s+vânr|vo\\s+vanr|gì|gi|j|sao|vậy|vay|thế|the|chuyện|chuyen|xàm|xam|nhảm|nham|luyên\\s+thuyên|lung\\s+tung|bậy|điêu|dối)\\b)",
+                "nói"
+        );
         PHRASE_REPLACEMENTS = Collections.unmodifiableMap(phrases);
 
         Map<Pattern, String> words = new LinkedHashMap<>();
@@ -123,7 +149,7 @@ public final class VietnameseQueryNormalizer {
         addWord(words, "tgian", "thời gian");
         addWord(words, "tg", "thời gian");
 
-        addWord(words, "sp", "sản phẩm");
+        addBoundaryPattern(words, "(?<!mã\\s|gói\\s)sp(?!\\s*[-#]?\\d)", "sản phẩm");
         addWord(words, "dv", "dịch vụ");
         addWord(words, "lt", "liệu trình");
         addWord(words, "cs", "cơ sở");
@@ -209,6 +235,15 @@ public final class VietnameseQueryNormalizer {
         addWord(words, "masage", "massage");
         addWord(words, "matsa", "massage");
         addWord(words, "matxa", "massage");
+        addWord(words, "thỉang", "thoảng");
+        addWord(words, "thiang", "thoảng");
+        addWord(words, "thoangr", "thoảng");
+        addWord(words, "tghooi", "thôi");
+        addWord(words, "thooi", "thôi");
+        addWord(words, "thoii", "thôi");
+        addWord(words, "rẹp", "dẹp");
+        addWord(words, "tuongr", "tưởng");
+        addWord(words, "tưởn", "tưởng");
 
         WORD_REPLACEMENTS = Collections.unmodifiableMap(words);
     }
@@ -333,6 +368,22 @@ public final class VietnameseQueryNormalizer {
     }
 
     /**
+     * Làm sạch nhẹ tin nhắn gốc (chỉ chuẩn hóa khoảng trắng Unicode đặc biệt và cắt chiều dài an toàn),
+     * giữ nguyên 100% từ ngữ, mã dịch vụ (NS, NS01, SP-01...) và cách viết gốc của khách hàng.
+     */
+    public static String sanitizeRawMessage(String text) {
+        if (text == null) {
+            return "";
+        }
+        String clipped = text.length() > MAX_INPUT_LENGTH ? text.substring(0, MAX_INPUT_LENGTH) : text;
+        String sanitized = sanitizeUnicodeSpaces(clipped);
+        if (sanitized.isBlank()) {
+            return "";
+        }
+        return sanitized.replaceAll("\\s+", " ").strip();
+    }
+
+    /**
      * Chuẩn hóa toàn diện chuỗi câu hỏi / tin nhắn khách hàng.
      */
     public static String normalize(String text) {
@@ -386,6 +437,10 @@ public final class VietnameseQueryNormalizer {
     public static String normalizeForIntentMatching(String text) {
         String normalized = normalize(text);
         return normalized != null ? normalized.toLowerCase(Locale.ROOT) : "";
+    }
+
+    public static String normalizeForClassification(String text) {
+        return normalizeForIntentMatching(text);
     }
 
     public static String normalizeForSearch(String text) {

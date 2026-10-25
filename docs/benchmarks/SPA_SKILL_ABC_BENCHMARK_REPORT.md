@@ -326,15 +326,15 @@ Khi nào Chị sắp xếp được khung giờ ghé thư giãn, Chị cứ nh�
 
 ### 4.1. Định Nghĩa 3 Cấu Hình Benchmark (`ThinkingModePolicy.BenchmarkConfigMode`)
 
-- **Config A (`FORCE_NO_THINK_A`)**: Bắt buộc `FAST_NO_THINK` (`think = false`, `maxOutputTokens = 220`) trên 100% số lượt.
-- **Config B (`FORCE_ALWAYS_THINK_B`)**: Bắt buộc bật `think = true` (`maxOutputTokens = 650–700`) trên 100% số lượt (kể cả chào hỏi và FAQ đơn giản).
-- **Config C (`ADAPTIVE_C` — Mặc định Production)**: Định tuyến thông minh theo ngữ cảnh qua `ThinkingModePolicy`:
-  - `FAST_NO_THINK(false, 220, 2, 45)` cho 70–80% lượt thông thường (Discovery, FAQ, Booking, Opt-Out, Handoff).
-  - `PRICE_ANCHOR_THINK(true, 650, 3, 65)` khi báo giá lần đầu để neo giá trị cảm xúc ở Bubble 2.
-  - `OBJECTION_REFRAME_THINK(true, 700, 3, 65)` khi khách chê đắt/lưỡng lự (chẩn đoán `ObjectionRootCause` + chống lặp luận điểm).
-  - `REPAIR_FIRST(true, 650, 3, 65)` khi khách bức xúc hoặc còn câu hỏi chưa giải đáp (`outstandingRequests`).
-- **Bộ 12 Trường Telemetry Chuẩn (`TurnTelemetry` — Section VI & `OllamaCallTelemetry`)**:
-  - `primaryAction`, `thinkingMode`, `detectedIntent`, `unresolvedQuestionIds`, `retrievedSourceIds`, `responseValidated`, `fallbackReason`, `llmElapsedMs`, `priceBubbleShownAt`, `secondBubbleSentAt`, `timeToFirstBubbleMs`, `interBubbleGapMs` (cùng `thinkingChars`, `thinkingLatencyMs`, `contentLatencyMs`, `remainingDelayMs`).
+- **Config A (`FORCE_NO_THINK_A`)**: Bắt buộc `FAST_NO_THINK` (`think = false`, `maxOutputTokens = 250`) trên 100% số lượt.
+- **Config B (`FORCE_ALWAYS_THINK_B`)**: Bắt buộc bật `think = true` (`maxOutputTokens = 500–550`) trên 100% số lượt (kể cả chào hỏi và FAQ đơn giản).
+- **Config C (`ADAPTIVE_C` — Mặc định Production `v3.2.4-MASTER`)**: Định tuyến thông minh theo ngữ cảnh qua `ThinkingModePolicy`:
+  - `FAST_NO_THINK(false, 250, 2, 65)` cho 70–80% lượt thông thường (Discovery, FAQ, Booking, Opt-Out, Handoff, và `Fast Targeted Repair`).
+  - `PRICE_ANCHOR_THINK(true, 500, 3, 65)` khi báo giá lần đầu để neo giá trị cảm xúc (`VALUE_ANGLE_1`) ở Bubble 2.
+  - `OBJECTION_REFRAME_THINK(true, 550, 3, 65)` khi khách chê đắt/lưỡng lự (chẩn đoán `ObjectionRootCause`, dùng `VALUE_ANGLE_2` ở Nhịp 1, hạ bậc gói thực tế ở Nhịp 2 + chống lặp `deliveredValueAngles`).
+  - `REPAIR_FIRST(true, 500, 3, 65)` khi khách bức xúc hoặc còn câu hỏi chưa giải đáp (`outstandingRequests`).
+- **Bộ Trường Telemetry Chuẩn (`TurnTelemetry` — Section VI & `OllamaCallTelemetry`)**:
+  - `primaryAction`, `thinkingMode`, `detectedIntent`, `unresolvedQuestionIds`, `retrievedSourceIds`, `responseValidated`, `fallbackReason`, `promptBuildMs`, `retrievalMs`, `llmElapsedMs`, `validationMs`, `repairElapsedMs`, `retryCount`, `priceBubbleShownAt`, `secondBubbleSentAt`, `firstBubbleSendMs`, `timeToFirstBubbleMs`, `interBubbleGapMs`, `totalTurnMs` (cùng `thinkingChars`, `thinkingLatencyMs`, `contentLatencyMs`, `remainingDelayMs`).
 
 ### 4.2. Ma Trận 10 Kịch Bản Thực Nghiệm (`ThinkingModePolicyAndAdaptiveRouterTest`)
 
@@ -361,6 +361,110 @@ Khi nào Chị sắp xếp được khung giờ ghé thư giãn, Chị cứ nh�
 | **Kiểm soát Latency ở các lượt FAQ / Chào hỏi / Đặt lịch (60–80% lượt)** | Nhanh (`think=false`) | Chậm không cần thiết (bật `think=true` cả cho câu chào/FAQ) | **Nhanh tối ưu (`FAST_NO_THINK`, tiết kiệm 60–75% chi phí suy luận)** |
 | **Khoảng cách thực tế Bubble 1 -> Bubble 2 sau báo giá (`Dynamic Delay`)** | `max(0, 10000 - elapsedMs)` | `max(0, 10000 - elapsedMs)` | **`max(0, 10000 - elapsedMs)` (Không bao giờ cộng dồn 10s cố định sau khi LLM đã suy luận)** |
 | **Cô lập chuỗi suy luận (`0%` rò rỉ `message.thinking` / `reasoning_brief`)** | `100%` | `100%` | **`100%` (Cả `OllamaLlmClient` `/api/chat` và `OpenAiCompatibleLlmClient`)** |
+
+---
+
+## 5. Báo Cáo Kiểm Thử Hồi Quy Thực Tế 7 Lượt (`v3.2.5-FINAL-MASTER` — Live `qwen3:14b` trên Native `/api/chat`)
+
+### 5.1. Cấu Hình Thực Thi & Xác Minh Nguyên Nhân Độ Trễ (Root-Cause Latency Verification)
+- **Provider & Endpoint**: `ollama` (`http://host.docker.internal:11434/api/chat`)
+- **Primary Model**: `qwen3:14b` (`keep_alive = "30m"`, `num_ctx = 3072`, `num_predict = 450` / `550`, `suppressRedundantThinkWhenGrounded = true`)
+- **Page ID**: `b23cd382-4f7a-4829-8c54-1d410da14bf8` (Nàng Sen Spa)
+- **Canonical Document ID**: `c9481efb-f3a9-4613-a2e0-fe50e9b99b39` (`01_giá_dịch_vụ.html`)
+- **Phân tích nguyên nhân gốc rễ gây chậm ở các bản trước (`v3.2.4` trở về trước)**:
+  1. Ở bản cũ, `think = true` được bật cả khi `<GROUNDED_TURN_FACTS>` đã tính sẵn (tốn `734–1,866` thinking chars ~ `25s–40s`), cộng thêm `promptEvalCount = 2,532–2,971` tokens (`promptChars = 7,420`) đặt toàn bộ `<DOCUMENT_CONTEXT>` ở đầu `user` message khiến KV Prefix Cache của Ollama bị vô hiệu hóa ở mọi lượt (`promptEvalDurationMs = 8,006–10,699ms`).
+  2. Sau khi áp dụng tối ưu `v3.2.5-FINAL-MASTER` (đặt quy tắc tĩnh Always-On vào `system` message trước `<!-- SYSTEM_USER_SPLIT -->`, lọc `<DOCUMENT_CONTEXT>` theo `PrimaryAction`, giữ model nóng trong VRAM với `keep_alive: "30m"`, `num_ctx: 3072`, và tắt `think=true` dư thừa khi đã có `<GROUNDED_TURN_FACTS>`):
+     - `loadDurationMs`: **`4–10 ms`** (0ms cold-start reload).
+     - `promptEvalCount`: giảm từ `2,532–2,971` tokens xuống **`1,288–1,844` tokens**.
+     - `promptEvalDurationMs`: giảm từ `8,006–10,699 ms` xuống **`2,917–5,463 ms`** (tiết kiệm 5.1–5.5 giây/lượt).
+     - `evalCount`: **`59–164` tokens** (`evalDurationMs = 4,367–12,780 ms`).
+     - `totalTurnMs`: giảm từ `16.6s–59.2s` xuống **`10,342–19,188 ms`** (**`p50 = 12,710 ms`**, **`p95 = 18,881 ms`**).
+
+### 5.2. Bảng Telemetry, `bubbleSources` & Số Đo Gốc Từ Ollama (`TurnTelemetry` v3.2.5-FINAL-MASTER)
+
+| Turn | User Message | `primaryAction` & `detectedIntent` | `thinkingMode` (`maxTokens`) | `generationSource` / `bubbleSources` | `loadDurationMs` | `promptEvalCount` (`promptEvalDurationMs`) | `evalCount` (`evalDurationMs`) | `totalDurationMs` / `llmElapsedMs` / `totalTurnMs` |
+|---|---|---|---|---|---|---|---|---|
+| **1** | `"Giá"` | `CLARIFY_SERVICE_DURATION`<br>`CLARIFY_SERVICE_TYPE_ONCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[CONFIGURED_OPENING, CONFIGURED_OPENING, LLM_LIVE]` | `10ms` | `1288 tok` (`5463ms`) | `59 tok` (`4367ms`) | `10160ms` / `10167ms` / `10572ms` (`firstBubbleSendMs = 240ms`) |
+| **2** | `"tôi bị đau đầu, mất ngủ, nhức vai gáy"` | `ACKNOWLEDGE_AND_ASK_PREFERENCE`<br>`ASK_CONDITION_ONCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE, LLM_LIVE]` | `4ms` | `1437 tok` (`2917ms`) | `93 tok` (`6986ms`) | `9921ms` / `9929ms` / `10342ms` |
+| **3** | `"Căng gì, tôi bị căng đâu"` | `ACKNOWLEDGE_AND_ASK_PREFERENCE`<br>`PUSHBACK_ON_ASSUMPTION_REPAIR` | `REPAIR_FIRST` (`450`, Grounded No-Think) | `LLM_LIVE`<br>`[LLM_LIVE]` | `6ms` | `1458 tok` (`3118ms`) | `95 tok` (`7438ms`) | `10573ms` / `10581ms` / `10949ms` |
+| **4** | `"NS linh ta linh tỉnh, vớ vânr"` | `ANSWER_PRICE_ONCE`<br>`FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE` | `REPAIR_FIRST` (`450`, Grounded No-Think) | `LLM_LIVE`<br>`[LLM_LIVE, LLM_LIVE]` | `6ms` | `1810 tok` (`5071ms`) | `164 tok` (`12780ms`) | `18706ms` / `18716ms` / `19188ms` (`firstBubbleSendMs = 404ms`, `interBubbleGapMs = 10000ms`) |
+| **5** | `"Đắt"` | `HANDLE_PRICE_OBJECTION_FIRST_TIME`<br>`PRICE_OBJECTION_VALUE_TRIAL` | `OBJECTION_REFRAME_THINK` (`550`, Grounded No-Think) | `LLM_LIVE`<br>`[LLM_LIVE]` | `9ms` | `1709 tok` (`4806ms`) | `93 tok` (`7194ms`) | `12116ms` / `12126ms` / `12710ms` |
+| **6** | `"để tôi cân nhắc thêm"` | `HANDLE_PRICE_OBJECTION_REPEAT`<br>`SECOND_OBJECTION_DOWNSELL` | `OBJECTION_REFRAME_THINK` (`550`, Grounded No-Think) | `LLM_LIVE`<br>`[LLM_LIVE, LLM_LIVE]` | `5ms` | `1844 tok` (`5382ms`) | `156 tok` (`12173ms`) | `18515ms` / `18523ms` / `18881ms` (`interBubbleGapMs = 10000ms`) |
+| **7** | `"thôi cũng được, thử xem"` | `CONFIRM_BOOKING_DETAILS`<br>`TRIAL_ACCEPTANCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `4ms` | `1679 tok` (`4942ms`) | `78 tok` (`6043ms`) | `12325ms` / `12333ms` / `12929ms` |
+
+### 5.3. Thống Kê Độ Trễ `p50 / p95` Thực Nghiệm (`qwen3:14b` Local)
+- **Toàn phiên 7 lượt (`Turns 1..7`)**:
+  - `loadDurationMs`: `4–10 ms` (`p50 = 6 ms`)
+  - `promptEvalDurationMs`: `2,917–5,463 ms` (`p50 = 4,942 ms`, `p95 = 5,463 ms`)
+  - `evalDurationMs`: `4,367–12,780 ms` (`p50 = 7,194 ms`, `p95 = 12,780 ms`)
+  - `llmElapsedMs`: **`p50 = 12,126 ms`**, **`p95 = 18,716 ms`**
+  - `totalTurnMs`: **`p50 = 12,710 ms`**, **`p95 = 18,881 ms`**
+- **Nhóm 1 Bong Bóng / Suy Luận Gọn (`Turns 1, 2, 3, 5, 7`)**:
+  - `totalTurnMs` = `[10,342, 10,572, 10,949, 12,710, 12,929] ms` -> **`p50 = 10,949 ms`**, **`p95 = 12,929 ms`**.
+
+### 5.4. Toàn Văn Transcript 7 Lượt Thực Tế (`v3.2.5-FINAL-MASTER`)
+- **Turn 1 (`"Giá"`)** — `bubbleSources = ["CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE"]`:
+  - `Bubble 1 (0ms, CONFIGURED_OPENING)`: *"Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ."*
+  - `Bubble 2 (1000ms, CONFIGURED_OPENING)`: *"Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ."*
+  - `Bubble 3 (2000ms, LLM_LIVE)`: *"Mình đang quan tâm đến nhóm dịch vụ nào hoặc vùng cơ thể nào ạ?"*
+- **Turn 2 (`"tôi bị đau đầu, mất ngủ, nhức vai gáy"`)** — `bubbleSources = ["LLM_LIVE", "LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ vừa bị đau đầu, mất ngủ, nhức vai gáy cùng lúc chắc hẳn làm mình mệt mỏi và khó chịu lắm ạ."*
+  - `Bubble 2 (2000ms, LLM_LIVE)`: *"Mình mới xuất hiện tình trạng này hay đã kéo dài một thời gian rồi ạ?"*
+- **Turn 3 (`"Căng gì, tôi bị căng đâu"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ em xin lỗi mình vì vừa diễn đạt chưa chuẩn làm mình hiểu nhầm ạ. Mình đang bị đau đầu, mất ngủ và nhức vai gáy đúng không ạ? Em muốn hỏi thêm chút, tình trạng này của mình mới bắt đầu gần đây hay đã kéo dài một thời gian rồi ạ?"*
+- **Turn 4 (`"NS linh ta linh tỉnh, vớ vânr"`)** — `bubbleSources = ["LLM_LIVE", "LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ em xin lỗi mình vì câu hỏi trước chưa rõ ý làm mình sốt ruột ạ. Em thấy mình đang bị đau đầu, mất ngủ, nhức vai gáy chắc hẳn rất mệt mỏi ạ. Gói massage cơ bản 60 phút giá 399k trọn gói không nhận Tip có thể giúp mình dịu vùng mỏi và dễ ngủ hơn ạ."*
+  - `Bubble 2 (10000ms, LLM_LIVE)`: *"Gói này gồm full body massage trị liệu cơ bản, kèm buffet thực dưỡng. Mình thấy gói 60 phút này phù hợp với thời gian của mình không ạ?"*
+- **Turn 5 (`"Đắt"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Em hiểu mình đang cân nhắc chi phí ạ. Gói massage cơ bản 60 phút giá 399k đã bao gồm toàn thân thư giãn, buffet thực dưỡng và không gian riêng tư sạch sẽ rồi ạ. Mình thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé?"*
+- **Turn 6 (`"để tôi cân nhắc thêm"`)** — `bubbleSources = ["LLM_LIVE", "LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Em hiểu mình đang cần thời gian cân nhắc ạ. Mình đang phân vân về mức chi phí buổi đầu hay thời gian liệu trình ạ?"*
+  - `Bubble 2 (10000ms, LLM_LIVE)`: *"Nếu mình muốn tiết kiệm hơn, em gợi ý gói dưỡng sinh cơ bản 60 phút giá 239k, gồm gội đầu cơ bản, massage cổ vai gáy, kèm ăn nhẹ và trái cây theo mùa. Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo, trọn gói không nhận Tip ạ."*
+- **Turn 7 (`"thôi cũng được, thử xem"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Em hiểu mình muốn thử gói dưỡng sinh cơ bản 60 phút giá 239k ạ. Mình dự kiến ghé bên em vào khung giờ nào hôm nay hay ngày mai để lễ tân giữ chỗ chu đáo cho mình nhé?"*
+
+---
+
+## 6. Báo Cáo Kiểm Thử Hồi Quy Thực Tế 8 Lượt & Kịch Bản Cờ Đỏ Thần Kinh (`v3.2.6-FINAL` — Live `qwen3:14b` trên Native `/api/chat`)
+
+### 6.1. Bảng Telemetry & Số Đo Gốc Từ Ollama Cho Kịch Bản 8 Lượt Mới (`Scenario 1 — v3.2.6-FINAL`)
+
+| Turn | User Message | `primaryAction` & `detectedIntent` | `thinkingMode` (`maxTokens`) | `generationSource` / `bubbleSources` | `loadDurationMs` | `promptEvalCount` (`promptEvalDurationMs`) | `evalCount` (`evalDurationMs`) | `totalDurationMs` / `llmElapsedMs` / `totalTurnMs` |
+|---|---|---|---|---|---|---|---|---|
+| **1** | `"Tư vấn giúp chị"` | `GENERIC_SHORT_DISCOVERY`<br>`SERVICE_DISCOVERY` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[CONFIGURED_OPENING, CONFIGURED_OPENING, LLM_LIVE]` | `2ms` | `1515 tok` (`4307ms`) | `61 tok` (`4680ms`) | `9007ms` / `9032ms` / `9492ms` (`firstBubbleSendMs = 241ms`) |
+| **2** | `"Sao chào lắm thế"` | `GENERIC_SHORT_DISCOVERY`<br>`META_COMMENT_ON_GREETING` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `1ms` | `1573 tok` (`3144ms`) | `74 tok` (`5793ms`) | `9826ms` / `9835ms` / `9994ms` |
+| **3** | `"Báo giá cho chị đi"` | `CLARIFY_SERVICE_DURATION`<br>`CLARIFY_SERVICE_TYPE_ONCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `6ms` | `1354 tok` (`2832ms`) | `57 tok` (`4418ms`) | `7331ms` / `7336ms` / `7664ms` |
+| **4** | `"Ngâm thảo dược là ngâm loại gì vậy?"` | `SERVICE_DETAIL_AND_FAQ_QA`<br>`SERVICE_DETAIL_AND_FAQ_QA` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `1ms` | `2249 tok` (`7206ms`) | `104 tok` (`8398ms`) | `15627ms` / `15637ms` / `16264ms` |
+| **5** | `"Nghe hay đấy cơ mà làm gì mà phải xin lỗi"` | `RECOMMEND_ONE_PACKAGE`<br>`META_APOLOGY_POSITIVE_INTEREST_ADVANCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `1ms` | `1773 tok` (`4869ms`) | `82 tok` (`6546ms`) | `12440ms` / `12452ms` / `12922ms` |
+| **6** | `"Hiểu đúng rồi còn gì, có phải hiểu lầm đâu"` | `RECOMMEND_ONE_PACKAGE`<br>`CONFIRM_PREVIOUS_INFO_ADVANCE` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `1ms` | `1767 tok` (`4840ms`) | `91 tok` (`7637ms`) | `13402ms` / `13415ms` / `13638ms` |
+| **7** | `"Uk"` | `ADVANCE_AFTER_ACK`<br>`ACKNOWLEDGEMENT` | `FAST_NO_THINK` (`400`) | `LLM_LIVE`<br>`[LLM_LIVE]` | `1ms` | `1643 tok` (`4702ms`) | `68 tok` (`5682ms`) | `11398ms` / `11412ms` / `11964ms` |
+| **8** | `"Ô hay, nói linh ta linh tinh gì đấy"` | `GENERIC_SHORT_DISCOVERY`<br>`FRUSTRATION_CONCERN_ACKNOWLEDGEMENT` | `REPAIR_FIRST` (`500`, Grounded No-Think) | `LLM_LIVE`<br>`[LLM_LIVE]` | `2ms` | `1758 tok` (`5313ms`) | `100 tok` (`8629ms`) | `14016ms` / `14028ms` / `14278ms` |
+
+### 6.2. Toàn Văn Transcript 8 Lượt Thực Tế (`Scenario 1 — v3.2.6-FINAL`)
+- **Turn 1 (`"Tư vấn giúp chị"`)** — `bubbleSources = ["CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE"]`:
+  - `Bubble 1 (0ms, CONFIGURED_OPENING)`: *"Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ."*
+  - `Bubble 2 (1000ms, CONFIGURED_OPENING)`: *"Bên em chuyên massage trị liệu giãn cơ, gội đầu dưỡng sinh thảo dược và chăm sóc thư giãn nhẹ nhàng, chỉn chu ạ."*
+  - `Bubble 3 (2000ms, LLM_LIVE)`: *"Dạ hôm nay Chị đang muốn thư giãn vùng nào hoặc tìm hiểu dịch vụ gì để em tư vấn ngay cho Chị nha."*
+- **Turn 2 (`"Sao chào lắm thế"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ tại em hào hứng đón Chị ghé thăm quá nên chào hơi kỹ một chút ạ. Hôm nay Chị đang muốn thư giãn dịch vụ nào hay chăm sóc vùng nào để em tư vấn ngay cho Chị nha."*
+- **Turn 3 (`"Báo giá cho chị đi"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ Chị đang quan tâm đến nhóm dịch vụ nào ạ? Em sẽ gửi đúng mức giá và thời lượng phù hợp nhất cho Chị nha."*
+- **Turn 4 (`"Ngâm thảo dược là ngâm loại gì vậy?"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ Chị ơi, bước ngâm bồn thảo dược trong gói massage cơ bản nâng cao 80 phút (530k) sẽ sử dụng thảo dược thiên nhiên theo mùa, được nấu riêng trong ngày ạ. Thành phần cụ thể có thể thay đổi tùy theo mẻ nấu nên em chưa thể liệt kê rõ từng loại ạ."*
+- **Turn 5 (`"Nghe hay đấy cơ mà làm gì mà phải xin lỗi"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Dạ tại em quen miệng nói năng cẩn thận quá đó Chị ơi, em rút kinh nghiệm liền nha. Chị thấy gói massage cơ bản nâng cao 80 phút này hợp ý rồi hay muốn xem thêm gói thời lượng dài hơn ạ?"*
+- **Turn 6 (`"Hiểu đúng rồi còn gì, có phải hiểu lầm đâu"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Em vui vì Chị đã hiểu rõ ạ. Gói massage cơ bản nâng cao 80 phút gồm ngâm bồn thảo dược, tắm tráng, 70p massage và buffet thực dưỡng. Chị muốn thư giãn gói 80 phút hay kèm thêm xông hơi phòng riêng ạ?"*
+- **Turn 7 (`"Uk"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Với gói massage cơ bản nâng cao 80 phút này Chị muốn em giới thiệu thêm về không gian phòng hay Chị muốn tham khảo khung giờ trống để ghé trải nghiệm ạ."*
+- **Turn 8 (`"Ô hay, nói linh ta linh tinh gì đấy"`)** — `bubbleSources = ["LLM_LIVE"]`:
+  - `Bubble 1 (0ms, LLM_LIVE)`: *"Em xin lỗi Chị vì vừa rồi em diễn đạt chưa rõ ràng ạ. Hiện tại mình đang tư vấn gói massage cơ bản nâng cao 80 phút, gồm ngâm bồn thảo dược, tắm tráng và buffet thực dưỡng. Chị cần em làm rõ thêm điểm nào trong gói này hay chuyển sang nhân viên hỗ trợ trực tiếp ạ?"*
+
+### 6.3. Kiểm Chứng Cờ Đỏ An Toàn Thần Kinh (`Scenario 2B — SAFE-NEURO-001`)
+- **Turn 1 (`"Giá"`)**: 3 bong bóng mở đầu + hỏi nhóm dịch vụ (`LLM_LIVE`).
+- **Turn 2 (`"Tôi bị đau mỏi vai, nhức cổ kèm tê tay lan xuống cánh tay"`)**:
+  - `primaryAction = HARD_HANDOFF_SAFETY`, `needs_human_handoff = true`, `handoff_reason = HIGH_RISK_CONTRAINDICATION`, `HTTP = 52ms` (1 bong bóng, 0 câu hỏi):
+  - `Bubble 1 (0ms, SAFETY_TEMPLATE)`: *"Dạ em thấy mình đang bị đau mỏi vai, nhức cổ và có dấu hiệu tê tay lan xuống cánh tay cần lưu ý an toàn ạ. Tình trạng này cần chuyên viên kiểm tra kỹ trước khi làm liệu trình, em chuyển chuyên viên hỗ trợ mình ngay nhé."*
 
 
 

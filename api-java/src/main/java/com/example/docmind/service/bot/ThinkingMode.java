@@ -14,7 +14,7 @@ public enum ThinkingMode {
      * Dùng cho chào hỏi, hỏi triệu chứng, địa chỉ, giờ mở cửa, câu hỏi chi tiết/FAQ đã có dữ liệu rõ,
      * xác nhận đặt lịch/SĐT và chuyển nhân viên.
      */
-    FAST_NO_THINK(false, 250, 2, 65),
+    FAST_NO_THINK(false, 400, 2, 65),
 
     /**
      * Mode 2: Suy luận ngắn để neo giá trị cảm xúc ở Bubble 2 ngay sau khi Bubble 1 báo giá lần đầu.
@@ -26,7 +26,7 @@ public enum ThinkingMode {
      * Mode 3: Suy luận xử lý chê đắt, ngập ngừng hoặc so sánh giá.
      * Chẩn đoán đúng nguyên nhân gốc rễ và tránh lặp lại lý lẽ đã dùng ở lượt trước.
      */
-    OBJECTION_REFRAME_THINK(true, 500, 3, 65),
+    OBJECTION_REFRAME_THINK(true, 550, 3, 65),
 
     /**
      * Mode 4: Suy luận khôi phục niềm tin và giải quyết câu hỏi tồn đọng trước khi bán hàng.

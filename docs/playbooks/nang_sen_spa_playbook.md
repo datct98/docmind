@@ -111,13 +111,14 @@
   - `Giá hơi cao`
   - `Giá 580k hơi cao em ơi`
 - **do**:
-  - `Nhịp 1 (Chê đắt lần 1): Giữ nguyên gói đang tư vấn, đồng cảm + bảo vệ giá trị gói từ KB (không gian yên tĩnh, kỹ thuật viên chăm sóc sát vùng mỏi, xông hơi, ngâm chân thảo dược, ăn nhẹ, trọn gói không nhận tip, các mức 399.000đ, 530.000đ, 580.000đ, 670.000đ, 780.000đ và ưu đãi giảm 10% từ 5 buổi/voucher).`
-  - `Mời khách trải nghiệm thử 1 buổi lẻ (kèm icon 🥰) với typing_delay_ms = 2000.`
+  - `Nhịp 1 (Chê đắt lần 1): Giữ nguyên gói đang tư vấn, đồng cảm + bảo vệ đúng quyền lợi thực tế của chính gói đó từ KB (ví dụ NS01 399.000đ/60p gồm massage trị liệu toàn thân ấn huyệt sát vùng đau mỏi, không gian yên tĩnh có rèm riêng, buffet thực dưỡng miễn phí sau liệu trình, trọn gói không nhận tip; tuyệt đối không gán quyền lợi gói cao như ngâm bồn thảo dược của NS02 530.000đ hay xông hơi + Phòng VIP của NS03 580.000đ, 670.000đ, 780.000đ sang gói 399.000đ; ưu đãi giảm 10% từ 5 buổi/voucher).`
+  - `Mời khách trải nghiệm thử 1 buổi lẻ với typing_delay_ms = 2000.`
 - **dont**:
   - `Không tự ý hạ gói ngay ở lần chê giá đầu tiên.`
   - `Không tự giảm giá hoặc bịa khuyến mãi ngoài KB.`
+  - `Không gán nhầm quyền lợi của gói cao (xông hơi, ngâm bồn thảo dược, Phòng VIP) xuống gói cơ bản 399.000đ.`
 - **recommended_questions**:
-  - `Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha 🥰`
+  - `Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha ạ?`
 
 ### [PB-SPA-PRICE-OBJECTION-002] Nhịp 2 & Nhịp 3: Continued hesitation or second price objection -> 1 gentle retention + verified lower-cost KB package (239.000đ / 129.000đ), then graceful exit
 - **domain**: `spa_wellness`
@@ -283,9 +284,9 @@
 - **tags**: `pricing, objection, value_defense`
 - **do_not_copy_literally**: `true`
 - **user**: Giá hơi cao nhỉ
-- **bubble_1**: Dạ em rất hiểu mình cân nhắc chi phí cho buổi đầu trải nghiệm ạ (tại Hà Nội bên em có các mức 399.000đ, 530.000đ, 580.000đ, trọn gói không nhận tip và giảm 10% khi đăng ký từ 5 buổi/voucher ạ). Liệu trình đi sâu đúng điểm mỏi kết hợp xông hơi, ngâm chân thảo dược và ăn nhẹ nên rất xứng đáng ạ.
-- **bubble_2**: Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha 🥰
-- **why_good**: Nhịp 1 chê đắt lần 1: giữ nguyên gói đang tư vấn, bảo vệ giá trị kèm no-tip và mời trải nghiệm thử 1 buổi lẻ kèm 🥰 với nhịp nghỉ 2000ms.
+- **bubble_1**: Dạ em rất hiểu mình cân nhắc chi phí cho buổi đầu trải nghiệm ạ (tại Hà Nội bên em có gói NS01 399.000đ/60p, NS02 530.000đ/80p có ngâm bồn thảo dược, NS03 580.000đ/100p có xông hơi và Phòng VIP riêng, trọn gói không nhận tip và giảm 10% khi đăng ký từ 5 buổi/voucher ạ). Riêng gói 399.000đ trong 60 phút đã bao gồm massage trị liệu toàn thân ấn huyệt kỹ vùng đau mỏi và dùng buffet thực dưỡng miễn phí sau buổi làm nên rất xứng đáng ạ.
+- **bubble_2**: Theo em, mình có thể thử một buổi trước để cảm nhận trực tiếp cách bên em chăm sóc nha ạ?
+- **why_good**: Nhịp 1 chê đắt lần 1: giữ nguyên gói đang tư vấn, bảo vệ đúng giá trị thực tế kèm no-tip và mời trải nghiệm thử 1 buổi lẻ với nhịp nghỉ 2000ms.
 
 ### [FD-SPA-PRICE-002] Nhịp 2 giữ chân nhẹ nhàng (1 câu hỏi làm rõ + gợi ý gói 239.000đ trong KB) với post-price delay >= 10000ms
 - **domain**: `spa_wellness`

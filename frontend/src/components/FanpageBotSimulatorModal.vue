@@ -902,6 +902,9 @@ const customerInput = ref('')
 const mobileSimTab = ref('chat') // 'chat' | 'telemetry'
 const chatItems = ref([])
 const conversationHistory = ref([])
+const createSimConversationId = () => `sim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+const conversationId = ref(createSimConversationId())
+const pendingResetSession = ref(false)
 const isTyping = ref(false)
 const isDeliveringBubbles = ref(false)
 const isSending = ref(false)
@@ -1004,13 +1007,24 @@ const thinkingRemainingSec = ref(0)
 
 let bubbleDeliveryGeneration = 0
 
+const filterDisplayedAppliedRules = (rules, isHandoff) => {
+  if (!Array.isArray(rules)) return []
+  return rules.filter(r => {
+    const text = `${r?.generalized_rule || ''} ${r?.instruction || ''}`
+    if ((text.includes('[SAFE-') || text.includes('HARD_HANDOFF_SAFETY')) && !isHandoff) {
+      return false
+    }
+    return true
+  })
+}
+
 const deliverBubbles = async (response) => {
   const myGen = ++bubbleDeliveryGeneration
   const bubbles = response.reply_bubbles && response.reply_bubbles.length > 0
     ? response.reply_bubbles
     : [{ text: response.reply_text, typing_delay_ms: 1000 }]
 
-  const appliedRules = response.applied_rules || []
+  const appliedRules = filterDisplayedAppliedRules(response.applied_rules || [], Boolean(response.needs_human_handoff))
   const activeSkills = response.active_skills || []
   const triggeredHooks = response.triggered_hooks || response.triggeredHooks || []
 
@@ -1161,7 +1175,7 @@ const deliverDelayedAnchorBubble = async (anchorResponse, myGen, assistantHistor
   if (!bubble2 || !bubble2.text) {
     return
   }
-  const appliedRules = anchorResponse.applied_rules || []
+  const appliedRules = filterDisplayedAppliedRules(anchorResponse.applied_rules || [], Boolean(anchorResponse.needs_human_handoff))
   const activeSkills = anchorResponse.active_skills || []
   const triggeredHooks = anchorResponse.triggered_hooks || anchorResponse.triggeredHooks || []
 
@@ -1234,9 +1248,14 @@ const flushBurst = async () => {
     const prevTemp = currentInsight.value?.buying_temperature ?? null
     const historySnapshotBeforeSend = [...conversationHistory.value]
 
+    const shouldResetSession = pendingResetSession.value
+    pendingResetSession.value = false
+
     const response = await api.sendFanpageBotMessage({
       pageId: props.activePage?.id || null,
       senderId: 'fb-customer-demo',
+      conversationId: conversationId.value,
+      resetSession: shouldResetSession,
       customerName: null,
       message: singleMessage,
       messages: messagesToSend.length > 1 ? messagesToSend : null,
@@ -1287,6 +1306,7 @@ const flushBurst = async () => {
       const anchorResponse = await api.sendFanpageBotMessage({
         pageId: props.activePage?.id || null,
         senderId: 'fb-customer-demo',
+        conversationId: conversationId.value,
         customerName: null,
         message: singleMessage,
         messages: messagesToSend.length > 1 ? messagesToSend : null,
@@ -1348,6 +1368,7 @@ const simulateIdle = async (seconds) => {
     const response = await api.sendFanpageBotMessage({
       pageId: props.activePage?.id || null,
       senderId: 'fb-customer-demo',
+      conversationId: conversationId.value,
       customerName: null,
       message: '',
       history: conversationHistory.value,
@@ -1520,6 +1541,8 @@ const resetSimulation = () => {
   isTyping.value = false
   chatItems.value = []
   conversationHistory.value = []
+  conversationId.value = createSimConversationId()
+  pendingResetSession.value = true
   currentStage.value = 'DISCOVERY'
   lastConfidence.value = 0.9
   isHandedOffToHuman.value = false

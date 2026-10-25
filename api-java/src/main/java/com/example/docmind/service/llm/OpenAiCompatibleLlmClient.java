@@ -211,7 +211,17 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private Map<String, Object> buildRequestBody(String safePrompt, boolean includeOptionalTuning, ReasoningBudget budget) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
-        body.put("messages", List.of(Map.of("role", "user", "content", safePrompt)));
+        int splitIdx = safePrompt != null ? safePrompt.indexOf("<!-- SYSTEM_USER_SPLIT -->") : -1;
+        if (splitIdx >= 0) {
+            String systemPart = safePrompt.substring(0, splitIdx).strip();
+            String userPart = safePrompt.substring(splitIdx + "<!-- SYSTEM_USER_SPLIT -->".length()).strip();
+            body.put("messages", List.of(
+                    Map.of("role", "system", "content", systemPart),
+                    Map.of("role", "user", "content", userPart)
+            ));
+        } else {
+            body.put("messages", List.of(Map.of("role", "user", "content", safePrompt != null ? safePrompt : "")));
+        }
         double temp = (budget != null && budget.temperature() >= 0) ? budget.temperature() : props.getTemperature();
         body.put("temperature", temp);
         body.put("stream", false);
@@ -239,8 +249,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         if (endpoint != null && endpoint.toLowerCase().endsWith("/messages") && !body.containsKey("max_tokens")) {
             body.put("max_tokens", props.getMaxTokens() > 0 ? props.getMaxTokens() : 1024);
         }
-        // Tuyệt đối không gửi trường "think" đặc thù của Ollama sang OpenAI-compatible API
+        // Tuyệt đối không gửi trường "think", "options", "keep_alive" đặc thù của Ollama sang OpenAI-compatible API
         body.remove("think");
+        body.remove("options");
+        body.remove("keep_alive");
         return body;
     }
 

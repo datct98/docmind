@@ -27,17 +27,26 @@ public class OllamaProperties {
     /** Nhiệt độ sinh văn bản (0.25 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh RAG). */
     private double temperature = 0.25;
 
-    /** Giới hạn cửa sổ ngữ cảnh vừa đủ (4096 tokens) để tiết kiệm RAM trên máy 16GB CPU. */
-    private int numCtx = 4096;
+    /** Giới hạn cửa sổ ngữ cảnh vừa đủ (3072 tokens) để tăng tốc prompt eval và giữ KV-cache trên máy 16GB RAM. */
+    private int numCtx = 3072;
 
-    /** Giới hạn số token sinh ra tối đa (700 tokens cho tư vấn bán hàng Fanpage) để cân bằng tốc độ và độ chi tiết. */
-    private int numPredict = 700;
+    /** Giới hạn số token sinh ra tối đa (550 tokens cho tư vấn bán hàng Fanpage) để cân bằng tốc độ và độ chi tiết. */
+    private int numPredict = 550;
 
     /** Top-P sampling (mặc định 0.9 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh). */
     private double topP = 0.9;
 
     /** Hệ số phạt lặp từ (repeat_penalty = 1.08). */
     private double repeatPenalty = 1.08;
+
+    /** Chuỗi thời gian giữ model nóng trên RAM/VRAM (mặc định "30m" ở top-level /api/chat). */
+    private String keepAlive = "30m";
+
+    /**
+     * Khi chạy trên Ollama local (CPU / Unified Memory), nếu ngữ cảnh sự thật đã được chuẩn bị sẵn
+     * trong {@code <GROUNDED_TURN_FACTS>}, tắt chuỗi suy luận nội bộ dài dòng ở tầng model để giảm trễ 25-40s.
+     */
+    private boolean suppressRedundantThinkWhenGrounded = true;
 
     /** Model dự phòng tùy chọn (mặc định để trống, không dùng fallback 7B). */
     private String fallbackModel = "";

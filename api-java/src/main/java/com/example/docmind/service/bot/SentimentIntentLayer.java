@@ -42,10 +42,13 @@ public final class SentimentIntentLayer {
         OPT_OUT,
         NEUROLOGICAL_RISK,
         ENTITY_MISMATCH_CORRECTION,
+        PUSHBACK_ON_ASSUMPTION,
         TRIAL_ACCEPTANCE,
         STRONG_REJECTION,
         PACKAGE_REJECTION,
         COMPREHENSION_FAILURE,
+        META_CONVERSATION_ON_BOT_BEHAVIOR,
+        CONFIRM_PREVIOUS_INFO,
         FRUSTRATION,
         DETAIL_OR_FAQ_QUESTION,
         PRICE_ESCALATION_REQUEST,
@@ -56,6 +59,7 @@ public final class SentimentIntentLayer {
         PRICE_INQUIRY,
         SERVICE_SELECTION,
         SYMPTOM_DESCRIPTION,
+        GREETING_OR_START_CONSULTATION,
         ACK,
         AMBIGUOUS
     }
@@ -129,10 +133,12 @@ public final class SentimentIntentLayer {
     // 3. STRONG_REJECTION (NEVER match standalone "thôi")
     private static final Pattern STRONG_REJECTION_PATTERN = Pattern.compile(
             "(?isU).*\\b(thôi\\s+khỏi(?:\\s+cần)?|thôi\\s+không\\s+cần|thôi\\s+không\\s+làm|không\\s+cần\\s+nữa|"
-            + "không\\s+làm\\s+nữa|không\\s+mua\\s+đâu|thôi\\s+để\\s+sau|thôi\\s+bỏ\\s+đi|khỏi\\s+cần\\s+tư\\s+vấn)\\b.*"
+            + "không\\s+làm\\s+nữa|không\\s+mua\\s+đâu|thôi\\s+để\\s+sau|thôi\\s+bỏ\\s+đi|khỏi\\s+cần\\s+tư\\s+vấn|"
+            + "tụt\\s+hứng|mất\\s+hứng|hết\\s+hứng|thôi\\s+dẹp|dẹp\\s+đi|thôi\\s+nghỉ|nghỉ\\s+khỏe|hết\\s+muốn\\s+làm)\\b.*"
     );
     private static final Pattern STRONG_REJECTION_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(thoi\\s+khoi(?:\\s+can)?|thoi\\s+khong\\s+can|thoi\\s+khong\\s+lam|khong\\s+mua\\s+dau|thoi\\s+de\\s+sau)\\b.*"
+            "(?is).*\\b(thoi\\s+khoi(?:\\s+can)?|thoi\\s+khong\\s+can|thoi\\s+khong\\s+lam|khong\\s+mua\\s+dau|thoi\\s+de\\s+sau|"
+            + "tut\\s+hung|mat\\s+hung|het\\s+hung|thoi\\s+dep|dep\\s+di|thoi\\s+nghi|nghi\\s+khoe|het\\s+muon\\s+lam)\\b.*"
     );
 
     // 4. TRIAL_ACCEPTANCE
@@ -211,8 +217,80 @@ public final class SentimentIntentLayer {
         return stripped.replace('đ', 'd').replace('Đ', 'D').toLowerCase(Locale.ROOT).strip();
     }
 
+    private static final String NEGATED_BODY_SCOPE_OPT =
+            "(?:\\s+(?:vùng|ở|phần|khớp|cơ|cả|hai|2)?\\s*(?:cổ\\s+vai\\s+gáy|vai\\s+gáy|cổ\\s+gáy|cổ\\s+vai|bàn\\s+chân|bắp\\s+chân|thắt\\s+lưng|cánh\\s+tay|bàn\\s+tay|đầu\\s+gối|cổ|vai|gáy|lưng|chân|tay|đầu|gối|người|cơ))?";
+
+    private static final Pattern NEGATED_SYMPTOM_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU)(?:"
+            + "\\b(?:căng(?:\\s+cơ)?|mỏi|đau|nhức|tê)" + NEGATED_BODY_SCOPE_OPT + "\\s+(?:gì|j|đâu)(?:\\s+đâu)?(?:\\s+mà\\s+(?:căng|mỏi|đau|nhức|tê)" + NEGATED_BODY_SCOPE_OPT + ")?\\b"
+            + "|\\b(?:tôi|mình|em|chị|anh)?\\s*(?:có\\s+|đâu\\s+có\\s+)?(?:bị\\s+)?(?:căng(?:\\s+cơ)?|mỏi|đau|nhức|tê)" + NEGATED_BODY_SCOPE_OPT + "\\s+đâu\\b"
+            + "|\\b(?:chứ\\s+)?(?:đâu\\s+có|không\\s+có|không\\s+hề|chẳng\\s+có|chả\\s+có|làm\\s+gì\\s+có|đâu\\s+phải|không\\s+phải|không|ko|k|chưa)\\s+(?:bị\\s+)?(?:căng(?:\\s+cơ)?|mỏi|đau|nhức|tê)" + NEGATED_BODY_SCOPE_OPT + "(?:\\s+đâu)?\\b"
+            + ")"
+    );
+    private static final Pattern SYMPTOM_PUSHBACK_ASCII_PATTERN = Pattern.compile(
+            "(?is).*(?:"
+            + "\\b(?:cang|moi|dau|nhuc|te)(?:\\s+(?:co|vai|gay|lung|chan|tay|dau|goi))?\\s+(?:gi|j|dau)\\b"
+            + "|\\b(?:toi|minh|em|chi|anh)?\\s*(?:co\\s+|dau\\s+co\\s+)?(?:bi\\s+)?(?:cang|moi|dau|nhuc|te)(?:\\s+(?:co|vai|gay|lung|chan|tay|dau|goi))?\\s+dau\\b"
+            + "|\\b(?:dau\\s+co|khong\\s+co|khong|ko|k)\\s+(?:bi\\s+)?(?:cang|moi|dau|nhuc|te)(?:\\s+(?:co|vai|gay|lung|chan|tay|dau|goi))?(?:\\s+dau)?\\b"
+            + ").*"
+    );
+
+    public static java.util.List<String> extractNegatedSymptomClauses(String message) {
+        if (message == null || message.isBlank()) {
+            return java.util.List.of();
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        Matcher m = NEGATED_SYMPTOM_CLAUSE_PATTERN.matcher(norm);
+        java.util.List<String> clauses = new java.util.ArrayList<>();
+        while (m.find()) {
+            clauses.add(m.group().strip());
+        }
+        return clauses;
+    }
+
+    public static String stripNegatedSymptomClauses(String message) {
+        if (message == null || message.isBlank()) {
+            return "";
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        String stripped = NEGATED_SYMPTOM_CLAUSE_PATTERN.matcher(norm).replaceAll(" ");
+        return stripped.replaceAll("[,.;?!]+", " ").replaceAll("\\s{2,}", " ").strip();
+    }
+
+    public static boolean isNegationOrPushbackOnAssumption(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isConfirmPreviousInfoMessage(message) || isMetaConversationOnBotBehavior(message)) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        // Must contain a negated symptom/condition clause ("căng gì", "tôi bị căng đâu", "không bị căng", "đâu có mỏi")
+        boolean hasNegatedSymptom = NEGATED_SYMPTOM_CLAUSE_PATTERN.matcher(norm).find()
+                || SYMPTOM_PUSHBACK_ASCII_PATTERN.matcher(ascii).matches();
+        if (!hasNegatedSymptom) {
+            return false;
+        }
+        // Exclude messages that explicitly critique a wrong service recommendation ("tư vấn", "gợi ý", "báo giá", "trong khi")
+        if (norm.matches("(?isU).*\\b(tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|trong\\s+khi|chứ\\s+không\\s+phải\\s+hỏi)\\b.*")) {
+            return false;
+        }
+        // Check if anything positive remains after stripping the negated symptom clause(s)
+        String remainder = stripNegatedSymptomClauses(norm)
+                .replaceAll("(?iU)\\b(tôi|mình|em|chị|anh|shop|ơi|ạ|hả|vậy|thế|mà|có|bị|đâu|không|ko|k|gì|j)\\b", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
+        return remainder.isEmpty();
+    }
+
     public static boolean isEntityMismatchCorrection(String message) {
         if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isConfirmPreviousInfoMessage(message)
+                || isMetaConversationOnBotBehavior(message)
+                || isNegationOrPushbackOnAssumption(message)) {
             return false;
         }
         String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
@@ -257,15 +335,18 @@ public final class SentimentIntentLayer {
      * trước khi trích xuất {@code extractedNeeds} và {@code targetScopes} (chống Keyword Hijacking).
      */
     public static String stripMismatchCritiqueClause(String message) {
-        if (message == null || message.isBlank() || !isEntityMismatchCorrection(message)) {
+        if (message == null || message.isBlank()) {
             return message;
         }
         String cleaned = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
-        for (Pattern p : MISMATCH_CRITIQUE_CLAUSE_PATTERNS) {
-            cleaned = p.matcher(cleaned).replaceAll(" ");
+        if (isEntityMismatchCorrection(message)) {
+            for (Pattern p : MISMATCH_CRITIQUE_CLAUSE_PATTERNS) {
+                cleaned = p.matcher(cleaned).replaceAll(" ");
+            }
         }
+        cleaned = NEGATED_SYMPTOM_CLAUSE_PATTERN.matcher(cleaned).replaceAll(" ");
         cleaned = cleaned.replaceAll("\\s{2,}", " ").strip();
-        return cleaned.isEmpty() ? message : cleaned;
+        return cleaned.isEmpty() ? "" : cleaned;
     }
 
     public static boolean hasNeurologicalRisk(String message, ConversationState priorState) {
@@ -293,8 +374,10 @@ public final class SentimentIntentLayer {
         if (message == null || message.isBlank()) {
             return false;
         }
-        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        String ascii = removeDiacritics(message);
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        String candidate = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg : message;
+        String norm = Normalizer.normalize(candidate.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(candidate);
         return STRONG_REJECTION_PATTERN.matcher(norm).matches()
                 || STRONG_REJECTION_ASCII_PATTERN.matcher(ascii).matches();
     }
@@ -482,15 +565,123 @@ public final class SentimentIntentLayer {
             + ").*"
     );
 
+    private static final Pattern GREETING_META_COMMENT_PATTERN = Pattern.compile(
+            "(?isU).*\\b(sao\\s+chào\\s+(?:lắm|nhiều|mãi)\\s+(?:thế|vậy)|chào\\s+(?:lắm|nhiều|mãi|hoài)\\s+(?:thế|vậy)|"
+            + "chào\\s+mấy\\s+lần|chào\\s+tận\\s+\\d+\\s+lần|sao\\s+chào\\s+hoài)\\b.*"
+    );
+    private static final Pattern GREETING_META_COMMENT_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(sao\\s+chao\\s+(?:lam|nhieu|mai)\\s+(?:the|vay)|chao\\s+(?:lam|nhieu|mai|hoai)\\s+(?:the|vay)|"
+            + "chao\\s+may\\s+lan|chao\\s+tan\\s+\\d+\\s+lan)\\b.*"
+    );
+
+    private static final Pattern APOLOGY_META_COMMENT_PATTERN = Pattern.compile(
+            "(?isU).*\\b(làm\\s+gì\\s+mà\\s+(?:phải\\s+|cứ\\s+)?xin\\s+lỗi|sao\\s+(?:lại\\s+|phải\\s+|cứ\\s+)?xin\\s+lỗi|"
+            + "việc\\s+gì\\s+(?:mà\\s+)?phải\\s+xin\\s+lỗi|có\\s+gì\\s+đâu\\s+mà\\s+(?:phải\\s+)?xin\\s+lỗi|"
+            + "không\\s+cần\\s+(?:phải\\s+)?xin\\s+lỗi|cần\\s+gì\\s+(?:phải\\s+)?xin\\s+lỗi|xin\\s+lỗi\\s+(?:lắm|nhiều|mãi|hoài)\\s+(?:thế|vậy))\\b.*"
+    );
+    private static final Pattern APOLOGY_META_COMMENT_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(lam\\s+gi\\s+ma\\s+(?:phai\\s+|cu\\s+)?xin\\s+loi|sao\\s+(?:lai\\s+|phai\\s+|cu\\s+)?xin\\s+loi|"
+            + "viec\\s+gi\\s+(?:ma\\s+)?phai\\s+xin\\s+loi|co\\s+gi\\s+dau\\s+ma\\s+(?:phai\\s+)?xin\\s+loi|"
+            + "khong\\s+can\\s+(?:phai\\s+)?xin\\s+loi|can\\s+gi\\s+(?:phai\\s+)?xin\\s+loi|xin\\s+loi\\s+(?:lam|nhieu|mai|hoai)\\s+(?:the|vay))\\b.*"
+    );
+
+    private static final Pattern POSITIVE_SERVICE_INTEREST_SIGNAL_PATTERN = Pattern.compile(
+            "(?isU).*\\b(nghe\\s+(?:cũng\\s+)?(?:hay|thích|ổn|hấp\\s+dẫn|được|thú\\s+vị)\\s*(?:đấy|nhỉ|thế|vậy|ha|ạ)?|"
+            + "(?:cũng\\s+)?hay\\s+đấy|thú\\s+vị\\s+đấy|thích\\s+đấy)\\b.*"
+    );
+    private static final Pattern POSITIVE_SERVICE_INTEREST_SIGNAL_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(nghe\\s+(?:cung\\s+)?(?:hay|thich|on|hap\\s+dan|duoc|thu\\s+vi)\\s*(?:day|nhi|the|vay|ha|a)?|"
+            + "(?:cung\\s+)?hay\\s+day|thu\\s+vi\\s+day|thich\\s+day)\\b.*"
+    );
+
+    private static final Pattern CONFIRM_PREVIOUS_INFO_PATTERN = Pattern.compile(
+            "(?isU).*\\b(hiểu\\s+đúng\\s+(?:rồi|ý)(?:\\s+còn\\s+gì)?|đúng\\s+rồi\\s+còn\\s+gì|"
+            + "có\\s+phải\\s+hiểu\\s+(?:lầm|nhầm)\\s+đâu|đâu\\s+có\\s+hiểu\\s+(?:lầm|nhầm)|"
+            + "không\\s+phải\\s+hiểu\\s+(?:lầm|nhầm)\\s+đâu|đúng\\s+ý\\s+(?:tôi|mình|chị|anh)\\s+rồi|"
+            + "(?:bạn|em)\\s+hiểu\\s+đúng\\s+rồi)\\b.*"
+    );
+    private static final Pattern CONFIRM_PREVIOUS_INFO_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(hieu\\s+dung\\s+(?:roi|y)(?:\\s+con\\s+gi)?|dung\\s+roi\\s+con\\s+gi|"
+            + "co\\s+phai\\s+hieu\\s+(?:lam|nham)\\s+dau|dau\\s+co\\s+hieu\\s+(?:lam|nham)|"
+            + "khong\\s+phai\\s+hieu\\s+(?:lam|nham)\\s+dau|dung\\s+y\\s+(?:toi|minh|chi|anh)\\s+roi)\\b.*"
+    );
+
+    private static final Pattern GREETING_OR_START_CONSULTATION_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:tư\\s+vấn(?:\\s+giúp(?:\\s+mình|\\s+tôi|\\s+em)?)?|xin\\s+tư\\s+vấn|cần\\s+tư\\s+vấn|"
+            + "chào\\s+shop|xin\\s+chào|hi(?:\\s+shop)?|hello(?:\\s+shop)?|alo(?:\\s+shop)?|shop\\s+ơi)\\s*(?:ạ|nhé|nha)?\\s*[!.?~]*$"
+    );
+    private static final Pattern GREETING_OR_START_CONSULTATION_ASCII_PATTERN = Pattern.compile(
+            "(?is)^\\s*(?:da\\s+)?(?:tu\\s+van(?:\\s+giup(?:\\s+minh|\\s+toi|\\s+em)?)?|xin\\s+tu\\s+van|can\\s+tu\\s+van|"
+            + "chao\\s+shop|xin\\s+chao|hi(?:\\s+shop)?|hello(?:\\s+shop)?|alo(?:\\s+shop)?|shop\\s+oi)\\s*(?:a|nhe|nha)?\\s*[!.?~]*$"
+    );
+
+    public static boolean isGreetingMetaComment(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        return GREETING_META_COMMENT_PATTERN.matcher(norm).matches()
+                || GREETING_META_COMMENT_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
+    public static boolean isApologyMetaComment(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        return APOLOGY_META_COMMENT_PATTERN.matcher(norm).matches()
+                || APOLOGY_META_COMMENT_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
+    public static boolean isMetaConversationOnBotBehavior(String message) {
+        return isGreetingMetaComment(message) || isApologyMetaComment(message);
+    }
+
+    public static boolean hasPositiveServiceInterestSignal(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        return POSITIVE_SERVICE_INTEREST_SIGNAL_PATTERN.matcher(norm).matches()
+                || POSITIVE_SERVICE_INTEREST_SIGNAL_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
+    public static boolean isConfirmPreviousInfoMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        return CONFIRM_PREVIOUS_INFO_PATTERN.matcher(norm).matches()
+                || CONFIRM_PREVIOUS_INFO_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
+    public static boolean isGreetingOrStartConsultationMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(message);
+        return GREETING_OR_START_CONSULTATION_PATTERN.matcher(norm).matches()
+                || GREETING_OR_START_CONSULTATION_ASCII_PATTERN.matcher(ascii).matches();
+    }
+
     private static final Pattern DETAIL_OR_FAQ_QUESTION_PATTERN = Pattern.compile(
             "(?isU).*(?:"
             + "\\b(?:thực\\s+dưỡng|dinh\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|nước\\s+ép|thực\\s+đơn)\\b.*\\b(?:là\\s+(?:gì|j|sao|như\\s+thế\\s+nào|ntn|thế\\s+nào)|có\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j)|gồm\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j)|ăn\\s+(?:món\\s+)?(?:gì|j)|miễn\\s+phí|tính\\s+phí|thêm\\s+tiền|không|k|ko)\\b"
             + "|\\b(?:có\\s+món\\s+(?:gì|j)|ăn\\s+món\\s+(?:gì|j)|thực\\s+đơn\\s+(?:có|gồm|là)\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j)|buffet\\s+(?:có|gồm|là)\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j)|ăn\\s+nhẹ\\s+(?:có|gồm|là)\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j)|điểm\\s+tâm\\s+(?:có|gồm|là)\\s+(?:những\\s+)?(?:món\\s+)?(?:gì|j))\\b"
             + "|\\b(?:nó|đó|đấy|cái\\s+đó|cái\\s+này|phần\\s+đó|mục\\s+đó)\\s+là\\s+(?:cái\\s+)?(?:gì|j|sao|như\\s+thế\\s+nào|ntn)\\b"
-            + "|\\b[\\p{L}\\d\\s]{2,70}\\s+là\\s+(?:cái\\s+)?(?:gì|j)\\b(?:\\s+(?:vậy|thế|hả|ạ|em|shop|nhỉ))*\\s*[?.!~]*$"
-            + "|\\b(?:gói\\s+(?:này|đó|trên|\\d+\\s*(?:phút|p|k))|liệu\\s+trình\\s+(?:này|đó))?\\s*(?:bao\\s+gồm|gồm\\s+những|gồm\\s+các|trong\\s+gói\\s+có)\\s+(?:bước\\s+|món\\s+|dịch\\s+vụ\\s+)?(?:gì|j|nào)\\b"
+            + "|\\b[\\p{L}\\d\\s]{2,70}\\s+là\\s+(?:[\\p{L}\\d]+\\s+){0,2}(?:cái\\s+|loại\\s+|những\\s+|lá\\s+|vị\\s+)?(?:gì|j|nào)\\b(?:\\s+(?:vậy|thế|hả|ạ|em|shop|nhỉ))*\\s*[?.!~]*$"
+            + "|\\b(?:ngâm|xông|dùng|gồm)\\s+(?:những\\s+)?(?:loại|lá|vị|thảo\\s+dược)\\s+(?:gì|j|nào)\\b"
+            + "|\\b(?:gói\\s+(?:này|đó|trên|\\d+\\s*(?:phút|p|k))|liệu\\s+trình\\s+(?:này|đó))?\\s*(?:bao\\s+gồm|gồm\\s+những|gồm\\s+các|trong\\s+gói\\s+có)\\s+(?:bước\\s+|món\\s+|dịch\\s+vụ\\s+|loại\\s+)?(?:gì|j|nào)\\b"
+            + "|\\b(?:quyền\\s+lợi|ưu\\s+đãi\\s+kèm\\s+theo|được\\s+hưởng\\s+(?:những\\s+)?(?:gì|j)|kèm\\s+theo\\s+(?:những\\s+)?(?:gì|j))\\b"
+            + "|^\\s*(?:dạ\\s+|vậy\\s+|thế\\s+|còn\\s+)?(?:quyền\\s+lợi|các\\s+bước|quy\\s+trình|chi\\s+tiết\\s+gói|thông\\s+tin\\s+gói)(?:\\s+(?:gói(?:\\s+này|\\s+đó)?|là\\s+gì|như\\s+thế\\s+nào|ra\\s+sao|thì\\s+sao|sao|ạ|nhỉ|em|shop))*\\s*[?.!~]*$"
             + "|\\b(?:quy\\s+trình|kỹ\\s+thuật|các\\s+bước|thao\\s+tác)\\s+(?:làm|massage|trị\\s+liệu|bấm\\s+huyệt|chăm\\s+sóc|gồm|như\\s+thế\\s+nào|ntn|thế\\s+nào|ra\\s+sao|mấy\\s+bước)\\b"
             + "|\\b(?:làm\\s+trong\\s+bao\\s+lâu|kéo\\s+dài\\s+bao\\s+lâu|thời\\s+lượng\\s+(?:bao\\s+lâu|mấy\\s+phút|bao\\s+nhiêu\\s+phút)|mấy\\s+phút\\s+vậy)\\b"
+            + "|\\b(?:thời\\s+lượng\\s+(?:gì|j|nào|sao)(?:\\s+nữa)?|tưởng\\s+(?:là\\s+|gói\\s+)?\\d{2,3}\\s*(?:phút|p)\\b|không\\s+phải\\s+\\d{2,3}\\s*(?:phút|p)\\s+(?:à|hả|sao|nhỉ)|sao\\s+lại\\s+hỏi\\s+thời\\s+lượng)\\b"
             + "|\\b(?:phòng\\s+(?:riêng|chung|vip|đôi|cộng\\s+đồng)|có\\s+rèm\\s+riêng|không\\s+gian\\s+(?:như\\s+thế\\s+nào|thế\\s+nào|riêng\\s+tư|chung|riêng)|đi\\s+2\\s+người.*?(?:phòng|cùng))\\b"
             + "|\\b(?:có\\s+(?:cần\\s+|phải\\s+|bắt\\s+buộc\\s+|phát\\s+sinh\\s+)?)?(?:ăn\\s+nhẹ|điểm\\s+tâm|buffet|thực\\s+dưỡng|nước\\s+ép|ngâm\\s+bồn|xông\\s+hơi|chườm\\s+ngải\\s+cứu|tẩy\\s+da\\s+chết|tẩy\\s+tế\\s+bào\\s+chết|chăm\\s+sóc\\s+da\\s+mặt|chọn\\s+ktv|chọn\\s+kỹ\\s+thuật\\s+viên|ktv\\s+nữ|kỹ\\s+thuật\\s+viên\\s+nữ|nhận\\s+tip|tiền\\s+tip|cần\\s+tip|tip\\s+thêm|phụ\\s+phí|phụ\\s+thu|đặt\\s+cọc|cọc\\s+trước)\\b.*\\b(?:miễn\\s+phí|không|k|ko|hông|chưa|sao|thế\\s+nào|ntn|ạ|nhỉ|shop|em)\\b"
             + "|\\b(?:gói\\s+cơ\\s+bản|gói\\s+vip|gói\\s+trị\\s+liệu|gói\\s+chuyên\\s+sâu)\\s+khác\\s+(?:gì|j|sao|như\\s+thế\\s+nào)\\b"
@@ -502,8 +693,11 @@ public final class SentimentIntentLayer {
             + "\\b(?:thuc\\s+duong|dinh\\s+duong|buffet|an\\s+nhe|diem\\s+tam|nuoc\\s+ep|thuc\\s+don)\\b.*\\b(?:la\\s+(?:gi|j|sao|nhu\\s+the\\s+nao|ntn|the\\s+nao)|co\\s+(?:nhung\\s+)?(?:mon\\s+)?(?:gi|j)|gom\\s+(?:nhung\\s+)?(?:mon\\s+)?(?:gi|j)|an\\s+(?:mon\\s+)?(?:gi|j)|mien\\s+phi|khong|k|ko)\\b"
             + "|\\b(?:co\\s+mon\\s+(?:gi|j)|an\\s+mon\\s+(?:gi|j)|thuc\\s+don\\s+(?:co|gom|la)\\s+(?:nhung\\s+)?(?:mon\\s+)?(?:gi|j)|buffet\\s+(?:co|gom|la)\\s+(?:nhung\\s+)?(?:mon\\s+)?(?:gi|j))\\b"
             + "|\\b(?:no|do|day|cai\\s+do|cai\\s+nay)\\s+la\\s+(?:cai\\s+)?(?:gi|j|sao|nhu\\s+the\\s+nao|ntn)\\b"
-            + "|\\b(?:goi\\s+(?:nay|do|tren|\\d+\\s*(?:phut|p|k))|lieu\\s+trinh\\s+(?:nay|do))?\\s*(?:bao\\s+gom|gom\\s+nhung|trong\\s+goi\\s+co)\\s+(?:buoc\\s+|mon\\s+)?(?:gi|j|nao)\\b"
-            + "|\\b(?:lam\\s+trong\\s+bao\\s+lau|keo\\s+dai\\s+bao\\s+lau|thoi\\s+luong\\s+(?:bao\\s+lau|may\\s+phut|bao\\s+nhieu\\s+phut))\\b"
+            + "|\\b[a-z\\d\\s]{2,70}\\s+la\\s+(?:[a-z\\d]+\\s+){0,2}(?:cai\\s+|loai\\s+|nhung\\s+|la\\s+)?(?:gi|j|nao)\\b(?:\\s+(?:vay|the|ha|a|em|shop|nhi))*\\s*[?.!~]*$"
+            + "|\\b(?:ngam|xong|dung|gom)\\s+(?:nhung\\s+)?(?:loai|la|vi|thao\\s+duoc)\\s+(?:gi|j|nao)\\b"
+            + "|\\b(?:goi\\s+(?:nay|do|tren|\\d+\\s*(?:phut|p|k))|lieu\\s+trinh\\s+(?:nay|do))?\\s*(?:bao\\s+gom|gom\\s+nhung|trong\\s+goi\\s+co)\\s+(?:buoc\\s+|mon\\s+|loai\\s+)?(?:gi|j|nao)\\b"
+            + "|\\b(?:quyen\\s+loi|duoc\\s+huong\\s+(?:nhung\\s+)?(?:gi|j))\\b"
+            + "|\\b(?:lam\\s+trong\\s+bao\\s+lau|keo\\s+dai\\s+bao\\s+lau|thoi\\s+luong\\s+(?:bao\\s+lau|may\\s+phut|bao\\s+nhieu\\s+phut|gi\\s+nua|j\\s+nua)|tuong\\s+(?:la\\s+|goi\\s+)?\\d{2,3}\\s*(?:phut|p)\\b)\\b"
             + "|\\b(?:phong\\s+(?:rieng|chung|vip|doi|cong\\s+dong)|co\\s+rem\\s+rieng|di\\s+2\\s+nguoi.*?(?:phong|cung))\\b"
             + "|\\b(?:co\\s+(?:can\\s+|phai\\s+|bat\\s+buoc\\s+|phat\\s+sinh\\s+)?)?(?:nhan\\s+tip|tien\\s+tip|can\\s+tip|phu\\s+phi|phu\\s+thu|dat\\s+coc|coc\\s+truoc)\\b.*\\b(?:khong|k|ko|chua|sao|the\\s+nao|ntn)\\b"
             + "|\\b(?:goi\\s+co\\s+ban|goi\\s+vip|goi\\s+tri\\s+lieu|goi\\s+chuyen\\s+sau)\\s+khac\\s+(?:gi|j|sao)\\b"
@@ -552,7 +746,12 @@ public final class SentimentIntentLayer {
             return false;
         }
         String trimmed = message.strip();
-        if (isHardPackageRejection(trimmed) || isPriceObjection(trimmed) || isComprehensionFailureMessage(trimmed)) {
+        if (isHardPackageRejection(trimmed)
+                || isPriceObjection(trimmed)
+                || isComprehensionFailureMessage(trimmed)
+                || isMetaConversationOnBotBehavior(trimmed)
+                || isConfirmPreviousInfoMessage(trimmed)
+                || PrimaryActionRouter.isFrustrationMessage(trimmed)) {
             return false;
         }
         String norm = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
@@ -569,7 +768,10 @@ public final class SentimentIntentLayer {
         String trimmed = message.strip();
         if (isHardPackageRejection(trimmed)
                 || isPriceObjection(trimmed)
-                || isComprehensionFailureMessage(trimmed)) {
+                || isComprehensionFailureMessage(trimmed)
+                || isMetaConversationOnBotBehavior(trimmed)
+                || isConfirmPreviousInfoMessage(trimmed)
+                || PrimaryActionRouter.isFrustrationMessage(trimmed)) {
             return false;
         }
         String norm = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
@@ -582,7 +784,8 @@ public final class SentimentIntentLayer {
         if (message == null || message.isBlank()) {
             return false;
         }
-        String trimmed = message.strip();
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        String trimmed = (normalizedMsg != null && !normalizedMsg.isBlank() ? normalizedMsg : message).strip();
         String norm = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         String ascii = removeDiacritics(trimmed);
 
@@ -594,12 +797,15 @@ public final class SentimentIntentLayer {
                 || isExplicitDownsellRequest(trimmed, priorState)
                 || isAlternativePackageRequest(trimmed)
                 || isTrialAcceptance(trimmed, priorState)
-                || isComprehensionFailureMessage(trimmed)) {
+                || isComprehensionFailureMessage(trimmed)
+                || isMetaConversationOnBotBehavior(trimmed)
+                || isConfirmPreviousInfoMessage(trimmed)
+                || PrimaryActionRouter.isFrustrationMessage(trimmed)) {
             return false;
         }
         // Do not hijack explicit price inquiries ("Gói này giá bao nhiêu?", "Giá sao shop?")
         if (PrimaryActionRouter.matchesRawPriceInquiryPattern(trimmed)
-                && !norm.matches("(?isU).*\\b(thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|có\\s+món\\s+gì|là\\s+gì|là\\s+j)\\b.*")) {
+                && !norm.matches("(?isU).*\\b(thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|có\\s+món\\s+gì|là\\s+gì|là\\s+j|quyền\\s+lợi|thời\\s+lượng)\\b.*")) {
             return false;
         }
         if (DETAIL_OR_FAQ_QUESTION_PATTERN.matcher(norm).matches()
@@ -618,10 +824,12 @@ public final class SentimentIntentLayer {
             String lastBotMessage,
             String activePackageName
     ) {
-        String norm = message != null
-                ? Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        String effectiveMsg = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg : message;
+        String norm = effectiveMsg != null
+                ? Normalizer.normalize(effectiveMsg.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
                 : "";
-        String ascii = removeDiacritics(message);
+        String ascii = removeDiacritics(effectiveMsg);
         String botNorm = lastBotMessage != null
                 ? Normalizer.normalize(lastBotMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
                 : "";
@@ -647,14 +855,18 @@ public final class SentimentIntentLayer {
             return "không gian phòng";
         }
 
-        // 3. Check duration questions
-        if (norm.matches("(?isU).*\\b(bao\\s+lâu|mấy\\s+phút|bao\\s+nhiêu\\s+phút|thời\\s+lượng|kéo\\s+dài)\\b.*")
-                || ascii.matches("(?is).*\\b(bao\\s+lau|may\\s+phut|bao\\s+nhieu\\s+phut|thoi\\s+luong)\\b.*")) {
+        // 3. Check duration questions ("thời lượng j nữa nhỉ tưởng 60p", "bao lâu", "mấy phút")
+        if (norm.matches("(?isU).*\\b(bao\\s+lâu|mấy\\s+phút|bao\\s+nhiêu\\s+phút|thời\\s+lượng|kéo\\s+dài|tưởng\\s+(?:là\\s+|gói\\s+)?\\d{2,3}\\s*(?:phút|p)\\b)\\b.*")
+                || ascii.matches("(?is).*\\b(bao\\s+lau|may\\s+phut|bao\\s+nhieu\\s+phut|thoi\\s+luong|tuong\\s+(?:la\\s+|goi\\s+)?\\d{2,3}\\s*(?:phut|p)\\b)\\b.*")) {
             return "thời lượng liệu trình";
         }
 
         // 4. Check specific service steps / modalities / policies
-        if (norm.contains("ngâm bồn") || ascii.contains("ngam bon")) return "ngâm bồn";
+        if (norm.contains("ngâm bồn") || ascii.contains("ngam bon")
+                || (norm.contains("ngâm") && norm.contains("thảo dược"))
+                || (ascii.contains("ngam") && ascii.contains("thao duoc"))) {
+            return "ngâm bồn";
+        }
         if (norm.contains("xông hơi") || ascii.contains("xong hoi")) return "xông hơi";
         if (norm.contains("ngải cứu") || ascii.contains("ngai cuu")) return "chườm ngải cứu";
         if (norm.contains("tẩy da chết") || norm.contains("tẩy tế bào chết") || ascii.contains("tay da chet")) return "tẩy da chết";
@@ -670,13 +882,14 @@ public final class SentimentIntentLayer {
         if (norm.matches("(?isU).*\\b(quy\\s+trình|kỹ\\s+thuật|bấm\\s+huyệt|các\\s+bước|thao\\s+tác)\\b.*")) {
             return "quy trình và kỹ thuật trị liệu";
         }
-        if (norm.matches("(?isU).*\\b(bao\\s+gồm|gồm\\s+những\\s+gì|gồm\\s+gì|trong\\s+gói\\s+có)\\b.*")) {
+        if (norm.matches("(?isU).*\\b(quyền\\s+lợi|bao\\s+gồm|gồm\\s+những\\s+gì|gồm\\s+gì|trong\\s+gói\\s+có|được\\s+hưởng|ưu\\s+đãi\\s+kèm)\\b.*")
+                || ascii.matches("(?is).*\\b(quyen\\s+loi|bao\\s+gom|gom\\s+nhung\\s+gi|duoc\\s+huong)\\b.*")) {
             return "quyền lợi và các bước trong gói";
         }
 
         // 4B. Explicit definition question "<subject> là gì/j" (e.g. "Cạo vôi răng siêu âm là gì?")
         Matcher defSubjMatcher = Pattern.compile(
-                "(?isU)^\\s*(?:dạ\\s+|cho\\s+hỏi\\s+|mình\\s+hỏi\\s+|tôi\\s+hỏi\\s+|shop\\s+ơi\\s+)?([\\p{L}\\d\\s]{2,65}?)\\s+là\\s+(?:cái\\s+)?(?:gì|j|sao|như\\s+thế\\s+nào|ntn)\\b"
+                "(?isU)^\\s*(?:dạ\\s+|cho\\s+hỏi\\s+|mình\\s+hỏi\\s+|tôi\\s+hỏi\\s+|shop\\s+ơi\\s+)?([\\p{L}\\d\\s]{2,65}?)\\s+là\\s+(?:[\\p{L}\\d]+\\s+){0,2}(?:cái\\s+|loại\\s+|những\\s+)?(?:gì|j|sao|như\\s+thế\\s+nào|ntn)\\b"
         ).matcher(norm);
         if (defSubjMatcher.find()) {
             String rawSubj = defSubjMatcher.group(1)
@@ -710,17 +923,58 @@ public final class SentimentIntentLayer {
         return null;
     }
 
+    /**
+     * Trích xuất các tín hiệu phụ (secondary intents) trong câu đa tín hiệu của khách hàng.
+     * Ví dụ:
+     * - Câu hỏi chi tiết quy trình/nguyên liệu sau khi đã "Xin giá" -> primary = DETAIL_OR_FAQ_QUESTION, secondary = [SERVICE_SELECTION, PENDING_PRICE_INQUIRY]
+     * - "Nghe hay đấy cơ mà làm gì mà phải xin lỗi" -> primary = META_CONVERSATION_ON_BOT_BEHAVIOR, secondary = [POSITIVE_SERVICE_INTEREST]
+     */
+    public static java.util.List<String> extractSecondaryIntents(
+            String message,
+            ConversationState priorState,
+            DetectedIntent primaryIntent
+    ) {
+        if (message == null || message.isBlank()) {
+            return java.util.List.of();
+        }
+        String trimmed = message.strip();
+        java.util.List<String> secondary = new java.util.ArrayList<>();
+        if (hasPositiveServiceInterestSignal(trimmed)) {
+            secondary.add("POSITIVE_SERVICE_INTEREST");
+        }
+        if (primaryIntent != DetectedIntent.SERVICE_SELECTION
+                && PrimaryActionRouter.isServiceFamilySelectionMessage(trimmed)) {
+            secondary.add("SERVICE_SELECTION");
+        }
+        if (primaryIntent != DetectedIntent.PRICE_INQUIRY
+                && priorState != null
+                && priorState.priceRequestedInSession()
+                && !priorState.priceDiscussed()) {
+            secondary.add("PENDING_PRICE_INQUIRY");
+        }
+        if (primaryIntent != DetectedIntent.META_CONVERSATION_ON_BOT_BEHAVIOR
+                && isMetaConversationOnBotBehavior(trimmed)) {
+            secondary.add("META_CONVERSATION_ON_BOT_BEHAVIOR");
+        }
+        if (primaryIntent != DetectedIntent.CONFIRM_PREVIOUS_INFO
+                && isConfirmPreviousInfoMessage(trimmed)) {
+            secondary.add("CONFIRM_PREVIOUS_INFO");
+        }
+        return java.util.List.copyOf(secondary);
+    }
+
     public static DetectedIntent classify(String message, ConversationState priorState) {
         if (message == null || message.isBlank()) {
             return DetectedIntent.AMBIGUOUS;
         }
-        String trimmed = message.strip();
-        String lower = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        String ascii = removeDiacritics(trimmed);
-
-        if (PromptSecurityGuard.isDirectJailbreakAttempt(trimmed)) {
+        String rawTrimmed = message.strip();
+        if (PromptSecurityGuard.isDirectJailbreakAttempt(rawTrimmed)) {
             return DetectedIntent.PROMPT_INJECTION;
         }
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(rawTrimmed);
+        String trimmed = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg.strip() : rawTrimmed;
+        String lower = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(trimmed);
         // 1. SAFETY_RISK
         if (CustomerInsightEngine.hasHighRiskHealthSignal(lower)) {
             return DetectedIntent.SAFETY_RISK;
@@ -738,9 +992,21 @@ public final class SentimentIntentLayer {
         if (hasContrastOrClarificationPrefix(trimmed) && isDetailOrFaqQuestion(trimmed, priorState)) {
             return DetectedIntent.DETAIL_OR_FAQ_QUESTION;
         }
+        // 3A-2. CONFIRM_PREVIOUS_INFO ("Hiểu đúng rồi còn gì, có phải hiểu lầm đâu")
+        if (isConfirmPreviousInfoMessage(trimmed)) {
+            return DetectedIntent.CONFIRM_PREVIOUS_INFO;
+        }
+        // 3A-3. META_CONVERSATION_ON_BOT_BEHAVIOR ("Sao chào lắm thế", "Nghe hay đấy cơ mà làm gì mà phải xin lỗi")
+        if (isMetaConversationOnBotBehavior(trimmed)) {
+            return DetectedIntent.META_CONVERSATION_ON_BOT_BEHAVIOR;
+        }
         // 3B. ENTITY_MISMATCH_CORRECTION (anti-keyword-hijacking: check before TRIAL/REJECTION/FRUSTRATION/SERVICE_SELECTION)
         if (isEntityMismatchCorrection(trimmed)) {
             return DetectedIntent.ENTITY_MISMATCH_CORRECTION;
+        }
+        // 3C. PUSHBACK_ON_ASSUMPTION ("Căng gì, tôi bị căng đâu", "không bị căng", "đâu có mỏi")
+        if (isNegationOrPushbackOnAssumption(trimmed)) {
+            return DetectedIntent.PUSHBACK_ON_ASSUMPTION;
         }
         // 4. TRIAL_ACCEPTANCE (only if no other package specified & not strong rejection)
         if (isTrialAcceptance(trimmed, priorState)) {
@@ -758,11 +1024,11 @@ public final class SentimentIntentLayer {
         if (isComprehensionFailureMessage(trimmed)) {
             return DetectedIntent.COMPREHENSION_FAILURE;
         }
-        // 7. FRUSTRATION
+        // 7. FRUSTRATION ("Ô hay, nói linh ta linh tinh gì đấy", "Dở à")
         if (PrimaryActionRouter.isFrustrationMessage(trimmed)) {
             return DetectedIntent.FRUSTRATION;
         }
-        // 7B. DETAIL_OR_FAQ_QUESTION ("Thực dưỡng là j", "Buffet có món gì?", "Gói này gồm những gì?", "Phòng riêng hay chung?")
+        // 7B. DETAIL_OR_FAQ_QUESTION ("Thực dưỡng là j", "Quy trình là loại gì vậy?", "Buffet có món gì?")
         if (isDetailOrFaqQuestion(trimmed, priorState)) {
             return DetectedIntent.DETAIL_OR_FAQ_QUESTION;
         }
@@ -798,7 +1064,11 @@ public final class SentimentIntentLayer {
         if (PrimaryActionRouter.hasSymptomOrConditionSignal(trimmed)) {
             return DetectedIntent.SYMPTOM_DESCRIPTION;
         }
-        // 15. ACK
+        // 15. GREETING_OR_START_CONSULTATION ("Tư vấn", "Chào shop", "Hi")
+        if (isGreetingOrStartConsultationMessage(trimmed)) {
+            return DetectedIntent.GREETING_OR_START_CONSULTATION;
+        }
+        // 16. ACK
         if (PrimaryActionRouter.isAcknowledgementMessage(trimmed)) {
             return DetectedIntent.ACK;
         }

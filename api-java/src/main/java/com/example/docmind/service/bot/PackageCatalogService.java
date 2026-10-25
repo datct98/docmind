@@ -227,6 +227,9 @@ public final class PackageCatalogService {
                 includesCell = findCellByHeader(cells, headers, "nội dung", 4);
             }
             String roomCell = findCellByHeader(cells, headers, "không gian", -1);
+            if (roomCell.isBlank()) {
+                roomCell = findCellByHeader(cells, headers, "phòng", -1);
+            }
             String highlightCell = findCellByHeader(cells, headers, "nổi bật", -1);
             String suitableCell = findCellByHeader(cells, headers, "phù hợp", -1);
             String processCell = findCellByHeader(cells, headers, "quy trình", -1);
@@ -245,8 +248,22 @@ public final class PackageCatalogService {
                     .toLowerCase(Locale.ROOT);
             List<String> bodyAreas = extractBodyAreasFromRow(combinedRowText, domainKeywords);
 
+            String normalizedRoomCell = roomCell != null ? roomCell.strip() : "";
+            String roomLower = normalizedRoomCell.toLowerCase(Locale.ROOT);
+            boolean isSharedOrCurtainRoom = roomLower.contains("phòng chung")
+                    || roomLower.contains("khu dưỡng sinh")
+                    || ("HN".equalsIgnoreCase(region) && priceVnd > 0L && priceVnd < 580_000L && !roomLower.contains("vip"));
+            if (roomLower.contains("phòng chung")) {
+                normalizedRoomCell = "Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo";
+            }
+            String safeHighlightCell = highlightCell != null ? highlightCell.strip() : "";
+            if (isSharedOrCurtainRoom && !safeHighlightCell.isBlank()) {
+                safeHighlightCell = safeHighlightCell.replaceAll("(?iU)phòng\\s+vip(?:\\s+riêng(?:\\s+tư)?)?",
+                        "Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo");
+            }
+
             String enrichedIncludes = includesCell != null ? includesCell.strip() : "";
-            String hlLower = highlightCell != null ? highlightCell.toLowerCase(Locale.ROOT) : "";
+            String hlLower = safeHighlightCell.toLowerCase(Locale.ROOT);
             String incLower = enrichedIncludes.toLowerCase(Locale.ROOT);
             if (hlLower.contains("tắm xông") && !incLower.contains("tắm xông") && !incLower.contains("xông hơi")) {
                 enrichedIncludes = enrichedIncludes.isEmpty() ? "Tắm xông thảo dược" : (enrichedIncludes + ", tắm xông thảo dược");
@@ -257,8 +274,8 @@ public final class PackageCatalogService {
                 enrichedIncludes = enrichedIncludes.isEmpty() ? "Ăn nhẹ sau liệu trình" : (enrichedIncludes + ", ăn nhẹ sau liệu trình");
             }
             String enrichedProcess = (processCell != null && !processCell.isBlank())
-                    ? (!highlightCell.isBlank() ? highlightCell.strip() + " | " + processCell.strip() : processCell.strip())
-                    : (highlightCell != null ? highlightCell.strip() : "");
+                    ? (!safeHighlightCell.isBlank() ? safeHighlightCell + " | " + processCell.strip() : processCell.strip())
+                    : safeHighlightCell;
 
             String uid = region + "_" + code;
             PackageSummary candidate = new PackageSummary(
@@ -272,7 +289,7 @@ public final class PackageCatalogService {
                     durationLabel,
                     priceVnd,
                     formatCompactPrice(priceVnd),
-                    roomCell,
+                    normalizedRoomCell,
                     enrichedIncludes,
                     suitableCell,
                     enrichedProcess,
