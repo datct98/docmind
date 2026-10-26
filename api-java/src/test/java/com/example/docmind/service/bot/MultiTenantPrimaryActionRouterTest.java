@@ -136,7 +136,7 @@ class MultiTenantPrimaryActionRouterTest {
         history.add(new ConversationTurn("assistant", joinBubbles(b1)));
 
         // Turn 2: "Tôi bị chân đau, mỏi gối tê bì" (inverted + multi-entity)
-        String u2 = "Tôi bị chân đau, mỏi gối tê bì";
+        String u2 = "Tôi bị chân đau, mỏi gối căng cơ";
         ConversationState s2 = ConversationState.hydrate(pageId, "u-018", history, keywords, chunks);
         PrimaryActionRouter.RoutingDecision d2 = PrimaryActionRouter.route(u2, s2, chunks, keywords);
         assertThat(d2.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE);
@@ -144,7 +144,7 @@ class MultiTenantPrimaryActionRouterTest {
         // Verify multi-entity extraction and inverted Vietnamese phrase ("chân đau" -> "đau chân")
         List<String> extractedNeeds = ConversationState.extractAllNeeds(u2, keywords);
         List<String> targetScopes = ConversationState.extractTargetScopes(u2, keywords);
-        assertThat(extractedNeeds).contains("đau chân", "mỏi gối", "tê bì");
+        assertThat(extractedNeeds).contains("đau chân", "mỏi gối", "căng cơ");
         assertThat(targetScopes).contains("chân", "gối");
         assertThat(targetScopes).doesNotContain("cổ", "vai", "gáy");
 
@@ -156,7 +156,7 @@ class MultiTenantPrimaryActionRouterTest {
         assertThat(b2.get(0).text().toLowerCase(Locale.ROOT))
                 .contains("đau chân")
                 .contains("mỏi gối")
-                .contains("tê bì")
+                .contains("căng cơ")
                 .doesNotContain("cổ vai");
         history.add(new ConversationTurn("user", u2));
         history.add(new ConversationTurn("assistant", joinBubbles(b2)));
@@ -223,8 +223,8 @@ class MultiTenantPrimaryActionRouterTest {
         );
         List<String> keywords = persona.resolvedConfig().safeDomainKeywords();
         List<ConversationTurn> history = List.of(
-                new ConversationTurn("user", "Tôi bị chân đau, mỏi gối tê bì"),
-                new ConversationTurn("assistant", "Dạ với tình trạng đau chân, mỏi gối và tê bì, mình đang mỏi vùng đó mới gần đây hay đã kéo dài ạ?")
+                new ConversationTurn("user", "Tôi bị chân đau, mỏi gối"),
+                new ConversationTurn("assistant", "Dạ với tình trạng đau chân và mỏi gối, mình đang mỏi vùng đó mới gần đây hay đã kéo dài ạ?")
         );
 
         ConversationState state = ConversationState.hydrate(pageId, "u-ungrounded", history, keywords, offScopeChunks);

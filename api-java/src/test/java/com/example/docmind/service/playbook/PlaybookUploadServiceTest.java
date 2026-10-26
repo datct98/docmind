@@ -90,11 +90,11 @@ class PlaybookUploadServiceTest {
 
         assertEquals("YAML", result.format());
         assertEquals(pageId, result.pageId());
-        assertEquals(11, result.totalPlaybookRulesParsed());
-        assertEquals(11, result.activePlaybookRulesSaved());
+        assertEquals(14, result.totalPlaybookRulesParsed());
+        assertEquals(14, result.activePlaybookRulesSaved());
         assertEquals(0, result.rejectedPlaybookRulesCount());
 
-        // All 11 PB-SPA-* rules are immediately ACTIVE + APPROVED (skipping manual approval step)
+        // All 14 PB-SPA-* rules are immediately ACTIVE + APPROVED (skipping manual approval step)
         for (LearnedRuleDto rule : result.activeRules()) {
             assertTrue(rule.active(), "Rule " + rule.ruleCode() + " must be immediately ACTIVE");
             assertEquals("APPROVED", rule.reviewStatus());
@@ -137,8 +137,8 @@ class PlaybookUploadServiceTest {
         );
 
         assertEquals("MARKDOWN", result.format());
-        assertEquals(11, result.totalPlaybookRulesParsed());
-        assertEquals(11, result.activePlaybookRulesSaved());
+        assertEquals(14, result.totalPlaybookRulesParsed());
+        assertEquals(14, result.activePlaybookRulesSaved());
         assertEquals(0, result.rejectedPlaybookRulesCount());
 
         assertEquals(11, result.totalSampleDialoguesParsed());
@@ -158,7 +158,7 @@ class PlaybookUploadServiceTest {
         );
 
         assertEquals("JSON", result.format());
-        assertEquals(11, result.activePlaybookRulesSaved());
+        assertEquals(14, result.activePlaybookRulesSaved());
         assertEquals(9, result.activeSampleDialoguesSaved());
         assertEquals(2, result.rejectedSampleDialoguesCount());
 
@@ -277,7 +277,7 @@ class PlaybookUploadServiceTest {
                 true
         );
 
-        assertEquals(12, result.activePlaybookRulesSaved());
+        assertEquals(15, result.activePlaybookRulesSaved());
         Set<String> activeRuleCodes = result.activeRules().stream()
                 .filter(r -> r.active() && "APPROVED".equals(r.reviewStatus()))
                 .map(LearnedRuleDto::ruleCode)
@@ -287,10 +287,13 @@ class PlaybookUploadServiceTest {
                 "PB-SPA-OPEN-001",
                 "PB-SPA-DISCOVER-001",
                 "PB-SPA-MATCH-001",
+                "PB-SPA-PRICE-ANCHOR-001",
                 "PB-SPA-PRICE-OBJECTION-001",
                 "PB-SPA-PRICE-OBJECTION-002",
                 "PB-SPA-TRIAL-ACCEPT-001",
-                "PB-SPA-CORRECTION-001"
+                "PB-SPA-CORRECTION-001",
+                "PB-SPA-EMOTIONAL-REPAIR-001",
+                "PB-SPA-MID-FUNNEL-LUKEWARM-001"
         )));
 
         for (SampleDialogueDto good : result.activeDialogues()) {

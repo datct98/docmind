@@ -110,6 +110,11 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "vớ\\s+vanr", "vớ vẩn");
         addBoundaryPattern(phrases, "vo\\s+vanr", "vớ vẩn");
         addBoundaryPattern(phrases, "vơ\\s+vẩn", "vớ vẩn");
+        addBoundaryPattern(phrases, "xin\\s+loi", "xin lỗi");
+        addBoundaryPattern(phrases, "mac\\s+(?:gì|gi|j)", "mắc gì");
+        addBoundaryPattern(phrases, "mắc\\s+(?:gì|gi|j)", "mắc gì");
+        addBoundaryPattern(phrases, "can\\s+nhac\\s+them", "cân nhắc thêm");
+        addBoundaryPattern(phrases, "cân\\s+nhac\\s+them", "cân nhắc thêm");
         addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tỉnh", "linh ta linh tinh");
         addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tinh", "linh ta linh tinh");
         addBoundaryPattern(phrases, "linh\\s+tỉnh", "linh tinh");
@@ -125,8 +130,9 @@ public final class VietnameseQueryNormalizer {
 
         // 1. Messenger slang & abbreviations
         addWord(words, "trc", "trước");
-        addWord(words, "km", "khuyến mãi");
+        addBoundaryPattern(words, "km(?!/h)", "khuyến mãi");
         addWord(words, "kmai", "khuyến mãi");
+        addWord(words, "hya", "hay");
         addWord(words, "j", "gì");
         addWord(words, "ko", "không");
         addWord(words, "k", "không");
@@ -149,6 +155,8 @@ public final class VietnameseQueryNormalizer {
 
         addWord(words, "mik", "mình");
         addWord(words, "mk", "mình");
+        addWord(words, "ukm", "ừm");
+        addWord(words, "uhm", "ừm");
 
         addWord(words, "tgian", "thời gian");
         addWord(words, "tg", "thời gian");

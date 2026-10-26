@@ -48,6 +48,8 @@ public final class PrimaryActionRouter {
         RECOMMEND_ONE_PACKAGE,
         CONFIRM_BOOKING_DETAILS,
         SERVICE_DETAIL_AND_FAQ_QA,
+        REPAIR_AND_RECONFIRM,
+        DIRECT_CONCRETE_SOLUTION,
         GENERIC_SHORT_DISCOVERY
     }
 
@@ -79,6 +81,28 @@ public final class PrimaryActionRouter {
             );
         }
 
+        public String forcedAction() {
+            String i = detectedIntent != null ? detectedIntent : "";
+            if (effectiveResponseAction == PrimaryAction.REPAIR_AND_RECONFIRM
+                    || "REPAIR_AND_RECONFIRM".equals(i)
+                    || "ENTITY_MISMATCH_RECONSULT".equals(i)
+                    || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(i)) {
+                return "REPAIR_AND_RECONFIRM";
+            }
+            if (effectiveResponseAction == PrimaryAction.DIRECT_CONCRETE_SOLUTION
+                    || "FRUSTRATION_DEMANDING_SOLUTION".equals(i)
+                    || "DIRECT_CONCRETE_SOLUTION".equals(i)) {
+                return "DIRECT_CONCRETE_SOLUTION";
+            }
+            if ("ANTI_APOLOGY_PUSHBACK".equals(i)) {
+                return "LIGHT_WARM_REPAIR";
+            }
+            if ("POLITE_DEFERRAL_EXIT".equals(i) || "STAGE_3_GRACEFUL_EXIT".equals(i)) {
+                return "GRACEFUL_EXIT";
+            }
+            return effectiveResponseAction != null ? effectiveResponseAction.name() : "DEFAULT";
+        }
+
         public static String resolveRouterRuleId(PrimaryAction effective, String intent) {
             String i = intent != null ? intent : "";
             if (effective == PrimaryAction.BOT_MUTED) {
@@ -95,6 +119,12 @@ public final class PrimaryActionRouter {
             }
             if ("STRONG_REJECTION".equals(i) || "STAGE_3_GRACEFUL_EXIT".equals(i)) {
                 return "R00-STRONG-REJECTION-GRACEFUL-EXIT";
+            }
+            if (effective == PrimaryAction.REPAIR_AND_RECONFIRM || "REPAIR_AND_RECONFIRM".equals(i)) {
+                return "R00A-SCOPE-REPAIR-AND-RECONFIRM";
+            }
+            if (effective == PrimaryAction.DIRECT_CONCRETE_SOLUTION || "FRUSTRATION_DEMANDING_SOLUTION".equals(i)) {
+                return "R01D-FRUSTRATION-DIRECT-CONCRETE-SOLUTION";
             }
             if (i.startsWith("MISMATCH_CORRECTION") || "ENTITY_MISMATCH_RECONSULT".equals(i)) {
                 return "R00-ENTITY-MISMATCH-CORRECTION";
@@ -391,6 +421,17 @@ public final class PrimaryActionRouter {
         return PRICE_INQUIRY_MSG_PATTERN.matcher(message.strip()).matches();
     }
 
+    public static RoutingDecision decide(
+            ConversationState state,
+            String message,
+            boolean isFirstTurn,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            com.example.docmind.dto.PagePersonaConfig personaConfig
+    ) {
+        List<String> keywords = personaConfig != null ? personaConfig.resolvedScopeTaxonomy() : List.of();
+        return route(message, state, fusedChunks, keywords);
+    }
+
     /**
      * Chọn duy nhất 1 {@link PrimaryAction} dựa trên tin nhắn và {@link ConversationState} theo bảng định tuyến v3.2.
      */
@@ -446,6 +487,19 @@ public final class PrimaryActionRouter {
             );
         }
 
+        // PRE-02B-CAUTIOUS-SYMPTOM-CLARIFICATION (Safety tầng 2): tê/chóng mặt... CHƯA có dấu hiệu cấp tính.
+        // Ưu tiên hơn mọi nhánh bán hàng/báo giá: trấn an + hỏi khởi phát/bên ảnh hưởng/diễn biến, không chào gói.
+        if (classified == DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION) {
+            return new RoutingDecision(
+                    PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
+                    PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
+                    false,
+                    1,
+                    "CAUTIOUS_SYMPTOM_CLARIFICATION",
+                    "spa_condition_first_discovery"
+            );
+        }
+
         // PRE-03-EXPLICIT-OPT-OUT
         if (classified == DetectedIntent.OPT_OUT || isExplicitOptOutMessage(msg)) {
             return new RoutingDecision(
@@ -455,6 +509,28 @@ public final class PrimaryActionRouter {
                     1,
                     "EXPLICIT_OPT_OUT",
                     "spa_ambiguous_confirm_once"
+            );
+        }
+
+        // PRE-04-SERVICE-COMPLAINT & PRICE_ESCALATION_REQUEST (Priority 2: Complaint/Refund/Manager before consultation branches)
+        if (CustomerInsightEngine.hasComplaintSignal(lower)) {
+            return new RoutingDecision(
+                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                    false,
+                    1,
+                    "COMPLAINT",
+                    "complaint_immediate_handoff"
+            );
+        }
+        if (classified == DetectedIntent.PRICE_ESCALATION_REQUEST) {
+            return new RoutingDecision(
+                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                    false,
+                    1,
+                    "PRICE_ESCALATION_HANDOFF",
+                    "spa_price_escalation_handoff"
             );
         }
 
@@ -473,7 +549,38 @@ public final class PrimaryActionRouter {
             );
         }
 
-        // R00-MISMATCH-CORRECTION-RESCUE (Priority 5: Khách phản ứng vì bot tư vấn lệch vùng đau / lệch nhu cầu)
+        boolean isHarshEntityMismatchCritique = SentimentIntentLayer.hasHarshPronouns(msg)
+                && (classified == DetectedIntent.ENTITY_MISMATCH_CORRECTION || SentimentIntentLayer.isEntityMismatchCorrection(msg));
+        boolean hasFullBodyHeldPackageForMismatch = (classified == DetectedIntent.ENTITY_MISMATCH_CORRECTION || SentimentIntentLayer.isEntityMismatchCorrection(msg))
+                && !SentimentIntentLayer.hasHarshPronouns(msg)
+                && priorState.frustrationCount() == 0
+                && priorState.priceDiscussed()
+                && priorState.heldPackage() != null
+                && (priorState.heldPackage().contains("co_ban")
+                    || priorState.heldPackage().contains("nang_cao")
+                    || priorState.heldPackage().contains("phuc_hoi"));
+
+        // R00A-SCOPE-REPAIR-AND-RECONFIRM (Priority 5: Khách đính chính phạm vi — Nhóm D & Nhóm H)
+        if (!isHarshEntityMismatchCritique
+                && !hasFullBodyHeldPackageForMismatch
+                && !SentimentIntentLayer.isMetaConversationOnBotBehavior(msg)
+                && !SentimentIntentLayer.isConfirmPreviousInfoMessage(msg)
+                && !SentimentIntentLayer.isAntiApologyPushback(msg)
+                && (classified == DetectedIntent.SCOPE_CORRECTION_PUSHBACK
+                    || SentimentIntentLayer.isScopeCorrectionPushback(msg)
+                    || enriched.possibleCorrection()
+                    || VietnameseScopeSignalExtractor.extract(msg, domainKeywords).explicitCorrectionGroupD())) {
+            return new RoutingDecision(
+                    PrimaryAction.REPAIR_AND_RECONFIRM,
+                    PrimaryAction.REPAIR_AND_RECONFIRM,
+                    false,
+                    1,
+                    "REPAIR_AND_RECONFIRM",
+                    "spa_frustration_rescue"
+            );
+        }
+
+        // R00-MISMATCH-CORRECTION-RESCUE (Priority 5B: Khách phản ứng vì bot tư vấn lệch vùng đau / lệch nhu cầu)
         if (classified == DetectedIntent.ENTITY_MISMATCH_CORRECTION || SentimentIntentLayer.isEntityMismatchCorrection(msg)) {
             boolean harshOrRepeated = SentimentIntentLayer.hasHarshPronouns(msg) || priorState.frustrationCount() >= 1;
             CatalogOption groundedRescueOpt = selectBestSingleCatalogOption(msg, enriched, fusedChunks);
@@ -485,6 +592,21 @@ public final class PrimaryActionRouter {
                         1,
                         "MISMATCH_CORRECTION_HANDOFF",
                         "complaint_immediate_handoff"
+                );
+            }
+            boolean hasFullBodyHeldPackage = priorState.priceDiscussed()
+                    && priorState.heldPackage() != null
+                    && (priorState.heldPackage().contains("co_ban")
+                        || priorState.heldPackage().contains("nang_cao")
+                        || priorState.heldPackage().contains("phuc_hoi"));
+            if (hasFullBodyHeldPackage) {
+                return new RoutingDecision(
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        false,
+                        2,
+                        "ENTITY_MISMATCH_RECONSULT",
+                        "spa_frustration_rescue"
                 );
             }
             if (priorState.priceRequestedInSession()) {
@@ -507,27 +629,15 @@ public final class PrimaryActionRouter {
             );
         }
 
-        // PRE-04-SERVICE-COMPLAINT
-        if (CustomerInsightEngine.hasComplaintSignal(lower)) {
+        // R00M-MOOD-DROP-RECOVERY (Priority 8: Khách bày tỏ tụt cảm xúc / chán chả buồn nói do câu tư vấn trước chưa khéo)
+        if (priorState.greetingSent() && SentimentIntentLayer.isMoodDropRecoveryMessage(msg)) {
             return new RoutingDecision(
-                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
-                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     false,
                     1,
-                    "COMPLAINT",
-                    "complaint_immediate_handoff"
-            );
-        }
-
-        // PRICE_ESCALATION_REQUEST ("gặp quản lý", "xin giá tốt hơn", "có ưu đãi riêng không", "giảm thêm được không")
-        if (classified == DetectedIntent.PRICE_ESCALATION_REQUEST) {
-            return new RoutingDecision(
-                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
-                    PrimaryAction.HARD_HANDOFF_COMPLAINT,
-                    false,
-                    1,
-                    "PRICE_ESCALATION_HANDOFF",
-                    "spa_price_escalation_handoff"
+                    "MOOD_DROP_RECOVERY",
+                    "spa_frustration_rescue"
             );
         }
 
@@ -547,6 +657,15 @@ public final class PrimaryActionRouter {
         boolean isComprehensionFailure = classified == DetectedIntent.COMPREHENSION_FAILURE
                 || SentimentIntentLayer.isComprehensionFailureMessage(msg);
         boolean isHesitationAfterObjection = SentimentIntentLayer.isHesitationAfterObjection(msg);
+        boolean isPoliteDeferral = SentimentIntentLayer.isPoliteDeferralExit(msg);
+        boolean isPoliteDeferralExitTrigger = isPoliteDeferral
+                && !isDetailFaqQuestion
+                && !isComprehensionFailure
+                && classified != DetectedIntent.ALTERNATIVE_PACKAGE_REQUEST
+                && !SentimentIntentLayer.isAlternativePackageRequest(msg)
+                && classified != DetectedIntent.TRIAL_ACCEPTANCE
+                && !SentimentIntentLayer.isAntiApologyPushback(msg)
+                && (priorState.downsellOffered() || priorState.objectionCount() == 0);
         boolean isStage3Trigger = priorState.downsellOffered()
                 && !isDetailFaqQuestion
                 && !isComprehensionFailure
@@ -559,18 +678,43 @@ public final class PrimaryActionRouter {
                     || classified == DetectedIntent.PRICE_OBJECTION
                     || isPriceObjectionMessage(msg)
                     || isHesitationAfterObjection);
+        boolean hasKnownSymptomsOrScopes = !enriched.confirmedScopes().isEmpty()
+                || !enriched.knownSymptoms().isEmpty()
+                || !priorState.confirmedScopes().isEmpty()
+                || !priorState.knownSymptoms().isEmpty();
+        boolean afterAskConditionWithoutTimeAnswer = !enriched.conditionClarified()
+                && ("ASK_CONDITION_ONCE".equals(priorState.lastIntent())
+                    || "CONVERSATION_STYLE_REPAIR".equals(priorState.lastIntent())
+                    || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(priorState.lastIntent())
+                    || "ACKNOWLEDGE_AND_ASK_PREFERENCE".equals(priorState.lastBotAction())
+                    || "ASK_CONDITION".equals(priorState.lastQuestionIntent())
+                    || (priorState.conditionAskedCount() >= 1 && !priorState.priceDiscussed() && !priorState.packageRecommended()));
+        boolean customerActivelyAsksPriceOrPackageNow = isPriceInquiryMessage(msg)
+                || isServiceFamilySelectionMessage(msg)
+                || hasExplicitDurationInMessage(lower)
+                || classified == DetectedIntent.ALTERNATIVE_PACKAGE_REQUEST
+                || SentimentIntentLayer.isAlternativePackageRequest(msg)
+                || isDetailFaqQuestion
+                || classified == DetectedIntent.TRIAL_ACCEPTANCE
+                || PREFERENCE_ANSWER_PATTERN.matcher(lower).matches();
 
+        // POLITE_DEFERRAL_EXIT: Khách hẹn cân nhắc / suy nghĩ thêm lịch sự ("Ukm, để t cân nhắc thêm", "Để mình suy nghĩ thêm") -> 0 xin lỗi, 0 câu hỏi
+        if (isPoliteDeferralExitTrigger) {
+            coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+            intent = "POLITE_DEFERRAL_EXIT";
+            skillCode = "spa_graceful_exit_after_rejection";
+        }
         // STAGE 3 RETENTION: Customer still hesitates or declines after 1 lower alternative was offered -> graceful exit, 0 push
-        if (isStage3Trigger) {
+        else if (isStage3Trigger) {
             coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
             intent = "STAGE_3_GRACEFUL_EXIT";
-            skillCode = "spa_stage3_graceful_exit";
+            skillCode = "spa_graceful_exit_after_rejection";
         }
         // STRONG_REJECTION ("đắt quá, thôi khỏi cần", "thôi không làm", "tụt hứng thôi dẹp") -> Polite breakup, 0 push
         else if (classified == DetectedIntent.STRONG_REJECTION) {
             coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
             intent = "STRONG_REJECTION";
-            skillCode = "spa_stage3_graceful_exit";
+            skillCode = "spa_graceful_exit_after_rejection";
         }
         // R13B-TRIAL-ACCEPTANCE-BOOKING-CORRECTED (Priority 13: "Thử xem sao", "Đắt thế nhưng thôi thử xem sao")
         else if (classified == DetectedIntent.TRIAL_ACCEPTANCE
@@ -635,6 +779,24 @@ public final class PrimaryActionRouter {
             intent = "COMPREHENSION_RECOVERY_SIMPLIFY_FAQ";
             skillCode = "spa_frustration_rescue";
         }
+        // R00-CONVERSATION-STYLE-REPAIR: Sau ASK_CONDITION_ONCE, nếu khách chưa trả lời thời gian (conditionClarified == false)
+        // và không chủ động hỏi giá/gói ở lượt này -> CẤM nhảy sang ANSWER_PRICE_ONCE và CẤM nhảy sang DIRECT_CONCRETE_SOLUTION!
+        else if (afterAskConditionWithoutTimeAnswer && !customerActivelyAsksPriceOrPackageNow
+                && !priorState.priceDiscussed()
+                && classified != DetectedIntent.PRICE_OBJECTION
+                && !isPriceObjectionMessage(msg)
+                && !(isFrustrationMessage(msg) && priorState.priceRequestedInSession() && !priorState.priceDiscussed()
+                    && priorState.conditionAskedCount() >= 1 && priorState.frustrationCount() == 0)
+                && classified != DetectedIntent.PUSHBACK_ON_ASSUMPTION
+                && !SentimentIntentLayer.isNegationOrPushbackOnAssumption(msg)
+                && classified != DetectedIntent.META_CONVERSATION_ON_BOT_BEHAVIOR
+                && classified != DetectedIntent.ANTI_APOLOGY_PUSHBACK
+                && !SentimentIntentLayer.isAntiApologyPushback(msg)
+                && !SentimentIntentLayer.isMetaConversationOnBotBehavior(msg)) {
+            coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+            intent = "CONVERSATION_STYLE_REPAIR";
+            skillCode = "spa_frustration_rescue";
+        }
         // R00B-PUSHBACK-ON-ASSUMPTION ("Căng gì, tôi bị căng đâu", "không bị căng", "đâu có mỏi")
         else if (classified == DetectedIntent.PUSHBACK_ON_ASSUMPTION
                 || SentimentIntentLayer.isNegationOrPushbackOnAssumption(msg)) {
@@ -642,14 +804,21 @@ public final class PrimaryActionRouter {
             intent = "PUSHBACK_ON_ASSUMPTION_REPAIR";
             skillCode = "spa_condition_first_discovery";
         }
-        // R00C-META-CONVERSATION-ON-BOT-BEHAVIOR ("Sao chào lắm thế", "Nghe hay đấy cơ mà làm gì mà phải xin lỗi")
+        // R00C-META-CONVERSATION-ON-BOT-BEHAVIOR & ANTI_APOLOGY_PUSHBACK ("Sao chào lắm thế", "Hâm à mắc j xin loi", "Nghe hay đấy cơ mà làm gì mà phải xin lỗi")
         else if (classified == DetectedIntent.META_CONVERSATION_ON_BOT_BEHAVIOR
+                || classified == DetectedIntent.ANTI_APOLOGY_PUSHBACK
+                || SentimentIntentLayer.isAntiApologyPushback(msg)
                 || SentimentIntentLayer.isMetaConversationOnBotBehavior(msg)) {
             if (SentimentIntentLayer.isGreetingMetaComment(msg)) {
                 coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
                 intent = "META_COMMENT_ON_GREETING";
                 skillCode = "spa_discovery_ask_one_need";
-            } else if (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && hasKnownContext) {
+            } else if (SentimentIntentLayer.isAntiApologyPushback(msg)
+                    && !SentimentIntentLayer.hasPositiveServiceInterestSignal(msg)) {
+                coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+                intent = "ANTI_APOLOGY_PUSHBACK";
+                skillCode = "spa_graceful_exit_after_rejection";
+            } else if (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && hasKnownContext && enriched.conditionClarified()) {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "META_APOLOGY_POSITIVE_INTEREST_QUOTE";
                 skillCode = "spa_recommend_and_quote_if_requested";
@@ -662,7 +831,7 @@ public final class PrimaryActionRouter {
         // R00D-CONFIRM-PREVIOUS-INFO ("Hiểu đúng rồi còn gì, có phải hiểu lầm đâu", "Đúng rồi đó em")
         else if (classified == DetectedIntent.CONFIRM_PREVIOUS_INFO
                 || SentimentIntentLayer.isConfirmPreviousInfoMessage(msg)) {
-            if (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && hasKnownContext) {
+            if (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && hasKnownContext && enriched.conditionClarified()) {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "CONFIRM_PREVIOUS_INFO_QUOTE";
                 skillCode = "spa_recommend_and_quote_if_requested";
@@ -671,6 +840,13 @@ public final class PrimaryActionRouter {
                 intent = "CONFIRM_PREVIOUS_INFO_ADVANCE";
                 skillCode = "spa_recommend_after_condition";
             }
+        }
+        // R01D-FRUSTRATION-DIRECT-CONCRETE-SOLUTION (Priority 7: "Dở vừa, ns linh ta linh tinh", "Rồi định chăm sóc cái j cho t, t phát bực r")
+        else if (classified == DetectedIntent.FRUSTRATION_DEMANDING_SOLUTION
+                || SentimentIntentLayer.isFrustrationDemandingSolution(msg, priorState)) {
+            coreAction = PrimaryAction.DIRECT_CONCRETE_SOLUTION;
+            intent = "FRUSTRATION_DEMANDING_SOLUTION";
+            skillCode = "spa_frustration_rescue";
         }
         // R01-FRUSTRATION-RESCUE (Priority 10: Resolve outstanding customer request first; never default to sales pitch!)
         else if (classified == DetectedIntent.FRUSTRATION || isFrustrationMessage(msg)) {
@@ -694,6 +870,7 @@ public final class PrimaryActionRouter {
             } else if (priorState.priceRequestedInSession()
                     && !priorState.priceDiscussed()
                     && hasKnownContext
+                    && (enriched.conditionClarified() || priorState.conditionAskedCount() >= 1)
                     && priorState.frustrationCount() == 0) {
                 CatalogOption grounded = fusedChunks == null || fusedChunks.isEmpty()
                         ? null
@@ -735,7 +912,8 @@ public final class PrimaryActionRouter {
             skillCode = "spa_lukewarm_mood_boost";
         }
         // R12-ACK-ADVANCE
-        else if (classified == DetectedIntent.ACK || isAcknowledgementMessage(msg)) {
+        else if ((classified == DetectedIntent.ACK || isAcknowledgementMessage(msg))
+                && !isPriceInquiryMessage(msg)) {
             coreAction = PrimaryAction.ADVANCE_AFTER_ACK;
             intent = "ACKNOWLEDGEMENT";
             skillCode = "spa_booking_advance_after_ack";
@@ -781,11 +959,12 @@ public final class PrimaryActionRouter {
                     || classified == DetectedIntent.PACKAGE_REJECTION
                     || SentimentIntentLayer.isExplicitDownsellRequest(msg, priorState)
                     || SentimentIntentLayer.isPackageRejection(msg));
+            boolean asksPromoOrDiscount = lower.matches("(?isU).*\\b(giảm\\s+giá|khuyến\\s+mãi|ưu\\s+đãi|voucher|thẻ\\s+liệu\\s+trình)\\b.*");
             CatalogOption lowerOpt = selectLowerCatalogOption(priorState, fusedChunks, msg);
 
             if (priorState.objectionCount() == 0 && !priorState.usedTemplates().contains("PRICE_OBJECTION_FIRST_TIME")) {
                 // R11-FIRST-PRICE-OBJECTION-CORRECTED (Stage 1: Hold package + Value defense + 1-session trial 🥰)
-                if (isExplicitDownsellOrReject) {
+                if (isExplicitDownsellOrReject && !asksPromoOrDiscount) {
                     if (lowerOpt != null) {
                         coreAction = PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME;
                         intent = "EXPLICIT_DOWNSELL_WITH_PACKAGE";
@@ -802,7 +981,7 @@ public final class PrimaryActionRouter {
                     }
                 } else {
                     coreAction = PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME;
-                    intent = "PRICE_OBJECTION_VALUE_TRIAL";
+                    intent = asksPromoOrDiscount ? "PRICE_OBJECTION_WITH_PROMO_INQUIRY" : "PRICE_OBJECTION_VALUE_TRIAL";
                     skillCode = "spa_objection_value_trial";
                 }
             } else {
@@ -842,7 +1021,7 @@ public final class PrimaryActionRouter {
         }
         // R02-CONDITION-FIRST-DISCOVERY (Priority 20: Condition first, pressure later)
         else if ((PROBLEM_OR_SYMPTOM_PATTERN.matcher(lower).matches()
-                    || !enriched.knownSymptoms().isEmpty()
+                    || (!enriched.knownSymptoms().isEmpty() && !isPriceInquiryMessage(msg))
                     || (!ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty()
                         && !isServiceFamilySelectionMessage(msg)
                         && !isPriceInquiryMessage(msg)))
@@ -859,7 +1038,7 @@ public final class PrimaryActionRouter {
                     || (!ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty()
                         && !priorState.knownBodyAreas().containsAll(ConversationState.extractTargetScopes(lower, domainKeywords))))
                 && !isPriceInquiryMessage(msg)
-                && (enriched.conditionClarified() || priorState.conditionAskedCount() >= 1)
+                && enriched.conditionClarified()
                 && hasKnownContext) {
             CatalogOption grounded = selectBestSingleCatalogOption(msg, enriched, fusedChunks);
             if (grounded == null) {
@@ -879,12 +1058,7 @@ public final class PrimaryActionRouter {
         // R04-RECOMMEND-AFTER-CONDITION-ONCE (Priority 40 — Scope-Grounded!)
         else if (!isPriceInquiryMessage(msg)
                 && !isServiceFamilySelectionMessage(msg)
-                && (enriched.conditionClarified()
-                    || (priorState.conditionAskedCount() >= 1
-                        && (isConditionFollowUpMessage(msg)
-                             || PROBLEM_OR_SYMPTOM_PATTERN.matcher(lower).matches()
-                             || PREFERENCE_ANSWER_PATTERN.matcher(lower).matches()
-                             || !ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty())))
+                && (enriched.conditionClarified() || PREFERENCE_ANSWER_PATTERN.matcher(lower).matches())
                 && (!priorState.packageRecommended()
                     || (!ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty()
                         && !priorState.knownBodyAreas().containsAll(ConversationState.extractTargetScopes(lower, domainKeywords))))
@@ -955,9 +1129,9 @@ public final class PrimaryActionRouter {
                             "spa_price_repeat_guard"
                     );
                 }
-                coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
-                intent = "PRICE_REPEAT_GUARD";
-                skillCode = "spa_price_repeat_guard";
+                coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
+                intent = "POLITE_PRICE_REMINDER";
+                skillCode = "price_answer_from_docs";
             } else if (!enriched.knownBodyAreas().isEmpty()
                     && fusedChunks != null && !fusedChunks.isEmpty()
                     && selectBestSingleCatalogOption(msg, enriched, fusedChunks) == null) {
@@ -975,8 +1149,11 @@ public final class PrimaryActionRouter {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "EXPLICIT_PRICE_INQUIRY";
                 skillCode = "price_answer_from_docs";
-            } else if ((priorState.conditionAskedCount() >= 1 || enriched.conditionClarified())
-                    && !enriched.knownBodyAreas().isEmpty()) {
+            } else if ((priorState.conditionAskedCount() >= 1
+                        || enriched.conditionClarified()
+                        || (priorState.confirmedScopes() != null && !priorState.confirmedScopes().isEmpty()
+                            && (!priorState.forbiddenScopes().isEmpty() || !priorState.apologizedErrorIds().isEmpty())))
+                    && (!enriched.knownBodyAreas().isEmpty() || !enriched.confirmedScopes().isEmpty())) {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED";
                 skillCode = "spa_recommend_and_quote_if_requested";
@@ -1033,10 +1210,22 @@ public final class PrimaryActionRouter {
             coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
             intent = "AMBIGUOUS_FOLLOWUP_ASSIST";
             skillCode = "spa_frustration_rescue";
+        } else if (hasKnownSymptomsOrScopes) {
+            coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+            intent = "CONVERSATION_STYLE_REPAIR";
+            skillCode = "spa_frustration_rescue";
         } else {
             coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
             intent = !priorState.greetingSent() ? "SERVICE_DISCOVERY" : "AMBIGUOUS_CONFIRM_ONCE";
             skillCode = !priorState.greetingSent() ? "greeting_warm_intro" : "spa_ambiguous_confirm_once";
+        }
+
+        // Hard lock: Một khi đã có confirmedScopes hoặc knownSymptoms, TUYỆT ĐỐI CẤM trả về spa_ambiguous_confirm_once
+        if (hasKnownSymptomsOrScopes
+                && ("spa_ambiguous_confirm_once".equals(skillCode) || "AMBIGUOUS_CONFIRM_ONCE".equals(intent))) {
+            coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+            intent = "CONVERSATION_STYLE_REPAIR";
+            skillCode = "spa_frustration_rescue";
         }
 
         boolean openingRequired = !priorState.greetingSent()
@@ -1047,8 +1236,11 @@ public final class PrimaryActionRouter {
 
         PrimaryAction topAction = openingRequired ? PrimaryAction.OPENING_THEN_RESPOND : coreAction;
         int maxBubblesForLlm = (coreAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
+                || coreAction == PrimaryAction.REPAIR_AND_RECONFIRM
+                || coreAction == PrimaryAction.DIRECT_CONCRETE_SOLUTION
                 || coreAction == PrimaryAction.CLARIFY_SERVICE_DURATION
                 || coreAction == PrimaryAction.ADVANCE_AFTER_ACK
+                || "CONVERSATION_STYLE_REPAIR".equals(intent)
                 || "META_COMMENT_ON_GREETING".equals(intent)
                 || "META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(intent)
                 || "CONFIRM_PREVIOUS_INFO_ADVANCE".equals(intent)
@@ -1056,6 +1248,8 @@ public final class PrimaryActionRouter {
                 || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(intent)
                 || "MID_FUNNEL_LUKEWARM_REENGAGE".equals(intent)
                 || "AMBIGUOUS_FOLLOWUP_ASSIST".equals(intent)
+                || "POLITE_DEFERRAL_EXIT".equals(intent)
+                || "ANTI_APOLOGY_PUSHBACK".equals(intent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(intent)
                 || "STRONG_REJECTION".equals(intent)
                 || "EXPLICIT_OPT_OUT".equals(intent)) ? 1 : 2;
@@ -1107,8 +1301,9 @@ public final class PrimaryActionRouter {
         // PRE-02-NEUROLOGICAL-OR-SAFETY-HANDOFF
         if (eff == PrimaryAction.HARD_HANDOFF_SAFETY) {
             if ("NEUROLOGICAL_RISK".equals(intent) || SentimentIntentLayer.isNeurologicalRiskMessage(userMessage)) {
-                String neuroText = "Dạ với biểu hiện này, " + h + " nên ưu tiên thăm khám bác sĩ hoặc cơ sở y tế trước để kiểm tra an toàn ạ. "
-                        + capSelfP + " xin phép chuyển chuyên viên hỗ trợ " + h + " ngay nhé.";
+                String neuroText = "Dạ những dấu hiệu này có thể cần được xử trí y tế khẩn cấp, nên " + h
+                        + " hãy gọi cấp cứu hoặc đến cơ sở y tế gần nhất ngay, đừng chờ đợi thêm ạ. "
+                        + capSelfP + " cũng chuyển chuyên viên hỗ trợ " + h + " ngay nhé.";
                 return List.of(new ReplyBubble(neuroText, 0));
             }
             String safetyText = "Dạ trường hợp này cần chuyên viên kiểm tra trực tiếp để an toàn và chính xác cho "
@@ -1254,6 +1449,50 @@ public final class PrimaryActionRouter {
             case SERVICE_DETAIL_AND_FAQ_QA, SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED -> buildServiceDetailAndFaqBubbles(
                     decision, userMessage, priorState, enriched, h, capH, selfP, capSelfP, cfg, fusedChunks
             );
+            case REPAIR_AND_RECONFIRM -> {
+                String careActor = cfg.resolvedCareActor();
+                List<String> confirmed = !enriched.confirmedScopes().isEmpty()
+                        ? new ArrayList<>(enriched.confirmedScopes())
+                        : new ArrayList<>(enriched.knownBodyAreas());
+                String trueScopePhrase = !confirmed.isEmpty()
+                        ? String.join(" và ", confirmed)
+                        : "nhu cầu thực tế của " + h;
+                String activeErr = enriched.activeErrorId();
+                boolean canApologize = activeErr != null && !activeErr.isBlank()
+                        && (priorState.apologizedErrorIds() == null || !priorState.apologizedErrorIds().contains(activeErr));
+                String negLabel = activeErr != null && activeErr.startsWith("WRONG_SCOPE:")
+                        ? activeErr.substring("WRONG_SCOPE:".length())
+                        : (!enriched.forbiddenScopes().isEmpty() ? enriched.forbiddenScopes().iterator().next() : "");
+                String prefix = canApologize && !negLabel.isBlank()
+                        ? "Dạ " + selfP + " xin lỗi " + h + " vì vừa nghe nhầm sang " + negLabel + " ạ. "
+                        : "Dạ vâng ạ, ";
+                String reconfirmText = prefix + capSelfP + " xin phép ghi chú lại để " + careActor
+                        + " lưu ý chăm sóc thật kỹ phần " + trueScopePhrase + " cho " + h
+                        + ". Không biết tình trạng này " + h + " mới gặp gần đây hay đã kéo dài lâu rồi ạ?";
+                yield List.of(new ReplyBubble(reconfirmText, 0));
+            }
+            case DIRECT_CONCRETE_SOLUTION -> {
+                String careActor = cfg.resolvedCareActor();
+                List<String> confirmed = !enriched.confirmedScopes().isEmpty()
+                        ? new ArrayList<>(enriched.confirmedScopes())
+                        : new ArrayList<>(enriched.knownBodyAreas());
+                String scopePhrase = !confirmed.isEmpty()
+                        ? String.join(" và ", confirmed)
+                        : "phần " + h + " đang cần chăm sóc";
+                CatalogOption matched = selectBestSingleCatalogOption(userMessage, enriched, fusedChunks);
+                String pkgText = matched != null
+                        ? matched.name() + " " + matched.unitLabel()
+                          + (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && matched.priceDisplay() != null
+                              ? " (" + matched.priceDisplay() + ")" : "")
+                        : "liệu trình phù hợp";
+                String solutionText = !confirmed.isEmpty()
+                        ? "Dạ với tình trạng ở vùng " + scopePhrase + " của " + h + ", bên " + selfP + " có " + pkgText
+                          + "; khi " + h + " ghé, " + selfP + " sẽ dặn " + careActor
+                          + " ưu tiên chăm sóc thật kỹ vùng " + scopePhrase + " để " + h + " thấy dễ chịu nhất nha."
+                        : "Dạ bên " + selfP + " sẽ ưu tiên sắp xếp " + pkgText
+                          + " để chăm sóc thật chu đáo đúng phần " + h + " đang cần nha.";
+                yield List.of(new ReplyBubble(solutionText, 0));
+            }
             case CLARIFY_SERVICE_DURATION -> {
                 if ("CLARIFY_DURATION_ONCE".equals(intent) || enriched.serviceFamilyKnown()) {
                     String famLabel = resolveServiceFamilyDisplay(enriched, fusedChunks);
@@ -1483,9 +1722,9 @@ public final class PrimaryActionRouter {
                     String freqDesc = (lowerMsg.contains("thi thoảng") || lowerMsg.contains("thỉnh thoảng"))
                             ? " thi thoảng xuất hiện"
                             : "";
-                    String b1 = "Dạ với tình trạng " + symPhrase + freqDesc + " của " + h + ", bên " + selfP
+                    String b1 = "Dạ khi cần chăm sóc " + symPhrase + freqDesc + " kịp lúc cho " + h + ", bên " + selfP
                             + " có gói " + matched.name() + " " + matched.unitLabel() + " (chi phí "
-                            + matched.priceDisplay() + ") rất phù hợp để thả lỏng vùng mỏi ạ.";
+                            + matched.priceDisplay() + ") rất phù hợp ạ.";
                     String b2 = naturalAnchorSentence
                             + " Với gói " + matched.unitLabel() + " này, " + h
                             + " thấy đã hợp ý mình hay muốn " + selfP + " chia sẻ thêm về quyền lợi đi kèm ạ?";
@@ -1591,13 +1830,24 @@ public final class PrimaryActionRouter {
                 yield List.of(new ReplyBubble(b1, 0), new ReplyBubble(b2, 2000));
             }
             case HANDLE_PRICE_OBJECTION_REPEAT -> {
-                // R12-SECOND-PRICE-OBJECTION-CORRECTED (Stage 2: Respect consideration + Clarify + Offer 1 verified lower KB package)
+                // R12-SECOND-PRICE-OBJECTION-CORRECTED
                 CatalogOption lowerOpt = selectLowerCatalogOption(priorState, fusedChunks, userMessage);
                 if (lowerOpt != null) {
                     String b1PkgLabel = formatDownsellPackageLabel(lowerOpt, priorState);
                     String focusDesc = (lowerOpt.benefitSummary() != null && !lowerOpt.benefitSummary().isBlank())
                             ? lowerOpt.benefitSummary()
                             : (cfg.isNonSpaIndustry() ? "phù hợp nhu cầu cơ bản" : "tập trung đúng vùng đang mỏi");
+                    if (isPriceObjectionMessage(userMessage)) {
+                        String cleanFocus = focusDesc
+                                .replaceAll("\\s*\\+\\s*", ", ")
+                                .replaceAll("\\s*&\\s*", " và ");
+                        String b1 = "Dạ nếu " + h + " muốn bắt đầu nhẹ nhàng để gọn chi phí cho buổi đầu, bên " + selfP
+                                + " có " + b1PkgLabel + " có giá " + lowerOpt.priceDisplay() + " ạ.";
+                        String b2 = "Gói " + lowerOpt.unitLabel() + " này " + cleanFocus
+                                + ", vẫn chăm sóc dịu vùng " + h + " đang mỏi mà tiết kiệm hơn nhiều ạ. Không biết " + h
+                                + " thấy lựa chọn này vừa vặn hơn chưa ạ?";
+                        yield List.of(new ReplyBubble(b1, 0), new ReplyBubble(b2, postPriceDelayMs));
+                    }
                     String procLabel = cfg.isNonSpaIndustry() ? "quy trình dịch vụ" : "liệu trình";
                     String b1 = "Dạ " + h + " cứ thoải mái cân nhắc ạ. Không biết " + h
                             + " đang lăn tăn chủ yếu về chi phí cho buổi đầu hay còn điểm nào trong " + procLabel
@@ -1687,11 +1937,27 @@ public final class PrimaryActionRouter {
                             + " bất cứ lúc nào nhé. Chúc " + h + " nhiều sức khỏe ạ!";
                     yield List.of(new ReplyBubble(politeClose, 0));
                 }
-                if ("STAGE_3_GRACEFUL_EXIT".equals(intent) || "EXPLICIT_OPT_OUT".equals(intent)) {
-                    String politeClose = "Dạ vâng ạ, " + selfP + " hoàn toàn tôn trọng quyết định của " + h + ". Khi nào " + h
-                            + " sắp xếp được thời gian hoặc cần tư vấn thêm, " + h + " cứ nhắn cho " + selfP
-                            + " bất cứ lúc nào nhé. Chúc " + h + " nhiều sức khỏe ạ!";
+                if ("POLITE_DEFERRAL_EXIT".equals(intent) || "STAGE_3_GRACEFUL_EXIT".equals(intent) || "EXPLICIT_OPT_OUT".equals(intent)) {
+                    String areaRef = !enriched.knownBodyAreas().isEmpty()
+                            ? "vùng " + String.join(", ", enriched.knownBodyAreas())
+                            : "cơ thể";
+                    String politeClose = "Dạ vâng ạ, " + h + " cứ thoải mái cân nhắc thêm nha. Khi nào " + areaRef + " thấy mỏi hay " + h
+                            + " muốn ghé thư giãn thì cứ nhắn " + selfP + " bất cứ lúc nào nhé ạ 🌿";
                     yield List.of(new ReplyBubble(politeClose, 0));
+                }
+                if ("ANTI_APOLOGY_PUSHBACK".equals(intent)) {
+                    String lightReply = "Dạ tại " + selfP + " quen miệng hay khách sáo quá đó ạ, " + h
+                            + " đừng để bụng nha 😄 Khi nào " + h + " muốn ghé thả lỏng cơ thể thì cứ ới " + selfP + " nhé ạ!";
+                    yield List.of(new ReplyBubble(lightReply, 0));
+                }
+                if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
+                    String areaPhrase = !enriched.knownBodyAreas().isEmpty()
+                            ? String.join(" và ", enriched.knownBodyAreas())
+                            : (enriched.known().hasCustomerProblemOrNeed() ? enriched.known().customerProblemOrNeed() : "cơ thể");
+                    String wittyRepair = "Dạ " + selfP + " dùng từ hơi sến thật ạ, ý " + selfP
+                            + " là kỹ thuật viên sẽ ấn miết mở cơ kỹ dọc vùng " + areaPhrase
+                            + " đang mỏi để nhả căng cứng, tối về " + h + " nằm êm người và dễ ngủ hơn hẳn đó ạ.";
+                    yield List.of(new ReplyBubble(wittyRepair, 0));
                 }
                 if ("META_COMMENT_ON_GREETING".equals(intent)) {
                     String categories = extractCatalogCategorySummary(fusedChunks);
@@ -1711,14 +1977,17 @@ public final class PrimaryActionRouter {
                         activePkgLabel = activePkgLabel.replaceAll("(?iU)^gói\\s+gói\\s+", "gói ")
                                 .replaceAll("(?iU)\\s*\\(\\d+[\\d.,]*\\s*(?:k|đ|vnđ)\\)", "")
                                 .strip();
-                        String concernText = "Dạ " + selfP + " xin lỗi " + h + " vì cách diễn đạt vừa rồi làm " + h + " thấy rối ạ. "
-                                + "Hiện " + selfP + " đang tư vấn " + activePkgLabel + " theo nhu cầu của " + h + ", " + h
-                                + " cần " + selfP + " làm rõ lại bước nào hay chuyển nhân viên hỗ trợ trực tiếp ngay ạ?";
+                        String areaNote = !enriched.knownBodyAreas().isEmpty()
+                                ? "để chăm sóc vùng " + String.join(", ", enriched.knownBodyAreas()) + " đang mỏi"
+                                : "phù hợp với nhu cầu thư giãn của " + h;
+                        String concernText = "Dạ " + selfP + " xin lỗi " + h + " nhiều nha, vừa rồi " + selfP + " hơi lơ đễnh nên trả lời chưa khéo làm " + h + " mất vui ạ. "
+                                + "Với " + activePkgLabel + " " + areaNote + ", " + h
+                                + " muốn " + selfP + " chia sẻ kỹ hơn về quy trình chăm sóc không ạ?";
                         yield List.of(new ReplyBubble(concernText, 0));
                     }
-                    String concernText = "Dạ " + selfP + " thành thật xin lỗi vì làm " + h + " chưa hài lòng ạ. "
-                            + capH + " cho " + selfP + " biết phần thông tin nào đang làm " + h
-                            + " băn khoăn để " + selfP + " giải đáp chuẩn xác hoặc chuyển nhân viên hỗ trợ ngay nhé?";
+                    String concernText = "Dạ " + selfP + " xin lỗi " + h + " nhiều nha vì vừa rồi phản hồi chưa khéo ạ. "
+                            + capH + " đang muốn tìm hiểu chi tiết phần nào để " + selfP
+                            + " chia sẻ lại thật rõ ràng cho " + h + " nhé?";
                     yield List.of(new ReplyBubble(concernText, 0));
                 }
                 if ("AMBIGUOUS_FOLLOWUP_ASSIST".equals(intent)) {
@@ -1730,9 +1999,11 @@ public final class PrimaryActionRouter {
                     String pkgName = (priorState.knownRecommendedPackage() != null && !priorState.knownRecommendedPackage().isBlank())
                             ? priorState.knownRecommendedPackage()
                             : "gói " + resolveServiceFamilyDisplay(enriched, fusedChunks);
-                    String text = "Dạ mức chi phí của " + pkgName + " " + selfP
-                            + " đã gửi ở tin nhắn trên rồi ạ. " + capH
-                            + " muốn chốt gói này vào khung giờ nào để " + selfP + " giữ lịch cho " + h + " nhé?";
+                    String priceNote = (priorState.lastOfferedPrice() != null && !priorState.lastOfferedPrice().isBlank())
+                            ? " đang có mức giá trọn gói là " + priorState.lastOfferedPrice() + " (không nhận Tip)"
+                            : "";
+                    String text = "Dạ " + pkgName + " bên " + selfP + priceNote + " ạ. " + capH
+                            + " muốn ghé trải nghiệm vào khung giờ nào để " + selfP + " chuẩn bị giường chu đáo cho " + h + " nhé?";
                     yield List.of(new ReplyBubble(text, 0));
                 }
                 if (SCHEDULE_LATER_PATTERN.matcher(lowerMsg).matches()) {
@@ -1835,6 +2106,20 @@ public final class PrimaryActionRouter {
                 priorState != null ? priorState.preferredRegion() : "HN"
         );
         List<CatalogOption> catalog = parseCatalogFromChunks(fusedChunks, region);
+        if (catalog.isEmpty() && priorState != null && priorState.availablePackageCatalog() != null && !priorState.availablePackageCatalog().isEmpty()) {
+            catalog = priorState.availablePackageCatalog().stream()
+                    .filter(p -> p != null)
+                    .map(p -> new CatalogOption(
+                            p.displayName(),
+                            p.durationLabel() != null ? p.durationLabel() : (p.durationMinutes() + " phút"),
+                            p.durationMinutes(),
+                            p.priceDisplay(),
+                            p.priceVnd(),
+                            p.includesSummary() != null ? p.includesSummary() : "",
+                            p.serviceFamily() != null ? p.serviceFamily() : ""
+                    ))
+                    .toList();
+        }
         if (catalog.isEmpty()) {
             return null;
         }
@@ -2470,10 +2755,19 @@ public final class PrimaryActionRouter {
                 || (state != null && state.knownSeverity() != null && state.knownSeverity().contains("thi thoảng"));
 
         Set<String> targetScopes = new LinkedHashSet<>();
+        if (state != null && state.confirmedScopes() != null) {
+            targetScopes.addAll(state.confirmedScopes());
+        }
         if (state != null && state.knownBodyAreas() != null) {
             targetScopes.addAll(state.knownBodyAreas());
         }
         targetScopes.addAll(ConversationState.extractTargetScopes(message, List.of()));
+        if (state != null && state.forbiddenScopes() != null && !state.forbiddenScopes().isEmpty()) {
+            targetScopes.removeAll(state.forbiddenScopes());
+            if (state.forbiddenScopes().contains("đầu gối") || state.forbiddenScopes().contains("khớp gối")) {
+                targetScopes.remove("gối");
+            }
+        }
 
         if (!targetScopes.isEmpty()) {
             List<String> scopeList = new ArrayList<>(targetScopes);
@@ -3194,7 +3488,7 @@ public final class PrimaryActionRouter {
             return allText.contains("thực dưỡng")
                     || allText.contains("ăn nhẹ")
                     || allText.contains("điểm tâm")
-                    || allText.contains("trà thảo mộc")
+                    || allText.contains("trà dưỡng sinh")
                     || !extractGroundedMenuItemsFromChunks(fusedChunks).isEmpty();
         }
         if ("ROOM_AND_FACILITY_DETAIL".equals(semIntent) || "SERVICE_FACILITY_OR_ROOM_FAQ".equals(semIntent)) {
@@ -3526,7 +3820,8 @@ public final class PrimaryActionRouter {
                 || refEntity.contains("điểm tâm") || refEntity.contains("nước ép")) {
             List<String> menuItems = extractGroundedMenuItemsFromChunks(fusedChunks);
             boolean isFreeIncluded = chunksMentionIncludedRefreshment(fusedChunks);
-            boolean mentionsHerbalTea = chunksMentionKeyword(fusedChunks, "trà thảo mộc");
+            String groundedTeaLabel = extractGroundedTeaLabelFromChunks(fusedChunks);
+            boolean mentionsHerbalTea = groundedTeaLabel != null;
             String sampleDishesClause = "";
             if (!menuItems.isEmpty()) {
                 List<String> sample = menuItems.subList(0, Math.min(2, menuItems.size()));
@@ -3535,16 +3830,16 @@ public final class PrimaryActionRouter {
             String body;
             if (isComprehensionSimplification) {
                 body = "sau khi làm xong, " + h + " được dùng bữa ăn nhẹ" + sampleDishesClause
-                        + (mentionsHerbalTea ? " và trà thảo mộc" : "")
+                        + (mentionsHerbalTea ? " và " + groundedTeaLabel : "")
                         + (isFreeIncluded ? " miễn phí ngay tại spa mà không tốn thêm tiền ạ." : " ngay tại spa ạ.");
             } else if (hasApologySentence) {
                 body = "Buffet thực dưỡng là phần điểm tâm ăn nhẹ"
-                        + (mentionsHerbalTea ? " và trà thảo mộc ấm" : "")
+                        + (mentionsHerbalTea ? " và " + groundedTeaLabel + " ấm" : "")
                         + " phục vụ miễn phí sau liệu trình giúp hồi phục năng lượng"
                         + (isFreeIncluded ? ", đã bao gồm sẵn trong giá gói ạ." : " ạ.");
             } else {
                 body = refEntity + " bên " + selfP + " là phần điểm tâm ăn nhẹ" + sampleDishesClause
-                        + (mentionsHerbalTea ? " kèm trà thảo mộc ấm" : "")
+                        + (mentionsHerbalTea ? " kèm " + groundedTeaLabel + " ấm" : "")
                         + " phục vụ miễn phí sau liệu trình giúp hồi phục năng lượng"
                         + (isFreeIncluded ? ", đã bao gồm trong giá gói ạ." : " ạ.");
             }
@@ -3604,6 +3899,20 @@ public final class PrimaryActionRouter {
                             primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
                     );
                 }
+            }
+            if ((normMsg.contains("phòng chung") || normMsg.contains("sao lại phòng"))
+                    && !normMsg.contains("phòng riêng hay")
+                    && !normMsg.contains("hay phòng chung")) {
+                String pkgClause = (pkgSummary != null && pkgSummary.displayName() != null)
+                        ? "gói " + pkgSummary.displayName().toLowerCase(Locale.ROOT) + " (" + pkgSummary.durationMinutes() + " phút)"
+                        : "gói cơ bản";
+                String body = (hasApologySentence ? "Với " : "với ") + pkgClause
+                        + ", bên " + selfP + " thiết kế khu trị liệu chung để giữ mức chi phí nhẹ nhàng, dễ tiếp cận cho khách hàng ạ. "
+                        + "Tuy nhiên mỗi giường đều có rèm che riêng kín đáo, không gian yên tĩnh và sạch thoáng để " + h + " nằm nghỉ ngơi thoải mái nha.";
+                ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, 1000);
+                return appendSecondaryCompoundFaqBubbleIfPresent(
+                        primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
+                );
             }
             if (pkgSummary != null && pkgSummary.roomType() != null && !pkgSummary.roomType().isBlank()) {
                 String pkgName = pkgSummary.displayName().toLowerCase(Locale.ROOT);
@@ -3832,7 +4141,7 @@ public final class PrimaryActionRouter {
     /**
      * v3.3.4 RC-04: Có bằng chứng từ catalog đã lưu trong state cho câu hỏi thuộc tính của gói ĐANG GIỮ hay không.
      */
-    static boolean hasHeldPackageCatalogEvidence(String question, ConversationState state) {
+    public static boolean hasHeldPackageCatalogEvidence(String question, ConversationState state) {
         if (question == null || question.isBlank() || state == null) {
             return false;
         }
@@ -3847,7 +4156,7 @@ public final class PrimaryActionRouter {
     /**
      * v3.3.4 RC-04: Tìm gói đang giữ trong catalog đã cache ở state, ưu tiên khớp đúng giá + thời lượng đã báo.
      */
-    static PackageCatalogService.PackageSummary resolveHeldPackageFromStateCatalog(ConversationState state) {
+    public static PackageCatalogService.PackageSummary resolveHeldPackageFromStateCatalog(ConversationState state) {
         if (state == null || state.availablePackageCatalog() == null || state.availablePackageCatalog().isEmpty()) {
             return null;
         }
@@ -4059,5 +4368,23 @@ public final class PrimaryActionRouter {
             concise = Character.toUpperCase(concise.charAt(0)) + concise.substring(1);
         }
         return concise;
+    }
+
+    private static String extractGroundedTeaLabelFromChunks(List<ReciprocalRankFusion.FusedChunk> fusedChunks) {
+        if (fusedChunks == null || fusedChunks.isEmpty()) {
+            return null;
+        }
+        Pattern teaPat = Pattern.compile("(?isU)\\b(trà\\s+[\\p{L}]+\\s+[\\p{L}]+)\\b");
+        for (ReciprocalRankFusion.FusedChunk fc : fusedChunks) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) {
+                continue;
+            }
+            String norm = Normalizer.normalize(fc.chunk().text(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            Matcher m = teaPat.matcher(norm);
+            if (m.find()) {
+                return m.group(1).replaceAll("\\s+", " ").strip();
+            }
+        }
+        return null;
     }
 }

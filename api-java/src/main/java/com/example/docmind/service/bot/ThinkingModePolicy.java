@@ -794,13 +794,30 @@ public final class ThinkingModePolicy {
             );
         }
 
-        // 0. Fast-path: Đặt lịch kèm SĐT, Opt-out, Stage 3 Graceful Exit hoặc Quy tắc an toàn / Handoff trực tiếp -> FAST_NO_THINK
+        // 0A (v3.4.2). Khách phản ứng việc bot xin lỗi ("Hâm à mắc j xin loi", "Sao phải xin lỗi") -> EMOTIONAL_WARM_THINK
+        // Phải ưu tiên trước Fast-path (vì ở Turn 6 objectionStage có thể đã là STAGE_3_GRACEFUL_EXIT) và trước REPAIR_FIRST.
+        if ("ANTI_APOLOGY_PUSHBACK".equals(detectedIntent)
+                || (SentimentIntentLayer.isAntiApologyPushback(rawMsg)
+                    && !SentimentIntentLayer.hasPositiveServiceInterestSignal(rawMsg))) {
+            return new ThinkingDecision(
+                    ThinkingMode.EMOTIONAL_WARM_THINK,
+                    ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
+                    "ANTI_APOLOGY_PUSHBACK_WARM_HUMOR",
+                    ObjectionRootCause.NONE,
+                    0,
+                    priorArgs,
+                    unresolvedIds
+            );
+        }
+
+        // 0. Fast-path: Đặt lịch kèm SĐT, Opt-out, Polite Deferral Exit, Stage 3 Graceful Exit hoặc Quy tắc an toàn / Handoff trực tiếp -> FAST_NO_THINK
         if (effectiveAction == PrimaryAction.CONFIRM_BOOKING_DETAILS
                 || effectiveAction == PrimaryAction.HARD_HANDOFF_SAFETY
                 || effectiveAction == PrimaryAction.HARD_HANDOFF_COMPLAINT
                 || effectiveAction == PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED
                 || effectiveAction == PrimaryAction.BOT_MUTED
                 || "EXPLICIT_OPT_OUT".equals(detectedIntent)
+                || "POLITE_DEFERRAL_EXIT".equals(detectedIntent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(detectedIntent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(safeState.objectionStage())
                 || PrimaryActionRouter.isExplicitOptOutMessage(rawMsg)
@@ -830,12 +847,14 @@ public final class ThinkingModePolicy {
             ), effectiveBench);
         }
 
-        // 0C (v3.3.4). Khách bắt bẻ câu chữ của Bot ("đau lưng chứ đau lòng đâu mà nhẹ nhõm") -> EMOTIONAL_WARM_THINK
-        if ("WORDING_FEEDBACK_REPAIR".equals(detectedIntent)) {
+        // 0C (v3.3.4 / v3.5.0). Khách bắt bẻ câu chữ của Bot hoặc bày tỏ tụt cảm xúc ("Tôi thấy tụt cảm xúc quá chán chả buồn nói") -> EMOTIONAL_WARM_THINK
+        if ("WORDING_FEEDBACK_REPAIR".equals(detectedIntent)
+                || "MOOD_DROP_RECOVERY".equals(detectedIntent)
+                || SentimentIntentLayer.isMoodDropRecoveryMessage(rawMsg)) {
             return new ThinkingDecision(
                     ThinkingMode.EMOTIONAL_WARM_THINK,
                     ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
-                    "WORDING_FEEDBACK_WARM_REPAIR",
+                    "MOOD_DROP_RECOVERY".equals(detectedIntent) ? "MOOD_DROP_EMOTIONAL_RECOVERY" : "WORDING_FEEDBACK_WARM_REPAIR",
                     ObjectionRootCause.NONE,
                     0,
                     priorArgs,
@@ -1085,7 +1104,16 @@ public final class ThinkingModePolicy {
         }
         List<String> sources = new ArrayList<>();
         if (state.lastAssistantMessage() != null && !state.lastAssistantMessage().isBlank()) {
-            sources.add(state.lastAssistantMessage());
+            String lastMsg = state.lastAssistantMessage().strip();
+            sources.add(lastMsg);
+            if (state.priceDiscussed()) {
+                String[] parts = lastMsg.split("\\n\\n+");
+                if (parts.length >= 2 && !parts[parts.length - 1].isBlank()) {
+                    used.add(parts[parts.length - 1].strip());
+                } else {
+                    used.add(lastMsg);
+                }
+            }
         }
         if (state.usedTemplates() != null) {
             sources.addAll(state.usedTemplates());

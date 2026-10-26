@@ -100,8 +100,8 @@ class DocmindV330ArchitecturalRegressionTest {
         List<ConversationTurn> history = List.of(
                 new ConversationTurn("user", "Giá"),
                 new ConversationTurn("assistant", "Dạ chào mình, em là Linh của Nàng Sen Spa ạ.\n\nDạ mình đang quan tâm massage hay gội đầu dưỡng sinh để em gửi đúng mức giá ạ?"),
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay"),
-                new ConversationTurn("assistant", "Dạ vừa bị đau lưng, mỏi gối và tê tay cùng lúc chắc làm mình mệt mỏi lắm ạ. Tình trạng này mình mới gặp gần đây hay đã kéo dài bao lâu rồi ạ?")
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối"),
+                new ConversationTurn("assistant", "Dạ vừa bị đau lưng và mỏi gối cùng lúc chắc làm mình mệt mỏi lắm ạ. Tình trạng này mình mới gặp gần đây hay đã kéo dài bao lâu rồi ạ?")
         );
         ConversationState state = ConversationState.hydrateForTurn(
                 PAGE_ID, "user-b", "conv-b", false, "Thi thoảng bị", history,
@@ -128,7 +128,7 @@ class DocmindV330ArchitecturalRegressionTest {
         assertTrue(SentimentIntentLayer.isWordingOrExpressionFeedback("Đau lưng mỏi gối chứ có phải đau lòng đâu mà nhẹ nhõm"));
 
         List<ConversationTurn> history = List.of(
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay, xin giá"),
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối, xin giá"),
                 new ConversationTurn("assistant", "Dạ với tình trạng của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) giúp mình cảm thấy nhẹ nhõm hơn ạ.")
         );
         ConversationState state = ConversationState.hydrateForTurn(
@@ -146,7 +146,7 @@ class DocmindV330ArchitecturalRegressionTest {
     @DisplayName("TEST E — PRICE OBJECTION 1: 'Đắt thế' sinh 2 bong bóng (0ms và 2000ms), Bubble 1 không lặp giá 399k")
     void testE_PriceObjectionFirstTime() {
         List<ConversationTurn> history = List.of(
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay, xin giá"),
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối, xin giá"),
                 new ConversationTurn("assistant", "Dạ với tình trạng của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) ạ.")
         );
         ConversationState state = ConversationState.hydrateForTurn(
@@ -170,7 +170,7 @@ class DocmindV330ArchitecturalRegressionTest {
     @DisplayName("TEST F & G — DURATION & BENEFITS: Giữ nguyên gói 60p từ state catalog ngay cả khi fusedChunks lượt FAQ rỗng")
     void testFAndG_DurationAndBenefitsFromActiveCatalog() {
         List<ConversationTurn> history = List.of(
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay, xin giá"),
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối, xin giá"),
                 new ConversationTurn("assistant", "Dạ với tình trạng của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) ạ.")
         );
         ConversationState state = ConversationState.hydrateForTurn(
@@ -287,7 +287,7 @@ class DocmindV330ArchitecturalRegressionTest {
     @DisplayName("TEST P — SELECTIVE THINKING: Bật Thinking khi Khách Tiêu Cực/Tức Giận để xoa dịu cảm xúc")
     void testP_NegativeOrAngryCustomerTriggersThinking() {
         List<ConversationTurn> history = List.of(
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay"),
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối"),
                 new ConversationTurn("assistant", "Dạ với tình trạng của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) ạ.")
         );
         ConversationState state = ConversationState.hydrateForTurn(
@@ -318,7 +318,7 @@ class DocmindV330ArchitecturalRegressionTest {
 
         // 2. Ở giữa phễu (sau khi đã báo giá/tư vấn gói 60p): Khách nhắn hời hợt 'Ừm để xem đã' hoặc 'Vậy à' -> BẬT EMOTIONAL_WARM_THINK
         List<ConversationTurn> midFunnelHistory = List.of(
-                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối tê tay, xin giá"),
+                new ConversationTurn("user", "Tôi bị đau lưng, mỏi gối, xin giá"),
                 new ConversationTurn("assistant", "Dạ với tình trạng của mình, bên em có gói massage cơ bản 60 phút (chi phí 399k) giúp làm dịu vùng lưng và cổ vai rất tốt ạ.")
         );
         ConversationState midFunnelState = ConversationState.hydrateForTurn(

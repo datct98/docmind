@@ -248,21 +248,42 @@ public final class PromptBudgetGuard {
             return false;
         }
 
-        // 1. FRUSTRATION / CUSTOMER CORRECTION
+        // 1. FRUSTRATION / CUSTOMER CORRECTION / WORDING FEEDBACK REPAIR
         if ("FRUSTRATION".equals(intent)
                 || "FRUSTRATION_REPEAT_HANDOFF".equals(intent)
                 || "MISMATCH_CORRECTION_HANDOFF".equals(intent)
+                || "ENTITY_MISMATCH_RECONSULT".equals(intent)
                 || "POLITE_MISMATCH_PIVOT".equals(intent)
+                || "WORDING_FEEDBACK_REPAIR".equals(intent)
+                || "MOOD_DROP_RECOVERY".equals(intent)
+                || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(intent)
                 || customerCorrection) {
-            return ruleCode.contains("FRUSTRATION")
+            return ruleCode.contains("EMOTIONAL-REPAIR")
+                    || ruleCode.contains("FRUSTRATION")
                     || ruleCode.contains("CORRECTION")
                     || ruleTextLower.contains("bức xúc")
                     || ruleTextLower.contains("nóng nảy")
                     || ruleTextLower.contains("customer_correction");
         }
 
+        // 1B. MID-FUNNEL LUKEWARM RE-ENGAGE
+        if ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(intent)) {
+            return ruleCode.contains("LUKEWARM")
+                    || ruleCode.contains("MID-FUNNEL");
+        }
+
+        // 1C. RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED / EXPLICIT_PRICE_INQUIRY / POLITE_PRICE_REMINDER
+        if ("RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED".equals(intent)
+                || "EXPLICIT_PRICE_INQUIRY".equals(intent)
+                || "POLITE_PRICE_REMINDER".equals(intent)) {
+            return ruleCode.contains("PRICE-ANCHOR")
+                    || ruleCode.contains("MATCH");
+        }
+
         // 2. PRICE OBJECTION (chỉ cho phép khi đã báo giá priceDiscussed == true)
-        if ("PRICE_OBJECTION_FIRST".equals(intent) || "PRICE_OBJECTION".equals(intent)) {
+        if ("PRICE_OBJECTION_FIRST".equals(intent)
+                || "PRICE_OBJECTION".equals(intent)
+                || "PRICE_OBJECTION_WITH_PROMO_INQUIRY".equals(intent)) {
             if (!priceDiscussed) {
                 return false;
             }

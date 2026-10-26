@@ -1,12 +1,12 @@
-# Document Trace Dump: `04_chính_sách.html`
+# Document Chunks Trace: `04_chính_sách.html`
 - **Document ID**: `23152b65-130e-4521-982f-e5e011a21aa9`
-- **Page ID**: `b23cd382-4f7a-4829-8c54-1d410da14bf8` (Nàng Sen Spa)
-- **Status**: `READY` | **Active (`is_active`)**: `True` | **Total Chunks**: `6`
-
----
+- **Page ID**: `b23cd382-4f7a-4829-8c54-1d410da14bf8` (`Nàng Sen Spa`)
+- **Status**: `READY` | **`is_active`**: `True`
+- **Total Chunks**: `6`
+- **Version Sync**: `v3.4.2-MASTER-LOCKED` (0 `KTV`, 0 `trà thảo mộc`)
 
 ## Chunk #1 (`117aab0c-5ac7-45b2-975d-212d8e8b88f4`)
-- **Heading Path**: `1. CHÍNH_SÁCH_ĐẶT_LỊCH_&_HỦY_LỊCH`
+- **Heading Path**: `['1. CHÍNH_SÁCH_ĐẶT_LỊCH_&_HỦY_LỊCH']`
 
 ```text
 1. CHÍNH_SÁCH_ĐẶT_LỊCH_&_HỦY_LỊCH
@@ -21,7 +21,7 @@
 ```
 
 ## Chunk #2 (`35bec046-cb72-48f3-9aae-c556dff29406`)
-- **Heading Path**: `6. CHÍNH_SÁCH_SỨC_KHỎE_&_AN_TOÀN`
+- **Heading Path**: `['6. CHÍNH_SÁCH_SỨC_KHỎE_&_AN_TOÀN']`
 
 ```text
 6. CHÍNH_SÁCH_SỨC_KHỎE_&_AN_TOÀN
@@ -36,7 +36,7 @@
 ```
 
 ## Chunk #3 (`5c6c56f3-f99d-42d3-89de-9cddf336cb54`)
-- **Heading Path**: `4. CHÍNH_SÁCH_DÀNH_CHO_KHÁCH_HÀNG`
+- **Heading Path**: `['4. CHÍNH_SÁCH_DÀNH_CHO_KHÁCH_HÀNG']`
 
 ```text
 4. CHÍNH_SÁCH_DÀNH_CHO_KHÁCH_HÀNG
@@ -48,13 +48,13 @@
 ```
 
 ## Chunk #4 (`62cb2631-5cac-41dc-9f18-fb5e573e1c62`)
-- **Heading Path**: `5. CHÍNH_SÁCH_KHIẾU_NẠI_&_HOÀN_TIỀN`
+- **Heading Path**: `['5. CHÍNH_SÁCH_KHIẾU_NẠI_&_HOÀN_TIỀN']`
 
 ```text
 5. CHÍNH_SÁCH_KHIẾU_NẠI_&_HOÀN_TIỀN
 | Hạng mục | Nội dung |
 | --- | --- |
-| Đổi kỹ thuật viên | Nếu khách chưa hài lòng về kỹ thuật viên, Nàng Sen hỗ trợ đổi KTV trong 15 phút đầu |
+| Đổi kỹ thuật viên | Nếu khách chưa hài lòng về kỹ thuật viên, Nàng Sen hỗ trợ đổi kỹ thuật viên trong 15 phút đầu |
 | Dừng liệu trình | Nếu khách không phù hợp hoặc không muốn tiếp tục liệu trình, Nàng Sen hỗ trợ xử lý linh hoạt theo tình huống thực tế |
 | Ghi nhận phản hồi | Các phản hồi của khách sẽ được ghi nhận và hỗ trợ xử lý phù hợp |
 | Hỗ trợ sau phản hồi | Một số trường hợp sẽ được hỗ trợ voucher ưu đãi cho lần trải nghiệm tiếp theo |
@@ -63,7 +63,7 @@
 ```
 
 ## Chunk #5 (`c84ad3cb-66d1-4d7f-8559-d52602511403`)
-- **Heading Path**: `3. CHÍNH_SÁCH_THANH_TOÁN`
+- **Heading Path**: `['3. CHÍNH_SÁCH_THANH_TOÁN']`
 
 ```text
 3. CHÍNH_SÁCH_THANH_TOÁN
@@ -76,7 +76,7 @@
 ```
 
 ## Chunk #6 (`e3bcb23b-b345-4c95-926d-a199580e2181`)
-- **Heading Path**: `2. CHÍNH_SÁCH_THẺ_LIỆU_TRÌNH_&_VOUCHER`
+- **Heading Path**: `['2. CHÍNH_SÁCH_THẺ_LIỆU_TRÌNH_&_VOUCHER']`
 
 ```text
 2. CHÍNH_SÁCH_THẺ_LIỆU_TRÌNH_&_VOUCHER
@@ -89,4 +89,3 @@
 | Hoàn/Hủy | Thẻ liệu trình và voucher không hoàn, không hủy |
 | Bảo lưu | Dịch vụ chưa sử dụng có thể được bảo lưu |
 ```
-

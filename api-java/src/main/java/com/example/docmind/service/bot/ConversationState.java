@@ -105,8 +105,122 @@ public record ConversationState(
         List<PackageCatalogService.PackageSummary> availablePackageCatalog,
         List<String> lastBotBubbleHashes,
         List<UnresolvedCustomerRequest> outstandingRequests,
-        String lastAssistantMessage
+        String lastAssistantMessage,
+        // === v3.6.7.1-MASTER Scope Lifecycle, ApologyLedger & Auto-Note Artifact Fields ===
+        Set<String> confirmedScopes,
+        Set<String> forbiddenScopes,
+        Set<String> apologizedErrorIds,
+        String activeErrorId,
+        List<CustomerCareNoteArtifact> customerCareNotes,
+        List<String> scopeSupersessionEvents,
+        boolean possibleCorrection,
+        // === v3.7 Independent lifecycle flags: bot-offered package vs customer-selected package ===
+        boolean packageExplicitlySelected,
+        String selectedPackageId
 ) {
+
+    public ConversationState(
+            boolean greetingSent,
+            boolean introSent,
+            ConversationStage stage,
+            String lastIntent,
+            String lastQuestion,
+            String lastQuestionIntent,
+            Set<String> usedQuestionIntents,
+            String lastBotAction,
+            KnownFacts known,
+            boolean priceDiscussed,
+            List<String> pricesShown,
+            List<String> recommendedOptions,
+            int objectionCount,
+            int ackCount,
+            int clarificationCount,
+            int conditionAskedCount,
+            int preferenceAskedCount,
+            int clarifyServiceTypeCount,
+            int clarifyDurationCount,
+            int frustrationCount,
+            int ambiguousCount,
+            int recommendationCount,
+            int priceRepeatGuardCount,
+            boolean conditionClarified,
+            boolean serviceFamilyKnown,
+            boolean packageRecommended,
+            boolean priceRequestedInSession,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String knownSeverity,
+            String knownDurationOfProblem,
+            String knownTrigger,
+            String knownServiceFamily,
+            String knownPreferredPressure,
+            String knownRecommendedPackage,
+            String lastQuotePackage,
+            String lastSentiment,
+            String lastEmotion,
+            List<String> usedTemplates,
+            boolean humanTakeover,
+            boolean optedOut,
+            boolean downsellOffered,
+            boolean trialInviteOffered,
+            boolean explicitDownsellRequest,
+            boolean packageRejectionDetected,
+            String lastQuotedPackage,
+            String lastQuotedDuration,
+            BigDecimal lastQuotedPrice,
+            String heldPackage,
+            String heldDuration,
+            String downsellPackage,
+            String downsellDuration,
+            BigDecimal downsellPrice,
+            Set<String> rejectedDurations,
+            Set<String> rejectedPackages,
+            String objectionStage,
+            String telemetrySubtype,
+            boolean docsHasFeedback,
+            boolean docsHasRelaxationBenefit,
+            boolean docsHasPrivateRoom,
+            boolean neurologicalRisk,
+            String preferredRegion,
+            List<String> mentionedPackages,
+            List<String> quotedPackages,
+            BigDecimal heldPrice,
+            int alternativeRequestCount,
+            boolean customerCorrectionDetected,
+            String rejectedWrongOffer,
+            List<PackageCatalogService.PackageSummary> availablePackageCatalog,
+            List<String> lastBotBubbleHashes,
+            List<UnresolvedCustomerRequest> outstandingRequests,
+            String lastAssistantMessage
+    ) {
+        this(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit,
+                docsHasPrivateRoom, neurologicalRisk, preferredRegion, mentionedPackages, quotedPackages,
+                heldPrice, alternativeRequestCount, customerCorrectionDetected, rejectedWrongOffer,
+                availablePackageCatalog, lastBotBubbleHashes, outstandingRequests, lastAssistantMessage,
+                knownBodyAreas != null ? Collections.unmodifiableSet(new LinkedHashSet<>(knownBodyAreas)) : Set.of(),
+                Set.of(),
+                Set.of(),
+                null,
+                List.of(),
+                List.of(),
+                false,
+                false,
+                null
+        );
+    }
 
     public ConversationState(
             boolean greetingSent,
@@ -342,6 +456,78 @@ public record ConversationState(
         }
     }
 
+    public record CustomerCareNoteArtifact(
+            String tenantId,
+            String conversationId,
+            String turnId,
+            Set<String> confirmedScopes,
+            String careActor,
+            String noteText,
+            java.time.Instant timestamp
+    ) {
+        public CustomerCareNoteArtifact(
+                String tenantId,
+                String conversationId,
+                String turnId,
+                java.util.Collection<String> confirmedScopes,
+                String careActor,
+                String noteText,
+                String timestampIso
+        ) {
+            this(
+                    tenantId,
+                    conversationId,
+                    turnId,
+                    confirmedScopes != null ? Collections.unmodifiableSet(new LinkedHashSet<>(confirmedScopes)) : Set.of(),
+                    careActor,
+                    noteText,
+                    java.time.Instant.now()
+            );
+        }
+    }
+
+    public record GroundingCheck(
+            List<String> customerConfirmedScopes,
+            List<String> customerNegatedScopes,
+            String activeIntent,
+            String errorToApologize
+    ) {
+    }
+
+    public record PendingBubbleRecord(
+            String sessionKey,
+            String turnId,
+            ReplyBubble pendingBubble,
+            String status,
+            ConversationState committedStateAfterBubble1,
+            ConversationState uncommittedStateIfBubble2Delivered,
+            long scheduledAtEpochMs
+    ) {
+        public boolean isCancelled() {
+            return "CANCELLED".equalsIgnoreCase(status);
+        }
+
+        public boolean isDelivered() {
+            return "DELIVERED".equalsIgnoreCase(status);
+        }
+
+        public ConversationState pendingPostState() {
+            return uncommittedStateIfBubble2Delivered;
+        }
+
+        public PendingBubbleRecord withStatus(String newStatus) {
+            return new PendingBubbleRecord(
+                    sessionKey,
+                    turnId,
+                    pendingBubble,
+                    newStatus,
+                    committedStateAfterBubble1,
+                    uncommittedStateIfBubble2Delivered,
+                    scheduledAtEpochMs
+            );
+        }
+    }
+
     private record LastTurnPreStateSnapshot(
             int historySize,
             String normalizedUserMessage,
@@ -353,6 +539,11 @@ public record ConversationState(
     private static final Map<String, ConversationState> SESSION_STORE = new ConcurrentHashMap<>();
     private static final Map<String, Object> WEBHOOK_EVENT_DEDUP_STORE = new ConcurrentHashMap<>();
     private static final Map<String, LastTurnPreStateSnapshot> LAST_TURN_PRE_STATE_STORE = new ConcurrentHashMap<>();
+    private static final Map<String, PendingBubbleRecord> PENDING_BUBBLE_STORE = new ConcurrentHashMap<>();
+
+    private static final Pattern OPERATIONAL_CARE_PROMISE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:em\\s+sẽ\\s+dặn|em\\s+sẽ\\s+lưu\\s+ý|em\\s+xin\\s+phép\\s+ghi\\s+chú|em\\s+sẽ\\s+ghi\\s+chú|em\\s+ghi\\s+chú|em\\s+sẽ\\s+báo|để\\s+em\\s+dặn|để\\s+em\\s+ghi\\s+chú|dặn\\s+(?:kỹ\\s+thuật\\s+viên|bác\\s+sĩ|chuyên\\s+viên|nhân\\s+viên|ktv)).*"
+    );
 
     private static final Pattern PRICE_NUMBER_PATTERN = Pattern.compile(
             "(?iU)\\b(\\d{2,3}(?:\\.\\d{3})+|\\d{2,4})\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b)"
@@ -374,19 +565,26 @@ public record ConversationState(
             + "đầu\\s+gối|khớp\\s+gối|gối|(?<!lần\\s|buổi\\s|bắt\\s|từ\\s|ban\\s)đầu|cơ|tai|toàn\\s+thân|body|"
             + "răng\\s+hàm|răng\\s+khôn|răng\\s+cửa|răng|nướu|(?<!quyền\\s|tiện\\s|thuận\\s|có\\s)lợi(?!\\s+ích)|tủy|hàm|"
             + "da\\s+mặt|da\\s+đầu|da|mụn|nám|tóc|sofa|ghế|đệm|nệm|giường|tủ)";
+    // Không bao giờ bắt từ đơn "gối" đứng độc lập làm bộ phận cơ thể (chỉ bắt "đầu gối", "khớp gối" hoặc có động từ "đau/mỏi/nhức gối")
+    private static final String STANDALONE_BODY_AREA_REGEX =
+            "(?:cổ\\s+vai\\s+" + "gáy|vai\\s+" + "gáy|cổ\\s+vai|cổ\\s+" + "gáy|"
+            + "cổ|vai|gáy|thắt\\s+lưng|lưng|eo|chân\\s+răng|bắp\\s+chân|bàn\\s+chân|chân|cánh\\s+tay|bàn\\s+tay|tay|"
+            + "đầu\\s+gối|khớp\\s+gối|(?<!lần\\s|buổi\\s|bắt\\s|từ\\s|ban\\s)đầu|cơ|tai|toàn\\s+thân|body|"
+            + "răng\\s+hàm|răng\\s+khôn|răng\\s+cửa|răng|nướu|(?<!quyền\\s|tiện\\s|thuận\\s|có\\s)lợi(?!\\s+ích)|tủy|hàm|"
+            + "da\\s+mặt|da\\s+đầu|da|mụn|nám|tóc|sofa|ghế|đệm|nệm|giường|tủ)";
     private static final String ATOMIC_MODIFIER_REGEX =
-            "(?:đau\\s+mỏi|mỏi\\s+nhức|đau\\s+nhức|tê\\s+rần|tê\\s+bì|tê\\s+buốt|ê\\s+buốt|căng\\s+cứng|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|"
+            "(?:đau\\s+mỏi|mỏi\\s+nhức|đau\\s+nhức|tê\\s+rần|tê\\s+bì|tê\\s+buốt|ê\\s+buốt|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|"
             + "đau|mỏi|nhức|nhói|tê|căng|cứng|sưng|viêm|buốt|ê|sâu|mẻ)";
     private static final Pattern SYMPTOM_TOKEN_PATTERN = Pattern.compile(
             "(?iU)\\b(đau\\s+đầu\\s+dữ\\s+dội|đau\\s+đầu|đau\\s+cơ|"
             + "(?:đau|mỏi|nhức)\\s+(?:cổ\\s+vai\\s+" + "gáy|vai\\s+" + "gáy|cổ\\s+vai)|"
             + "đau|mỏi|nhức|nhói|tê\\s+chân\\s+tay|tê\\s+tay|tê\\s+chân|tê\\s+rần|tê\\s+bì|tê|"
             + "yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|chóng\\s+mặt|ù\\s+tai|hoa\\s+mắt|"
-            + "căng\\s+cứng|căng\\s+cổ|căng|cứng|sưng|viêm|ê\\s+buốt|buốt|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|sâu\\s+răng|"
-            + "mệt\\s+mỏi|mệt|stress|căng\\s+thẳng|mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|khó\\s+chịu)\\b"
+            + "căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|căng\\s+cổ|căng|cứng|sưng|viêm|ê\\s+buốt|buốt|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|sâu\\s+răng|"
+            + "mệt\\s+mỏi|mệt|stress|mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|khó\\s+chịu)\\b"
     );
     private static final Pattern BODY_AREA_TOKEN_PATTERN = Pattern.compile(
-            "(?iU)\\b(" + ATOMIC_SCOPE_REGEX + ")\\b"
+            "(?iU)\\b(" + STANDALONE_BODY_AREA_REGEX + ")\\b"
     );
     private static final Pattern MULTI_ENTITY_NEED_PATTERN = Pattern.compile(
             "(?iU)\\b(?:"
@@ -394,7 +592,7 @@ public record ConversationState(
             + "(?:\\s*(?:,|và)\\s*(?:vùng\\s+|ở\\s+|phần\\s+|khớp\\s+|cả\\s+|hai\\s+|2\\s+|một\\s+|1\\s+|bên\\s+)*(?<fwdScopeChain>" + ATOMIC_SCOPE_REGEX + ")(?!\\s+(?:bị\\s+|đang\\s+|hơi\\s+|rất\\s+|hay\\s+)?" + ATOMIC_MODIFIER_REGEX + "))?"
             + "(?:\\s+(?<fwdSide>2\\s+bên|hai\\s+bên))?"
             + "|(?<invScope>" + ATOMIC_SCOPE_REGEX + ")\\s+(?:bị\\s+|đang\\s+|hơi\\s+|rất\\s+|hay\\s+)?(?<invMod>" + ATOMIC_MODIFIER_REGEX + ")(?!\\s+(?:vùng\\s+|ở\\s+|phần\\s+|khớp\\s+|cả\\s+|hai\\s+|2\\s+)?" + ATOMIC_SCOPE_REGEX + ")"
-            + "|(?<standalone>mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|ù\\s+tai|căng\\s+thẳng|stress|tê\\s+rần|tê\\s+bì)"
+            + "|(?<standalone>mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|ù\\s+tai|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|stress|tê\\s+rần|tê\\s+bì)"
             + ")\\b"
     );
     private static final Pattern SEVERITY_TOKEN_PATTERN = Pattern.compile(
@@ -407,6 +605,32 @@ public record ConversationState(
     private static final Pattern TRIGGER_TOKEN_PATTERN = Pattern.compile(
             "(?iU)\\b(ngồi\\s+lâu|ngồi\\s+máy\\s+tính|máy\\s+tính|văn\\s+phòng|vận\\s+động|sai\\s+tư\\s+thế|mang\\s+vác|tập\\s+gym|chơi\\s+thể\\s+thao)\\b"
     );
+    private static final Pattern CONDITION_TIME_FREQUENCY_PROGRESSION_PATTERN = Pattern.compile(
+            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|lâu\\s+lắm|khá\\s+lâu|hơi\\s+lâu|(?:bị|đau|mỏi|nhức|tê)\\s+lâu|"
+            + "(?<!bao\\s|ngồi\\s|đứng\\s)lâu(?!\\s+chưa)|"
+            + "mới\\s+gần\\s+đây|mới\\s+bị|mới\\s+đây|vừa\\s+mới|mới|dạo\\s+này|gần\\s+đây|"
+            + "hôm\\s+qua|hôm\\s+kia|hôm\\s+nay|mấy\\s+hôm|vài\\s+hôm|"
+            + "mấy\\s+ngày|vài\\s+ngày|mấy\\s+tuần|vài\\s+tuần|mấy\\s+tháng|vài\\s+tháng|mấy\\s+năm|vài\\s+năm|"
+            + "\\d+\\s*(?:hôm|ngày|tuần|tháng|năm)|(?:hôm|ngày|tuần|tháng|năm)\\s+(?:nay|trước|rồi|qua)|"
+            + "thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|đôi\\s+khi|thường\\s+xuyên|liên\\s+tục|suốt|"
+            + "tái\\s+phát|bị\\s+lại|lại\\s+bị|kinh\\s+niên|mãn\\s+tính|"
+            + "do\\s+ngồi|do\\s+đứng|do\\s+làm\\s+việc|ngồi\\s+lâu|đứng\\s+lâu|ngồi\\s+máy\\s+tính|làm\\s+việc\\s+nhiều|vận\\s+động\\s+nhiều|"
+            + "không\\s+rõ\\s+từ\\s+bao\\s+giờ|k\\s+rõ)\\b"
+    );
+
+    public static boolean hasConditionTimeOrProgressionSignal(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (SentimentIntentLayer.isMetaConversationOnBotBehavior(text)
+                || SentimentIntentLayer.isNegationOrPushbackOnAssumption(text)
+                || SentimentIntentLayer.isEntityMismatchCorrection(text)
+                || PrimaryActionRouter.isFrustrationMessage(text)) {
+            return false;
+        }
+        String clean = SentimentIntentLayer.stripMismatchCritiqueClause(text);
+        return CONDITION_TIME_FREQUENCY_PROGRESSION_PATTERN.matcher(clean).find();
+    }
     private static final Pattern TRIAL_INVITE_BOT_PATTERN = Pattern.compile(
             "(?isU).*(?:thử\\s+1\\s+buổi|thử\\s+một\\s+buổi|trải\\s+nghiệm\\s+lẻ\\s+1\\s+buổi|thử\\s+xem\\s+sao|cảm\\s+nhận\\s+tay\\s+nghề|cảm\\s+nhận\\s+trực\\s+tiếp).*"
     );
@@ -414,6 +638,29 @@ public record ConversationState(
 
     public List<String> quotedPrices() {
         return pricesShown;
+    }
+
+    private static final Pattern EXPLICIT_PACKAGE_SELECTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\b(?:cho|lấy|chọn|đặt|book|chốt|đăng\\s+ký)\\s+(?:mình|tôi|em|anh|chị)?\\s*(?:gói|liệu\\s+trình|suất)\\s*(?:đó|này|ấy|vừa\\s+rồi|trên)?\\b"
+            + "|\\b(?:ok|oke|được|đồng\\s+ý|thế\\s+thì|vậy\\s+thì)\\s+(?:lấy|chọn|chốt|đặt)\\b"
+            + "|\\bgói\\s+(?:đó|này|ấy)\\s+(?:đi|nhé|nha|ạ)\\b).*"
+    );
+
+    public static boolean hasExplicitPackageSelectionSignal(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.matches("(?isU).*\\b(?:giá|bao\\s+nhiêu|đắt|mắc|rẻ|có\\s+gói\\s+nào|gói\\s+nào|gói\\s+khác)\\b.*")
+                && !lower.matches("(?isU).*\\b(?:lấy|chọn|chốt|đặt)\\b.*")) {
+            return false;
+        }
+        return EXPLICIT_PACKAGE_SELECTION_PATTERN.matcher(lower).matches();
+    }
+
+    /** Tương thích ngữ nghĩa: tình trạng đã được khách làm rõ về thời gian/tần suất/diễn biến (độc lập với giá và chọn gói). */
+    public boolean conditionTimeClarified() {
+        return conditionClarified;
     }
 
     public String lastOfferedPackageId() {
@@ -569,6 +816,10 @@ public record ConversationState(
         return pageStr + "::" + senderStr + convStr + "::" + histSig + "::" + message.strip();
     }
 
+    public static ConversationState empty() {
+        return initial();
+    }
+
     public static ConversationState initial() {
         return new ConversationState(
                 false,
@@ -642,6 +893,15 @@ public record ConversationState(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                null,
+                List.of(),
+                List.of(),
+                false,
+                false,
                 null
         );
     }
@@ -711,6 +971,9 @@ public record ConversationState(
         if (resetSession && sessionKey != null) {
             SESSION_STORE.remove(sessionKey);
             LAST_TURN_PRE_STATE_STORE.remove(sessionKey);
+            PENDING_BUBBLE_STORE.remove(sessionKey);
+        } else if (sessionKey != null && currentMessage != null && !currentMessage.isBlank()) {
+            cancelPendingSecondBubbleIfPresent(sessionKey);
         }
 
         if (history == null || history.isEmpty()) {
@@ -882,7 +1145,30 @@ public record ConversationState(
             outstandingRequests.addAll(cached.outstandingRequests());
         }
         String lastAssistantMessage = !hasAssistantTurnInHistory && cached != null ? cached.lastAssistantMessage() : null;
+        Set<String> confirmedScopes = new LinkedHashSet<>();
+        if (!hasAssistantTurnInHistory && cached != null && cached.confirmedScopes() != null) {
+            confirmedScopes.addAll(cached.confirmedScopes());
+        }
+        Set<String> forbiddenScopes = new LinkedHashSet<>();
+        if (!hasAssistantTurnInHistory && cached != null && cached.forbiddenScopes() != null) {
+            forbiddenScopes.addAll(cached.forbiddenScopes());
+        }
+        Set<String> apologizedErrorIds = new LinkedHashSet<>();
+        if (cached != null && cached.apologizedErrorIds() != null) {
+            apologizedErrorIds.addAll(cached.apologizedErrorIds());
+        }
+        String activeErrorId = cached != null ? cached.activeErrorId() : null;
+        List<CustomerCareNoteArtifact> customerCareNotes = new ArrayList<>();
+        if (cached != null && cached.customerCareNotes() != null) {
+            customerCareNotes.addAll(cached.customerCareNotes());
+        }
+        List<String> scopeSupersessionEvents = new ArrayList<>();
+        if (cached != null && cached.scopeSupersessionEvents() != null) {
+            scopeSupersessionEvents.addAll(cached.scopeSupersessionEvents());
+        }
+        boolean possibleCorrection = false;
         boolean prevTurnWasAssistant = false;
+        boolean conditionTimeAnsweredInHistory = false;
         int turnIdx = 0;
 
         for (ConversationTurn turn : history) {
@@ -1077,8 +1363,30 @@ public record ConversationState(
                     stage = ConversationStage.PRICE_CLARIFY;
                 }
 
-                if (lower.contains("vừa gửi ở tin trên") || lower.contains("ở tin nhắn trên")) {
+                if (lower.contains("vừa gửi ở tin trên") || lower.contains("tin nhắn trên")) {
                     priceRepeatGuardCount++;
+                }
+                if ((lower.contains("xin lỗi") || lower.contains("nhầm")) && activeErrorId != null && !activeErrorId.isBlank()) {
+                    apologizedErrorIds.add(activeErrorId);
+                }
+                if (OPERATIONAL_CARE_PROMISE_PATTERN.matcher(content).find()
+                        && (!confirmedScopes.isEmpty() || !knownBodyAreas.isEmpty())) {
+                    List<String> noteScopes = !confirmedScopes.isEmpty()
+                            ? new ArrayList<>(confirmedScopes)
+                            : new ArrayList<>(knownBodyAreas);
+                    String noteTxt = content.strip();
+                    boolean exists = customerCareNotes.stream().anyMatch(n -> n != null && noteTxt.equals(n.noteText()));
+                    if (!exists) {
+                        customerCareNotes.add(new CustomerCareNoteArtifact(
+                                pageId != null ? pageId.toString() : "default",
+                                conversationId != null ? conversationId : (senderId != null ? senderId : "session"),
+                                "turn-" + turnIdx,
+                                Collections.unmodifiableList(noteScopes),
+                                extractCareActorFromText(lower),
+                                noteTxt,
+                                java.time.Instant.now().toString()
+                        ));
+                    }
                 }
 
                 if (lower.contains("băn khoăn của mình về chi phí") || lower.contains("cân nhắc chi phí") || lower.contains("cân nhắc về chi phí")) {
@@ -1117,6 +1425,9 @@ public record ConversationState(
             } else {
                 // User turn analysis
                 prevTurnWasAssistant = false;
+                String rawUserTurnContent = turn.content().strip();
+                VietnameseScopeSignalExtractor.ScopeSignalResult scopeSignal =
+                        VietnameseScopeSignalExtractor.analyze(rawUserTurnContent, domainKeywords);
                 String normalizedTurnContent = VietnameseQueryNormalizer.normalizeForClassification(content);
                 if (normalizedTurnContent != null && !normalizedTurnContent.isBlank()) {
                     content = normalizedTurnContent.strip();
@@ -1151,34 +1462,75 @@ public record ConversationState(
                 boolean isAltReqHere = SentimentIntentLayer.isAlternativePackageRequest(content);
                 boolean isDetailFaqHere = SentimentIntentLayer.isDetailOrFaqQuestion(content, lastAssistantMessage, activePkgForContext);
                 boolean isComprehensionFailHere = SentimentIntentLayer.isComprehensionFailureMessage(content);
-                boolean isPushbackHere = SentimentIntentLayer.isNegationOrPushbackOnAssumption(content);
+                boolean isPushbackHere = SentimentIntentLayer.isNegationOrPushbackOnAssumption(content)
+                        || scopeSignal.explicitCorrectionGroupD()
+                        || scopeSignal.possibleCorrection();
 
                 if (isAltReqHere) {
                     alternativeRequestCount++;
                 }
 
+                if (scopeSignal.explicitCorrectionGroupD()) {
+                    possibleCorrection = false;
+                    customerCorrectionDetected = true;
+                    if (scopeSignal.errorId() != null && !scopeSignal.errorId().isBlank()) {
+                        activeErrorId = scopeSignal.errorId();
+                    }
+                    for (String negScope : scopeSignal.forbiddenScopes()) {
+                        forbiddenScopes.add(negScope);
+                        confirmedScopes.remove(negScope);
+                        knownBodyAreas.remove(negScope);
+                        if ("đầu gối".equals(negScope) || "khớp gối".equals(negScope)) {
+                            confirmedScopes.remove("gối");
+                            knownBodyAreas.remove("gối");
+                            knownSymptoms.removeIf(s -> s.contains("gối"));
+                        } else {
+                            knownSymptoms.removeIf(s -> s.contains(negScope));
+                        }
+                    }
+                    for (String posScope : scopeSignal.confirmedScopes()) {
+                        forbiddenScopes.remove(posScope);
+                        confirmedScopes.add(posScope);
+                        addNormalizedAtomicScopes(knownBodyAreas, posScope);
+                    }
+                    lastIntent = "SCOPE_CORRECTION_PUSHBACK";
+                } else if (scopeSignal.possibleCorrection()) {
+                    possibleCorrection = true;
+                    customerCorrectionDetected = true;
+                    lastIntent = "COLLOQUIAL_CORRECTION_PUSHBACK";
+                } else {
+                    possibleCorrection = false;
+                }
+
                 if (isMismatchHere) {
                     customerCorrectionDetected = true;
-                    // Xóa ngay gói tư vấn sai khỏi heldPackage / lastQuotedPackage / knownRecommendedPackage
-                    if (heldPackage != null) rejectedPackages.add(heldPackage);
-                    if (lastQuotedPackage != null) rejectedPackages.add(lastQuotedPackage);
+                    boolean keepFullBodyHeldPkg = !SentimentIntentLayer.hasHarshPronouns(content)
+                            && heldPackage != null
+                            && (heldPackage.contains("co_ban") || heldPackage.contains("nang_cao") || heldPackage.contains("phuc_hoi"));
+                    // Xóa ngay gói tư vấn sai khỏi heldPackage / lastQuotedPackage / knownRecommendedPackage (trừ khi gói đang giữ là gói toàn thân đúng phạm vi mà bot chỉ lỡ lời nhắc nhầm vùng cơ thể)
+                    if (!keepFullBodyHeldPkg) {
+                        if (heldPackage != null) rejectedPackages.add(heldPackage);
+                        if (lastQuotedPackage != null) rejectedPackages.add(lastQuotedPackage);
+                    }
                     String wrongOffer = SentimentIntentLayer.extractRejectedWrongOffer(content);
                     if (wrongOffer != null && !wrongOffer.isBlank()) {
                         rejectedWrongOffer = wrongOffer.toLowerCase(Locale.ROOT).strip();
                         rejectedPackages.add(rejectedWrongOffer);
                         String canonicalWrong = toCanonicalPackageCode(wrongOffer, null);
-                        if (canonicalWrong != null) {
+                        if (canonicalWrong != null && (!keepFullBodyHeldPkg || !canonicalWrong.equals(heldPackage))) {
                             rejectedPackages.add(canonicalWrong);
                         }
                     }
-                    heldPackage = null;
-                    heldDuration = null;
-                    lastQuotedPackage = null;
-                    lastQuotedDuration = null;
-                    lastQuotedPrice = null;
-                    knownRecommendedPackage = null;
-                    lastQuotePackage = null;
-                    knownServiceFamily = null;
+                    if (!keepFullBodyHeldPkg) {
+                        heldPackage = null;
+                        heldDuration = null;
+                        lastQuotedPackage = null;
+                        lastQuotedDuration = null;
+                        lastQuotedPrice = null;
+                        knownRecommendedPackage = null;
+                        lastQuotePackage = null;
+                        knownServiceFamily = null;
+                    }
                     lastIntent = "ENTITY_MISMATCH_CORRECTION";
                     if (SentimentIntentLayer.hasHarshPronouns(content) || PrimaryActionRouter.isFrustrationMessage(content)) {
                         frustrationCount++;
@@ -1228,7 +1580,13 @@ public record ConversationState(
                                 : (isHesitationAfterObjHere && !isPriceObjHere ? "HESITATION_AFTER_OBJECTION" : "PRICE_OBJECTION"));
                     usedTemplates.add("PRICE_OBJECTION_FIRST_TIME");
                 } else if (!isMismatchHere && isPushbackHere) {
-                    lastIntent = "PUSHBACK_ON_ASSUMPTION";
+                    if (scopeSignal.explicitCorrectionGroupD()) {
+                        lastIntent = "SCOPE_CORRECTION_PUSHBACK";
+                    } else if (scopeSignal.possibleCorrection()) {
+                        lastIntent = "COLLOQUIAL_CORRECTION_PUSHBACK";
+                    } else {
+                        lastIntent = "PUSHBACK_ON_ASSUMPTION";
+                    }
                 } else if (!isMismatchHere && isAltReqHere) {
                     lastIntent = "ALTERNATIVE_PACKAGE_REQUEST";
                 } else if (!isMismatchHere && isDetailFaqHere) {
@@ -1250,20 +1608,47 @@ public record ConversationState(
                     lastIntent = "PRICE_COMPARISON";
                 }
 
-                Matcher symM = SYMPTOM_TOKEN_PATTERN.matcher(cleanContent);
-                boolean hadSymptomInTurn = false;
-                while (symM.find()) {
-                    knownSymptoms.add(symM.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip());
-                    hadSymptomInTurn = true;
-                }
-                if (hadSymptomInTurn) {
-                    customerSymptomTurns++;
+                if (!scopeSignal.possibleCorrection()) {
+                    Matcher symM = SYMPTOM_TOKEN_PATTERN.matcher(cleanContent);
+                    boolean hadSymptomInTurn = false;
+                    while (symM.find()) {
+                        knownSymptoms.add(symM.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip());
+                        hadSymptomInTurn = true;
+                    }
+                    if (hadSymptomInTurn) {
+                        customerSymptomTurns++;
+                    }
+
+                    if (!scopeSignal.explicitCorrectionGroupD()) {
+                        for (String posScope : scopeSignal.confirmedScopes()) {
+                            if (forbiddenScopes.remove(posScope)) {
+                                scopeSupersessionEvents.add("SUPERSEDED:" + posScope);
+                            }
+                            if (("đầu gối".equals(posScope) || "khớp gối".equals(posScope)) && forbiddenScopes.remove("gối")) {
+                                scopeSupersessionEvents.add("SUPERSEDED:gối");
+                            }
+                            confirmedScopes.add(posScope);
+                        }
+                        for (String scope : extractTargetScopes(cleanContent, domainKeywords)) {
+                            if ("gối".equals(scope) && (forbiddenScopes.contains("đầu gối") || forbiddenScopes.contains("khớp gối"))) {
+                                continue;
+                            }
+                            if (forbiddenScopes.contains(scope)) {
+                                continue;
+                            }
+                            knownBodyAreas.add(scope);
+                            if ("gối".equals(scope) && (confirmedScopes.contains("đầu gối") || confirmedScopes.contains("khớp gối"))) {
+                                continue;
+                            }
+                            confirmedScopes.add(scope);
+                        }
+                        purgeNegatedSymptomsAndScopes(content, cleanContent, knownSymptoms, knownBodyAreas, confirmedScopes, forbiddenScopes, domainKeywords);
+                    }
                 }
 
-                for (String scope : extractTargetScopes(cleanContent, domainKeywords)) {
-                    knownBodyAreas.add(scope);
+                if (!isPushbackHere && hasConditionTimeOrProgressionSignal(cleanContent)) {
+                    conditionTimeAnsweredInHistory = true;
                 }
-                purgeNegatedSymptomsAndScopes(content, cleanContent, knownSymptoms, knownBodyAreas, domainKeywords);
 
                 Matcher sevM = SEVERITY_TOKEN_PATTERN.matcher(cleanContent);
                 if (sevM.find()) {
@@ -1338,14 +1723,13 @@ public record ConversationState(
         }
         boolean serviceFamilyKnown = knownServiceFamily != null && !knownServiceFamily.isBlank();
 
-        boolean conditionClarified = (cached != null && cached.conditionClarified())
-                || (!knownSymptoms.isEmpty() && !knownBodyAreas.isEmpty()
-                    && (knownSeverity != null || knownDurationOfProblem != null || knownTrigger != null
-                        || customerSymptomTurns >= 2))
-                || (conditionAskedCount >= 1 && !"PUSHBACK_ON_ASSUMPTION".equals(lastIntent)
-                    && (!knownSymptoms.isEmpty() || !knownBodyAreas.isEmpty() || preferenceAttr != null))
-                || (frustrationCount >= 1 && (!knownSymptoms.isEmpty() || !knownBodyAreas.isEmpty() || serviceFamilyKnown))
-                || (preferenceAttr != null && !preferenceAttr.isBlank());
+        boolean isCorrectionTurnNow = possibleCorrection
+                || "SCOPE_CORRECTION_PUSHBACK".equals(lastIntent)
+                || "COLLOQUIAL_CORRECTION_PUSHBACK".equals(lastIntent)
+                || "PUSHBACK_ON_ASSUMPTION".equals(lastIntent);
+
+        boolean conditionClarified = !isCorrectionTurnNow && ((cached != null && cached.conditionClarified())
+                || conditionTimeAnsweredInHistory);
 
         boolean packageRecommended = !recommendedOptions.isEmpty()
                 || recommendationCount > 0
@@ -1438,7 +1822,15 @@ public record ConversationState(
                 Collections.unmodifiableList(new ArrayList<>(availablePackageCatalog)),
                 Collections.unmodifiableList(new ArrayList<>(lastBotBubbleHashes)),
                 Collections.unmodifiableList(new ArrayList<>(outstandingRequests)),
-                lastAssistantMessage
+                lastAssistantMessage,
+                Collections.unmodifiableSet(new LinkedHashSet<>(confirmedScopes)),
+                Collections.unmodifiableSet(new LinkedHashSet<>(forbiddenScopes)),
+                Collections.unmodifiableSet(new LinkedHashSet<>(apologizedErrorIds)),
+                activeErrorId,
+                Collections.unmodifiableList(new ArrayList<>(customerCareNotes)),
+                Collections.unmodifiableList(new ArrayList<>(scopeSupersessionEvents)),
+                possibleCorrection,
+                cached != null && cached.packageExplicitlySelected(), cached != null ? cached.selectedPackageId() : null
         );
     }
 
@@ -1459,7 +1851,10 @@ public record ConversationState(
                 objectionStage, telemetrySubtype, hasFeedback, hasRelaxation, hasPrivateRoom, neurologicalRisk,
                 preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
                 customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
-                outstandingRequests, lastAssistantMessage
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
         );
     }
 
@@ -1487,7 +1882,10 @@ public record ConversationState(
                 catalog != null ? Collections.unmodifiableList(new ArrayList<>(catalog)) : availablePackageCatalog,
                 lastBotBubbleHashes,
                 outstandingRequests,
-                lastAssistantMessage
+                lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
         );
     }
 
@@ -1503,12 +1901,21 @@ public record ConversationState(
         String content = (normalizedCurrent != null && !normalizedCurrent.isBlank() ? normalizedCurrent : currentMessage).strip();
         String lower = Normalizer.normalize(content, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         String nextRegion = detectPreferredRegion(lower, this.preferredRegion);
+        VietnameseScopeSignalExtractor.ScopeSignalResult scopeSignal =
+                VietnameseScopeSignalExtractor.analyze(currentMessage, domainKeywords);
         boolean isMismatch = SentimentIntentLayer.isEntityMismatchCorrection(content);
         String cleanContent = SentimentIntentLayer.stripMismatchCritiqueClause(content);
         String cleanLower = Normalizer.normalize(cleanContent, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
 
         Set<String> symptoms = new LinkedHashSet<>(this.knownSymptoms);
         Set<String> areas = new LinkedHashSet<>(this.knownBodyAreas);
+        Set<String> nextConfirmedScopes = new LinkedHashSet<>(this.confirmedScopes != null ? this.confirmedScopes : List.of());
+        Set<String> nextForbiddenScopes = new LinkedHashSet<>(this.forbiddenScopes != null ? this.forbiddenScopes : List.of());
+        Set<String> nextApologizedErrors = new LinkedHashSet<>(this.apologizedErrorIds != null ? this.apologizedErrorIds : Set.of());
+        String nextActiveErrorId = this.activeErrorId;
+        List<CustomerCareNoteArtifact> nextCareNotes = new ArrayList<>(this.customerCareNotes != null ? this.customerCareNotes : List.of());
+        List<String> nextSupersessionEvents = new ArrayList<>(this.scopeSupersessionEvents != null ? this.scopeSupersessionEvents : List.of());
+        boolean nextPossibleCorrection = false;
         String severity = this.knownSeverity;
         String probDuration = this.knownDurationOfProblem;
         String trigger = this.knownTrigger;
@@ -1550,25 +1957,32 @@ public record ConversationState(
 
         if (isMismatch) {
             nextCorrectionDetected = true;
-            if (nextHeldPkg != null) nextRejectedPkgs.add(nextHeldPkg);
-            if (nextLastQuotedPkg != null) nextRejectedPkgs.add(nextLastQuotedPkg);
+            boolean keepFullBodyHeldPkg = !SentimentIntentLayer.hasHarshPronouns(content)
+                    && nextHeldPkg != null
+                    && (nextHeldPkg.contains("co_ban") || nextHeldPkg.contains("nang_cao") || nextHeldPkg.contains("phuc_hoi"));
+            if (!keepFullBodyHeldPkg) {
+                if (nextHeldPkg != null) nextRejectedPkgs.add(nextHeldPkg);
+                if (nextLastQuotedPkg != null) nextRejectedPkgs.add(nextLastQuotedPkg);
+            }
             String wrongOffer = SentimentIntentLayer.extractRejectedWrongOffer(content);
             if (wrongOffer != null && !wrongOffer.isBlank()) {
                 nextRejectedWrongOffer = wrongOffer.toLowerCase(Locale.ROOT).strip();
                 nextRejectedPkgs.add(nextRejectedWrongOffer);
                 String canonicalWrong = toCanonicalPackageCode(wrongOffer, null);
-                if (canonicalWrong != null) {
+                if (canonicalWrong != null && (!keepFullBodyHeldPkg || !canonicalWrong.equals(nextHeldPkg))) {
                     nextRejectedPkgs.add(canonicalWrong);
                 }
             }
-            nextHeldPkg = null;
-            nextHeldDur = null;
-            nextLastQuotedPkg = null;
-            nextLastQuotedDur = null;
-            nextLastQuotedPrice = null;
-            recPkg = null;
-            nextLastQuotePkg = null;
-            serviceFam = null;
+            if (!keepFullBodyHeldPkg) {
+                nextHeldPkg = null;
+                nextHeldDur = null;
+                nextLastQuotedPkg = null;
+                nextLastQuotedDur = null;
+                nextLastQuotedPrice = null;
+                recPkg = null;
+                nextLastQuotePkg = null;
+                serviceFam = null;
+            }
             if (SentimentIntentLayer.hasHarshPronouns(content) || PrimaryActionRouter.isFrustrationMessage(content)) {
                 sentiment = "NEGATIVE";
                 emotion = "ANGER";
@@ -1593,14 +2007,62 @@ public record ConversationState(
         boolean expDownsell = SentimentIntentLayer.isExplicitDownsellRequest(content, this);
         boolean pkgReject = this.packageRejectionDetected || SentimentIntentLayer.isPackageRejection(content);
 
-        Matcher symM = SYMPTOM_TOKEN_PATTERN.matcher(cleanContent);
-        while (symM.find()) {
-            symptoms.add(symM.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip());
+        if (scopeSignal.explicitCorrectionGroupD()) {
+            nextPossibleCorrection = false;
+            nextCorrectionDetected = true;
+            if (scopeSignal.errorId() != null && !scopeSignal.errorId().isBlank()) {
+                nextActiveErrorId = scopeSignal.errorId();
+            }
+            for (String negScope : scopeSignal.forbiddenScopes()) {
+                nextForbiddenScopes.add(negScope);
+                nextConfirmedScopes.remove(negScope);
+                areas.remove(negScope);
+                if ("đầu gối".equals(negScope) || "khớp gối".equals(negScope)) {
+                    nextConfirmedScopes.remove("gối");
+                    areas.remove("gối");
+                    symptoms.removeIf(s -> s.contains("gối"));
+                } else {
+                    symptoms.removeIf(s -> s.contains(negScope));
+                }
+            }
+            for (String posScope : scopeSignal.confirmedScopes()) {
+                nextForbiddenScopes.remove(posScope);
+                nextConfirmedScopes.add(posScope);
+                addNormalizedAtomicScopes(areas, posScope);
+            }
+        } else if (scopeSignal.possibleCorrection()) {
+            nextPossibleCorrection = true;
+            nextCorrectionDetected = true;
+        } else {
+            nextPossibleCorrection = false;
+            Matcher symM = SYMPTOM_TOKEN_PATTERN.matcher(cleanContent);
+            while (symM.find()) {
+                symptoms.add(symM.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip());
+            }
+            for (String posScope : scopeSignal.confirmedScopes()) {
+                if (nextForbiddenScopes.remove(posScope)) {
+                    nextSupersessionEvents.add("SUPERSEDED:" + posScope);
+                }
+                if (("đầu gối".equals(posScope) || "khớp gối".equals(posScope)) && nextForbiddenScopes.remove("gối")) {
+                    nextSupersessionEvents.add("SUPERSEDED:gối");
+                }
+                nextConfirmedScopes.add(posScope);
+            }
+            for (String scope : extractTargetScopes(cleanContent, domainKeywords)) {
+                if ("gối".equals(scope) && (nextForbiddenScopes.contains("đầu gối") || nextForbiddenScopes.contains("khớp gối"))) {
+                    continue;
+                }
+                if (nextForbiddenScopes.contains(scope)) {
+                    continue;
+                }
+                areas.add(scope);
+                if ("gối".equals(scope) && (nextConfirmedScopes.contains("đầu gối") || nextConfirmedScopes.contains("khớp gối"))) {
+                    continue;
+                }
+                nextConfirmedScopes.add(scope);
+            }
+            purgeNegatedSymptomsAndScopes(content, cleanContent, symptoms, areas, nextConfirmedScopes, nextForbiddenScopes, domainKeywords);
         }
-        for (String scope : extractTargetScopes(cleanContent, domainKeywords)) {
-            areas.add(scope);
-        }
-        purgeNegatedSymptomsAndScopes(content, cleanContent, symptoms, areas, domainKeywords);
         Matcher sevM = SEVERITY_TOKEN_PATTERN.matcher(cleanContent);
         if (sevM.find()) {
             String rawSev = sevM.group(1).toLowerCase(Locale.ROOT).strip();
@@ -1644,18 +2106,26 @@ public record ConversationState(
             probPhrase = "mỏi vùng " + String.join(" ", areas);
         }
 
-        boolean isPushbackCurrent = SentimentIntentLayer.isNegationOrPushbackOnAssumption(content);
+        boolean isPushbackCurrent = SentimentIntentLayer.isNegationOrPushbackOnAssumption(content)
+                || scopeSignal.explicitCorrectionGroupD()
+                || scopeSignal.possibleCorrection();
         boolean condClarified = this.conditionClarified
-                || (!symptoms.isEmpty() && !areas.isEmpty()
-                    && (severity != null || probDuration != null || trigger != null))
-                || (this.conditionAskedCount >= 1 && !isPushbackCurrent && (!symptoms.isEmpty() || !areas.isEmpty() || severity != null || probDuration != null || trigger != null || prefPressure != null || PrimaryActionRouter.isAcknowledgementMessage(content) || PrimaryActionRouter.isConditionFollowUpMessage(content)))
-                || (("FRUSTRATION".equals(emotion) || "ANGER".equals(emotion)) && (!symptoms.isEmpty() || !areas.isEmpty() || famKnown))
-                || (prefPressure != null && !prefPressure.isBlank());
+                || (!isPushbackCurrent && hasConditionTimeOrProgressionSignal(cleanContent));
 
+        // v3.7: packageExplicitlySelected chỉ bật khi KHÁCH chủ động chọn/chấp nhận gói bot đã đề xuất (kể cả nói quy chiếu).
+        // Không bật khi bot mới đề xuất, khách chỉ hỏi giá hoặc nêu triệu chứng. Dữ liệu cũ thiếu trường => false.
+        String offeredIdNow = lastOfferedPackageId();
+        boolean selectionNow = !isPushbackCurrent
+                && offeredIdNow != null && !offeredIdNow.isBlank()
+                && hasExplicitPackageSelectionSignal(cleanContent);
+        boolean nextPackageExplicitlySelected = this.packageExplicitlySelected || selectionNow;
+        String nextSelectedPackageId = selectionNow ? offeredIdNow : this.selectedPackageId;
         String nextLastIntent = isMismatch ? "ENTITY_MISMATCH_CORRECTION"
+                : (scopeSignal.explicitCorrectionGroupD() ? "SCOPE_CORRECTION_PUSHBACK"
+                : (scopeSignal.possibleCorrection() ? "COLLOQUIAL_CORRECTION_PUSHBACK"
                 : (isPushbackCurrent ? "PUSHBACK_ON_ASSUMPTION"
                 : (isDetailFaqCurrent ? "DETAIL_OR_FAQ_QUESTION"
-                : (isComprehensionCurrent ? "COMPREHENSION_FAILURE" : this.lastIntent)));
+                : (isComprehensionCurrent ? "COMPREHENSION_FAILURE" : this.lastIntent)))));
 
         return new ConversationState(
                 this.greetingSent,
@@ -1735,7 +2205,15 @@ public record ConversationState(
                 this.availablePackageCatalog,
                 this.lastBotBubbleHashes,
                 Collections.unmodifiableList(nextOutstanding),
-                this.lastAssistantMessage
+                this.lastAssistantMessage,
+                Collections.unmodifiableSet(new LinkedHashSet<>(nextConfirmedScopes)),
+                Collections.unmodifiableSet(new LinkedHashSet<>(nextForbiddenScopes)),
+                Collections.unmodifiableSet(nextApologizedErrors),
+                nextActiveErrorId,
+                Collections.unmodifiableList(nextCareNotes),
+                Collections.unmodifiableList(nextSupersessionEvents),
+                nextPossibleCorrection,
+                nextPackageExplicitlySelected, nextSelectedPackageId
         );
     }
 
@@ -2065,7 +2543,7 @@ public record ConversationState(
             usedQIntents.add("CLARIFY_DURATION");
         } else if ("spa_price_repeat_guard".equalsIgnoreCase(skillCode)
                 || combinedBotReplyLower.contains("vừa gửi ở tin trên")
-                || combinedBotReplyLower.contains("ở tin nhắn trên")) {
+                || combinedBotReplyLower.contains("tin nhắn trên")) {
             nextPriceRepeatGuard++;
         } else if ("spa_ambiguous_confirm_once".equalsIgnoreCase(skillCode)) {
             nextAmbiguous++;
@@ -2141,6 +2619,32 @@ public record ConversationState(
         };
 
         String nextLastAssistantMsg = !combinedBotReplyRaw.isBlank() ? combinedBotReplyRaw : base.lastAssistantMessage();
+        Set<String> nextApologizedErrors = new LinkedHashSet<>(base.apologizedErrorIds() != null ? base.apologizedErrorIds() : Set.of());
+        if ((combinedBotReplyLower.contains("xin lỗi") || combinedBotReplyLower.contains("nhầm"))
+                && base.activeErrorId() != null && !base.activeErrorId().isBlank()) {
+            nextApologizedErrors.add(base.activeErrorId());
+        }
+        List<CustomerCareNoteArtifact> nextCareNotes = new ArrayList<>(base.customerCareNotes() != null ? base.customerCareNotes() : List.of());
+        if (!combinedBotReplyRaw.isBlank()
+                && containsOperationalCarePromise(combinedBotReplyRaw, null)
+                && (!base.confirmedScopes().isEmpty() || !base.knownBodyAreas().isEmpty())) {
+            List<String> noteScopes = !base.confirmedScopes().isEmpty()
+                    ? new ArrayList<>(base.confirmedScopes())
+                    : new ArrayList<>(base.knownBodyAreas());
+            String noteTxt = combinedBotReplyRaw;
+            boolean alreadyAdded = nextCareNotes.stream().anyMatch(n -> n != null && noteTxt.equals(n.noteText()));
+            if (!alreadyAdded) {
+                nextCareNotes.add(new CustomerCareNoteArtifact(
+                        pageId != null ? pageId.toString() : "default",
+                        conversationId != null ? conversationId : (senderId != null ? senderId : "session"),
+                        "turn-" + (incomingHistorySize >= 0 ? incomingHistorySize : nextCareNotes.size() + 1),
+                        Collections.unmodifiableList(noteScopes),
+                        extractCareActorFromText(combinedBotReplyLower),
+                        noteTxt,
+                        java.time.Instant.now().toString()
+                ));
+            }
+        }
 
         ConversationState updated = new ConversationState(
                 greetingNowSent,
@@ -2215,7 +2719,15 @@ public record ConversationState(
                 base.availablePackageCatalog(),
                 Collections.unmodifiableList(nextBubbleHashes),
                 Collections.unmodifiableList(nextOutstanding),
-                nextLastAssistantMsg
+                nextLastAssistantMsg,
+                base.confirmedScopes(),
+                base.forbiddenScopes(),
+                Collections.unmodifiableSet(nextApologizedErrors),
+                base.activeErrorId(),
+                Collections.unmodifiableList(nextCareNotes),
+                base.scopeSupersessionEvents(),
+                base.possibleCorrection(),
+                base.packageExplicitlySelected(), base.selectedPackageId()
         );
 
         if (sessionKey != null) {
@@ -2450,13 +2962,14 @@ public record ConversationState(
                     || lower.contains("thực đơn")
                     || lower.contains("món")
                     || lower.contains("nước ép")
-                    || lower.contains("trà thảo mộc")
+                    || lower.contains("trà dưỡng sinh")
                     || lower.contains("ấm bụng")
                     || lower.contains("bổ sung năng lượng");
             return hasExplanation;
         }
         if (entity.contains("phòng")) {
-            return lower.contains("phòng") && (lower.contains("riêng") || lower.contains("rèm") || lower.contains("cặp đôi") || lower.contains("tiêu chuẩn") || lower.contains("không gian"));
+            return (lower.contains("phòng") || lower.contains("khu trị liệu") || lower.contains("không gian") || lower.contains("giường"))
+                    && (lower.contains("riêng") || lower.contains("rèm") || lower.contains("cặp đôi") || lower.contains("tiêu chuẩn") || lower.contains("không gian"));
         }
         if (entity.contains("thời lượng")) {
             return lower.contains("phút") || lower.contains("thời lượng") || lower.contains("tiếng");
@@ -2628,8 +3141,8 @@ public record ConversationState(
 
     private static final Pattern BOT_PACKAGE_MENTION_PATTERN = Pattern.compile(
             "(?iU)(?:gói\\s+dịch\\s+vụ\\s+|dịch\\s+vụ\\s+|liệu\\s+trình\\s+|gói\\s+|thử\\s+1\\s+buổi\\s+|thử\\s+)"
-            + "((?:(?:[a-z]{2,3}\\d{2}\\s+)?(?:massage|dưỡng\\s+sinh|ngâm|vệ\\s+sinh|chăm\\s+sóc|trị\\s+liệu|gội\\s+đầu|niềng|bọc|tẩy\\s+trắng|nhổ|trồng|cạo\\s+vôi|lấy\\s+tủy|combo|sofa|đệm|nệm|bàn|ghế))[^,.?!:;()\\n]{2,85}?)"
-            + "(?=\\s+(?:bên\\s+em|có\\s+giá|với\\s+giá|giá\\s+|nhé|ạ|trước|sẽ|giúp|là\\s+|\\(|,|\\.|\\?|$))"
+            + "((?:(?:[a-z]{2,3}\\d{2}\\s+)?(?:massage|dưỡng\\s+sinh|ngâm|vệ\\s+sinh|chăm\\s+sóc|trị\\s+liệu|gội\\s+đầu|niềng|bọc|tẩy\\s+trắng|nhổ|trồng|cạo\\s+vôi|lấy\\s+tủy|combo|sofa|đệm|nệm|bàn|ghế))[^,.?!:;()\\n\\-–—]{2,85}?)"
+            + "(?=\\s+(?:trọn\\s+gói|chỉ\\s+|bên\\s+em|có\\s+giá|với\\s+giá|giá\\s+|nhé|ạ|trước|sẽ|giúp|là\\s+|[\\-–—]|\\(|,|\\.|\\?|$))"
     );
 
     public static List<String> extractAllCanonicalPackagesFromBotText(String lower, String fallbackDuration) {
@@ -3288,6 +3801,18 @@ public record ConversationState(
             Set<String> areas,
             List<String> domainKeywords
     ) {
+        purgeNegatedSymptomsAndScopes(rawMessage, cleanContent, symptoms, areas, null, null, domainKeywords);
+    }
+
+    private static void purgeNegatedSymptomsAndScopes(
+            String rawMessage,
+            String cleanContent,
+            Set<String> symptoms,
+            Set<String> areas,
+            Set<String> confirmedScopes,
+            Set<String> forbiddenScopes,
+            List<String> domainKeywords
+    ) {
         List<String> negatedClauses = SentimentIntentLayer.extractNegatedSymptomClauses(rawMessage);
         if (negatedClauses.isEmpty()) {
             return;
@@ -3309,8 +3834,363 @@ public record ConversationState(
             for (String negScope : extractTargetScopes(clause, domainKeywords)) {
                 if (!positiveScopes.contains(negScope)) {
                     areas.remove(negScope);
+                    if (confirmedScopes != null) {
+                        confirmedScopes.remove(negScope);
+                    }
+                    if (forbiddenScopes != null) {
+                        forbiddenScopes.add("gối".equals(negScope) && clause.toLowerCase(Locale.ROOT).contains("đầu gối") ? "đầu gối" : negScope);
+                    }
                 }
             }
         }
+    }
+
+    public static boolean containsOperationalCarePromise(String botReply, String careActor) {
+        if (botReply == null || botReply.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(botReply.strip(), Normalizer.Form.NFC);
+        if (OPERATIONAL_CARE_PROMISE_PATTERN.matcher(norm).find()) {
+            return true;
+        }
+        String lower = norm.toLowerCase(Locale.ROOT);
+        String actor = (careActor != null && !careActor.isBlank()) ? careActor.toLowerCase(Locale.ROOT).strip() : "";
+        boolean hasActor = (!actor.isEmpty() && lower.contains(actor))
+                || lower.contains("kỹ thuật viên")
+                || lower.contains("ktv")
+                || lower.contains("bác sĩ")
+                || lower.contains("nha sĩ")
+                || lower.contains("chuyên viên");
+        boolean hasVerb = lower.contains("sẽ dặn") || lower.contains("sẽ lưu ý") || lower.contains("ghi chú")
+                || lower.contains("sẽ báo") || lower.contains("dặn kỹ") || lower.contains("nhắc kỹ");
+        return hasActor && hasVerb;
+    }
+
+    public static String extractCareActorFromText(String lowerText) {
+        if (lowerText == null || lowerText.isBlank()) {
+            return "chuyên viên phụ trách";
+        }
+        if (lowerText.contains("bác sĩ") || lowerText.contains("nha sĩ")) {
+            return "bác sĩ";
+        }
+        if (lowerText.contains("kỹ thuật viên") || lowerText.contains("ktv")) {
+            return "kỹ thuật viên";
+        }
+        if (lowerText.contains("chuyên viên")) {
+            return "chuyên viên";
+        }
+        return "chuyên viên phụ trách";
+    }
+
+    public boolean hasAlreadyApologizedForError(String errorId) {
+        if (errorId == null || errorId.isBlank() || apologizedErrorIds == null) {
+            return false;
+        }
+        return apologizedErrorIds.contains(errorId.strip());
+    }
+
+    public boolean isDuplicateErrorApology(String botReply) {
+        if (botReply == null || botReply.isBlank() || activeErrorId == null || activeErrorId.isBlank()) {
+            return false;
+        }
+        if (!hasAlreadyApologizedForError(activeErrorId)) {
+            return false;
+        }
+        String lower = Normalizer.normalize(botReply, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return lower.contains("xin lỗi") || lower.contains("thứ lỗi") || lower.contains("mong mình thông cảm");
+    }
+
+    public ConversationState withApologizedError(String errorId) {
+        if (errorId == null || errorId.isBlank()) {
+            return this;
+        }
+        Set<String> nextApologized = new LinkedHashSet<>(this.apologizedErrorIds != null ? this.apologizedErrorIds : Set.of());
+        nextApologized.add(errorId.strip());
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, Collections.unmodifiableSet(nextApologized), errorId.strip(),
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
+        );
+    }
+
+    public ConversationState withActiveError(String errorId) {
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, errorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
+        );
+    }
+
+    public int turnIndex() {
+        return Math.max(1, ackCount + clarificationCount + recommendationCount + objectionCount + 1);
+    }
+
+    public String careActor() {
+        if (customerCareNotes != null && !customerCareNotes.isEmpty()) {
+            String lastActor = customerCareNotes.get(customerCareNotes.size() - 1).careActor();
+            if (lastActor != null && !lastActor.isBlank()) {
+                return lastActor;
+            }
+        }
+        return "kỹ thuật viên";
+    }
+
+    public ConversationState withTenantCareActor(String careActor, List<String> taxonomy) {
+        return this;
+    }
+
+    public ConversationState withDynamicContext(
+            List<PackageCatalogService.PackageSummary> catalog,
+            boolean hasFeedback,
+            boolean hasPrivateRoom
+    ) {
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, hasFeedback, docsHasRelaxationBenefit, hasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer,
+                catalog != null ? Collections.unmodifiableList(new ArrayList<>(catalog)) : List.of(),
+                lastBotBubbleHashes, outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
+        );
+    }
+
+    public ConversationState recordOperationalCareNoteIfPresent(
+            String tenantId,
+            String conversationId,
+            String turnId,
+            String careActor,
+            String botReply
+    ) {
+        if (!containsOperationalCarePromise(botReply, careActor)) {
+            return this;
+        }
+        Set<String> effectiveScopes = (confirmedScopes != null && !confirmedScopes.isEmpty())
+                ? confirmedScopes
+                : (knownBodyAreas != null ? new LinkedHashSet<>(knownBodyAreas) : Set.of());
+        if (effectiveScopes.isEmpty()) {
+            return this;
+        }
+        List<CustomerCareNoteArtifact> nextNotes = new ArrayList<>(customerCareNotes != null ? customerCareNotes : List.of());
+        String noteTxt = botReply.strip();
+        boolean exists = nextNotes.stream().anyMatch(n -> n != null && noteTxt.equals(n.noteText()));
+        if (!exists) {
+            nextNotes.add(new CustomerCareNoteArtifact(
+                    tenantId != null && !tenantId.isBlank() ? tenantId : "default",
+                    conversationId != null && !conversationId.isBlank() ? conversationId : "session",
+                    turnId != null && !turnId.isBlank() ? turnId : "turn-" + (nextNotes.size() + 1),
+                    Collections.unmodifiableSet(new LinkedHashSet<>(effectiveScopes)),
+                    careActor != null && !careActor.isBlank() ? careActor : extractCareActorFromText(botReply.toLowerCase(Locale.ROOT)),
+                    noteTxt,
+                    java.time.Instant.now()
+            ));
+        }
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                Collections.unmodifiableList(nextNotes), scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
+        );
+    }
+
+    public ConversationState applyGroundingCheckAsymmetricUpdate(
+            GroundingCheck gc,
+            String rawCustomerMessage
+    ) {
+        if (gc == null) {
+            return this;
+        }
+        StringBuilder syntheticGc = new StringBuilder();
+        if (gc.customerNegatedScopes() != null && !gc.customerNegatedScopes().isEmpty()) {
+            syntheticGc.append("phủ định ").append(String.join(", ", gc.customerNegatedScopes()));
+        }
+        return applyGroundingCheckAsymmetricUpdate(syntheticGc.toString(), rawCustomerMessage, List.of());
+    }
+
+    /**
+     * Asymmetric State Ownership (Section II.1):
+     * LLM grounding_check CANNOT add any unverified scope into confirmedScopes/knownBodyAreas,
+     * ONLY demote a negated scope B that actually appears in rawCustomerMessage into forbiddenScopes.
+     */
+    public ConversationState applyGroundingCheckAsymmetricUpdate(
+            String llmGroundingCheck,
+            String rawCustomerMessage,
+            List<String> tenantScopeTaxonomy
+    ) {
+        if (llmGroundingCheck == null || llmGroundingCheck.isBlank()) {
+            return this;
+        }
+        VietnameseScopeSignalExtractor.AsymmetricGroundingDelta updatedSignal =
+                VietnameseScopeSignalExtractor.applyGroundingCheckNegationOnly(
+                        this.confirmedScopes,
+                        this.forbiddenScopes,
+                        llmGroundingCheck,
+                        rawCustomerMessage,
+                        tenantScopeTaxonomy
+                );
+        Set<String> nextAreas = new LinkedHashSet<>(this.knownBodyAreas != null ? this.knownBodyAreas : List.of());
+        String detectedErrId = null;
+        for (String forb : updatedSignal.forbiddenScopes()) {
+            nextAreas.remove(forb);
+            if ("đầu gối".equals(forb) || "khớp gối".equals(forb)) {
+                nextAreas.remove("gối");
+            }
+            if (detectedErrId == null) {
+                detectedErrId = "WRONG_SCOPE:" + forb;
+            }
+        }
+        String nextErrId = detectedErrId != null ? detectedErrId : this.activeErrorId;
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms,
+                Collections.unmodifiableList(new ArrayList<>(nextAreas)),
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                updatedSignal.confirmedScopes(),
+                updatedSignal.forbiddenScopes(),
+                apologizedErrorIds,
+                nextErrId,
+                customerCareNotes,
+                scopeSupersessionEvents,
+                possibleCorrection,
+                packageExplicitlySelected, selectedPackageId
+        );
+    }
+
+    public static PendingBubbleRecord schedulePendingSecondBubble(
+            String sessionKey,
+            String turnId,
+            ReplyBubble pendingBubble,
+            ConversationState stateAfterFirstBubbleOnly,
+            ConversationState stateAfterSecondBubbleDelivered
+    ) {
+        if (sessionKey == null || sessionKey.isBlank() || pendingBubble == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        long delayMs = Math.max(0, pendingBubble.typingDelayMs());
+        PendingBubbleRecord record = new PendingBubbleRecord(
+                sessionKey,
+                turnId != null ? turnId : "turn-" + now,
+                pendingBubble,
+                "PENDING",
+                stateAfterFirstBubbleOnly,
+                stateAfterSecondBubbleDelivered,
+                now + delayMs
+        );
+        PENDING_BUBBLE_STORE.put(sessionKey, record);
+        if (stateAfterFirstBubbleOnly != null) {
+            SESSION_STORE.put(sessionKey, stateAfterFirstBubbleOnly);
+        }
+        return record;
+    }
+
+    public static PendingBubbleRecord cancelPendingSecondBubbleIfPresent(String sessionKey) {
+        if (sessionKey == null || sessionKey.isBlank()) {
+            return null;
+        }
+        PendingBubbleRecord current = PENDING_BUBBLE_STORE.get(sessionKey);
+        if (current != null && "PENDING".equals(current.status())) {
+            PendingBubbleRecord cancelled = current.withStatus("CANCELLED");
+            PENDING_BUBBLE_STORE.put(sessionKey, cancelled);
+            return cancelled;
+        }
+        return current;
+    }
+
+    public static PendingBubbleRecord commitPendingSecondBubbleIfActive(String sessionKey, String turnId) {
+        if (sessionKey == null || sessionKey.isBlank()) {
+            return null;
+        }
+        PendingBubbleRecord current = PENDING_BUBBLE_STORE.get(sessionKey);
+        if (current != null && "PENDING".equals(current.status())
+                && (turnId == null || turnId.equals(current.turnId()))) {
+            PendingBubbleRecord delivered = current.withStatus("DELIVERED");
+            PENDING_BUBBLE_STORE.put(sessionKey, delivered);
+            if (current.pendingPostState() != null) {
+                SESSION_STORE.put(sessionKey, current.pendingPostState());
+            }
+            return delivered;
+        }
+        return current;
+    }
+
+    public static PendingBubbleRecord getPendingBubbleRecord(String sessionKey) {
+        if (sessionKey == null || sessionKey.isBlank()) {
+            return null;
+        }
+        return PENDING_BUBBLE_STORE.get(sessionKey);
     }
 }

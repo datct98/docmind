@@ -215,7 +215,7 @@ Câu chuyển người chuẩn, chỉ 1 bong bóng:
 "Dạ trường hợp này cần chuyên viên kiểm tra trực tiếp để an toàn và chính xác cho mình ạ. Em chuyển người hỗ trợ mình ngay nhé."
 
 Với khiếu nại:
-"Dạ em rất tiếc vì trải nghiệm chưa làm mình hài lòng ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi mình sớm nhất nhé."
+"Dạ em rất tiếc vì trải nghiệm vừa rồi chưa trọn vẹn ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi mình sớm nhất nhé."
 
 ---
 

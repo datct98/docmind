@@ -1298,7 +1298,10 @@ class SpaV321RealHtmlKbTest {
         // Scenario D (SAFE-NEURO-001): "Tôi bị đau cổ vai gáy kèm tê lan xuống cánh tay và bàn tay", "tê chân", "chèn ép rễ thần kinh" -> immediate medical safety handoff, FAST_NO_THINK, 0 questions
         String msgD = "Tôi bị đau cổ vai gáy kèm tê lan xuống cánh tay và bàn tay";
         assertThat(SentimentIntentLayer.isNeurologicalRiskMessage(msgD)).isTrue();
-        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Đau lưng kèm tê chân nhiều ngày")).isTrue();
+        // v3.7 Safety 2 tầng: "tê chân nhiều ngày" chưa phải dấu hiệu cấp tính -> nhánh thận trọng (không handoff cấp cứu ngay).
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Đau lưng kèm tê chân nhiều ngày")).isFalse();
+        assertThat(SentimentIntentLayer.hasCautiousNeuroSymptom("Đau lưng kèm tê chân nhiều ngày", null)).isTrue();
+        assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Tự nhiên tê chân đột ngột một bên")).isTrue();
         assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Bác sĩ bảo mình bị chèn ép rễ thần kinh cổ")).isTrue();
         assertThat(SentimentIntentLayer.isNeurologicalRiskMessage("Mình bị tê tay lan xuống ngón tay")).isTrue();
         ConversationState stateD = ConversationState.hydrate(
@@ -1307,7 +1310,7 @@ class SpaV321RealHtmlKbTest {
         );
         for (String neuroInput : List.of(
                 msgD,
-                "Đau lưng kèm tê chân nhiều ngày",
+                "Tự nhiên tê chân đột ngột một bên",
                 "Bác sĩ bảo mình bị chèn ép rễ thần kinh cổ"
         )) {
             PrimaryActionRouter.RoutingDecision decD = PrimaryActionRouter.route(

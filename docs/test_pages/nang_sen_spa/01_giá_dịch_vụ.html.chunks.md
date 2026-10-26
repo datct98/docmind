@@ -1,12 +1,12 @@
-# Document Trace Dump: `01_giá_dịch_vụ.html`
+# Document Chunks Trace: `01_giá_dịch_vụ.html`
 - **Document ID**: `c9481efb-f3a9-4613-a2e0-fe50e9b99b39`
-- **Page ID**: `b23cd382-4f7a-4829-8c54-1d410da14bf8` (Nàng Sen Spa)
-- **Status**: `READY` | **Active (`is_active`)**: `True` | **Total Chunks**: `78`
-
----
+- **Page ID**: `b23cd382-4f7a-4829-8c54-1d410da14bf8` (`Nàng Sen Spa`)
+- **Status**: `READY` | **`is_active`**: `True`
+- **Total Chunks**: `78`
+- **Version Sync**: `v3.4.2-MASTER-LOCKED` (0 `KTV`, 0 `trà thảo mộc`)
 
 ## Chunk #1 (`015c57d4-d344-4e81-a195-efe454602215`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -20,43 +20,43 @@
 ```
 
 ## Chunk #2 (`0403eadf-0241-476a-b2c6-a77168afef9b`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS02 | Massage cơ bản nâng cao | 670.000VNĐ | 90 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS02 | Massage cơ bản nâng cao | 670.000VNĐ | 90 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
 ```
 
 ## Chunk #3 (`0737f6e6-2e4f-4c4a-bf65-15b8757f136d`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 1.100.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | KTV/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
+| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 1.100.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | kỹ thuật viên/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
 ```
 
 ## Chunk #4 (`0766eec6-5c8c-4308-80be-42a9119e859e`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
 ```
 
 ## Chunk #5 (`07d528ec-bf7c-4b9b-bfb4-985a9ea6f306`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #6 (`10c0afcd-2702-4b64-8984-0ba276679c3a`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -74,16 +74,16 @@
 ```
 
 ## Chunk #7 (`11f34e3d-a1db-4302-8c4f-a60e5d68c59d`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
 ```
 
 ## Chunk #8 (`133a437d-f19c-47ba-8234-f37085a19a80`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -95,23 +95,23 @@
 ```
 
 ## Chunk #9 (`18897f00-8a2b-4782-82a4-2eeed870985a`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
 Khu vực Hà Nội
 ```
 
 ## Chunk #10 (`1ba3e9c3-d4dd-4549-8d50-f76d259c7248`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS04 | Massage phục hồi + dưỡng sinh | 970.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 75p massage + 30p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | KTV phục hồi | Phòng VIP riêng tư kết hợp gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm trị liệu chuyên sâu trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; KTV phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
+| NS04 | Massage phục hồi + dưỡng sinh | 970.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 75p massage + 30p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | kỹ thuật viên phục hồi | Phòng VIP riêng tư kết hợp gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm trị liệu chuyên sâu trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; kỹ thuật viên phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
 ```
 
 ## Chunk #11 (`1de606ea-490a-44d8-8dd6-07472d69230a`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -129,23 +129,23 @@ Khu vực Hà Nội
 ```
 
 ## Chunk #12 (`1faed6e9-5975-4595-af8e-9b53a95616bd`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 FAQ
 ```
 
 ## Chunk #13 (`254def4e-b3cf-48fc-a162-294985a59d19`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 1.270.000VNĐ | 140 phút | 10p ngâm bồn + 5p xông hơi + 90p massage + 35p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 1.270.000VNĐ | 140 phút | 10p ngâm bồn + 5p xông hơi + 90p massage + 35p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 ```
 
 ## Chunk #14 (`26b4fabb-b420-48c1-bbff-655a46b643b6`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -154,48 +154,48 @@ FAQ
 ```
 
 ## Chunk #15 (`279a4eff-399c-4c2b-a0db-54dafc6feb0f`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội']`
 
 ```text
 Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội
 ```
 
 ## Chunk #16 (`2f719a71-2571-4192-a5f3-34acda7d8e2e`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 990.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | KTV/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
+| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 990.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | kỹ thuật viên/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
 ```
 
 ## Chunk #17 (`32be9311-3ad1-4c9b-a9a1-6fa49bb82e26`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NS06 | Gold – Massage trị liệu phục hồi | 990.000VNĐ | ~150 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 30p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
 ```
 
 ## Chunk #18 (`3503fef8-80fe-4651-b396-9fc0023ca668`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
 ```
 
 ## Chunk #19 (`40d899a2-9555-40f1-b690-faec7078588b`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội']`
 
 ```text
 Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội
 ```
 
 ## Chunk #20 (`44bb9399-f88d-4e90-a7f9-7d6845146e7e`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -208,61 +208,61 @@ Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia �
 ```
 
 ## Chunk #21 (`47091ed1-a1e5-49b9-9575-347028f70823`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
 ```
 
 ## Chunk #22 (`4a173bd6-4a16-4474-af0f-fe86521a8689`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
+| DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
 ```
 
 ## Chunk #23 (`517994ab-5f10-407e-9c51-cef5717f47ea`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | KTV/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
+| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | kỹ thuật viên/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
 ```
 
 ## Chunk #24 (`53c007ea-7619-4339-844a-262cd370be77`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
 ```
 
 ## Chunk #25 (`59b2ee29-5906-48c5-8654-e87c07af773b`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS03 | Gói dưỡng sinh cao cấp | 370.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
+| DS03 | Gói dưỡng sinh cao cấp | 370.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
 ```
 
 ## Chunk #26 (`5a07dac0-f88d-4c79-9cd8-8cd4da7f003a`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS03 | Massage phục hồi | 870.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS03 | Massage phục hồi | 870.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
 ```
 
 ## Chunk #27 (`5a0a7a65-206a-4783-ac1c-46e64b81d452`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -271,77 +271,77 @@ Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia �
 ```
 
 ## Chunk #28 (`5aa1d40b-fd8a-40fd-9239-d75d80d8c8b1`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | KTV/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
+| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | kỹ thuật viên/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
 ```
 
 ## Chunk #29 (`5abec5f5-71ce-49a2-9712-c1d2618df759`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
 Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=1700470354156339386
 ```
 
 ## Chunk #30 (`5bf3fa70-fde3-4494-a2ff-fdf8543bacc0`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NS06 | Gold – Massage trị liệu phục hồi | 990.000VNĐ | ~150 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 30p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
 ```
 
 ## Chunk #31 (`5d601c56-0b4d-41cb-9e6d-b00f011266ec`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 ```
 
 ## Chunk #32 (`60ad4eb0-0b62-481b-a143-e88250e6cafa`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS04 | Massage phục hồi | 670.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 105p massage | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS04 | Massage phục hồi | 670.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 105p massage | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
 ```
 
 ## Chunk #33 (`615ef14c-e115-410e-a4a3-ba453d2e0c70`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #34 (`69f044f7-54f4-4b97-b854-8ed73944c852`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
 ```
 
 ## Chunk #35 (`6a3278ed-3138-458c-b703-60d37dd69ad0`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS04 | Silver – Gói dưỡng sinh phục hồi | 570.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng riêng | KTV phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
+| DS04 | Silver – Gói dưỡng sinh phục hồi | 570.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng riêng | kỹ thuật viên phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
 ```
 
 ## Chunk #36 (`6d19c4e3-856b-49ea-8e29-297d5c3c8a90`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -350,14 +350,14 @@ Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google
 ```
 
 ## Chunk #37 (`77f8b72e-e42f-44f5-b247-75d44a340eda`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
 Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=4800272146003296030
 ```
 
 ## Chunk #38 (`7928614a-e5d8-4aa7-8d55-17ec9d1126d9`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -366,7 +366,7 @@ Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google
 ```
 
 ## Chunk #39 (`7e5a1bd0-11d0-46e6-8f83-e60b62823208`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -375,70 +375,70 @@ Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google
 ```
 
 ## Chunk #40 (`8091d8c4-b438-4777-9f29-eb52786eb093`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS03 | Gói dưỡng sinh cao cấp | 339.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
+| DS03 | Gói dưỡng sinh cao cấp | 339.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
 ```
 
 ## Chunk #41 (`8670550e-a02f-4411-91e7-85d8000f50a5`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
+| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
 ```
 
 ## Chunk #42 (`8bef2327-5e48-406c-a789-f2510ac896d8`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NS06 | Gold – Massage trị liệu phục hồi | 990.000VNĐ | ~150 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 30p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
 ```
 
 ## Chunk #43 (`8c6e7f2b-e3f1-4883-b8c3-266c83c9a79c`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
 ```
 
 ## Chunk #44 (`903854d8-79bd-431c-9ee5-62a3d4c3823f`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 ```
 
 ## Chunk #45 (`929cf9ef-4475-44a2-9ca4-6c975026d0ba`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 780.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | KTV cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
+| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 780.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | kỹ thuật viên cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
 ```
 
 ## Chunk #46 (`9621aff5-7df9-48b7-a260-de7872b623e2`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS02 | Gói dưỡng sinh cơ bản | 260.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
+| DS02 | Gói dưỡng sinh cơ bản | 260.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
 ```
 
 ## Chunk #47 (`97818b00-0dfe-47a3-afd5-8edf3474f60f`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -447,16 +447,16 @@ Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google
 ```
 
 ## Chunk #48 (`9c070a89-55c7-46d3-976d-ebb3f6face6a`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #49 (`a1e4ec6f-1a06-4268-bcd9-c4cef4e3be39`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -469,41 +469,41 @@ Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google
 ```
 
 ## Chunk #50 (`a29721f0-f0e0-46c3-b850-b8a61f134c8b`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | KTV phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; KTV phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
+| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | kỹ thuật viên phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; kỹ thuật viên phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
 ```
 
 ## Chunk #51 (`a5ed79df-022a-49f9-90ff-bfbf3c701b75`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội']`
 
 ```text
 Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội
 ```
 
 ## Chunk #52 (`aa6cd9f6-04cb-46cf-958d-d5d67c7d9682`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | KTV phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; KTV phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
+| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | kỹ thuật viên phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; kỹ thuật viên phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
 ```
 
 ## Chunk #53 (`ab7eaca9-bc60-4468-9187-c9122bf202cb`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | KTV/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
+| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | kỹ thuật viên/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
 ```
 
 ## Chunk #54 (`b1de4feb-be66-4ccf-aeaa-3a3bdcd709e2`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -520,7 +520,7 @@ Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa –
 ```
 
 ## Chunk #55 (`b2c12f1f-55ad-47a0-97eb-000e6df6edaf`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -529,7 +529,7 @@ Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa –
 | Gold với Diamond khác gì? | Dạ Diamond sẽ chuyên sâu và cao cấp hơn Gold ạ Có thêm spa da mặt, điểm tâm VIP và giáo viên trị liệu trực tiếp thực hiện. |
 | Vì sao Silver mắc hơn 670k? | Dạ Silver sẽ có trải nghiệm liền mạch và riêng tư hơn ạ Khách được gội dưỡng sinh ngay tại phòng VIP riêng thay vì di chuyển sang khu gội chung. |
 | Gói nào có phòng VIP riêng? | Dạ từ gói 580k bên em đã có phòng VIP riêng rồi ạ |
-| Gói nào có KTV cao cấp? | Dạ các gói Silver, Gold và Diamond sẽ có KTV cao cấp hoặc nhân viên ưu tú trực tiếp thực hiện ạ |
+| Gói nào có kỹ thuật viên cao cấp? | Dạ các gói Silver, Gold và Diamond sẽ có kỹ thuật viên cao cấp hoặc nhân viên ưu tú trực tiếp thực hiện ạ |
 | Gói nào có giáo viên trị liệu? | Dạ Diamond sẽ có giáo viên trị liệu trực tiếp thực hiện cho khách ạ |
 | Gói nào có spa da mặt? | Dạ Diamond sẽ có thêm liệu trình spa da mặt chuyên sâu ạ ✨ |
 | Gói nào có điểm tâm VIP? | Dạ Diamond sẽ có phần điểm tâm phục hồi VIP riêng sau trị liệu ạ |
@@ -537,143 +537,154 @@ Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa –
 ```
 
 ## Chunk #56 (`bb88a4ef-857e-4e01-bda6-ee0bf3f97f1a`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 570.000VNĐ | 70 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | nhẹ nhàng , đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS01 | Massage cơ bản | 570.000VNĐ | 70 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | nhẹ nhàng , đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
 ```
 
 ## Chunk #57 (`bc5dd9d1-0877-4078-b4b5-43e4ea67e727`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
 Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=10303902383466831354
 ```
 
 ## Chunk #58 (`c9481efb-0001-4613-a2e0-fe50e9b99b39`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
-| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
-| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
-| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | KTV phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; KTV phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress nặng | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi massage + 30p gội đầu dưỡng sinh | VIP + khu gội chung | kỹ thuật viên phục hồi | Phòng VIP riêng tư kết hợp khu gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm thư giãn trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; kỹ thuật viên phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, cần điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 | NS06 | Gold – Massage trị liệu phục hồi | 990.000VNĐ | ~150 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 30p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
-| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | KTV/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
-| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| NS07 | Diamond – Massage trị liệu chuyên sâu VIP | 1.990.000VNĐ | ~180 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + spa da mặt 30p + gội đầu 30p + điểm tâm VIP + nước ép + tẩy da chết | VIP riêng tư hoàn toàn | kỹ thuật viên/Giáo viên trị liệu | Chăm sóc toàn diện cao cấp nhất | VIP, phục hồi chuyên sâu | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body chuyên sâu 70 phút• Trị liệu phục hồi cơ thể 105 phút• Điều chỉnh kỹ thuật và lực theo tình trạng từng khách• Spa chăm sóc da mặt 30 phút• Gội dưỡng sinh 30 phút• Tẩy da chết toàn thân• Điểm tâm VIP & nước ép phục hồi• Không gian VIP riêng tư khép kín |
+| ADD01 | Tẩy da chết cơ bản | 100.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #59 (`c9481efb-0002-4613-a2e0-fe50e9b99b39`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
-| DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
-| DS03 | Gói dưỡng sinh cao cấp | 339.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng chung | KTV dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
-| DS04 | Silver – Gói dưỡng sinh phục hồi | 500.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng chung | KTV phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
-| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 780.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | KTV cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
-| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 990.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | KTV/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
+| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
+| DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
+| DS03 | Gói dưỡng sinh cao cấp | 339.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng chung | kỹ thuật viên dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
+| DS04 | Silver – Gói dưỡng sinh phục hồi | 500.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng chung | kỹ thuật viên phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
+| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 780.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | kỹ thuật viên cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
+| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 990.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | kỹ thuật viên/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
 ```
 
 ## Chunk #60 (`c9481efb-0003-4613-a2e0-fe50e9b99b39`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 570.000VNĐ | 70 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | nhẹ nhàng , đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
-| NS02 | Massage cơ bản nâng cao | 670.000VNĐ | 90 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
-| NS03 | Massage phục hồi | 870.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | KTV phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • KTV phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
-| NS04 | Massage phục hồi + dưỡng sinh | 970.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 75p massage + 30p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | KTV phục hồi | Phòng VIP riêng tư kết hợp gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm trị liệu chuyên sâu trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; KTV phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 1.270.000VNĐ | 140 phút | 10p ngâm bồn + 5p xông hơi + 90p massage + 35p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS01 | Massage cơ bản | 570.000VNĐ | 70 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | nhẹ nhàng , đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS02 | Massage cơ bản nâng cao | 670.000VNĐ | 90 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS03 | Massage phục hồi | 870.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi | Phòng VIP riêng | kỹ thuật viên phục hồi | • Phòng VIP riêng tư mang lại trải nghiệm thư giãn tuyệt đối. ; • Kết hợp ngâm thảo dược + tẩy tế bào chết + xông hơi + massage phục hồi chuyên sâu. ; • Giúp giãn cơ, đào thải độc tố, làm sạch da và tái tạo năng lượng. ; • kỹ thuật viên phục hồi với kỹ thuật bấm huyệt chuyên sâu. ; • Buffet thực dưỡng cao cấp sau liệu trình. ; - • Đây là gói được khách hàng lựa chọn nhiều nhất tại Nàng Sen. | Đau mỏi vai gáy, stress | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage phục hồi full body 85 phút• Kết hợp bấm huyệt, chườm nóng và phục hồi cơ thể• Kỹ thuật viên sẽ tập trung kỹ hơn vào các vùng cơ đang căng cứng theo tình trạng khách |
+| NS04 | Massage phục hồi + dưỡng sinh | 970.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 75p massage + 30p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | kỹ thuật viên phục hồi | Phòng VIP riêng tư kết hợp gội đầu dưỡng sinh riêng biệt, mang đến trải nghiệm trị liệu chuyên sâu trọn vẹn. ; Trọn bộ chăm sóc cơ thể và da đầu trong cùng một liệu trình, không cần di chuyển nhiều. ; Massage phục hồi chuyên sâu kết hợp gội đầu dưỡng sinh, giúp giảm đau mỏi, thư giãn thần kinh, giảm căng thẳng và hỗ trợ ngủ ngon hơn. ; Gội đầu dưỡng sinh với các thao tác day ấn huyệt vùng đầu, cổ, vai gáy, kích thích tuần hoàn máu và giải tỏa áp lực sau ngày dài làm việc. ; kỹ thuật viên phục hồi tay nghề cao thực hiện xuyên suốt toàn bộ liệu trình, đảm bảo trải nghiệm đồng nhất. Thưởng thức buffet thực dưỡng sau khi kết thúc liệu trình, bổ sung năng lượng và hoàn thiện trải nghiệm. | Mất ngủ nhẹ, điều trị chuyên sâu | • Tắm tráng• Ngâm bồn thảo dược 10 phút• Xông hơi 5 phút• Massage trị liệu full body 105 phút• Kết hợp chăm sóc đầu – cổ – vai – gáy• Gội dưỡng sinh tại khu vực dưỡng sinh chung• Có thể điều chỉnh lực và tập trung theo từng vùng cơ thể |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 1.270.000VNĐ | 140 phút | 10p ngâm bồn + 5p xông hơi + 90p massage + 35p gội đầu dưỡng sinh | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 | NS06 | Gold – Massage trị liệu phục hồi | 2.150.000VNĐ | ~160 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 40p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
-| ADD01 | Tẩy da chết cơ bản | 200.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| ADD01 | Tẩy da chết cơ bản | 200.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #61 (`c9481efb-0004-4613-a2e0-fe50e9b99b39`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
-| DS02 | Gói dưỡng sinh cơ bản | 260.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
-| DS03 | Gói dưỡng sinh cao cấp | 370.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
-| DS04 | Silver – Gói dưỡng sinh phục hồi | 570.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng riêng | KTV phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
-| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 870.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | KTV cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
-| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 1.100.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | KTV/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
+| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
+| DS02 | Gói dưỡng sinh cơ bản | 260.000VNĐ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh | Combo dưỡng sinh và phục hồi cơ bản | Dân văn phòng, đau mỏi nhẹ |
+| DS03 | Gói dưỡng sinh cao cấp | 370.000VNĐ | 80 phút | Gội đầu cao cấp + Massage điều trị cổ vai gáy + chăm sóc phục hồi tóc + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh cao cấp | Chăm sóc tóc kết hợp phục hồi chuyên sâu | Stress, mất ngủ nhẹ |
+| DS04 | Silver – Gói dưỡng sinh phục hồi | 570.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng riêng | kỹ thuật viên phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
+| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 870.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | kỹ thuật viên cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
+| DS06 | Diamond – Gói dưỡng sinh phục hồi trị liệu | 1.100.000VNĐ | 140 phút | Tương tự gói 780k nhưng thực hiện tại phòng riêng VIP | Phòng VIP riêng | kỹ thuật viên/Giáo viên trị liệu | Riêng tư khép kín & trị liệu chuyên sâu | VIP, doanh nhân, khách cần riêng tư |
 ```
 
 ## Chunk #62 (`c9ab5fef-538b-49e6-aae4-1ad8154b18cc`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | KTV cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
+| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 670k + gội đầu dưỡng sinh tại phòng VIP | Phòng VIP riêng khép kín | kỹ thuật viên cao cấp | Không cần di chuyển giữa các bước hoàn toàn riêng tư | Khách thích riêng tư | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử lý các vùng đau mỏi theo nhu cầu khách• Gội dưỡng sinh tại phòng VIP riêng• Hạn chế tối đa việc di chuyển giữa các bước |
 ```
 
 ## Chunk #63 (`ca64440e-acc2-4afa-b29d-fa9bdf3231fd`)
-- **Heading Path**: `FAQ > Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình`
+- **Heading Path**: `['FAQ', 'Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình']`
 
 ```text
-Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình
-| Hạng mục | Chi tiết thực đơn / Giải thích |
+| Câu hỏi / Vấn đề của khách | Câu trả lời / Hướng xử lý chuẩn |
 | --- | --- |
-| Giải thích Buffet thực dưỡng / Ăn nhẹ / Điểm tâm phục hồi | Gói có ăn nhẹ không?: Dạ nhiều gói tại Nàng Sen có kèm phần ăn nhẹ và trà thảo mộc sau liệu trình để cơ thể nạp lại năng lượng nhẹ nhàng ạ ; Có nước ép không?: Dạ ở một số gói cao hơn sẽ có thêm nước ép trái cây phục hồi sau liệu trình ạ ; Tại sao massage xong lại có ăn nhẹ?: Dạ sau khi xông ngâm và trị liệu, cơ thể thường cần nạp lại năng lượng nhẹ nên Nàng chuẩn bị thêm phần điểm tâm nhẹ để khách dễ chịu hơn trước khi ra về ạ |
-| Các món trong thực đơn ăn nhẹ / điểm tâm thực dưỡng | Bánh mì bò sốt vang (banh my bo sot vang), Trứng ngải cứu (trung ngại cuu), Chè đậu đen (che dau den), Bún dọc mùng (bun doc mung), Cháo sườn (Chao sươn), Hoa quả theo mùa (hoa quả theo mùa) |
+| Đồ ăn nhẹ có tính thêm phí không? | Không. Phần ăn nhẹ và trà dưỡng sinh đã bao gồm trong giá niêm yết của gói, khách hàng không cần thanh toán thêm. |
+| Làm xong có được ăn nhẹ gì không? | Dạ có ạ, kết thúc liệu trình mời anh/chị dùng điểm tâm ăn nhẹ và trà dưỡng sinh ấm để hồi phục năng lượng nhé. |
+| Nước ép trái cây có áp dụng cho mọi gói không? | Nước ép trái cây áp dụng cho các gói Massage Phục hồi (NS03, NS04) có phục vụ tại phòng VIP. Các gói khác phục vụ trà dưỡng sinh và đồ ăn nhẹ theo tiêu chuẩn. |
+
+| Các món ăn nhẹ / Điểm tâm thực dưỡng phục vụ sau liệu trình |
+| --- |
+| Bánh mì bò sốt vang (banh my bo sot vang) |
+| Trứng ngải cứu (trung ngại cuu) |
+| Chè đậu đen (che dau den) |
+| Bún dọc mùng (bun doc mung) |
+| Cháo sườn (Chao sươn) |
+| Hoa quả theo mùa |
+
+Thực đơn Buffet thực dưỡng & Điểm tâm ăn nhẹ sau liệu trình gồm: bánh mì bò sốt vang, trứng ngải cứu, chè đậu đen, bún dọc mùng, cháo sườn, hoa quả theo mùa; đi kèm trà dưỡng sinh ấm hoặc nước ép trái cây tùy gói dịch vụ.
 ```
 
 ## Chunk #64 (`ccb32d73-9229-429e-8843-623ae133b23f`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 870.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | KTV cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
+| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 870.000VNĐ | 140 phút | Gội đầu phục hồi cao cấp 80p + Spa VIP 60p + ăn nhẹ & trái cây theo mùa | Spa VIP | kỹ thuật viên cao cấp | Trải nghiệm dưỡng sinh và phục hồi cao cấp | Khách cần phục hồi chuyên sâu |
 ```
 
 ## Chunk #65 (`cf38da45-7ad5-4daf-bfac-a269b084e04d`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
 Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=538501441083395111
 ```
 
 ## Chunk #66 (`d28d6d7a-2e85-4413-bc8a-f3fbfcacd524`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | KTV tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • KTV được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
+| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung | kỹ thuật viên tiêu chuẩn | • Massage trị liệu toàn thân 60 phút giúp giảm đau mỏi, thư giãn gân cốt. ; • Phòng Vip sạch sẽ, yên tĩnh, không gian thoáng . ; • kỹ thuật viên được đào tạo bài bản theo quy trình Nàng Sen. ; • Thưởng thức buffet thực dưỡng sau liệu trình. ; • Phù hợp khách trải nghiệm lần đầu hoặc cần thư giãn nhanh, bận công việc ít thời gian trải nghiêmj | cơ bản điều trị nhẹ, đau mỏi cơ bản | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách có thể yêu cầu tập trung kỹ hơn vào các vùng đau mỏi như cổ – vai – gáy, lưng, chân hoặc tay |
 ```
 
 ## Chunk #67 (`dbe0abb7-4a12-413e-843f-7814f4a4b69a`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
 Khu vực SÀI GÒN
 ```
 
 ## Chunk #68 (`e2640e32-142a-46d6-aeb3-fb2d2de575aa`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực Hà Nội`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực Hà Nội']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS04 | Silver – Gói dưỡng sinh phục hồi | 500.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng chung | KTV phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
+| DS04 | Silver – Gói dưỡng sinh phục hồi | 500.000VNĐ | 90 phút | Option 1: Gội 30p + Spa 60p / Option 2: Gội 60p + Spa 30p | Phòng chung | kỹ thuật viên phục hồi | Khách được tùy chọn liệu trình phù hợp | Khách cần linh hoạt trải nghiệm |
 ```
 
 ## Chunk #69 (`e684a800-2f2f-42d4-8781-d49a4e980882`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -682,7 +693,7 @@ Khu vực SÀI GÒN
 ```
 
 ## Chunk #70 (`eb5f753e-2eaa-4c9b-9099-c0571fb9dff9`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -697,34 +708,34 @@ Khu vực SÀI GÒN
 ```
 
 ## Chunk #71 (`ec4e332b-02a1-47a1-a775-e778ffd7102c`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | KTV tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • KTV giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
+| NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung | kỹ thuật viên tiêu chuẩn | • Ngâm bồn thảo dược giúp làm nóng cơ thể, giãn cơ trước trị liệu. ; • Massage trị liệu chuyên sâu hơn gói cơ bản. ; • Phòng VIP riêng tư, không gian yên tĩnh. ; • kỹ thuật viên giàu kinh nghiệm xử lý đau mỏi cổ vai gáy, lưng. ; • Buffet thực dưỡng sau liệu trình giúp bổ sung năng lượng. | Dân văn phòng, căng cơ nhẹ | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Kết hợp xử lý căng cơ và đau mỏi cơ thể• Có thể tập trung trị liệu sâu hơn theo vùng khách cần |
 ```
 
 ## Chunk #72 (`ef845143-207a-48f8-b873-b48dfaffc1c9`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NS06 | Gold – Massage trị liệu phục hồi | 2.150.000VNĐ | ~160 phút | 10p ngâm bồn + tắm tráng + 70p massage + 105p trị liệu + 40p gội đầu tại phòng + nước ép trái cây + tẩy da chết | Phòng VIP riêng | Nhân viên ưu tú | Trị liệu chuyên sâu + phục hồi cao cấp | Doanh nhân, khách stress nặng | • Tắm tráng làm ấm cơ thể• Ngâm bồn thảo dược 10 phút• Massage trị liệu full body 70 phút• Trị liệu phục hồi chuyên sâu 105 phút• Tập trung các vùng cơ đang căng cứng hoặc đau mỏi kéo dài• Gội dưỡng sinh tại phòng riêng 30 phút• Tẩy da chết toàn thân• Nước ép trái cây phục hồi sau liệu trình |
 ```
 
 ## Chunk #73 (`f092f03c-d701-40c0-9e06-d6e35df17445`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp | Quy trình chi tiết |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADD01 | Tẩy da chết cơ bản | 200.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | KTV | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
+| ADD01 | Tẩy da chết cơ bản | 200.000VNĐ | Theo liệu trình | Tẩy da chết toàn thân | Theo phòng dịch vụ | kỹ thuật viên | Làm sạch & mềm da | Khách muốn chăm sóc da thêm | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |
 ```
 
 ## Chunk #74 (`f5a47e21-0a7c-471a-843e-dd7ba7d22fb1`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -734,13 +745,13 @@ Khu vực SÀI GÒN
 | Em đi 2 người được không? | Dạ bên em có hỗ trợ phòng đôi cho khách đi cùng người thân, bạn bè hoặc couple ạ |
 | Đặt lịch sao? | Dạ mình chỉ cần gửi giúp bên em: cơ sở muốn trải nghiệm, số lượng khách và khung giờ mong muốn để Nàng hỗ trợ giữ lịch nhé ạ |
 | Có cần cọc không? | Dạ bên em hiện chỉ hỗ trợ đặt cọc trước với khách đoàn từ 5 người trở lên hoặc các khung giờ quá tải đặc biệt ạ |
-| Em muốn KTV nữ | Dạ hiện kỹ thuật viên bên Nàng Sen đều là nữ ạ |
-| Có chọn KTV được không? | Dạ bên em có hỗ trợ chọn kỹ thuật viên theo tình trạng lịch thực tế tại thời điểm mình đặt ạ |
+| Em muốn kỹ thuật viên nữ | Dạ hiện kỹ thuật viên bên Nàng Sen đều là nữ ạ |
+| Có chọn kỹ thuật viên được không? | Dạ bên em có hỗ trợ chọn kỹ thuật viên theo tình trạng lịch thực tế tại thời điểm mình đặt ạ |
 | Có đỡ cổ vai gáy không? | Dạ phần đầu – cổ – vai – gáy là khu vực bên em tập trung trị liệu khá nhiều ạ Đặc biệt phù hợp với khách văn phòng hoặc người thường xuyên căng cơ do làm việc lâu. |
 ```
 
 ## Chunk #75 (`f7449d07-05d4-4b12-b99b-63f4241d5d11`)
-- **Heading Path**: `MASSAGE > Quy trình chi tiết`
+- **Heading Path**: `['MASSAGE', 'Quy trình chi tiết']`
 
 ```text
 | Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |
@@ -749,14 +760,14 @@ Khu vực SÀI GÒN
 ```
 
 ## Chunk #76 (`fa31ff05-e48c-4cdc-b239-0016c07463f1`)
-- **Heading Path**: `MASSAGE > Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh`
+- **Heading Path**: `['MASSAGE', 'Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh']`
 
 ```text
 Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh
 ```
 
 ## Chunk #77 (`fb478fb1-c148-4eeb-a85e-3627ea3bde06`)
-- **Heading Path**: `FAQ`
+- **Heading Path**: `['FAQ']`
 
 ```text
 | Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |
@@ -765,11 +776,10 @@ Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, 
 ```
 
 ## Chunk #78 (`ff7b81e9-4a22-469d-9c04-f6721a78ebb4`)
-- **Heading Path**: `GỘI ĐẦU DƯỠNG SINH > Khu vực SÀI GÒN`
+- **Heading Path**: `['GỘI ĐẦU DƯỠNG SINH', 'Khu vực SÀI GÒN']`
 
 ```text
-| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
+| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | kỹ thuật viên | Điểm nổi bật | Phù hợp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng riêng | KTV dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
+| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trái cây theo mùa | Phòng riêng | kỹ thuật viên dưỡng sinh | Chăm sóc tai nhẹ nhàng và hỗ trợ phục hồi làm sạch nhẹ nhàng | Khách cần vệ sinh tai và chăm sóc cơ bản |
 ```
-

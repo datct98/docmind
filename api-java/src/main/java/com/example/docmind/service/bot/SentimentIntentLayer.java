@@ -41,6 +41,8 @@ public final class SentimentIntentLayer {
         SAFETY_RISK,
         OPT_OUT,
         NEUROLOGICAL_RISK,
+        CAUTIOUS_SYMPTOM_CLARIFICATION,
+        SCOPE_CORRECTION_PUSHBACK,
         ENTITY_MISMATCH_CORRECTION,
         PUSHBACK_ON_ASSUMPTION,
         TRIAL_ACCEPTANCE,
@@ -48,7 +50,10 @@ public final class SentimentIntentLayer {
         PACKAGE_REJECTION,
         COMPREHENSION_FAILURE,
         META_CONVERSATION_ON_BOT_BEHAVIOR,
+        ANTI_APOLOGY_PUSHBACK,
+        POLITE_DEFERRAL_EXIT,
         CONFIRM_PREVIOUS_INFO,
+        FRUSTRATION_DEMANDING_SOLUTION,
         FRUSTRATION,
         DETAIL_OR_FAQ_QUESTION,
         PRICE_ESCALATION_REQUEST,
@@ -76,18 +81,32 @@ public final class SentimentIntentLayer {
 
     // 2. NEUROLOGICAL_RISK (SAFE-NEURO-001)
     private static final Pattern ACUTE_NEUROLOGICAL_RED_FLAG_PATTERN = Pattern.compile(
-            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|tê\\s+chân|"
+            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|liệt\\s+nửa\\s+người|méo\\s+miệng|miệng\\s+méo|nói\\s+khó|nói\\s+ngọng|líu\\s+lưỡi|"
             + "chóng\\s+mặt\\s+nhiều|chóng\\s+mặt\\s+dữ\\s+dội|hoa\\s+mắt\\s+chóng\\s+mặt|ù\\s+tai\\s+chóng\\s+mặt|"
             + "tê\\s+(?:tay\\s+|chân\\s+|bì\\s+)?lan\\b|lan\\s+xuống\\s+(?:cánh\\s+tay|bàn\\s+tay|tay|bắp\\s+chân|bàn\\s+chân|chân)|"
             + "chèn\\s+ép\\s+(?:rễ\\s+|dây\\s+)?thần\\s+kinh|thoát\\s+vị\\s+đĩa\\s+đệm)\\b.*"
     );
     private static final Pattern ACUTE_NEUROLOGICAL_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(dau\\s+dau\\s+du\\s+doi|yeu\\s+tay|yeu\\s+chan|mat\\s+cam\\s+giac|hoa\\s+mat\\s+chong\\s+mat|te\\s+chan|"
+            "(?is).*\\b(dau\\s+dau\\s+du\\s+doi|yeu\\s+tay|yeu\\s+chan|mat\\s+cam\\s+giac|hoa\\s+mat\\s+chong\\s+mat|meo\\s+mieng|noi\\s+kho|"
             + "te\\s+(?:tay\\s+|chan\\s+|bi\\s+)?lan\\b|lan\\s+xuong\\s+(?:canh\\s+tay|ban\\s+tay|tay|chan)|"
             + "chen\\s+ep\\s+(?:re\\s+|day\\s+)?than\\s+kinh|thoat\\s+vi\\s+dia\\s+dem)\\b.*"
     );
+
+    // Tier 1 (HIGH_RISK_IMMEDIATE_HANDOFF): tê/yếu xuất hiện ĐỘT NGỘT, một bên cơ thể, hoặc kèm dấu hiệu đột quỵ / đau đầu dữ dội.
+    private static final Pattern SUDDEN_ONSET_PATTERN = Pattern.compile(
+            "(?isU).*\\b(đột\\s+ngột|dot\\s+ngot|bất\\s+ngờ|bat\\s+ngo|đột\\s+nhiên|dot\\s+nhien|bỗng\\s+dưng|bỗng\\s+nhiên|bong\\s+dung|vừa\\s+nãy|vừa\\s+xong|mới\\s+đây|tự\\s+dưng|tu\\s+dung|tự\\s+nhiên\\s+(?:bị|thấy)|vừa\\s+mới\\s+(?:bị|thấy)|mới\\s+bị\\s+vài\\s+(?:phút|giờ)|cách\\s+đây\\s+(?:ít|vài)\\s+(?:phút|giờ)|ngay\\s+lúc\\s+này)\\b.*"
+    );
+    private static final Pattern ONE_SIDED_PATTERN = Pattern.compile(
+            "(?isU).*\\b(một\\s+bên|mot\\s+ben|nửa\\s+người|nua\\s+nguoi|nửa\\s+mặt|bên\\s+trái|bên\\s+phải|ben\\s+trai|ben\\s+phai|1\\s+bên)\\b.*"
+    );
+    private static final Pattern STROKE_LIKE_SIGN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(méo\\s+miệng|miệng\\s+(?:hơi\\s+|bị\\s+|đang\\s+)?méo|méo\\s+mặt|mặt\\s+(?:hơi\\s+|bị\\s+)?méo|nói\\s+khó|nói\\s+ngọng|nói\\s+lắp|líu\\s+lưỡi|mờ\\s+mắt\\s+(?:đột|bất)|nhìn\\s+đôi|nhìn\\s+mờ\\s+đột|mất\\s+thăng\\s+bằng|không\\s+đứng\\s+vững|đau\\s+đầu\\s+(?:dữ\\s+dội|kinh\\s+khủng|như\\s+búa\\s+bổ)|đau\\s+đầu\\s+đột\\s+ngột)\\b.*"
+    );
+    private static final Pattern SEVERE_HEADACHE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu)\\b.*\\b(dữ\\s+dội|kinh\\s+khủng|không\\s+chịu\\s+nổi)\\b.*|.*\\b(dữ\\s+dội|kinh\\s+khủng)\\b.*\\b(đau\\s+đầu|nhức\\s+đầu)\\b.*"
+    );
     private static final Pattern NUMBNESS_OR_DIZZINESS_PATTERN = Pattern.compile(
-            "(?isU).*\\b(tê\\s+tay|tê\\s+chân|tê\\s+bì|chóng\\s+mặt|ù\\s+tai|hoa\\s+mắt)\\b.*"
+            "(?isU).*(?:\\b(tê\\s+tay|tê\\s+chân|tê\\s+bì|tê\\s+tê|chóng\\s+mặt|ù\\s+tai|hoa\\s+mắt)\\b|\\b(?:chân|tay|ngón)\\s+(?:\\p{L}+\\s+){0,3}tê\\b).*"
     );
     private static final Pattern SEVERE_OR_PERSISTENT_MODIFIER_PATTERN = Pattern.compile(
             "(?isU).*\\b(dữ\\s+dội|nặng\\s+lắm|rất\\s+nặng|khó\\s+chịu\\s+nhiều|liên\\s+tục|mấy\\s+tuần|mấy\\s+tháng|mất\\s+cảm\\s+giác|yếu)\\b.*"
@@ -96,9 +115,9 @@ public final class SentimentIntentLayer {
     // 2B. ENTITY_MISMATCH_CORRECTION & Anti-Keyword-Hijacking
     private static final Pattern ENTITY_MISMATCH_CORRECTION_PATTERN = Pattern.compile(
             "(?isU).*(?:"
-            + "\\b(?:đau|mỏi|nhức|tê|bị|hỏi|cần|mua|muốn|tìm)\\b.+?\\bmà\\s+(?:mày|bạn|em|shop|bên\\s+em|lại|đi|sao)\\b.*?(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)"
-            + "|\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\b[^.?!;]*?\\b(?:là\\s+sao|làm\\s+gì)\\b"
-            + "|\\bsao\\s+(?:lại\\s+|em\\s+|mày\\s+|bạn\\s+|shop\\s+|bên\\s+em\\s+|đi\\s+)*(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\b"
+            + "\\b(?:đau|mỏi|nhức|tê|bị|hỏi|cần|mua|muốn|tìm)\\b.+?\\bmà\\s+(?:mày|bạn|em|shop|bên\\s+em|lại|đi|sao)\\b.*?(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage|làm)"
+            + "|\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage)\\b[^.?!;]*?\\b(?:là\\s+sao|làm\\s+gì|làm\\s+j)\\b"
+            + "|\\bsao\\s+(?:lại\\s+|em\\s+|mày\\s+|bạn\\s+|shop\\s+|bên\\s+em\\s+|đi\\s+)*(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage)\\b"
             + "|\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\s+(?:nhầm|sai|lạc\\s+đề|không\\s+đúng|trật)\\b"
             + "|\\bcó\\s+(?:hỏi|cần|mua|muốn|tìm)\\b.+?\\bđâu\\b"
             + "|\\b(?:đâu\\s+có|không\\s+có)\\s+(?:hỏi|bị|đau|mỏi|cần|mua)\\b"
@@ -109,9 +128,9 @@ public final class SentimentIntentLayer {
     );
     private static final Pattern ENTITY_MISMATCH_CORRECTION_ASCII_PATTERN = Pattern.compile(
             "(?is).*(?:"
-            + "\\b(?:dau|moi|nhuc|te|bi|hoi|can|mua|muon|tim)\\b.+?\\bma\\s+(?:may|ban|em|shop|ben\\s+em|lai|di|sao)\\b.*?(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu)"
-            + "|\\b(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu)\\b[^.?!;]*?\\b(?:la\\s+sao|lam\\s+gi)\\b"
-            + "|\\bsao\\s+(?:lai\\s+|em\\s+|may\\s+|ban\\s+|shop\\s+|ben\\s+em\\s+|di\\s+)*(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu)\\b"
+            + "\\b(?:dau|moi|nhuc|te|bi|hoi|can|mua|muon|tim)\\b.+?\\bma\\s+(?:may|ban|em|shop|ben\\s+em|lai|di|sao)\\b.*?(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu|massage|lam)"
+            + "|\\b(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu|massage)\\b[^.?!;]*?\\b(?:la\\s+sao|lam\\s+gi|lam\\s+j)\\b"
+            + "|\\bsao\\s+(?:lai\\s+|em\\s+|may\\s+|ban\\s+|shop\\s+|ben\\s+em\\s+|di\\s+)*(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu|massage)\\b"
             + "|\\b(?:tu\\s+van|goi\\s+y|bao\\s+gia|gioi\\s+thieu)\\s+(?:nham|sai|lac\\s+de|khong\\s+dung)\\b"
             + "|\\b(?:tao\\s+.*?\\bmay|may\\s+.*?\\btao)\\b.*?(?:tu\\s+van|goi\\s+y|bao\\s+gia|la\\s+sao)"
             + ").*"
@@ -123,9 +142,9 @@ public final class SentimentIntentLayer {
             "(?is).*(?:\\btao\\b.*\\bmay\\b|\\bmay\\b.*\\btao\\b).*"
     );
     private static final Pattern[] MISMATCH_CRITIQUE_CLAUSE_PATTERNS = new Pattern[]{
-            Pattern.compile("(?isU)\\bmà\\s+(?:mày|bạn|em|shop|bên\\s+em|lại|đi|sao)\\b[^,.?!;]*?\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\s+([^,.?!;]+?)(?:\\s+(?:là\\s+sao|làm\\s+gì|vậy|thế|hả|ạ|nhỉ))?(?=\\s+(?:trong\\s+khi|khi\\s+mà|chứ\\b)|[,.;?!]|$)"),
-            Pattern.compile("(?isU)(?:\\b(?:mày|bạn|em|shop|bên\\s+em|lại|đi)\\s+)*(?:đi\\s+|lại\\s+)*\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\s+([^,.?!;]+?)\\s+(?:là\\s+sao|làm\\s+gì)\\b(?:\\s+(?:vậy|thế|hả|ạ|nhỉ))?"),
-            Pattern.compile("(?isU)\\bsao\\s+(?:lại\\s+|em\\s+|mày\\s+|bạn\\s+|shop\\s+|bên\\s+em\\s+|đi\\s+)*\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\s+([^,.?!;]+?)(?:\\s+(?:là\\s+sao|làm\\s+gì|vậy|thế|hả|ạ|nhỉ))?(?=\\s+(?:trong\\s+khi|khi\\s+mà|mà\\b|chứ\\b)|[,.;?!]|$)"),
+            Pattern.compile("(?isU)\\bmà\\s+(?:mày|bạn|em|shop|bên\\s+em|lại|đi|sao)\\b[^,.?!;]*?\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage|làm)\\s+([^,.?!;]+?)(?:\\s+(?:là\\s+sao|làm\\s+gì|làm\\s+j|vậy|thế|hả|ạ|nhỉ))?(?=\\s+(?:trong\\s+khi|khi\\s+mà|chứ\\b)|[,.;?!]|$)"),
+            Pattern.compile("(?isU)(?:\\b(?:mày|bạn|em|shop|bên\\s+em|lại|đi)\\s+)*(?:đi\\s+|lại\\s+)*\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage)\\s+([^,.?!;]+?)\\s+(?:là\\s+sao|làm\\s+gì|làm\\s+j)\\b(?:\\s+(?:vậy|thế|hả|ạ|nhỉ))?"),
+            Pattern.compile("(?isU)\\bsao\\s+(?:lại\\s+|em\\s+|mày\\s+|bạn\\s+|shop\\s+|bên\\s+em\\s+|đi\\s+)*\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage)\\s+([^,.?!;]+?)(?:\\s+(?:là\\s+sao|làm\\s+gì|làm\\s+j|vậy|thế|hả|ạ|nhỉ))?(?=\\s+(?:trong\\s+khi|khi\\s+mà|mà\\b|chứ\\b)|[,.;?!]|$)"),
             Pattern.compile("(?isU)\\b(?:chứ\\s+(?:có\\s+phải|không\\s+phải|đâu\\s+phải)\\s*(?:hỏi|bị|đau|mỏi|cần|mua|tư\\s+vấn)?|(?:đâu\\s+có|không\\s+có)\\s+(?:hỏi|bị|đau|mỏi|cần|mua|muốn|tìm)|có\\s+(?:hỏi|cần|mua|muốn|tìm))\\s+([^,.?!;]+?)(?:\\s+đâu(?:\\s+ạ|\\s+em|\\s+shop)?\\b|(?=\\s+(?:trong\\s+khi|mà\\b|chứ\\b)|[,.;?!]|$))"),
             Pattern.compile("(?isU)(?:\\b(?:mày|bạn|em|shop|bên\\s+em)\\s+)?\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu)\\s+(?:nhầm|sai|lạc\\s+đề|không\\s+đúng|trật)\\s*(?:sang|qua|vào|gói|dịch\\s+vụ)*\\s*([^,.?!;]*?)(?:\\s+(?:rồi|vậy|thế|ạ|nhỉ))?(?=\\s+(?:trong\\s+khi|khi\\s+mà|mà\\b|chứ\\b)|[,.;?!]|$)")
     };
@@ -241,7 +260,7 @@ public final class SentimentIntentLayer {
             + "vẫn\\s+đắt|nhiều\\s+tiền|chưa\\s+đủ\\s+ngân\\s+sách|chưa\\s+vừa\\s+túi|vượt\\s+ngân\\s+sách|hơi\\s+căng|mắc\\s+quá)\\b.*"
     );
     private static final Pattern PRICE_OBJECTION_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(dat\\s+the|dat\\s+qua|dat\\s+hon|van\\s+dat|hoi\\s+cao|cao\\s+hon|cao\\s+qua|nhieu\\s+tien|chua\\s+du\\s+ngan\\s+sach)\\b.*"
+            "(?is).*\\b(dat\\s+the|dat\\s+qua|dat\\s+hon|van\\s+dat|hoi\\s+cao|cao\\s+hon|cao\\s+qua|(?<!bao\\s)nhieu\\s+tien|chua\\s+du\\s+ngan\\s+sach)\\b.*"
     );
 
     private static final Pattern DURATION_IN_MESSAGE_PATTERN = Pattern.compile(
@@ -324,6 +343,42 @@ public final class SentimentIntentLayer {
         return remainder.isEmpty();
     }
 
+    public static boolean isScopeCorrectionPushback(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        // Explicit service recommendation critique ("mà mày đi tư vấn/massage ... là sao/làm j") stays on ENTITY_MISMATCH_CORRECTION
+        if (norm.matches("(?isU).*\\bmà\\s+(?:mày|bạn|em|shop|bên\\s+em|lại|đi|sao)\\b.*?(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage|làm).*")
+                || norm.matches("(?isU).*\\b(?:tư\\s+vấn|gợi\\s+ý|báo\\s+giá|giới\\s+thiệu|massage)\\b[^.?!;]*?\\b(?:là\\s+sao|làm\\s+gì|làm\\s+j)\\b.*")) {
+            return false;
+        }
+        VietnameseScopeSignalExtractor.ScopeSignalResult sig = VietnameseScopeSignalExtractor.extract(message, null);
+        return sig.explicitCorrectionGroupD() || sig.possibleCorrection();
+    }
+
+    public static boolean isFrustrationDemandingSolution(String message, ConversationState priorState) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String normQuery = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        boolean explicitDemandOrScold = norm.matches("(?isU).*(?:\\bdở\\s+vừa\\b|\\bđịnh\\s+chăm\\s+sóc\\b|\\bchăm\\s+sóc\\s+cái\\b|\\blàm\\s+được\\s+gì\\b|\\bgiải\\s+quyết\\s+thế\\s+nào\\b|\\bcó\\s+phương\\s+án\\s+gì\\b|\\bt\\s+phát\\s+bực\\b|\\btôi\\s+phát\\s+bực\\b|\\blàm\\s+ăn\\s+chán\\b|\\btư\\s+vấn\\s+chán\\b).*")
+                || normQuery.matches("(?isU).*(?:\\bdở\\s+vừa\\b|\\bđịnh\\s+chăm\\s+sóc\\b|\\bchăm\\s+sóc\\s+cái\\b|\\blàm\\s+được\\s+gì\\b|\\bgiải\\s+quyết\\s+thế\\s+nào\\b|\\bcó\\s+phương\\s+án\\s+gì\\b|\\bphát\\s+bực\\b|\\blàm\\s+ăn\\s+chán\\b|\\btư\\s+vấn\\s+chán\\b).*");
+        if (explicitDemandOrScold) {
+            return true;
+        }
+        if (PrimaryActionRouter.isFrustrationMessage(message) && priorState != null) {
+            boolean hasPriorScopeCorrection = (priorState.forbiddenScopes() != null && !priorState.forbiddenScopes().isEmpty())
+                    || (priorState.apologizedErrorIds() != null && !priorState.apologizedErrorIds().isEmpty())
+                    || priorState.possibleCorrection();
+            if (hasPriorScopeCorrection && priorState.mostRecentUnresolvedRequest() == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean isEntityMismatchCorrection(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -389,6 +444,12 @@ public final class SentimentIntentLayer {
         return cleaned.isEmpty() ? "" : cleaned;
     }
 
+    /**
+     * Tầng 1 — {@code HIGH_RISK_IMMEDIATE_HANDOFF}: dấu hiệu cấp tính nguy cơ cao. Ưu tiên hơn mọi nhánh bán hàng/báo giá/làm rõ.
+     * Gồm: tê/yếu xuất hiện đột ngột; tê/yếu một bên cơ thể kèm đột ngột hoặc đau đầu; dấu hiệu kiểu đột quỵ
+     * (méo miệng, nói khó, rối loạn thị giác, mất thăng bằng đột ngột), đau đầu dữ dội; hoặc các cờ đỏ cấp tính khác.
+     * Không yêu cầu khách phải dùng đúng chữ "yếu liệt".
+     */
     public static boolean hasNeurologicalRisk(String message, ConversationState priorState) {
         if (message == null || message.isBlank()) {
             return priorState != null && priorState.neurologicalRisk();
@@ -399,11 +460,43 @@ public final class SentimentIntentLayer {
                 || ACUTE_NEUROLOGICAL_ASCII_PATTERN.matcher(ascii).matches()) {
             return true;
         }
-        boolean hasNumbnessOrDizziness = NUMBNESS_OR_DIZZINESS_PATTERN.matcher(norm).matches()
-                || (priorState != null && priorState.knownSymptoms().stream()
-                    .anyMatch(s -> s.contains("tê") || s.contains("chóng mặt") || s.contains("ù tai")));
-        boolean hasSevereModifier = SEVERE_OR_PERSISTENT_MODIFIER_PATTERN.matcher(norm).matches();
-        return hasNumbnessOrDizziness && hasSevereModifier;
+        if (STROKE_LIKE_SIGN_PATTERN.matcher(norm).matches() || SEVERE_HEADACHE_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        boolean numbOrWeak = NUMBNESS_OR_DIZZINESS_OR_WEAK_PATTERN.matcher(norm).matches();
+        if (!numbOrWeak) {
+            return false;
+        }
+        boolean sudden = SUDDEN_ONSET_PATTERN.matcher(norm).matches() || SUDDEN_ONSET_PATTERN.matcher(ascii).matches();
+        boolean oneSided = ONE_SIDED_PATTERN.matcher(norm).matches() || ONE_SIDED_PATTERN.matcher(ascii).matches();
+        boolean headache = norm.matches("(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu)\\b.*");
+        return sudden || (oneSided && headache);
+    }
+
+    private static final Pattern NUMBNESS_OR_DIZZINESS_OR_WEAK_PATTERN = Pattern.compile(
+            "(?isU).*\\b(tê\\s+(?:tay|chân|bì|mặt|nửa|một|bên|người|cứng|rần|buốt)|tê\\b|yếu\\s+(?:tay|chân|nửa|một|bên|người|đi)|liệt|mất\\s+cảm\\s+giác)\\b.*"
+    );
+
+    /**
+     * Tầng 2 — {@code CAUTIOUS_SYMPTOM_CLARIFICATION}: khách nêu tê/chóng mặt/ù tai... NHƯNG chưa có dấu hiệu cấp tính rõ ràng.
+     * Không kết luận cấp cứu, cũng không coi là lành tính: trấn an, giải thích lý do thận trọng, hỏi thời điểm khởi phát,
+     * bên bị ảnh hưởng, diễn biến; tuyệt đối không báo giá/chào gói.
+     */
+    public static boolean hasCautiousNeuroSymptom(String message, ConversationState priorState) {
+        if (hasNeurologicalRisk(message, priorState)) {
+            return false;
+        }
+        if (message != null && !message.isBlank()) {
+            String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            if (NUMBNESS_OR_DIZZINESS_PATTERN.matcher(norm).matches()) {
+                return true;
+            }
+        }
+        // Giữ nhánh thận trọng ở lượt khách trả lời câu hỏi khởi phát/diễn biến (không kéo dài sang mọi lượt sau).
+        return priorState != null && priorState.knownSymptoms() != null
+                && message != null && ConversationState.hasConditionTimeOrProgressionSignal(message)
+                && priorState.knownSymptoms().stream().anyMatch(sy -> sy != null && NUMBNESS_OR_DIZZINESS_PATTERN
+                        .matcher(sy.toLowerCase(Locale.ROOT)).matches());
     }
 
     public static boolean isNeurologicalRiskMessage(String message) {
@@ -435,6 +528,27 @@ public final class SentimentIntentLayer {
         return WORDING_OR_EXPRESSION_FEEDBACK_PATTERN.matcher(norm).matches();
     }
 
+    private static final Pattern MOOD_DROP_RECOVERY_PATTERN = Pattern.compile(
+            "(?isU).*\\b(tụt\\s+cảm\\s+xúc|mất\\s+cảm\\s+xúc|tụt\\s+mood|cụt\\s+hứng|chán\\s+chả\\s+buồn\\s+nói|chán\\s+không\\s+buồn\\s+nói|nghe\\s+mà\\s+chán)\\b.*"
+    );
+
+    /**
+     * v3.5.0: Khách bày tỏ sự tụt cảm xúc / chán nản ("Tôi thấy tụt cảm xúc quá chán chả buồn nói", "tụt mood")
+     * do câu trả lời trước của bot chưa khéo (nhưng chưa phải từ chối dứt khoát "thôi dẹp").
+     */
+    public static boolean isMoodDropRecoveryMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isStrongRejection(message)) {
+            return false;
+        }
+        String normalized = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        String candidate = (normalized != null && !normalized.isBlank()) ? normalized : message;
+        String norm = Normalizer.normalize(candidate.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return MOOD_DROP_RECOVERY_PATTERN.matcher(norm).matches();
+    }
+
     /**
      * v3.3.4: Cảm xúc tiêu cực / bực bội / mất kiên nhẫn với cách tư vấn, nhưng CHƯA phải từ chối dứt khoát.
      * Từ chối dứt khoát luôn trả về {@code false} để không bị kéo vào luồng xoa dịu tiếp tục bán hàng.
@@ -464,6 +578,11 @@ public final class SentimentIntentLayer {
      */
     public static boolean isMidFunnelLukewarmReply(String message, ConversationState state) {
         if (message == null || message.isBlank() || state == null) {
+            return false;
+        }
+        // v3.4.0 Bước 3.1: Nếu khách đã chê đắt ở lượt trước và chưa downsell, câu phân vân "Để xem đã"
+        // phải đi vào HANDLE_PRICE_OBJECTION_REPEAT (Nhịp 2 Downsell 239k), không giữ ở LUKEWARM_REENGAGE.
+        if (state.objectionCount() >= 1 && !state.downsellOffered()) {
             return false;
         }
         boolean isPastInitialStage = state.greetingSent()
@@ -606,15 +725,45 @@ public final class SentimentIntentLayer {
     }
 
     private static final Pattern HESITATION_AFTER_OBJECTION_PATTERN = Pattern.compile(
-            "(?isU).*\\b(cân\\s+nhắc(?:\\s+thêm)?|suy\\s+nghĩ(?:\\s+thêm)?|để\\s+(?:tôi|mình|chị|anh|em)?\\s*(?:xem|nghĩ|tính|cân\\s+nhắc|suy\\s+nghĩ|tham\\s+khảo)(?:\\s+thêm|\\s+đã|\\s+lại)?|"
+            "(?isU).*\\b(cân\\s+nhắc(?:\\s+thêm)?|suy\\s+nghĩ(?:\\s+thêm)?|để\\s+(?:tôi|t|mình|chị|anh|em)?\\s*(?:xem|nghĩ|tính|cân\\s+nhắc|suy\\s+nghĩ|tham\\s+khảo)(?:\\s+thêm|\\s+đã|\\s+lại)?|"
+            + "có\\s+gì\\s+(?:tôi|t|mình|chị|anh|em)?\\s*(?:nhắn|báo|liên\\s+hệ)\\s+(?:sau|lại)|"
             + "thôi\\s+để\\s+lúc\\s+khác|để\\s+lúc\\s+khác|để\\s+hôm\\s+khác|thôi\\s+để\\s+sau|"
             + "vẫn\\s+chưa\\s+muốn\\s+làm|chưa\\s+muốn\\s+làm|chưa\\s+quyết\\s+định)\\b.*"
     );
     private static final Pattern HESITATION_AFTER_OBJECTION_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(can\\s+nhac(?:\\s+them)?|suy\\s+nghi(?:\\s+them)?|de\\s+(?:toi|minh|chi|anh|em)?\\s*(?:xem|nghi|tinh|can\\s+nhac|suy\\s+nghi|tham\\s+khao)(?:\\s+them|\\s+da|\\s+lai)?|"
+            "(?is).*\\b(can\\s+nhac(?:\\s+them)?|suy\\s+nghi(?:\\s+them)?|de\\s+(?:toi|t|minh|chi|anh|em)?\\s*(?:xem|nghi|tinh|can\\s+nhac|suy\\s+nghi|tham\\s+khao)(?:\\s+them|\\s+da|\\s+lai)?|"
+            + "co\\s+gi\\s+(?:toi|t|minh|chi|anh|em)?\\s*(?:nhan|bao|lien\\s+he)\\s+(?:sau|lai)|"
             + "thoi\\s+de\\s+luc\\s+khac|de\\s+luc\\s+khac|de\\s+hom\\s+khac|thoi\\s+de\\s+sau|"
             + "van\\s+chua\\s+muon\\s+lam|chua\\s+muon\\s+lam|chua\\s+quyet\\s+dinh)\\b.*"
     );
+
+    private static final Pattern POLITE_DEFERRAL_EXIT_PATTERN = Pattern.compile(
+            "(?isU).*\\b(cân\\s+nhắc\\s+thêm|suy\\s+nghĩ\\s+thêm|"
+            + "để\\s+(?:tôi|t|mình|chị|anh|em)\\s*(?:cân\\s+nhắc|suy\\s+nghĩ|xem\\s+lại|tính\\s+lại|tham\\s+khảo)(?:\\s+thêm|\\s+đã|\\s+nhé|\\s+nha)?|"
+            + "để\\s+xem\\s+đã\\s+(?:nhé|nha)|"
+            + "có\\s+gì\\s+(?:tôi|t|mình|chị|anh|em)?\\s*(?:nhắn|báo|liên\\s+hệ)\\s+(?:sau|lại))\\b.*"
+    );
+    private static final Pattern POLITE_DEFERRAL_EXIT_ASCII_PATTERN = Pattern.compile(
+            "(?is).*\\b(can\\s+nhac\\s+them|suy\\s+nghi\\s+them|"
+            + "de\\s+(?:toi|t|minh|chi|anh|em)\\s*(?:can\\s+nhac|suy\\s+nghi|xem\\s+lai|tinh\\s+lai|tham\\s+khao)(?:\\s+them|\\s+da|\\s+nhe|\\s+nha)?|"
+            + "de\\s+xem\\s+da\\s+(?:nhe|nha)|"
+            + "co\\s+gi\\s+(?:toi|t|minh|chi|anh|em)?\\s*(?:nhan|bao|lien\\s+he)\\s+(?:sau|lai))\\b.*"
+    );
+
+    public static boolean isPoliteDeferralExit(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message.strip());
+        String target = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg.strip() : message.strip();
+        String norm = Normalizer.normalize(target, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(target);
+        if (OPT_OUT_PATTERN.matcher(norm).matches() || OPT_OUT_ASCII_PATTERN.matcher(ascii).matches()) {
+            return false;
+        }
+        return POLITE_DEFERRAL_EXIT_PATTERN.matcher(norm).matches()
+                || POLITE_DEFERRAL_EXIT_ASCII_PATTERN.matcher(ascii).matches();
+    }
 
     public static boolean isHesitationAfterObjection(String message) {
         if (message == null || message.isBlank()) {
@@ -675,14 +824,18 @@ public final class SentimentIntentLayer {
     );
 
     private static final Pattern APOLOGY_META_COMMENT_PATTERN = Pattern.compile(
-            "(?isU).*\\b(làm\\s+gì\\s+mà\\s+(?:phải\\s+|cứ\\s+)?xin\\s+lỗi|sao\\s+(?:lại\\s+|phải\\s+|cứ\\s+)?xin\\s+lỗi|"
+            "(?isU).*\\b(mắc\\s+gì\\s+(?:phải\\s+|cứ\\s+|lại\\s+|mà\\s+)?xin\\s+lỗi|"
+            + "làm\\s+gì\\s+mà\\s+(?:phải\\s+|cứ\\s+)?xin\\s+lỗi|sao\\s+(?:lại\\s+|phải\\s+|cứ\\s+)?xin\\s+lỗi|"
             + "việc\\s+gì\\s+(?:mà\\s+)?phải\\s+xin\\s+lỗi|có\\s+gì\\s+đâu\\s+mà\\s+(?:phải\\s+)?xin\\s+lỗi|"
-            + "không\\s+cần\\s+(?:phải\\s+)?xin\\s+lỗi|cần\\s+gì\\s+(?:phải\\s+)?xin\\s+lỗi|xin\\s+lỗi\\s+(?:lắm|nhiều|mãi|hoài)\\s+(?:thế|vậy))\\b.*"
+            + "không\\s+cần\\s+(?:phải\\s+)?xin\\s+lỗi|cần\\s+gì\\s+(?:phải\\s+)?xin\\s+lỗi|"
+            + "xin\\s+lỗi\\s+(?:gì\\s+lắm|lắm|nhiều|mãi|hoài)(?:\\s+(?:thế|vậy))?)\\b.*"
     );
     private static final Pattern APOLOGY_META_COMMENT_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(lam\\s+gi\\s+ma\\s+(?:phai\\s+|cu\\s+)?xin\\s+loi|sao\\s+(?:lai\\s+|phai\\s+|cu\\s+)?xin\\s+loi|"
+            "(?is).*\\b(mac\\s+(?:gi|j)\\s+(?:phai\\s+|cu\\s+|lai\\s+|ma\\s+)?xin\\s+loi|"
+            + "lam\\s+gi\\s+ma\\s+(?:phai\\s+|cu\\s+)?xin\\s+loi|sao\\s+(?:lai\\s+|phai\\s+|cu\\s+)?xin\\s+loi|"
             + "viec\\s+gi\\s+(?:ma\\s+)?phai\\s+xin\\s+loi|co\\s+gi\\s+dau\\s+ma\\s+(?:phai\\s+)?xin\\s+loi|"
-            + "khong\\s+can\\s+(?:phai\\s+)?xin\\s+loi|can\\s+gi\\s+(?:phai\\s+)?xin\\s+loi|xin\\s+loi\\s+(?:lam|nhieu|mai|hoai)\\s+(?:the|vay))\\b.*"
+            + "khong\\s+can\\s+(?:phai\\s+)?xin\\s+loi|can\\s+gi\\s+(?:phai\\s+)?xin\\s+loi|"
+            + "xin\\s+loi\\s+(?:gi\\s+lam|lam|nhieu|mai|hoai)(?:\\s+(?:the|vay))?)\\b.*"
     );
 
     private static final Pattern POSITIVE_SERVICE_INTEREST_SIGNAL_PATTERN = Pattern.compile(
@@ -729,10 +882,18 @@ public final class SentimentIntentLayer {
         if (message == null || message.isBlank()) {
             return false;
         }
-        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        String ascii = removeDiacritics(message);
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message.strip());
+        String target = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg.strip() : message.strip();
+        String norm = Normalizer.normalize(target, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String ascii = removeDiacritics(target);
+        String rawAscii = removeDiacritics(message);
         return APOLOGY_META_COMMENT_PATTERN.matcher(norm).matches()
-                || APOLOGY_META_COMMENT_ASCII_PATTERN.matcher(ascii).matches();
+                || APOLOGY_META_COMMENT_ASCII_PATTERN.matcher(ascii).matches()
+                || APOLOGY_META_COMMENT_ASCII_PATTERN.matcher(rawAscii).matches();
+    }
+
+    public static boolean isAntiApologyPushback(String normalizedMessage) {
+        return isApologyMetaComment(normalizedMessage);
     }
 
     public static boolean isMetaConversationOnBotBehavior(String message) {
@@ -1087,6 +1248,13 @@ public final class SentimentIntentLayer {
         if (hasNeurologicalRisk(trimmed, priorState)) {
             return DetectedIntent.NEUROLOGICAL_RISK;
         }
+        // 3-bis. CAUTIOUS_SYMPTOM_CLARIFICATION (tầng 2): tê/chóng mặt... chưa có dấu hiệu cấp tính
+        if (hasCautiousNeuroSymptom(trimmed, priorState)
+                && !isStrongRejection(trimmed)
+                && !isEntityMismatchCorrection(trimmed)
+                && !hasHarshPronouns(trimmed)) {
+            return DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION;
+        }
         // 3A. DETAIL_OR_FAQ_QUESTION with contrast/clarification prefix ("K tôi thấy có buffet thực dưỡng, nó là j")
         // Checked before ENTITY_MISMATCH_CORRECTION so leading "K/Không" clarification questions are never mistaken for mismatch complaints.
         if (hasContrastOrClarificationPrefix(trimmed) && isDetailOrFaqQuestion(trimmed, priorState)) {
@@ -1096,9 +1264,17 @@ public final class SentimentIntentLayer {
         if (isConfirmPreviousInfoMessage(trimmed)) {
             return DetectedIntent.CONFIRM_PREVIOUS_INFO;
         }
+        // 3A-2b. ANTI_APOLOGY_PUSHBACK ("Hâm à mắc j xin loi", "Sao lại xin lỗi") when not paired with positive service interest
+        if (isAntiApologyPushback(trimmed) && !hasPositiveServiceInterestSignal(trimmed)) {
+            return DetectedIntent.ANTI_APOLOGY_PUSHBACK;
+        }
         // 3A-3. META_CONVERSATION_ON_BOT_BEHAVIOR ("Sao chào lắm thế", "Nghe hay đấy cơ mà làm gì mà phải xin lỗi")
         if (isMetaConversationOnBotBehavior(trimmed)) {
             return DetectedIntent.META_CONVERSATION_ON_BOT_BEHAVIOR;
+        }
+        // 3B-0. SCOPE_CORRECTION_PUSHBACK (Group D explicit negation "A chứ B đâu" & Group H dialect/colloquial pushback)
+        if (isScopeCorrectionPushback(trimmed)) {
+            return DetectedIntent.SCOPE_CORRECTION_PUSHBACK;
         }
         // 3B. ENTITY_MISMATCH_CORRECTION (anti-keyword-hijacking: check before TRIAL/REJECTION/FRUSTRATION/SERVICE_SELECTION)
         if (isEntityMismatchCorrection(trimmed)) {
@@ -1116,6 +1292,13 @@ public final class SentimentIntentLayer {
         if (isStrongRejection(trimmed)) {
             return DetectedIntent.STRONG_REJECTION;
         }
+        // 5B. POLITE_DEFERRAL_EXIT ("Ukm, để t cân nhắc thêm", "Để mình suy nghĩ thêm")
+        if (isPoliteDeferralExit(trimmed)
+                && (priorState == null
+                    || priorState.downsellOffered()
+                    || (!isMidFunnelLukewarmReply(trimmed, priorState) && priorState.objectionCount() == 0))) {
+            return DetectedIntent.POLITE_DEFERRAL_EXIT;
+        }
         // 6. PACKAGE_REJECTION
         if (isPackageRejection(trimmed)) {
             return DetectedIntent.PACKAGE_REJECTION;
@@ -1123,6 +1306,10 @@ public final class SentimentIntentLayer {
         // 6B. COMPREHENSION_FAILURE ("Chả hiểu j", "Khó hiểu quá")
         if (isComprehensionFailureMessage(trimmed)) {
             return DetectedIntent.COMPREHENSION_FAILURE;
+        }
+        // 7A. FRUSTRATION_DEMANDING_SOLUTION ("Dở vừa, ns linh ta linh tinh", "Rồi định chăm sóc cái j cho t, t phát bực r")
+        if (isFrustrationDemandingSolution(trimmed, priorState)) {
+            return DetectedIntent.FRUSTRATION_DEMANDING_SOLUTION;
         }
         // 7. FRUSTRATION ("Ô hay, nói linh ta linh tinh gì đấy", "Dở à")
         if (PrimaryActionRouter.isFrustrationMessage(trimmed)) {

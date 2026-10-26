@@ -1,0 +1,27 @@
+{
+  "run_id": "v3671-master-20261026T142015Z-5203f5",
+  "git_commit": "dab39490ae311c2052703e8f4497555127760222",
+  "timestamp_utc": "2026-10-26T14:26:06.030780+00:00",
+  "live_audit_file": "docs/benchmarks/live_audit.jsonl",
+  "live_audit_sha256": "a555dd5a130816c70a1be314d1e958ec0926ca2d79e0bb3c504863ee0465c2d3",
+  "records_appended_in_run": 15,
+  "conversations": {
+    "scenario_a": {
+      "conversation_id": "scen-a-690b54fc",
+      "tenant_id": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+      "turns": 5
+    },
+    "scenario_b": {
+      "conversation_id": "scen-b-050024a5",
+      "tenant_id": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+      "turns": 7
+    },
+    "gate_5_dental": {
+      "conversation_id": "gate5-dental-4dbadb99",
+      "tenant_id": "d3000000-0000-0000-0000-000000000001",
+      "turns": 3
+    }
+  },
+  "gate_5_cross_domain_term_leak_rate": "0%",
+  "gate_5_leaks": []
+}

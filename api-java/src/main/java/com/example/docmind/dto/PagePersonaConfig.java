@@ -55,9 +55,45 @@ public record PagePersonaConfig(
         @JsonProperty("service_family_keywords")
         Map<String, List<String>> serviceFamilyKeywords,
         @JsonProperty("emotion_signals")
-        Map<String, Object> emotionSignals
+        Map<String, Object> emotionSignals,
+        @JsonProperty("care_actor")
+        String careActor,
+        @JsonProperty("scope_taxonomy")
+        List<String> scopeTaxonomy,
+        @JsonProperty("safety_red_flags")
+        List<String> safetyRedFlags
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    public PagePersonaConfig(
+            String industryCode,
+            String botName,
+            String selfPronoun,
+            String defaultCustomerPronoun,
+            String toneStyle,
+            String emojiLevel,
+            List<String> forbiddenWords,
+            List<String> domainKeywords,
+            String closingAction,
+            String ctaTemplate,
+            List<String> openingBubbles,
+            Integer postPriceDelayMs,
+            String preferenceDiscoveryPrompt,
+            String conditionDiscoveryPrompt,
+            String conditionDiscoveryPromptAlt,
+            String activePromptCompact,
+            List<String> symptomKeywords,
+            List<String> bodyAreaKeywords,
+            Map<String, List<String>> serviceFamilyKeywords,
+            Map<String, Object> emotionSignals
+    ) {
+        this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
+                openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
+                conditionDiscoveryPrompt, conditionDiscoveryPromptAlt, activePromptCompact,
+                symptomKeywords, bodyAreaKeywords, serviceFamilyKeywords, emotionSignals,
+                null, List.of(), List.of());
+    }
 
     public PagePersonaConfig(
             String industryCode,
@@ -71,7 +107,7 @@ public record PagePersonaConfig(
     ) {
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, null, null, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
     }
 
     public PagePersonaConfig(
@@ -88,7 +124,7 @@ public record PagePersonaConfig(
     ) {
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
     }
 
     public PagePersonaConfig(
@@ -109,13 +145,17 @@ public record PagePersonaConfig(
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
                 openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
+    }
+
+    public static PagePersonaConfig defaults() {
+        return empty();
     }
 
     public static PagePersonaConfig empty() {
         return new PagePersonaConfig(
                 null, null, null, null, null, null, List.of(), List.of(), null, null, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of()
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of()
         );
     }
 
@@ -279,6 +319,11 @@ public record PagePersonaConfig(
                 if (kw != null && !kw.isBlank()) merged.add(kw.strip());
             }
         }
+        if (scopeTaxonomy != null) {
+            for (String kw : scopeTaxonomy) {
+                if (kw != null && !kw.isBlank()) merged.add(kw.strip());
+            }
+        }
         if (symptomKeywords != null) {
             for (String kw : symptomKeywords) {
                 if (kw != null && !kw.isBlank()) merged.add(kw.strip());
@@ -300,6 +345,51 @@ public record PagePersonaConfig(
             }
         }
         return merged.isEmpty() ? Collections.emptyList() : List.copyOf(merged);
+    }
+
+    public String resolvedCareActor() {
+        if (careActor != null && !careActor.isBlank()) {
+            return careActor.strip();
+        }
+        String ind = industryCode != null ? industryCode.toLowerCase(Locale.ROOT) : "";
+        List<String> kws = safeDomainKeywords();
+        String joinedKws = String.join(" ", kws).toLowerCase(Locale.ROOT);
+        if (ind.contains("dental") || ind.contains("nha_khoa") || ind.contains("clinic") || ind.contains("medical")
+                || joinedKws.contains("nha khoa") || joinedKws.contains("tẩy trắng răng") || joinedKws.contains("bọc răng")
+                || joinedKws.contains("niềng răng") || joinedKws.contains("bác sĩ")) {
+            return "bác sĩ";
+        }
+        if (ind.contains("spa") || ind.contains("wellness") || joinedKws.contains("massage") || joinedKws.contains("dưỡng sinh")) {
+            return "kỹ thuật viên";
+        }
+        return "chuyên viên";
+    }
+
+    public List<String> resolvedScopeTaxonomy() {
+        java.util.Set<String> merged = new java.util.LinkedHashSet<>();
+        if (scopeTaxonomy != null) {
+            for (String s : scopeTaxonomy) {
+                if (s != null && !s.isBlank()) merged.add(s.strip());
+            }
+        }
+        if (bodyAreaKeywords != null) {
+            for (String s : bodyAreaKeywords) {
+                if (s != null && !s.isBlank()) merged.add(s.strip());
+            }
+        }
+        if (domainKeywords != null) {
+            for (String s : domainKeywords) {
+                if (s != null && !s.isBlank()) merged.add(s.strip());
+            }
+        }
+        return merged.isEmpty() ? Collections.emptyList() : List.copyOf(merged);
+    }
+
+    public List<String> resolvedSafetyRedFlags() {
+        if (safetyRedFlags != null && !safetyRedFlags.isEmpty()) {
+            return List.copyOf(safetyRedFlags);
+        }
+        return Collections.emptyList();
     }
 
     public boolean matchesDomainKeyword(String text) {

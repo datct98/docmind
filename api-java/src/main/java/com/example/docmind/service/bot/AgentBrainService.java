@@ -149,18 +149,46 @@ public class AgentBrainService {
         }
     }
 
+    private volatile List<ConversationState.CustomerCareNoteArtifact> lastRetainedCareNotes = List.of();
+
+    public List<ConversationState.CustomerCareNoteArtifact> getLastRetainedCareNotes() {
+        return lastRetainedCareNotes;
+    }
+
     public void retainTurnAsync(
             UUID pageId,
             String senderId,
             String customerName,
             String userMessage,
             String assistantReply) {
+        retainTurnAsync(pageId, senderId, customerName, userMessage, assistantReply, List.of());
+    }
+
+    public void retainTurnAsync(
+            UUID pageId,
+            String senderId,
+            String customerName,
+            String userMessage,
+            String assistantReply,
+            List<ConversationState.CustomerCareNoteArtifact> customerCareNotes) {
+        List<ConversationState.CustomerCareNoteArtifact> safeNotes = customerCareNotes != null
+                ? List.copyOf(customerCareNotes)
+                : List.of();
+        this.lastRetainedCareNotes = safeNotes;
+        if (!safeNotes.isEmpty()) {
+            log.info("[AgentBrain] Retaining {} CustomerCareNoteArtifact(s) for page={} sender={}: {}",
+                    safeNotes.size(), pageId, senderId, safeNotes);
+        }
         if (client == null || userMessage == null || userMessage.isBlank()) {
             return;
         }
         String tenantId = pageId != null ? pageId.toString() : "global";
         String customerId = (senderId != null && !senderId.isBlank()) ? senderId.strip() : "anonymous_customer";
         String conversationId = tenantId + ":" + customerId;
+        String enrichedAssistantReply = safeNotes.isEmpty()
+                ? assistantReply
+                : (assistantReply != null ? assistantReply : "")
+                  + "\n[CUSTOMER_CARE_NOTES: " + safeNotes + "]";
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -169,16 +197,17 @@ public class AgentBrainService {
                         customerId,
                         conversationId,
                         userMessage,
-                        assistantReply,
+                        enrichedAssistantReply,
                         customerName,
                         true
                 ));
                 if (retained != null) {
-                    log.info("[AgentBrain] Retained turn (tenant={}, customer={}, extractedFacts={}, supersededFacts={}, stage={})",
+                    log.info("[AgentBrain] Retained turn (tenant={}, customer={}, extractedFacts={}, supersededFacts={}, careNotes={}, stage={})",
                             tenantId,
                             customerId,
                             retained.extractedFacts() != null ? retained.extractedFacts().size() : 0,
                             retained.supersededFactIds() != null ? retained.supersededFactIds().size() : 0,
+                            safeNotes.size(),
                             retained.purchaseStage());
                 }
             } catch (Exception ex) {

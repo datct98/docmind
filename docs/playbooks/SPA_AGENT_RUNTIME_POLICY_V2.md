@@ -868,7 +868,7 @@ SAFETY_HANDOFF_FALLBACK:
   bubble_1: "Dạ trường hợp này cần chuyên viên kiểm tra trực tiếp để an toàn và chính xác cho mình ạ. Em chuyển người hỗ trợ mình ngay nhé."
 
 COMPLAINT_HANDOFF_FALLBACK:
-  bubble_1: "Dạ em rất tiếc vì trải nghiệm chưa làm mình hài lòng ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi mình sớm nhất nhé."
+  bubble_1: "Dạ em rất tiếc vì trải nghiệm vừa rồi chưa trọn vẹn ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi mình sớm nhất nhé."
 ```
 
 ---

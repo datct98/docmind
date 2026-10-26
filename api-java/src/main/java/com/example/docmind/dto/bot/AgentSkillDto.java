@@ -260,7 +260,7 @@ public record AgentSkillDto(
             case "safety_handoff_high_risk" ->
                     "Dạ trường hợp này cần chuyên viên kiểm tra trực tiếp để an toàn và chính xác cho " + h + " ạ. Em chuyển người hỗ trợ " + h + " ngay nhé.";
             case "complaint_immediate_handoff" ->
-                    "Dạ em rất tiếc vì trải nghiệm chưa làm " + h + " hài lòng ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi " + h + " sớm nhất nhé.";
+                    "Dạ em rất tiếc vì trải nghiệm vừa rồi chưa trọn vẹn ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi " + h + " sớm nhất nhé.";
             default -> (goodExample != null && !goodExample.isBlank())
                     ? goodExample
                     : "Dạ em ghi nhận thông tin của " + h + " ạ. Em sẽ hỗ trợ " + h + " tiếp nhé.";

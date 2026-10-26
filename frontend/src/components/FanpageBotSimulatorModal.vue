@@ -1263,7 +1263,7 @@ const flushBurst = async () => {
       documentIds: docIds,
       previousTemperature: prevTemp,
       topK: 5,
-      splitPriceBubbles: true
+      splitPriceBubbles: false
     })
 
     // Cập nhật lịch sử hội thoại

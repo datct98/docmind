@@ -61,6 +61,23 @@ public final class PackageCatalogService {
             }
             return base;
         }
+
+        /**
+         * Mục 6 (v3.4.1): Ghi chú không gian hướng khách hàng (Customer-Facing Space Note)
+         * khi báo giá hoặc xử lý chê đắt (khi khách CHƯA hỏi về loại phòng) — không tự khai "phòng chung"
+         * làm khách tụt cảm xúc, trong khi {@link #roomType()} nội bộ vẫn giữ nguyên nhãn "Phòng chung..."
+         * để phục vụ kiểm định sự thật (TEST K) và giải đáp khi khách hỏi trực tiếp.
+         */
+        public String customerFacingSpaceNote() {
+            if (roomType == null || roomType.isBlank()) {
+                return "";
+            }
+            String lower = roomType.strip().toLowerCase(Locale.ROOT);
+            if (lower.contains("phòng chung")) {
+                return "không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo";
+            }
+            return roomType.strip();
+        }
     }
 
     public static List<PackageSummary> extractCatalog(

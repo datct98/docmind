@@ -238,6 +238,7 @@ public class OllamaLlmClient implements LlmClient {
         String effectiveModel = activeRuntimeModel != null ? activeRuntimeModel : props.getModel();
         ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
         boolean useChatEndpoint = (thinkingMode != null) || isNativeThinkingCapableModel(effectiveModel);
+        // v3.5.0: Tối ưu tốc độ phản hồi <= 22s trên qwen3:14b khi prompt runtime đã có đầy đủ <GROUNDED_TURN_FACTS> và <AUTHENTIC_EMOTIONAL_COMPASS>.
         boolean suppressModelThinkForGroundedTurn = props.isSuppressRedundantThinkWhenGrounded()
                 && prompt != null
                 && prompt.contains("<GROUNDED_TURN_FACTS>")
@@ -253,19 +254,35 @@ public class OllamaLlmClient implements LlmClient {
 
         int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 550;
         int numPredict;
-        if (thinkingMode != null) {
-            numPredict = (budget != null && budget.maxTokens() > 0)
+        boolean forceFullThinkingPredict = Boolean.TRUE.equals(thinkFlag)
+                && (configuredPredict >= 2048
+                    || (prompt != null && (prompt.contains("<AUTHENTIC_EMOTIONAL_COMPASS>")
+                        || prompt.contains("<QWEN3_SELECTIVE_THINKING_PROTOCOL>"))));
+        boolean isTargetedRepairCall = prompt != null && prompt.contains("FAST_TARGETED_REPAIR_HINT");
+        if (suppressModelThinkForGroundedTurn && !isTargetedRepairCall) {
+            numPredict = 750;
+        } else if (thinkingMode != null) {
+            int modeBudget = (budget != null && budget.maxTokens() > 0)
                     ? budget.maxTokens()
                     : thinkingMode.maxOutputTokens();
+            // v3.4.1 Mục 0.3: khi think=true thật, bắt buộc gửi numPredict = 2048 (không bị ThinkingMode.maxOutputTokens() ép xuống 400–550).
+            // Khi think=false giữ ngân sách nhỏ (400–550) để tối ưu tốc độ.
+            numPredict = forceFullThinkingPredict
+                    ? Math.max(2048, Math.max(configuredPredict, modeBudget))
+                    : modeBudget;
         } else {
-            numPredict = (budget != null && budget.maxTokens() > 0)
-                    ? (budget.maxTokens() <= 900 ? budget.maxTokens() : Math.max(configuredPredict, 550))
-                    : configuredPredict;
+            numPredict = forceFullThinkingPredict
+                    ? Math.max(2048, configuredPredict)
+                    : ((budget != null && budget.maxTokens() > 0)
+                        ? (budget.maxTokens() <= 900 ? budget.maxTokens() : Math.max(configuredPredict, 550))
+                        : configuredPredict);
         }
 
-        double temp = (budget != null && budget.temperature() >= 0)
-                ? budget.temperature()
-                : (props.getTemperature() > 0 ? props.getTemperature() : 0.2);
+        double temp = (suppressModelThinkForGroundedTurn && !isTargetedRepairCall)
+                ? 0.3
+                : ((budget != null && budget.temperature() >= 0)
+                    ? budget.temperature()
+                    : (props.getTemperature() > 0 ? props.getTemperature() : 0.3));
         double topP = (budget != null && budget.topP() != null && budget.topP() > 0.0 && budget.topP() <= 1.0)
                 ? budget.topP()
                 : (props.getTopP() > 0 ? props.getTopP() : 0.9);
@@ -274,6 +291,12 @@ public class OllamaLlmClient implements LlmClient {
                 : (props.getRepeatPenalty() > 0 ? props.getRepeatPenalty() : 1.08);
         int effectiveNumCtx = props.getNumCtx() > 0 ? props.getNumCtx() : 3072;
 
+        boolean compassInjected = prompt != null && prompt.contains("<AUTHENTIC_EMOTIONAL_COMPASS>");
+        log.info("[CompassAudit] thinkingMode={}, thinkFlag={}, numPredict={}, compassInjected={}",
+                thinkingMode != null ? thinkingMode.name() : "NONE",
+                thinkFlag,
+                numPredict,
+                compassInjected);
         log.info("[LLM] Calling provider=ollama, model={}, endpoint={}, thinkingMode={}, think={}, keepAlive={}, numPredict={}, numCtx={}, temp={}, topP={}, repeatPenalty={}, budgetTier={}",
                 effectiveModel, endpoint,
                 thinkingMode != null ? thinkingMode.name() : "NONE",

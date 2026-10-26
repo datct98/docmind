@@ -47,12 +47,12 @@ public class HonorificConsistencyHook implements GuardrailHook {
     // Thay thế chính xác giữ nguyên capitalization trong 1 lượt duy nhất (bảo vệ cụm "nhiều anh/chị")
     private static final Pattern CHI_REPLACEMENT_PATTERN = Pattern.compile("(?iU)(?<!nhiều\\sanh/)(?<!\\p{L})chị(?!\\p{L})");
 
-    // Thay thế variable-length lookbehind bằng capturing group forward để triệt tiêu ReDoS
+    // Thay thế variable-length lookbehind bằng capturing group forward để triệt tiêu ReDoS (bảo vệ danh từ ghép "bạn thân", "bạn bè", ...)
     private static final Pattern BAN1_PATTERN = Pattern.compile(
-            "(?iU)\\b(chào|của|cho|với|hỗ\\s+trợ|tư\\s+vấn|mời|giúp|gửi|hẹn)\\s+(bạn)(?!\\p{L})"
+            "(?iU)\\b(chào|của|cho|với|hỗ\\s+trợ|tư\\s+vấn|mời|giúp|gửi|hẹn)\\s+(bạn)(?!\\p{L})(?!\\s+(?:thân|bè|gái|trai|đời|học|đồng\\s+hành|cùng))"
     );
     private static final Pattern BAN2_PATTERN = Pattern.compile(
-            "(?iU)(?<!\\p{L})(bạn)(?=\\s+(?:có\\s+thể|muốn|cần|đang|sẽ|nên|ơi|nhé|nha|ạ|vui\\s+lòng|hãy))"
+            "(?iU)(?<!\\p{L})(bạn)(?!\\s+(?:thân|bè|gái|trai|đời|học|đồng\\s+hành|cùng))(?=\\s+(?:có\\s+thể|muốn|cần|đang|sẽ|nên|ơi|nhé|nha|ạ|vui\\s+lòng|hãy))"
     );
 
     private static String replaceBan(String banToken, boolean isMale) {

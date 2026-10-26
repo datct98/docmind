@@ -31,7 +31,7 @@ public class OllamaProperties {
     private int numCtx = 8192;
 
     /** Giới hạn số token sinh ra tối đa (550 tokens cho tư vấn bán hàng Fanpage) để cân bằng tốc độ và độ chi tiết. */
-    private int numPredict = 2048;
+    private int numPredict = 550; // fallback khi không có cấu hình Spring; runtime lấy ollama.num-predict (mặc định 2048)
 
     /** Top-P sampling (mặc định 0.9 cho tư vấn bán hàng tự nhiên nhưng bám sát ngữ cảnh). */
     private double topP = 0.9;
