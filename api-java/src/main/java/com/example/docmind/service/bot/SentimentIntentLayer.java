@@ -81,8 +81,8 @@ public final class SentimentIntentLayer {
 
     // 2. NEUROLOGICAL_RISK (SAFE-NEURO-001)
     private static final Pattern ACUTE_NEUROLOGICAL_RED_FLAG_PATTERN = Pattern.compile(
-            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|liệt\\s+nửa\\s+người|méo\\s+miệng|miệng\\s+méo|nói\\s+khó|nói\\s+ngọng|líu\\s+lưỡi|"
-            + "chóng\\s+mặt\\s+nhiều|chóng\\s+mặt\\s+dữ\\s+dội|hoa\\s+mắt\\s+chóng\\s+mặt|ù\\s+tai\\s+chóng\\s+mặt|"
+            "(?isU).*\\b(đau\\s+đầu\\s+dữ\\s+dội|yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|liệt\\s+tay|liệt\\s+chân|liệt\\s+nửa\\s+người|tê\\s+(?:bì\\s+)?nửa\\s+người|méo\\s+miệng|miệng\\s+méo|nói\\s+khó|nói\\s+ngọng|líu\\s+lưỡi|"
+            + "chóng\\s+mặt\\s+nhiều|chóng\\s+mặt\\s+dữ\\s+dội|hoa\\s+mắt\\s+chóng\\s+mặt|chóng\\s+mặt\\s+(?:kèm\\s+)?hoa\\s+mắt|ù\\s+tai\\s+chóng\\s+mặt|"
             + "tê\\s+(?:tay\\s+|chân\\s+|bì\\s+)?lan\\b|lan\\s+xuống\\s+(?:cánh\\s+tay|bàn\\s+tay|tay|bắp\\s+chân|bàn\\s+chân|chân)|"
             + "chèn\\s+ép\\s+(?:rễ\\s+|dây\\s+)?thần\\s+kinh|thoát\\s+vị\\s+đĩa\\s+đệm)\\b.*"
     );
@@ -469,8 +469,8 @@ public final class SentimentIntentLayer {
         }
         boolean sudden = SUDDEN_ONSET_PATTERN.matcher(norm).matches() || SUDDEN_ONSET_PATTERN.matcher(ascii).matches();
         boolean oneSided = ONE_SIDED_PATTERN.matcher(norm).matches() || ONE_SIDED_PATTERN.matcher(ascii).matches();
-        boolean headache = norm.matches("(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu)\\b.*");
-        return sudden || (oneSided && headache);
+        boolean headacheOrVertigo = norm.matches("(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|nửa\\s+người)\\b.*");
+        return sudden || (oneSided && headacheOrVertigo);
     }
 
     private static final Pattern NUMBNESS_OR_DIZZINESS_OR_WEAK_PATTERN = Pattern.compile(
@@ -896,6 +896,24 @@ public final class SentimentIntentLayer {
         return isApologyMetaComment(normalizedMessage);
     }
 
+    private static final Pattern CONVERSATION_STYLE_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU).*(?:(?:nói\\s+chuyện|trả\\s+lời|cách\\s+nói|cách\\s+trả\\s+lời|giọng\\s+(?:điệu|văn))[^.!?]{0,30}(?:kỳ|kì|lạ|dở|chán|máy\\s+móc|robot|cụt|lủng\\s+củng|vô\\s+duyên|khó\\s+chịu)"
+            + "|máy\\s+móc|như\\s+robot|như\\s+máy|văn\\s+mẫu|hỏi\\s+(?:ngược|lại)\\s+(?:vô\\s+duyên|hoài)|lặp\\s+đi\\s+lặp\\s+lại"
+            + "|hỏi\\s+kiểu|ép\\s+khách|chèo\\s+kéo).*"
+    );
+
+    /**
+     * v3.8: khách góp ý văn phong / chất lượng giao tiếp (khác hẳn phản đối giá). Khi xuất hiện cùng lúc với chê đắt trong
+     * một lượt, ưu tiên xử lý góp ý giao tiếp và KHÔNG tự hạ gói.
+     */
+    public static boolean isConversationStyleComplaint(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return CONVERSATION_STYLE_COMPLAINT_PATTERN.matcher(norm).matches();
+    }
+
     public static boolean isMetaConversationOnBotBehavior(String message) {
         return isGreetingMetaComment(message) || isApologyMetaComment(message);
     }
@@ -947,6 +965,7 @@ public final class SentimentIntentLayer {
             + "|\\b(?:có\\s+(?:cần\\s+|phải\\s+|bắt\\s+buộc\\s+|phát\\s+sinh\\s+)?)?(?:ăn\\s+nhẹ|điểm\\s+tâm|buffet|thực\\s+dưỡng|nước\\s+ép|ngâm\\s+bồn|xông\\s+hơi|chườm\\s+ngải\\s+cứu|tẩy\\s+da\\s+chết|tẩy\\s+tế\\s+bào\\s+chết|chăm\\s+sóc\\s+da\\s+mặt|chọn\\s+ktv|chọn\\s+kỹ\\s+thuật\\s+viên|ktv\\s+nữ|kỹ\\s+thuật\\s+viên\\s+nữ|nhận\\s+tip|tiền\\s+tip|cần\\s+tip|tip\\s+thêm|phụ\\s+phí|phụ\\s+thu|đặt\\s+cọc|cọc\\s+trước)\\b.*\\b(?:miễn\\s+phí|không|k|ko|hông|chưa|sao|thế\\s+nào|ntn|ạ|nhỉ|shop|em)\\b"
             + "|\\b(?:gói\\s+cơ\\s+bản|gói\\s+vip|gói\\s+trị\\s+liệu|gói\\s+chuyên\\s+sâu)\\s+khác\\s+(?:gì|j|sao|như\\s+thế\\s+nào)\\b"
             + "|\\b(?:giờ\\s+nào\\s+vắng|khung\\s+giờ\\s+nào\\s+vắng|làm\\s+xong\\s+có\\s+bị\\s+đau)\\b"
+            + "|\\b(?:mở\\s+cửa|đóng\\s+cửa|giờ\\s+mở\\s+cửa|giờ\\s+làm\\s+việc|làm\\s+việc\\s+(?:tới|đến)\\s+mấy\\s+giờ|địa\\s+chỉ\\s+(?:ở\\s+đâu|bên\\s+mình|chi\\s+nhánh)|chi\\s+nhánh\\s+ở\\s+đâu)\\b"
             + ").*"
     );
     private static final Pattern DETAIL_OR_FAQ_QUESTION_ASCII_PATTERN = Pattern.compile(
@@ -1137,6 +1156,9 @@ public final class SentimentIntentLayer {
                 || ascii.contains("tien tip") || ascii.contains("phu phi")) return "chính sách tip";
         if (norm.contains("đặt cọc") || norm.contains("cọc trước") || ascii.contains("dat coc")) return "chính sách đặt cọc";
         if (norm.contains("giờ nào vắng") || ascii.contains("gio nao vang")) return "khung giờ vắng khách";
+        if (norm.matches("(?isU).*\\b(mở\\s+cửa|đóng\\s+cửa|giờ\\s+làm\\s+việc|địa\\s+chỉ|chi\\s+nhánh)\\b.*")) {
+            return "giờ mở cửa và địa chỉ";
+        }
         if (norm.matches("(?isU).*\\b(gói\\s+cơ\\s+bản|gói\\s+vip|gói\\s+trị\\s+liệu|gói\\s+chuyên\\s+sâu)\\s+khác\\s+(?:gì|j|sao)\\b.*")) {
             return "sự khác biệt giữa các gói";
         }

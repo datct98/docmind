@@ -168,25 +168,44 @@ public class PriceLadderTracker {
     );
 
     // =========================================================================
-    // DEFAULT FALLBACK CATALOG TIERS (WHEN NO DYNAMIC CHUNKS ARE PROVIDED)
+    // v3.8: KHÔNG còn ladder/giá sàn/chính sách khuyến mãi cố định. availablePackageCatalog (đã lọc theo tenant + chi nhánh)
+    // là nguồn DUY NHẤT cho việc hạ bậc; Catalog thiếu => không có targetPrice (caller hỏi làm rõ / báo chưa xác minh / handoff).
     // =========================================================================
 
-    private static final String ENTRY_DS01_NAME = "Gói Vệ sinh tai cơ bản (DS01)";
+    /** Chặn kỹ thuật khi parse số tiền từ văn bản (không phải ngưỡng quyết định hạ bậc). */
+    private static final long MIN_PARSE_VND = 1_000L;
+    private static final long MAX_PARSE_VND = 500_000_000L;
 
-    private static final List<PriceTier> HANOI_LADDER = List.of(
-            new PriceTier(399_000L, "Gói Massage cơ bản (NS01)", "60 phút", "hanoi", "NS01", "MASSAGE"),
-            new PriceTier(239_000L, "Gói Dưỡng sinh cơ bản (DS02)", "60 phút", "hanoi", "DS02", "DUONG_SINH"),
-            new PriceTier(129_000L, ENTRY_DS01_NAME, "30 phút", "hanoi", "DS01", "DUONG_SINH")
-    );
-
-    private static final List<PriceTier> SAIGON_LADDER = List.of(
-            new PriceTier(570_000L, "Gói Massage cơ bản (NS01)", "70 phút", "saigon", "NS01", "MASSAGE"),
-            new PriceTier(260_000L, "Gói Dưỡng sinh cơ bản (DS02)", "60 phút", "saigon", "DS02", "DUONG_SINH"),
-            new PriceTier(129_000L, ENTRY_DS01_NAME, "30 phút", "saigon", "DS01", "DUONG_SINH")
-    );
-
-    public static final long CATALOG_FLOOR_PRICE = 129_000L;
-    public static final String DEFAULT_PROMO_POLICY = "Giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher";
+    /** Dựng ladder từ Catalog đã xác minh của tenant, lọc theo chi nhánh; bỏ addon. */
+    public static List<PriceTier> ladderFromCatalog(
+            List<com.example.docmind.service.bot.PackageCatalogService.PackageSummary> catalog,
+            String branch
+    ) {
+        if (catalog == null || catalog.isEmpty()) {
+            return List.of();
+        }
+        String wantedRegion = "saigon".equalsIgnoreCase(branch) ? "SG" : ("hanoi".equalsIgnoreCase(branch) ? "HN" : null);
+        java.util.Map<Long, PriceTier> byPrice = new java.util.LinkedHashMap<>();
+        for (var p : catalog) {
+            if (p == null || p.isAddon() || p.priceVnd() <= 0L) {
+                continue;
+            }
+            if (wantedRegion != null && p.region() != null && !p.region().isBlank()
+                    && !wantedRegion.equalsIgnoreCase(p.region())) {
+                continue;
+            }
+            byPrice.putIfAbsent(p.priceVnd(), new PriceTier(
+                    p.priceVnd(),
+                    p.displayName(),
+                    p.durationLabel(),
+                    branch,
+                    p.code(),
+                    p.serviceFamily()));
+        }
+        List<PriceTier> result = new ArrayList<>(byPrice.values());
+        result.sort(Comparator.comparingLong(PriceTier::price).reversed());
+        return result;
+    }
 
     // =========================================================================
     // CORE EVALUATION PIPELINE
@@ -198,99 +217,68 @@ public class PriceLadderTracker {
     public static PriceLadderResult evaluate(
             String customerMessage,
             List<FanpageBotRequest.ConversationTurn> history,
-            List<ReciprocalRankFusion.FusedChunk> chunks,
+            List<com.example.docmind.service.bot.PackageCatalogService.PackageSummary> availablePackageCatalog,
             String explicitBranch
     ) {
         String msg = customerMessage != null ? customerMessage.strip() : "";
         boolean isObjection = isPriceObjection(msg);
         boolean isTrial = isTrialRequest(msg);
-
-        // Precedence: If customer message combines trial and price objection ("muosn thử nhưng cao the"),
-        // objection takes precedence to step down to cheaper entry packages.
+        // Khách vừa thử vừa chê đắt: ưu tiên xử lý chê đắt.
         if (isObjection) {
             isTrial = false;
         }
-
-        // 2. Resolve branch context (Hanoi vs Saigon or dynamic branch)
         String branch = resolveBranch(msg, history, explicitBranch);
+        List<PriceTier> ladder = ladderFromCatalog(availablePackageCatalog, branch);
+        long activeFloorPrice = ladder.stream().mapToLong(PriceTier::price).min().orElse(0L);
+        Long previousPriceQuoted = extractPreviousQuotedPrice(history, activeFloorPrice);
 
-        // 3. Resolve catalog ladder dynamically from chunks first; fallback to default branch ladder when chunks have no price tiers
-        List<PriceTier> dynamicLadder = extractDynamicLadderFromChunks(chunks, branch);
-        List<PriceTier> ladder = mergeBranchFallbackIfApplicable(dynamicLadder, branch);
-        long activeFloorPrice = ladder.stream()
-                .mapToLong(PriceTier::price)
-                .min()
-                .orElse(CATALOG_FLOOR_PRICE);
-        PriceTier floorTier = findTierByPrice(ladder, activeFloorPrice);
+        if (!isObjection && !isTrial) {
+            return new PriceLadderResult(false, false, previousPriceQuoted, previousPriceQuoted, null, null, false,
+                    "Không có phản hồi giá hoặc yêu cầu trải nghiệm.");
+        }
+        if (ladder.isEmpty()) {
+            // Catalog thiếu: KHÔNG tự suy ladder khác từ chunk/văn bản; báo chưa xác minh để caller hỏi lại hoặc handoff.
+            return new PriceLadderResult(isObjection, isTrial, previousPriceQuoted, null, null, null, false,
+                    "CATALOG_UNVERIFIED: chưa có Catalog hợp lệ theo tenant/chi nhánh — không đề xuất giá/gói.");
+        }
 
-        // 1. Extract previous price quoted by assistant across conversation history
-        Long previousPriceQuoted = extractPreviousQuotedPrice(history, Math.min(CATALOG_FLOOR_PRICE, activeFloorPrice));
-
-        // 4. Case: Trial Request ("tôi muosn thử trải nghiệm trước", "thử trc 1b cũng được", "t muốn thử gói 390k trước")
         if (isTrial) {
-            List<Long> customerPrices = extractPricesFromText(msg, 50_000L);
+            List<Long> customerPrices = extractPricesFromText(msg, 0L);
             Long explicitCustomerPrice = !customerPrices.isEmpty() ? customerPrices.get(0) : null;
-            PriceTier tier = null;
-            long targetPrice;
+            PriceTier tier;
             if (explicitCustomerPrice != null) {
                 tier = findClosestTierByPrice(ladder, explicitCustomerPrice, 0.15);
+            } else if (previousPriceQuoted != null) {
+                tier = findTierByPrice(ladder, previousPriceQuoted);
                 if (tier == null) {
-                    tier = findClosestTierByPrice(getLadderForBranch(branch), explicitCustomerPrice, 0.15);
+                    tier = findClosestTierByPrice(ladder, previousPriceQuoted, 0.15);
                 }
-                targetPrice = tier != null ? tier.price() : explicitCustomerPrice;
             } else {
-                targetPrice = previousPriceQuoted != null ? previousPriceQuoted : ladder.get(0).price();
-                tier = findTierByPrice(ladder, targetPrice);
-                if (tier == null) {
-                    tier = findTierByPrice(getLadderForBranch(branch), targetPrice);
-                }
-                if (tier == null) {
-                    tier = findClosestTierByPrice(ladder, targetPrice, 0.15);
-                }
+                tier = ladder.get(0);
             }
-            String pkgName = tier != null
-                    ? tier.packageName()
-                    : ("Gói trải nghiệm (" + formatPrice(targetPrice) + ")");
-            String rationale = "Khách muốn thử trải nghiệm: duy trì nhất quán mức giá gói " + formatPrice(targetPrice)
-                    + " (" + pkgName + "), không nhảy sang gói đắt hơn, điều hướng chốt lịch hẹn.";
-            return new PriceLadderResult(false, true, previousPriceQuoted, targetPrice, pkgName, null, false, rationale);
+            if (tier == null) {
+                return new PriceLadderResult(false, true, previousPriceQuoted, null, null, null, false,
+                        "CATALOG_UNVERIFIED: mức giá khách nêu không khớp gói nào trong Catalog.");
+            }
+            String rationale = "Khách muốn thử trải nghiệm: duy trì nhất quán mức giá gói " + formatPrice(tier.price())
+                    + " (" + tier.packageName() + "), không nhảy sang gói đắt hơn, điều hướng chốt lịch hẹn.";
+            return new PriceLadderResult(false, true, previousPriceQuoted, tier.price(), tier.packageName(), null, false, rationale);
         }
 
-        // 5. Case: Price Objection ("cao thế", "nhưng hơi đắt", "có gói nào rẻ hơn không", "có giảm giá hay km gì không")
-        if (isObjection) {
-            // If already at or below catalog floor and customer still objects
-            if (previousPriceQuoted != null && previousPriceQuoted <= activeFloorPrice) {
-                String pkgName = floorTier != null
-                        ? floorTier.packageName() + (floorTier.duration() != null && !floorTier.duration().isBlank() && !floorTier.packageName().contains(floorTier.duration()) ? " (" + floorTier.duration() + ")" : "")
-                        : ENTRY_DS01_NAME + " - 30 phút";
-                String promo = resolvePromoPolicy(chunks);
-                String rationale = "Khách đã ở mức giá sàn danh mục (" + formatPrice(activeFloorPrice)
-                        + ") và tiếp tục hỏi rẻ hơn: Khẳng định đây là gói mềm nhất bên em, áp dụng chính sách ưu đãi " + promo + ".";
-                return new PriceLadderResult(true, false, previousPriceQuoted, activeFloorPrice, pkgName, promo, true, rationale);
-            }
-
-            // Monotonically step down to the next lower price tier
-            PriceTier nextTier = findNextLowerTier(ladder, previousPriceQuoted);
-            boolean isPurePromo = isPromoOrDiscountInquiry(msg)
-                    && !msg.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(rẻ|re|mềm|mem|thấp|thap|đắt|dat|cao|mắc|mac|bớt|bot)\\b.*");
-            if (isPurePromo && nextTier.price() < 399_000L && (previousPriceQuoted == null || previousPriceQuoted >= 399_000L)) {
-                PriceTier massageFloor = findTierByPrice(ladder, 399_000L);
-                if (massageFloor != null) {
-                    nextTier = massageFloor;
-                }
-            }
-            boolean isFloor = nextTier.price() <= activeFloorPrice;
-            String promo = resolvePromoPolicy(chunks);
-            String rationale = "Khách chê giá " + (previousPriceQuoted != null ? formatPrice(previousPriceQuoted) : "hiện tại")
-                    + " cao hoặc hỏi ưu đãi: Hạ bậc (down-sell) xuống " + nextTier.packageName() + " giá " + formatPrice(nextTier.price())
-                    + (nextTier.duration() != null ? " (" + nextTier.duration() + ")" : "")
-                    + " kèm chính sách ưu đãi " + promo + ".";
-
-            return new PriceLadderResult(true, false, previousPriceQuoted, nextTier.price(), nextTier.packageName(), promo, isFloor, rationale);
+        // Chê giá / hỏi ưu đãi
+        PriceTier floorTier = findTierByPrice(ladder, activeFloorPrice);
+        if (previousPriceQuoted != null && previousPriceQuoted <= activeFloorPrice) {
+            String pkgName = floorTier != null ? floorTier.packageName() : null;
+            String rationale = "Khách đã ở mức giá sàn danh mục (" + formatPrice(activeFloorPrice)
+                    + ") và tiếp tục hỏi rẻ hơn: không còn gói thấp hơn trong Catalog.";
+            return new PriceLadderResult(true, false, previousPriceQuoted, activeFloorPrice, pkgName, null, true, rationale);
         }
-
-        // 6. Neutral / Non-objection turn
-        return new PriceLadderResult(false, false, previousPriceQuoted, previousPriceQuoted, null, null, false, "Không có phản hồi giá hoặc yêu cầu trải nghiệm.");
+        PriceTier nextTier = findNextLowerTier(ladder, previousPriceQuoted);
+        boolean isFloor = nextTier.price() <= activeFloorPrice;
+        String rationale = "Khách chê giá " + (previousPriceQuoted != null ? formatPrice(previousPriceQuoted) : "hiện tại")
+                + " hoặc hỏi ưu đãi: hạ đúng 1 bậc xuống " + nextTier.packageName() + " giá " + formatPrice(nextTier.price())
+                + (nextTier.duration() != null ? " (" + nextTier.duration() + ")" : "") + " theo Catalog.";
+        return new PriceLadderResult(true, false, previousPriceQuoted, nextTier.price(), nextTier.packageName(), null, isFloor, rationale);
     }
 
     /**
@@ -402,7 +390,7 @@ public class PriceLadderTracker {
                 long val = token.endsWith("k")
                         ? Long.parseLong(token.substring(0, token.length() - 1)) * 1000L
                         : Long.parseLong(token.replace(".", "").replace(",", ""));
-                if (val >= 50_000L && val <= 500_000_000L) {
+                if (val >= MIN_PARSE_VND && val <= MAX_PARSE_VND) {
                     int prefixStart = Math.max(0, m.start() - 40);
                     String prefix = line.substring(prefixStart, m.start());
                     int suffixEnd = Math.min(line.length(), m.end() + 25);
@@ -451,7 +439,7 @@ public class PriceLadderTracker {
      * Prunes auxiliary deposit and voucher tokens to guarantee monotonic down-sell ($P_{t+1} \le P_t$).
      */
     public static Long extractPreviousQuotedPrice(List<FanpageBotRequest.ConversationTurn> history) {
-        return extractPreviousQuotedPrice(history, CATALOG_FLOOR_PRICE);
+        return extractPreviousQuotedPrice(history, 0L);
     }
 
     public static Long extractPreviousQuotedPrice(List<FanpageBotRequest.ConversationTurn> history, long floorPrice) {
@@ -487,7 +475,7 @@ public class PriceLadderTracker {
      * while filtering out auxiliary deposit, voucher, and surcharge tokens.
      */
     public static List<Long> extractPricesFromText(String text) {
-        return extractPricesFromText(text, CATALOG_FLOOR_PRICE);
+        return extractPricesFromText(text, 0L);
     }
 
     public static List<Long> extractPricesFromText(String text, long floorPrice) {
@@ -505,7 +493,7 @@ public class PriceLadderTracker {
                 } else {
                     val = Long.parseLong(token.replace(".", "").replace(",", ""));
                 }
-                if (val >= 50_000L && val <= 500_000_000L) {
+                if (val >= MIN_PARSE_VND && val <= MAX_PARSE_VND) {
                     if (!isAuxiliaryPriceToken(val, text, m.start(), m.end(), floorPrice)) {
                         prices.add(val);
                     }
@@ -533,7 +521,7 @@ public class PriceLadderTracker {
      * rather than an authoritative service package price.
      */
     public static boolean isAuxiliaryPriceToken(long val, String text, int start, int end) {
-        return isAuxiliaryPriceToken(val, text, start, end, CATALOG_FLOOR_PRICE);
+        return isAuxiliaryPriceToken(val, text, start, end, 0L);
     }
 
     public static boolean isAuxiliaryPriceToken(long val, String text, int start, int end, long floorPrice) {
@@ -658,40 +646,6 @@ public class PriceLadderTracker {
         return lastIndex;
     }
 
-    public static List<PriceTier> getLadderForBranch(String branch) {
-        if ("saigon".equalsIgnoreCase(branch)) {
-            return SAIGON_LADDER;
-        }
-        return HANOI_LADDER;
-    }
-
-    private static List<PriceTier> mergeBranchFallbackIfApplicable(List<PriceTier> dynamicLadder, String branch) {
-        if (dynamicLadder == null || dynamicLadder.isEmpty()) {
-            return getLadderForBranch(branch);
-        }
-        boolean isWellnessLadder = dynamicLadder.stream().anyMatch(t -> {
-            String code = t.serviceCode() != null ? t.serviceCode().toUpperCase(Locale.ROOT) : "";
-            String name = t.packageName() != null ? t.packageName().toLowerCase(Locale.ROOT) : "";
-            String cat = t.category() != null ? t.category().toLowerCase(Locale.ROOT) : "";
-            return code.startsWith("NS") || code.startsWith("DS")
-                    || name.contains("massage") || name.contains("dưỡng sinh")
-                    || cat.contains("massage") || cat.contains("dưỡng sinh");
-        });
-        if (!isWellnessLadder) {
-            return dynamicLadder;
-        }
-        java.util.Map<Long, PriceTier> merged = new java.util.LinkedHashMap<>();
-        for (PriceTier t : dynamicLadder) {
-            merged.putIfAbsent(t.price(), t);
-        }
-        for (PriceTier fallbackTier : getLadderForBranch(branch)) {
-            merged.putIfAbsent(fallbackTier.price(), fallbackTier);
-        }
-        List<PriceTier> result = new ArrayList<>(merged.values());
-        result.sort(Comparator.comparingLong(PriceTier::price).reversed());
-        return result;
-    }
-
     public static PriceTier findTierByPrice(List<PriceTier> ladder, long price) {
         if (ladder == null) return null;
         for (PriceTier tier : ladder) {
@@ -729,7 +683,7 @@ public class PriceLadderTracker {
      */
     public static PriceTier findNextLowerTier(List<PriceTier> ladder, Long previousPriceQuoted) {
         if (ladder == null || ladder.isEmpty()) {
-            return new PriceTier(CATALOG_FLOOR_PRICE, ENTRY_DS01_NAME, "30 phút", "all", "DS01", "DUONG_SINH");
+            return null;
         }
 
         List<PriceTier> sorted = new ArrayList<>(ladder);
@@ -756,9 +710,6 @@ public class PriceLadderTracker {
                 if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
                     String rawText = fc.chunk().text();
                     String t = rawText.toLowerCase(Locale.ROOT);
-                    if (t.contains("giảm 10%") && (t.contains("5 buổi") || t.contains("5 voucher"))) {
-                        return "Giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher";
-                    }
                     List<String> extracted = com.example.docmind.service.graph.MapOfContentService.extractPromoPolicies(rawText);
                     if (!extracted.isEmpty()) {
                         String first = extracted.get(0);
@@ -775,7 +726,7 @@ public class PriceLadderTracker {
                 }
             }
         }
-        return DEFAULT_PROMO_POLICY;
+        return null; // v3.8: không có chính sách khuyến mãi mặc định cứng
     }
 
     public static String formatPrice(long price) {

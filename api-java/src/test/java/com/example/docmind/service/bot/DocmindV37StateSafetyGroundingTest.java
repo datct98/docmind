@@ -126,18 +126,16 @@ class DocmindV37StateSafetyGroundingTest {
     }
 
     @Test
-    @DisplayName("Validator chặn báo giá dạng câu hỏi xác nhận lựa chọn gói và sửa trước final_bubbles")
-    void validatorBlocksPackageConfirmationQuestion() {
+    @DisplayName("Validator chặn (BLOCKING) báo giá dạng câu hỏi xác nhận gói và KHÔNG tự viết lại câu")
+    void validatorBlocksPackageConfirmationQuestionWithoutRewriting() {
         ConversationState st = symptomState();
         List<ReplyBubble> bad = List.of(new ReplyBubble("Dạ mình đang quan tâm đến gói Massage trị liệu 60 phút giá 399k ạ?", 0));
         var res = ReplyContractValidator.validateAndEnforce(bad, st, "thỉnh thoảng",
                 PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE, false, 10_000, ThinkingMode.FAST_NO_THINK, null);
         assertThat(res.errors()).contains("FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION");
-        List<ReplyBubble> fixed = ReplyContractValidator.sanitizeMechanicalOpenersInBubbles(
-                bad, st, PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE);
-        assertThat(fixed).hasSize(1);
-        assertThat(fixed.get(0).text()).doesNotContain("?").doesNotContain("đang quan tâm");
-        assertThat(fixed.get(0).text()).contains("399k");
+        // v3.8: Java không sửa văn bản; validator giữ NGUYÊN bubble, lỗi là BLOCKING -> regenerate/handoff
+        assertThat(res.validatedBubbles().get(0).text()).isEqualTo(bad.get(0).text());
+        assertThat(ReplyContractValidator.hasBlockingError(res.errors())).isTrue();
     }
 
     @Test

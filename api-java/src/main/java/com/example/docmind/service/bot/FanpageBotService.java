@@ -72,6 +72,10 @@ import java.util.regex.Pattern;
 @Service
 public class FanpageBotService {
 
+    /** Bong bóng handoff an toàn, trung lập ngành nghề; dùng khi LLM vi phạm BLOCKING và không có tham chiếu grounded. */
+    static final String SAFE_HANDOFF_BUBBLE_TEXT =
+            "Dạ để thông tin được chính xác, em xin chuyển cuộc trò chuyện sang nhân viên hỗ trợ trực tiếp ạ.";
+
     private static final Logger log = LoggerFactory.getLogger(FanpageBotService.class);
 
     /** Mẫu phát hiện khách hàng khiếu nại, nóng giận, báo biến chứng y khoa hoặc đòi hoàn tiền gấp. */
@@ -391,6 +395,7 @@ public class FanpageBotService {
 
     /** Correlation id của lượt hiện tại (run_id/conversation_id/turn_id) để nối Router -> Validator -> Sender trong log audit. */
     private static final ThreadLocal<String> CURRENT_TURN_ID = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> PROVENANCE_V38_LOGGED = new ThreadLocal<>();
 
     public FanpageBotResponse handleCustomerMessage(FanpageBotRequest rawRequest) {
         FanpageBotRequest request = rawRequest;
@@ -412,11 +417,83 @@ public class FanpageBotService {
             }
         }
         CURRENT_TURN_ID.set(turnId);
+        PROVENANCE_V38_LOGGED.set(false);
         try {
-            return handleCustomerMessageInternal(request);
+            FanpageBotResponse resp = handleCustomerMessageInternal(request);
+            if (!Boolean.TRUE.equals(PROVENANCE_V38_LOGGED.get()) && resp != null) {
+                resp = enforceFinalOutputGateAndLogProvenanceV38OnEarlyReturn(request, resp);
+            }
+            return resp;
         } finally {
+            PROVENANCE_V38_LOGGED.remove();
             CURRENT_TURN_ID.remove();
         }
+    }
+
+    private FanpageBotResponse enforceFinalOutputGateAndLogProvenanceV38OnEarlyReturn(
+            FanpageBotRequest request,
+            FanpageBotResponse resp
+    ) {
+        if (resp == null || resp.replyBubbles() == null || resp.replyBubbles().isEmpty()) {
+            return resp;
+        }
+        String mergedMsg = request != null ? mergeBurstMessages(request) : "";
+        PrimaryActionRouter.PrimaryAction effAction = resp.needsHumanHandoff()
+                ? ("MEDICAL_SAFETY_HANDOFF".equalsIgnoreCase(resp.handoffCategory())
+                    ? PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
+                    : PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT)
+                : PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY;
+        com.docmind.guardrail.ReplyContractValidator.ValidationResult gateRes =
+                com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
+                        resp.replyBubbles(),
+                        ConversationState.initial(),
+                        mergedMsg,
+                        effAction,
+                        false,
+                        10_000,
+                        ThinkingMode.FAST_NO_THINK,
+                        null
+                );
+        String repairOutcome = "DETERMINISTIC_FAST_PATH_PASS";
+        FanpageBotResponse gatedResp = resp;
+        if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(gateRes.errors())) {
+            List<String> gateErrors = List.copyOf(gateRes.errors());
+            log.warn("[FinalOutputGate] Early-return BLOCKED errors={} -> safe handoff", gateErrors);
+            repairOutcome = "FINAL_GATE_SAFE_HANDOFF";
+            gatedResp = buildHandoffResponse(
+                    SAFE_HANDOFF_BUBBLE_TEXT,
+                    "UNGROUNDED_OR_UNKNOWN",
+                    "Final Output Gate chặn câu trả lời vi phạm hợp đồng: " + String.join(",", gateErrors),
+                    0.2,
+                    resp.extractedLead(),
+                    resp.customerInsight(),
+                    resp.activeSkills()
+            );
+        }
+        if (request != null && request.senderId() != null && gatedResp.replyBubbles() != null && !gatedResp.replyBubbles().isEmpty()) {
+            String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
+            String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKeyNow, mergedMsg);
+            SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerUserTurnId, mergedMsg);
+            SentBubbleLedger.recordAssistantTurn(
+                    ledgerKeyNow,
+                    ledgerUserTurnId + ":a",
+                    gatedResp.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
+                    SentBubbleLedger.DeliveryStatus.DELIVERED,
+                    List.of()
+            );
+        }
+        List<String> finalTexts = gatedResp.replyBubbles() != null
+                ? gatedResp.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList()
+                : List.of();
+        log.info("[ProvenanceV38] turn_id={} raw_output={} sanitized_output={} validator_errors={} repair_outcome={} final_bubble={}",
+                CURRENT_TURN_ID.get(),
+                "DETERMINISTIC_POLICY",
+                maskSensitiveForAudit(resp.replyText()),
+                gateRes.errors() != null ? List.copyOf(gateRes.errors()) : List.of(),
+                repairOutcome,
+                maskSensitiveForAudit(String.join(" || ", finalTexts)));
+        PROVENANCE_V38_LOGGED.set(true);
+        return gatedResp;
     }
 
     private FanpageBotResponse handleCustomerMessageInternal(FanpageBotRequest request) {
@@ -1063,6 +1140,7 @@ public class FanpageBotService {
         PrimaryActionRouter.RoutingDecision preRetrievalDecision = PrimaryActionRouter.route(
                 mergedMessage,
                 preRetrievalState,
+                preEnrichedState, // enrich đúng 1 lần/lượt: không để Router enrich lại
                 null,
                 safeDomainKeywords
         );
@@ -1204,7 +1282,13 @@ public class FanpageBotService {
         } else {
             fused = enrichFusedChunksWithPriceLadderTargets(fused, null, mergedMessage, metaCacheForLadder, pageId);
         }
-        PriceLadderResult priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), fused, detectedBranch);
+        // v3.8: ladder chỉ từ availablePackageCatalog đã xác minh (state hoặc parser Catalog chính thức trên chunk ACTIVE của tenant)
+        List<PackageCatalogService.PackageSummary> verifiedCatalogForLadder =
+                (preEnrichedState != null && preEnrichedState.availablePackageCatalog() != null
+                        && !preEnrichedState.availablePackageCatalog().isEmpty())
+                        ? preEnrichedState.availablePackageCatalog()
+                        : PackageCatalogService.extractCatalog(fused, List.of());
+        PriceLadderResult priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), verifiedCatalogForLadder, detectedBranch);
         if (!isPreRoutedDetailOrFaq && !preEnrichedState.hasUnresolvedCustomerRequest()) {
             fused = enrichFusedChunksWithPriceLadderTargets(fused, priceLadder, mergedMessage, metaCacheForLadder, pageId);
         }
@@ -1297,19 +1381,9 @@ public class FanpageBotService {
         boolean hasPriorPriceInHistory = (priceLadder != null && priceLadder.previousPriceQuoted() != null)
                 || hasQuotedPriceInAssistantHistory(request.history());
 
-        ConversationState convState = (hasRuntimeControlPolicy || isLiveConfiguredLlm)
-                ? ConversationState.hydrateForTurn(
-                        pageId,
-                        request.senderId(),
-                        request.conversationId(),
-                        request.isResetSessionRequested(),
-                        mergedMessage,
-                        request.history(),
-                        safeDomainKeywords,
-                        fused
-                )
-                : ConversationState.initial();
-        String stateBeforeTelemetry = formatStateTelemetrySummary(convState);
+        ConversationState priorStateWithChunks = preRetrievalState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
+        ConversationState convState = preEnrichedState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
+        String stateBeforeTelemetry = formatStateTelemetrySummary(priorStateWithChunks);
         PrimaryActionRouter.RoutingDecision actionDecision = isGeneratePriceAnchorAction
                 ? new PrimaryActionRouter.RoutingDecision(
                         PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
@@ -1323,13 +1397,14 @@ public class FanpageBotService {
                 : ((hasRuntimeControlPolicy || isLiveConfiguredLlm)
                         ? PrimaryActionRouter.route(
                                 mergedMessage,
+                                priorStateWithChunks,
                                 convState,
                                 fused,
                                 safeDomainKeywords
                         )
                         : new PrimaryActionRouter.RoutingDecision(
-                                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
-                                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
+                                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
                                 false,
                                 2,
                                 "GENERAL_CONSULTATION",
@@ -1406,7 +1481,7 @@ public class FanpageBotService {
                         convState,
                         mergedMessage,
                         actionDecision.effectiveResponseAction(),
-                        actionDecision.openingRequired(),
+                        actionDecision.prependsConfiguredOpening(),
                         minDelayMs
                 );
             }
@@ -1534,7 +1609,7 @@ public class FanpageBotService {
                                 convState,
                                 mergedMessage,
                                 actionDecision.effectiveResponseAction(),
-                                actionDecision.openingRequired(),
+                                actionDecision.prependsConfiguredOpening(),
                                 minDelayMs
                         );
                     }
@@ -1655,6 +1730,8 @@ public class FanpageBotService {
 
         String rawReply = null;
         boolean interceptedByMoodPass = false;
+        boolean forcedSafeHandoffByReferee = false;
+        List<String> cancelledBubbleTextsThisTurn = List.of();
         boolean responseValidatedByLlm = false;
         String fallbackReasonForTelemetry = null;
         List<String> validationErrorsForTelemetry = List.of();
@@ -1668,10 +1745,24 @@ public class FanpageBotService {
         // sau đó chạy qua ReplyContractValidator kiểm định mà không tự động gắn 2 bong bóng mở đầu cố định.
         boolean isBotMutedFastPath = actionDecision != null
                 && actionDecision.primaryAction() == PrimaryActionRouter.PrimaryAction.BOT_MUTED;
+        boolean isConfiguredThreeBubbleBrandIntro = actionDecision != null
+                && actionDecision.prependsConfiguredOpening()
+                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
+                && pagePersona != null
+                && pagePersona.resolvedConfig() != null
+                && pagePersona.resolvedConfig().openingBubbles() != null
+                && pagePersona.resolvedConfig().openingBubbles().size() >= 3
+                && dbReferenceValRes != null
+                && dbReferenceValRes.validatedBubbles().size() == 3;
 
         if (isBotMutedFastPath) {
             stateDrivenBubbles = List.of();
             rawReply = "";
+            interceptedByMoodPass = true;
+            responseValidatedByLlm = true;
+        } else if (isConfiguredThreeBubbleBrandIntro) {
+            stateDrivenBubbles = dbReferenceValRes.validatedBubbles();
+            rawReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
             interceptedByMoodPass = true;
             responseValidatedByLlm = true;
         } else {
@@ -1684,7 +1775,7 @@ public class FanpageBotService {
                 log.warn("[LLM] Exception calling llmClient {}: {}", llmClient.name(), e.getMessage());
             }
         }
-        boolean isFallback = !isBotMutedFastPath && (rawReply == null
+        boolean isFallback = !isBotMutedFastPath && !isConfiguredThreeBubbleBrandIntro && (rawReply == null
                 || rawReply.isBlank()
                 || rawReply.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*")
                 || rawReply.startsWith("[stub-llm]"));
@@ -1769,6 +1860,13 @@ public class FanpageBotService {
                 sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
                 interceptedByMoodPass = true;
                 isFallback = false;
+            } else if (hasRuntimeControlPolicy) {
+                stateDrivenBubbles = List.of(new FanpageBotResponse.ReplyBubble(SAFE_HANDOFF_BUBBLE_TEXT, 0));
+                rawReply = SAFE_HANDOFF_BUBBLE_TEXT;
+                sanitizedReply = SAFE_HANDOFF_BUBBLE_TEXT;
+                forcedSafeHandoffByReferee = true;
+                interceptedByMoodPass = true;
+                isFallback = false;
             } else {
                 ObsidianMetadataCache metaCache = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
                 rawReply = generateGroundedFallbackReply(
@@ -1782,6 +1880,10 @@ public class FanpageBotService {
         // Chạy qua ReplyContractValidator cho các Page có Runtime Control Policy sau khi LLM đã sinh câu trả lời
         long validationStartNs = System.nanoTime();
         long targetedRepairElapsedMs = 0L;
+        // v3.8 provenance: raw_output -> sanitized -> validator_errors -> repair_outcome -> final_bubble
+        String provenanceRepairOutcome = isConfiguredThreeBubbleBrandIntro ? "CONFIGURED_BRAND_INTRO_3_BUBBLES" : "NOT_NEEDED";
+        List<String> provenanceFirstPassErrors = List.of();
+        String provenanceSanitizedOutput = sanitizedReply;
         if (!interceptedByMoodPass && isLiveConfiguredLlm && hasRuntimeControlPolicy && !leadReadyHandoff && actionDecision != null) {
             List<FanpageBotResponse.ReplyBubble> llmCandidateBubbles = buildCandidateBubblesFromLlmOutput(
                     structuredLlmOutput,
@@ -1797,7 +1899,7 @@ public class FanpageBotService {
                             convState,
                             mergedMessage,
                             actionDecision.effectiveResponseAction(),
-                            actionDecision.openingRequired(),
+                            actionDecision.prependsConfiguredOpening(),
                             minDelayMs,
                             thinkingDecision.thinkingMode(),
                             postPriceDelayMetrics.elapsedSincePriceBubbleMs()
@@ -1812,7 +1914,13 @@ public class FanpageBotService {
                     dbReferenceValRes,
                     thinkingDecision.thinkingMode()
             );
-            if (!contractSatisfied && retryCount < 1) {
+            provenanceFirstPassErrors = llmValRes.errors() != null ? List.copyOf(llmValRes.errors()) : List.of();
+            provenanceSanitizedOutput = sanitizedReply;
+            boolean semanticRegenerateUsed = false;
+            if ((!contractSatisfied || com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors()))
+                    && !semanticRegenerateUsed) {
+                semanticRegenerateUsed = true;
+                provenanceRepairOutcome = "REGENERATE_FAILED";
                 long targetedRepairStartNs = System.nanoTime();
                 retryCount++;
                 try {
@@ -1849,7 +1957,7 @@ public class FanpageBotService {
                                         convState,
                                         mergedMessage,
                                         actionDecision.effectiveResponseAction(),
-                                        actionDecision.openingRequired(),
+                                        actionDecision.prependsConfiguredOpening(),
                                         minDelayMs,
                                         thinkingDecision.thinkingMode(),
                                         postPriceDelayMetrics.elapsedSincePriceBubbleMs()
@@ -1868,7 +1976,8 @@ public class FanpageBotService {
                             structuredLlmOutput = repairedStructured;
                             rawReply = repairedRaw;
                             sanitizedReply = repairedSanitized;
-                            contractSatisfied = true;
+                            contractSatisfied = !com.docmind.guardrail.ReplyContractValidator.hasBlockingError(repairedValRes.errors());
+                            provenanceRepairOutcome = contractSatisfied ? "REGENERATE_PASSED" : "REGENERATE_STILL_BLOCKING";
                         }
                     }
                 } catch (Exception e) {
@@ -1879,41 +1988,66 @@ public class FanpageBotService {
                     repairElapsedMs += elapsed;
                 }
             }
-            // v3.7 Referee enforcement: lỗi nghiêm trọng còn sót sau lượt repair KHÔNG được gửi ra final_bubbles;
-            // thay bằng bong bóng tham chiếu đã grounded từ DB/Catalog (nếu có) thay vì chỉ ghi log vi phạm.
-            if (!contractSatisfied && llmValRes != null && llmValRes.errors() != null
-                    && dbReferenceValRes != null && dbReferenceValRes.validatedBubbles() != null
-                    && !dbReferenceValRes.validatedBubbles().isEmpty()) {
-                boolean hardViolation = llmValRes.errors().stream().anyMatch(e ->
-                        "UNGROUNDED_CATALOG_PRICE".equals(e) || "UNGROUNDED_PACKAGE_BENEFIT".equals(e)
-                        || "FORBIDDEN_NEGATED_SCOPE_USED".equals(e) || "MEDICAL_CLAIM".equals(e)
-                        || "INTERNAL_LEAK".equals(e) || "BODY_PART_MISMATCH_HALLUCINATION".equals(e)
-                        || "VR-004A_NO_REJECTED_PACKAGE_REPEAT".equals(e));
-                if (hardViolation) {
-                    log.warn("[RefereeBlock] hard violation {} -> replaced by grounded reference bubbles", llmValRes.errors());
-                    llmValRes = dbReferenceValRes;
-                    contractSatisfied = true;
+            // v3.8 Referee enforcement: Java KHÔNG sửa văn bản LLM. Còn lỗi BLOCKING hoặc contractSatisfied=false sau
+            // tối đa 1 lần regenerate => bong bóng LLM bị loại hoàn toàn khỏi final_bubbles; chỉ dùng tham chiếu
+            // đã grounded từ DB/Catalog (nếu qua kiểm tra độc lập) hoặc handoff an toàn.
+            boolean stillBlocking = !contractSatisfied
+                    || com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors());
+            if (stillBlocking) {
+                List<String> blockedErrors = llmValRes.errors() != null ? List.copyOf(llmValRes.errors()) : List.of();
+                log.warn("[RefereeBlock] BLOCKING violation(s) {} -> LLM bubbles discarded", blockedErrors);
+                // Fallback duy nhất được phép: câu mẫu do tenant cấu hình trong agent_skills (đã phê duyệt, chỉ thay xưng hô),
+                // và phải qua kiểm tra độc lập. KHÔNG dùng câu Java tự ghép triệu chứng/scope/gói.
+                com.docmind.guardrail.ReplyContractValidator.ValidationResult approvedFallback = null;
+                List<FanpageBotResponse.ReplyBubble> configuredFallback =
+                        approvedConfiguredSkillFallback(activeSkills, actionDecision, honorific);
+                if (!configuredFallback.isEmpty()) {
+                    com.docmind.guardrail.ReplyContractValidator.ValidationResult independentCheck =
+                            com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
+                                    configuredFallback, convState, mergedMessage,
+                                    actionDecision.effectiveResponseAction(), actionDecision.prependsConfiguredOpening(),
+                                    minDelayMs, ThinkingMode.FAST_NO_THINK, null);
+                    if (!com.docmind.guardrail.ReplyContractValidator.hasBlockingError(independentCheck.errors())) {
+                        approvedFallback = independentCheck;
+                    }
                 }
+                if (approvedFallback != null && approvedFallback.validatedBubbles() != null
+                        && !approvedFallback.validatedBubbles().isEmpty()) {
+                    llmValRes = approvedFallback;
+                    provenanceRepairOutcome = provenanceRepairOutcome + "|FALLBACK_CONFIGURED_SKILL_TEMPLATE";
+                    fallbackReasonForTelemetry = "BLOCKING_VALIDATOR_ERRORS:" + String.join(",", blockedErrors);
+                } else {
+                    llmValRes = new com.docmind.guardrail.ReplyContractValidator.ValidationResult(
+                            List.of(),
+                            List.of(new FanpageBotResponse.ReplyBubble(SAFE_HANDOFF_BUBBLE_TEXT, 0)),
+                            SAFE_HANDOFF_BUBBLE_TEXT);
+                    provenanceRepairOutcome = provenanceRepairOutcome + "|SAFE_HANDOFF";
+                    fallbackReasonForTelemetry = "BLOCKING_VALIDATOR_ERRORS_HANDOFF:" + String.join(",", blockedErrors);
+                    forcedSafeHandoffByReferee = true;
+                }
+                contractSatisfied = true;
+                validationErrorsForTelemetry = blockedErrors;
             }
             if (llmValRes != null && !llmValRes.validatedBubbles().isEmpty()) {
-                List<FanpageBotResponse.ReplyBubble> sanitizedMechanicalBubbles =
-                        com.docmind.guardrail.ReplyContractValidator.sanitizeMechanicalOpenersInBubbles(
-                                llmValRes.validatedBubbles(),
-                                convState,
-                                actionDecision.effectiveResponseAction()
-                        );
+                // Chỉ điều phối typing_delay_ms; KHÔNG biến đổi câu chữ.
                 stateDrivenBubbles = alignBubbleDelaysWithContract(
-                        sanitizedMechanicalBubbles,
+                        llmValRes.validatedBubbles(),
                         List.of(),
                         postPriceDelayMetrics,
                         cancelledSecondBubbleByConcurrentTurn
                 );
                 sanitizedReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
+                if (cancelledSecondBubbleByConcurrentTurn && llmValRes.validatedBubbles().size() > stateDrivenBubbles.size()) {
+                    // bong bóng bị huỷ do lượt đồng thời: khách KHÔNG thấy => ledger đánh dấu CANCELED, không phát sinh pendingQuestionSlot
+                    cancelledBubbleTextsThisTurn = llmValRes.validatedBubbles()
+                            .subList(stateDrivenBubbles.size(), llmValRes.validatedBubbles().size())
+                            .stream().map(FanpageBotResponse.ReplyBubble::text).toList();
+                }
                 interceptedByMoodPass = true;
-                responseValidatedByLlm = contractSatisfied;
-                validationErrorsForTelemetry = contractSatisfied
-                        ? List.of()
-                        : (llmValRes.errors() != null ? List.copyOf(llmValRes.errors()) : List.of());
+                responseValidatedByLlm = contractSatisfied && !stillBlocking;
+                if (!stillBlocking) {
+                    validationErrorsForTelemetry = List.of();
+                }
             }
         } else if (!interceptedByMoodPass && fallbackReasonForTelemetry == null) {
             responseValidatedByLlm = true;
@@ -1924,7 +2058,8 @@ public class FanpageBotService {
         boolean isActionExplicitHandoff = actionDecision != null
                 && (actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
                     || actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY);
-        boolean stateDrivenHandoff = (interceptedByMoodPass && isActionExplicitHandoff)
+        boolean stateDrivenHandoff = forcedSafeHandoffByReferee
+                || (interceptedByMoodPass && isActionExplicitHandoff)
                 || (!hasRuntimeControlPolicy && structuredLlmOutput != null && Boolean.TRUE.equals(structuredLlmOutput.shouldHandoff()))
                 || (isActionExplicitHandoff && structuredLlmOutput != null && Boolean.TRUE.equals(structuredLlmOutput.shouldHandoff()));
         String detectedIntentForHandoff = actionDecision != null ? actionDecision.detectedIntent() : null;
@@ -1951,7 +2086,8 @@ public class FanpageBotService {
                                     ? "Khách hàng phản ánh tư vấn lệch vùng/nhu cầu kèm bức xúc — xin lỗi và chuyển quản lý hỗ trợ ngay."
                                     : "Khách hàng bức xúc nhiều lượt liên tiếp — chuyển nhân viên hỗ trợ trực tiếp.")))))
                 : null;
-        PostProcessedBotReply processed = interceptedByMoodPass
+        boolean skipLegacyPostProcessing = interceptedByMoodPass || hasRuntimeControlPolicy;
+        PostProcessedBotReply processed = skipLegacyPostProcessing
                 ? new PostProcessedBotReply(
                         sanitizedReply,
                         stateDrivenHandoff,
@@ -1966,12 +2102,12 @@ public class FanpageBotService {
             } else {
                 finalCleanText = ensureCleanPhoneLeadReply(finalCleanText, extractedLead, honorific, appliedRules);
             }
-        } else if (!processed.needsHandoff() && !interceptedByMoodPass
+        } else if (!processed.needsHandoff() && !skipLegacyPostProcessing
                 && (FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(mergedMessage, request.history())
                     || (isFirstTurn && isBarePriceOrGreetingTurn(mergedMessage)))) {
             finalCleanText = enforceAntiInformationDumpingOnBroadPrice(
                     finalCleanText, fused, honorific, request.customerName(), isFirstTurn);
-        } else if (!processed.needsHandoff() && !interceptedByMoodPass) {
+        } else if (!processed.needsHandoff() && !skipLegacyPostProcessing) {
             finalCleanText = enforceConversationBookingConsistency(
                     finalCleanText, mergedMessage, bookingState, honorific, request.history(), isFirstTurn);
             if (consultResult != null && consultResult.isProfileUpdateTurn()) {
@@ -1979,7 +2115,9 @@ public class FanpageBotService {
             }
         }
 
-        finalCleanText = sanitizeForbiddenWords(finalCleanText, pagePersona);
+        if (!skipLegacyPostProcessing) {
+            finalCleanText = sanitizeForbiddenWords(finalCleanText, pagePersona);
+        }
 
         boolean hasCompletedBookingLead = bookingState.hasCapturedPhone() && bookingState.hasConfirmedTimeSlot();
         boolean finalHandoff = processed.needsHandoff() || leadReadyHandoff || hasCompletedBookingLead;
@@ -2072,7 +2210,7 @@ public class FanpageBotService {
             }
         }
         boolean hasConfiguredOpeningOnTurn1 = actionDecision != null
-                && actionDecision.openingRequired()
+                && actionDecision.prependsConfiguredOpening()
                 && pagePersona != null
                 && pagePersona.resolvedConfig() != null
                 && pagePersona.resolvedConfig().openingBubbles() != null
@@ -2096,15 +2234,19 @@ public class FanpageBotService {
         boolean repairApplied = !usedTemplateFallback && retryCount > 0;
         String generationSource = isBotMutedFastPath
                 ? "DETERMINISTIC_POLICY"
-                : (usedTemplateFallback ? "FALLBACK_TEMPLATE" : (repairApplied ? "LLM_REPAIRED" : "LLM_LIVE"));
+                : (isConfiguredThreeBubbleBrandIntro
+                    ? "CONFIGURED_OPENING"
+                    : (usedTemplateFallback ? "FALLBACK_TEMPLATE" : (repairApplied ? "LLM_REPAIRED" : "LLM_LIVE")));
         String validationOutcome = usedTemplateFallback ? "FALLBACK" : (repairApplied ? "REPAIRED_PASS" : "PASS");
         List<String> bubbleSources;
         if (hasConfiguredOpeningOnTurn1 && bubbles != null && bubbles.size() >= 3) {
+            boolean allThreeConfigured = pagePersona.resolvedConfig().openingBubbles().size() >= 3
+                    && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE;
             List<String> mixedSources = new ArrayList<>(bubbles.size());
             mixedSources.add("CONFIGURED_OPENING");
             mixedSources.add("CONFIGURED_OPENING");
             for (int i = 2; i < bubbles.size(); i++) {
-                mixedSources.add(generationSource);
+                mixedSources.add(allThreeConfigured ? "CONFIGURED_OPENING" : generationSource);
             }
             bubbleSources = List.copyOf(mixedSources);
         } else {
@@ -2231,7 +2373,7 @@ public class FanpageBotService {
                 activeSkills
         );
 
-        FanpageBotResponse finalResponse = interceptedByMoodPass
+        FanpageBotResponse finalResponse = (interceptedByMoodPass || hasRuntimeControlPolicy)
                 ? rawResponse
                 : applyGuardrails(
                         rawResponse,
@@ -2244,12 +2386,37 @@ public class FanpageBotService {
                         fused
                 );
 
+        // v3.8 FINAL OUTPUT GATE: cổng cuối nằm SAU mọi bước có thể đổi text (LLM, repair, fallback, deterministic action,
+        // configured opening, guardrail hooks). Mọi nhánh đều phải đi qua; bubble vi phạm BLOCKING không bao giờ được gửi.
+        boolean finalGateBlocked = false;
+        if (finalResponse != null && finalResponse.replyBubbles() != null && !finalResponse.replyBubbles().isEmpty()
+                && actionDecision != null && !isBotMutedFastPath) {
+            com.docmind.guardrail.ReplyContractValidator.ValidationResult gateRes =
+                    com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
+                            finalResponse.replyBubbles(), convState, mergedMessage,
+                            actionDecision.effectiveResponseAction(), actionDecision.prependsConfiguredOpening(),
+                            minDelayMs, ThinkingMode.FAST_NO_THINK, null);
+            if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(gateRes.errors())) {
+                List<String> gateErrors = List.copyOf(gateRes.errors());
+                log.warn("[FinalOutputGate] BLOCKED errors={} -> safe handoff (bubble vi phạm không được gửi)", gateErrors);
+                finalGateBlocked = true;
+                validationErrorsForTelemetry = gateErrors;
+                fallbackReasonForTelemetry = "FINAL_OUTPUT_GATE:" + String.join(",", gateErrors);
+                provenanceRepairOutcome = provenanceRepairOutcome + "|FINAL_GATE_SAFE_HANDOFF";
+                finalResponse = buildHandoffResponse(
+                        SAFE_HANDOFF_BUBBLE_TEXT,
+                        "UNGROUNDED_OR_UNKNOWN",
+                        "Final Output Gate chặn câu trả lời vi phạm hợp đồng: " + String.join(",", gateErrors),
+                        0.2, extractedLead, customerInsight, activeSkills);
+            }
+        }
+
         // Provenance Kill-Switch (v3.4.2 Mục 1.3): Cấm tuyệt đối Java ghi đè câu tiếng Việt ngoài luồng rồi gắn nhãn LLM_LIVE
         List<FanpageBotResponse.ReplyBubble> finalUiReplyBubbles = (finalResponse != null && finalResponse.replyBubbles() != null)
                 ? finalResponse.replyBubbles()
                 : (bubbles != null ? bubbles : List.of());
         String rawLlmOutput = rawReply != null ? rawReply : "";
-        if (interceptedByMoodPass) {
+        if (interceptedByMoodPass && !finalGateBlocked) {
             String normalizedRaw = normalizeForProvenance(rawLlmOutput);
             for (int i = 0; i < finalUiReplyBubbles.size(); i++) {
                 if (i < bubbleSources.size() && "LLM_LIVE".equals(bubbleSources.get(i))) {
@@ -2292,15 +2459,19 @@ public class FanpageBotService {
                 bubblesForStateUpdate = List.copyOf(mergedForState);
             }
             String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
-            String ledgerTurnId = CURRENT_TURN_ID.get();
+            // turn/event id ỔN ĐỊNH (không dùng UUID ngẫu nhiên) để webhook retry không ghi trùng ledger bền vững
+            String ledgerUserTurnId = isGeneratePriceAnchorAction
+                    ? String.valueOf(CURRENT_TURN_ID.get())
+                    : SentBubbleLedger.stableUserTurnId(ledgerKeyNow, mergedMessage);
             if (!isGeneratePriceAnchorAction) {
-                SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerTurnId, mergedMessage);
+                SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerUserTurnId, mergedMessage);
             }
             if (deliveredBubbles != null && !deliveredBubbles.isEmpty()) {
                 SentBubbleLedger.recordAssistantTurn(
-                        ledgerKeyNow, ledgerTurnId,
+                        ledgerKeyNow, ledgerUserTurnId + (isGeneratePriceAnchorAction ? ":anchor" : ":a"),
                         deliveredBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                        SentBubbleLedger.DeliveryStatus.DELIVERED);
+                        SentBubbleLedger.DeliveryStatus.DELIVERED,
+                        cancelledBubbleTextsThisTurn);
             }
             stateAfterTurn = ConversationState.updateAfterSend(
                     pageId,
@@ -2318,6 +2489,14 @@ public class FanpageBotService {
         List<String> finalUiBubbleTexts = (finalResponse != null && finalResponse.replyBubbles() != null)
                 ? finalResponse.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList()
                 : (bubbles != null ? bubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList() : List.of());
+        log.info("[ProvenanceV38] turn_id={} raw_output={} sanitized_output={} validator_errors={} repair_outcome={} final_bubble={}",
+                CURRENT_TURN_ID.get(),
+                maskSensitiveForAudit(rawLlmOutput),
+                maskSensitiveForAudit(provenanceSanitizedOutput),
+                provenanceFirstPassErrors,
+                provenanceRepairOutcome,
+                maskSensitiveForAudit(String.join(" || ", finalUiBubbleTexts)));
+        PROVENANCE_V38_LOGGED.set(true);
         log.info("[ProvenanceAudit] turn_id={} conversation_id={} page_id={} sender_id={} routerRuleId={} primaryAction={} detectedIntent={} selectedSkill={} lastBotQuestionType={} stateBefore={} stateAfter={} policyLoaded={} policyMatched={} safetyHandoffTriggered={} bubbleSources={} rawLlmOutput={} outputAfterValidatorAndHooks={} finalUiReplyBubbles={}",
                 CURRENT_TURN_ID.get(),
                 request.conversationId(),
@@ -2605,8 +2784,8 @@ public class FanpageBotService {
 
         // 1. Dynamic entity & price analysis across fused chunks and MetadataCache
         List<Long> allCatalogPrices = extractAllPricesDynamically(fused, metadataCache, pageId);
-        long minPrice = allCatalogPrices.isEmpty() ? PriceLadderTracker.CATALOG_FLOOR_PRICE : allCatalogPrices.get(0);
-        long maxPrice = allCatalogPrices.isEmpty() ? 1_990_000L : allCatalogPrices.get(allCatalogPrices.size() - 1);
+        long minPrice = allCatalogPrices.isEmpty() ? 0L : allCatalogPrices.get(0);
+        long maxPrice = allCatalogPrices.isEmpty() ? 0L : allCatalogPrices.get(allCatalogPrices.size() - 1);
         Set<String> validCodes = extractValidCodesDynamically(fused, metadataCache, pageId);
         boolean isMassageCatalog = isMassageWellnessCatalog(fused, metadataCache, pageId);
         List<PriceLadderTracker.PriceTier> dynamicTiers = PriceLadderTracker.extractDynamicLadderFromChunks(fused, detectedBranch);
@@ -3874,7 +4053,7 @@ public class FanpageBotService {
                 }
             }
         }
-        return PriceLadderTracker.DEFAULT_PROMO_POLICY;
+        return null; // v3.8: không có chính sách khuyến mãi mặc định cứng
     }
 
     private static String extractPromoSnippet(String text) {
@@ -3975,8 +4154,6 @@ public class FanpageBotService {
                 prices.addAll(graph.getAllPricesSorted());
             }
         }
-        prices.add(PriceLadderTracker.CATALOG_FLOOR_PRICE);
-        prices.add(1_990_000L);
         List<Long> sorted = new ArrayList<>(prices);
         Collections.sort(sorted);
         return sorted;
@@ -4005,12 +4182,6 @@ public class FanpageBotService {
             if (graph != null) {
                 codes.addAll(graph.getServiceCodeIndex().keySet());
             }
-        }
-        for (PriceLadderTracker.PriceTier pt : PriceLadderTracker.getLadderForBranch("hanoi")) {
-            if (pt.serviceCode() != null) codes.add(pt.serviceCode().toUpperCase(Locale.ROOT));
-        }
-        for (PriceLadderTracker.PriceTier pt : PriceLadderTracker.getLadderForBranch("saigon")) {
-            if (pt.serviceCode() != null) codes.add(pt.serviceCode().toUpperCase(Locale.ROOT));
         }
         return codes;
     }
@@ -5714,15 +5885,7 @@ public class FanpageBotService {
                 customerInsight,
                 activeSkills
         );
-        String resolvedHonorific;
-        if (singleBubbleText.matches("(?isU).*\\bAnh\\b.*") && !singleBubbleText.matches("(?isU).*\\bChị\\b.*")) {
-            resolvedHonorific = "Anh";
-        } else if (singleBubbleText.matches("(?isU).*\\bChị\\b.*")) {
-            resolvedHonorific = "Chị";
-        } else {
-            resolvedHonorific = "mình";
-        }
-        return applyGuardrails(base, resolvedHonorific, null, false, "HUMAN_HANDOFF", "", null, null);
+        return base;
     }
 
     private FanpageBotResponse applyGuardrails(
@@ -6448,32 +6611,14 @@ public class FanpageBotService {
             return List.of();
         }
 
-        // Normalize customer pronoun consistency & clean robotic translationese on each LLM bubble before validation
-        com.docmind.guardrail.HonorificConsistencyHook honorificHook = new com.docmind.guardrail.HonorificConsistencyHook();
-        String effectiveHonorific = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "mình";
-        boolean isMale = "Anh".equalsIgnoreCase(effectiveHonorific);
+        // v3.8 ALLOWLIST: chỉ chuẩn hoá khoảng trắng/ký tự điều khiển + viết hoa chữ cái đầu bong bóng (không đổi ngữ nghĩa).
+        // KHÔNG thay từ/cụm, KHÔNG sửa xưng hô, KHÔNG cắt dấu "…", KHÔNG gỡ lời chào: mọi vi phạm do Validator báo BLOCKING
+        // để LLM regenerate tối đa 1 lần.
         List<FanpageBotResponse.ReplyBubble> normalizedBubbles = new ArrayList<>(rawBubbles.size());
         for (FanpageBotResponse.ReplyBubble rb : rawBubbles) {
             if (rb == null || rb.text() == null || rb.text().isBlank()) continue;
-            String cleaned = rb.text().strip()
-                    .replaceAll("(?iU)\\s*\\((?:HN_|SG_)?(?:NS|DS|ADD)\\d{2}\\)", "")
-                    .replaceAll("(?iU)\\b(\\d{2,3})\\.000\\s*(?:đ|vnđ|vnd)\\b", "$1k")
-                    .replaceAll("(?iU)\\s*\\+\\s*", ", ")
-                    .replaceAll("…+$", " ạ.")
-                    .replaceAll("…", "")
-                    .replaceAll("(?iU)\\bđang\\s+gặp\\s+phải\\s+tình\\s+trạng\\s+", "đang bị ")
-                    .replaceAll("(?iU)\\bkhiến\\s+(mình|chị|anh)\\s+mệt\\s+mỏi\\s+hẳn\\s+luôn(?:\\s+ạ)?", "làm $1 mệt mỏi nhiều ạ")
-                    .replaceAll("(?iU)(^|[.!?\\n,;:\\-]\\s*)liệu\\s+(mình|chị|anh)\\s+có\\s+muốn\\b", "$1$2 có muốn");
-            com.docmind.guardrail.GuardrailContext gCtx = new com.docmind.guardrail.GuardrailContext(
-                    effectiveHonorific, null, false, "DISCOVERY", "", List.of(), List.of()
-            );
-            com.docmind.guardrail.GuardrailDraft gDraft = new com.docmind.guardrail.GuardrailDraft(
-                    cleaned, List.of(new FanpageBotResponse.ReplyBubble(cleaned, rb.typingDelayMs()))
-            );
-            if (honorificHook.isApplicable(gCtx, gDraft)) {
-                honorificHook.apply(gCtx, gDraft);
-                cleaned = gDraft.getText();
-            }
+            String cleaned = rb.text().replaceAll("[\\p{Cntrl}&&[^\\n]]", "").replaceAll("[ \\t]{2,}", " ").strip();
+            if (cleaned.isBlank()) continue;
             normalizedBubbles.add(new FanpageBotResponse.ReplyBubble(
                     BubbleCapHook.capitalizeFirstLetter(cleaned),
                     rb.typingDelayMs()
@@ -6486,7 +6631,7 @@ public class FanpageBotService {
         // Section 1.2: On Turn 1 of a new conversation, prepend 2 CONFIGURED_OPENING bubbles (0ms, 1000ms)
         // followed by Bubble 3 (2000ms, LLM_LIVE) addressing the customer's Turn 1 intent.
         boolean hasConfiguredOpening = actionDecision != null
-                && actionDecision.openingRequired()
+                && actionDecision.prependsConfiguredOpening()
                 && pagePersona != null
                 && pagePersona.resolvedConfig() != null
                 && pagePersona.resolvedConfig().openingBubbles() != null
@@ -6498,9 +6643,13 @@ public class FanpageBotService {
             List<String> openingCfg = pagePersona.resolvedConfig().openingBubbles();
             String b1Text = openingCfg.get(0) != null ? openingCfg.get(0).strip() : "";
             String b2Text = openingCfg.get(1) != null ? openingCfg.get(1).strip() : "";
-            FanpageBotResponse.ReplyBubble llmBubble3 = normalizedBubbles.get(normalizedBubbles.size() - 1);
-            String b3Text = llmBubble3.text() != null ? llmBubble3.text().strip() : "";
-            b3Text = stripRedundantGreetingPrefixPreservingGrammar(b3Text, honorific);
+            String b3Text;
+            if (openingCfg.size() >= 3 && openingCfg.get(2) != null && !openingCfg.get(2).isBlank()) {
+                b3Text = openingCfg.get(2).strip();
+            } else {
+                FanpageBotResponse.ReplyBubble llmBubble3 = normalizedBubbles.get(normalizedBubbles.size() - 1);
+                b3Text = llmBubble3.text() != null ? llmBubble3.text().strip() : "";
+            }
             List<FanpageBotResponse.ReplyBubble> turn1ThreeBubbles = new ArrayList<>(3);
             if (!b1Text.isBlank()) {
                 turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b1Text, 0));
@@ -6510,16 +6659,6 @@ public class FanpageBotService {
             }
             turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b3Text, 2000));
             return turn1ThreeBubbles;
-        }
-        if (actionDecision != null && !actionDecision.openingRequired() && !normalizedBubbles.isEmpty()) {
-            FanpageBotResponse.ReplyBubble firstB = normalizedBubbles.get(0);
-            String firstText = firstB.text() != null ? firstB.text().strip() : "";
-            String strippedFirst = stripRedundantGreetingPrefixPreservingGrammar(firstText, honorific);
-            if (!strippedFirst.isBlank() && !strippedFirst.equals(firstText)) {
-                List<FanpageBotResponse.ReplyBubble> adjusted = new ArrayList<>(normalizedBubbles);
-                adjusted.set(0, new FanpageBotResponse.ReplyBubble(BubbleCapHook.capitalizeFirstLetter(strippedFirst), firstB.typingDelayMs()));
-                return adjusted;
-            }
         }
         return normalizedBubbles;
     }
@@ -6566,57 +6705,8 @@ public class FanpageBotService {
         if (lower.contains("\"reply_bubbles\"") || lower.contains("\"should_handoff\"") || lower.contains("\"state_updates\"") || lower.contains("\"grounding_check\"")) {
             return false;
         }
-        if (llmValRes.hasErrors()) {
-            for (String err : llmValRes.errors()) {
-                if ("INTERNAL_LEAK".equals(err)
-                        || "FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION".equals(err)
-                        || "EMPTY_TEMPLATE_APOLOGY".equals(err)
-                        || "MACHINE_TRANSLATED_PHRASE".equals(err)
-                        || "MEDICAL_CLAIM".equals(err)
-                        || "FORBIDDEN_NEGATED_SCOPE_USED".equals(err)
-                        || "DUPLICATE_ERROR_APOLOGY".equals(err)
-                        || "OPERATIONAL_PROMISE_WITHOUT_ARTIFACT".equals(err)
-                        || "PROMO_NOT_GROUNDED".equals(err)
-                        || "FORBIDDEN_OUT_OF_SPACE_PROMISE".equals(err)
-                        || "FORBIDDEN_AWKWARD_CLOSING_QUESTION".equals(err)
-                        || "FORBIDDEN_REPEAT_GUARD_PHRASE".equals(err)
-                        || "UNSTATED_CANG_ASSUMPTION".equals(err)
-                        || "VR-004A_NO_REJECTED_PACKAGE_REPEAT".equals(err)
-                        || "VR-007B_NO_FAKE_STATS_OR_ABSOLUTE_SOCIAL_PROOF".equals(err)
-                        || "PRICE_AFTER_ONE_CLARIFY_PER_INTENT".equals(err)
-                        || "REPEATED_PRICE_AFTER_DISCUSSED".equals(err)
-                        || "REPEATED_PRICE_IN_ANCHOR_BUBBLE".equals(err)
-                        || "UNGROUNDED_CATALOG_PRICE".equals(err)
-                        || "UNGROUNDED_PACKAGE_BENEFIT".equals(err)
-                        || "BODY_PART_MISMATCH_HALLUCINATION".equals(err)
-                        || "INVERTED_CUSTOMER_PRONOUN".equals(err)
-                        || "ROBOTIC_OR_MIXED_PRONOUN_VOICE".equals(err)
-                        || "SERVICE_MISCLASSIFIED_AS_SYMPTOM".equals(err)
-                        || "UNGROUNDED_HERB_INGREDIENT".equals(err)
-                        || "UNNECESSARY_APOLOGY_ON_META_COMMENT".equals(err)
-                        || "REPEATED_TEMPLATE".equals(err)
-                        || "REPEATED_BUBBLE_HASH".equals(err)
-                        || "MECHANICAL_BENEFIT_CONCAT".equals(err)
-                        || "WRONG_ACTION_FOR_ACK".equals(err)
-                        || "UNIT_PRICE_LOGIC_ERROR".equals(err)
-                        || "CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT".equals(err)
-                        || "FORBIDDEN_HISTORY_DEFLECTION_OR_REPEAT_PROMPT".equals(err)
-                        || "FORBIDDEN_MECHANICAL_OPENER".equals(err)
-                        || "REPEATED_EM_HIEU_OPENER_CONSECUTIVE_TURNS".equals(err)
-                        || "FORBIDDEN_APOLOGY_ON_POLITE_DEFERRAL".equals(err)
-                        || "FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK".equals(err)
-                        || "REPEATED_TURN2_SLEEP_SCENE_IN_TURN3".equals(err)
-                        || "REPEATED_TURN3_BUBBLE2_DESCRIPTION_IN_TURN4".equals(err)
-                        || "UNSOLICITED_SHARED_ROOM_MENTION".equals(err)
-                        || "TOO_MANY_SENTENCES".equals(err)
-                        || "VR_NO_FAKE_COMMITMENT".equals(err)
-                        || "VR_NO_CLICHE_METAPHOR".equals(err)
-                        || "VR_EMOJI_WHITELIST".equals(err)
-                        || "VR_NO_UNGROUNDED_SERVICE_CLAIM".equals(err)
-                        || "EMPTY_BUBBLES".equals(err)) {
-                    return false;
-                }
-            }
+        if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors())) {
+            return false;
         }
         if (actionDecision == null) {
             return true;
@@ -6641,13 +6731,9 @@ public class FanpageBotService {
             } else {
                 ConversationState.UnresolvedCustomerRequest activeUnresolved = null;
                 if (convState != null) {
-                    List<String> safeKws = pagePersona != null && pagePersona.resolvedConfig() != null
-                            ? pagePersona.resolvedConfig().safeDomainKeywords()
-                            : List.of();
-                    ConversationState enrichedForCheck = convState.enrichWithCurrentMessage(customerMessage, safeKws);
-                    activeUnresolved = enrichedForCheck.mostRecentUnresolvedRequest();
+                    activeUnresolved = convState.mostRecentUnresolvedRequest();
                     if (activeUnresolved == null) {
-                        activeUnresolved = enrichedForCheck.latestRequest();
+                        activeUnresolved = convState.latestRequest();
                     }
                 }
                 if (activeUnresolved != null && !ConversationState.doesBotReplyAnswerDetailRequest(combined, activeUnresolved)) {
@@ -6730,8 +6816,7 @@ public class FanpageBotService {
                 || "GENERATE_PRICE_ANCHOR_BUBBLE".equals(intent)
                 || (action == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
                     && ("ENTITY_MISMATCH_RECONSULT".equals(intent)
-                        || "MOOD_DROP_RECOVERY".equals(intent)
-                        || (convState != null && !convState.priceRequestedInSession() && !convState.priceDiscussed())))
+                        || "MOOD_DROP_RECOVERY".equals(intent)))
                 || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(intent)
                 || "CONVERSATION_STYLE_REPAIR".equals(intent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(intent)
@@ -6775,8 +6860,10 @@ public class FanpageBotService {
         }
         if (action == PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS
                 && convState != null
+                && convState.downsellOffered()
                 && convState.lastOfferedPrice() != null
-                && !convState.lastOfferedPrice().isBlank()) {
+                && !convState.lastOfferedPrice().isBlank()
+                && Pattern.compile("(?iU)\\b(\\d{2,4}k|\\d{1,3}(?:\\.\\d{3})+)\\b").matcher(combined).find()) {
             String expectedPrice = convState.lastOfferedPrice().toLowerCase(Locale.ROOT);
             String altExpected = expectedPrice.endsWith("k")
                     ? expectedPrice.substring(0, expectedPrice.length() - 1) + ".000"
@@ -6827,7 +6914,8 @@ public class FanpageBotService {
                 }
             }
         }
-        if (!quotedPackageHasVipRoom && lower.matches("(?s).*phòng\\s+vip.*")
+        if (action != PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
+                && !quotedPackageHasVipRoom && lower.matches("(?s).*phòng\\s+vip.*")
                 && !lower.matches("(?s).*(?:không\\s+phải\\s+phòng\\s+vip|chưa\\s+phải\\s+phòng\\s+vip|từ\\s+gói\\s+580k).*")) {
             return false;
         }
@@ -6839,17 +6927,6 @@ public class FanpageBotService {
                     && (lower.contains("massage toàn thân") || lower.contains("trị liệu toàn thân") || lower.contains("full body"))) {
                 return false;
             }
-            if (com.docmind.guardrail.ReplyContractValidator.hasForbiddenMechanicalOpener(combined)) {
-                return false;
-            }
-        }
-        if (com.docmind.guardrail.ReplyContractValidator.hasForbiddenMechanicalOpener(combined)) {
-            return false;
-        }
-        if (llmValRes.errors() != null
-                && (llmValRes.errors().contains("FORBIDDEN_MECHANICAL_OPENER")
-                    || llmValRes.errors().contains("REPEATED_EM_HIEU_OPENER_CONSECUTIVE_TURNS"))) {
-            return false;
         }
         if (action == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
                 && customerMessage != null
@@ -7188,6 +7265,37 @@ public class FanpageBotService {
                     || "spa_stage3_graceful_exit".equalsIgnoreCase(dbSkillCode);
         }
         return false;
+    }
+
+    /** Câu fallback đã cấu hình sẵn của micro-skill đang áp dụng (không do Java ghép). */
+    private static List<FanpageBotResponse.ReplyBubble> approvedConfiguredSkillFallback(
+            List<AgentSkillDto> skills,
+            PrimaryActionRouter.RoutingDecision decision,
+            String honorific) {
+        if (skills == null || skills.isEmpty() || decision == null || decision.correspondingMicroSkillCode() == null) {
+            return List.of();
+        }
+        for (AgentSkillDto sk : skills) {
+            if (sk != null && decision.correspondingMicroSkillCode().equals(sk.code())) {
+                String t = sk.resolvedFallbackReply(honorific != null && !honorific.isBlank() ? honorific : "mình");
+                if (t != null && !t.isBlank()) {
+                    return List.of(new FanpageBotResponse.ReplyBubble(t.strip(), 0));
+                }
+            }
+        }
+        return List.of();
+    }
+
+    /** Che SĐT/email/CCCD và token/secret trong log audit; giữ nguyên văn bản triệu chứng/hội thoại. */
+    static String maskSensitiveForAudit(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text
+                .replaceAll("(?i)(api[_-]?key|token|secret|bearer)\\s*[:=]?\\s*[A-Za-z0-9_\\-\\.]{12,}", "$1=***")
+                .replaceAll("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "***@***")
+                .replaceAll("(?<!\\d)(?:\\+?84|0)(?:[\\s.-]?\\d){8,10}(?!\\d)", "***PHONE***")
+                .replaceAll("(?<!\\d)\\d{12}(?!\\d)", "***CCCD***");
     }
 
     static String normalizeForProvenance(String text) {

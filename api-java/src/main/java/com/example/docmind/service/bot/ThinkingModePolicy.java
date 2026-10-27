@@ -849,12 +849,14 @@ public final class ThinkingModePolicy {
 
         // 0C (v3.3.4 / v3.5.0). Khách bắt bẻ câu chữ của Bot hoặc bày tỏ tụt cảm xúc ("Tôi thấy tụt cảm xúc quá chán chả buồn nói") -> EMOTIONAL_WARM_THINK
         if ("WORDING_FEEDBACK_REPAIR".equals(detectedIntent)
+                || "CONVERSATION_STYLE_REPAIR".equals(detectedIntent)
                 || "MOOD_DROP_RECOVERY".equals(detectedIntent)
                 || SentimentIntentLayer.isMoodDropRecoveryMessage(rawMsg)) {
             return new ThinkingDecision(
                     ThinkingMode.EMOTIONAL_WARM_THINK,
                     ThinkingMode.EMOTIONAL_WARM_THINK.maxOutputTokens(),
-                    "MOOD_DROP_RECOVERY".equals(detectedIntent) ? "MOOD_DROP_EMOTIONAL_RECOVERY" : "WORDING_FEEDBACK_WARM_REPAIR",
+                    "MOOD_DROP_RECOVERY".equals(detectedIntent) ? "MOOD_DROP_EMOTIONAL_RECOVERY"
+                            : ("CONVERSATION_STYLE_REPAIR".equals(detectedIntent) ? "CONVERSATION_STYLE_WARM_REPAIR" : "WORDING_FEEDBACK_WARM_REPAIR"),
                     ObjectionRootCause.NONE,
                     0,
                     priorArgs,

@@ -42,7 +42,7 @@ public final class ReplyContractValidator {
             "(?isU).*(?:cam\\s+kết\\s+khỏi|chữa\\s+khỏi(?:\\s+hẳn)?|điều\\s+trị\\s+dứt\\s+điểm|trị\\s+dứt\\s+điểm|khỏi\\s+bệnh\\s+100%|hết\\s+tê\\s+tay|khỏi\\s+đau\\s+đầu|điều\\s+trị\\s+bệnh|chữa\\s+thoát\\s+vị|chữa\\s+thoái\\s+hóa|cam\\s+kết\\s+hết\\s+đau|đảm\\s+bảo\\s+khỏi|khí\\s+huyết\\s+(?:lên\\s+vùng\\s+đầu\\s+)?kém\\s+lưu\\s+thông|tắc\\s+nghẽn\\s+kinh\\s+lạc|máu\\s+lên\\s+não\\s+kém).*"
     );
     private static final Pattern FAKE_STATS_SOCIAL_PROOF_PATTERN = Pattern.compile(
-            "(?isU).*(?:\\b(?:9\\d|100)\\s*%|10\\.000\\s+khách|hàng\\s+nghìn\\s+khách|tất\\s+cả\\s+khách\\s+đều|ai\\s+cũng\\s+hài\\s+lòng|khách\\s+nào\\s+cũng\\s+thích|100%\\s+khách|chắc\\s+chắn\\s+hài\\s+lòng|cam\\s+kết\\s+hài\\s+lòng\\s+100%|đều\\s+phản\\s+hồi).*"
+            "(?isU).*(?:(?<!miễn\\s+phí\\s)\\b(?:9\\d|100)\\s*%|10\\.000\\s+khách|hàng\\s+nghìn\\s+khách|tất\\s+cả\\s+khách\\s+đều|ai\\s+cũng\\s+hài\\s+lòng|khách\\s+nào\\s+cũng\\s+thích|100%\\s+khách|chắc\\s+chắn\\s+hài\\s+lòng|cam\\s+kết\\s+hài\\s+lòng\\s+100%|đều\\s+phản\\s+hồi).*"
     );
     private static final Pattern QUALITATIVE_SOCIAL_PROOF_PATTERN = Pattern.compile(
             "(?isU).*(?:nhiều\\s+anh/chị\\s+sau\\s+buổi\\s+đầu|phản\\s+hồi\\s+khá\\s+tốt).*"
@@ -116,112 +116,20 @@ public final class ReplyContractValidator {
                     || (st.knownSymptoms() != null && !st.knownSymptoms().isEmpty()));
     }
 
-    /** Sửa vi phạm ranh giới ở mức câu: đổi câu hỏi xác nhận gói thành lời đề xuất; bỏ câu xin lỗi rỗng. */
-    static String fixBoundaryViolations(String text, ConversationState st, PrimaryAction action) {
-        if (text == null || text.isBlank()) {
-            return text;
-        }
-        String out = text;
-        if ((st == null || !st.packageExplicitlySelected()) && action != PrimaryAction.CONFIRM_BOOKING_DETAILS) {
-            out = PACKAGE_CONFIRMATION_QUESTION_PATTERN.matcher(out)
-                    .replaceAll(m -> java.util.regex.Matcher.quoteReplacement(
-                            "Dạ " + m.group(1) + " " + m.group(2).strip() + " là lựa chọn phù hợp cho tình trạng này ạ."));
-        }
-        if (hasKnownCustomerContext(st) && hasEmptyTemplateApology(out)) {
-            String stripped = EMPTY_TEMPLATE_APOLOGY_PATTERN.matcher(out).replaceAll(" ").replaceAll("\\s{2,}", " ").strip();
-            if (!stripped.isBlank()) {
-                out = stripped;
-            }
-        }
-        return out;
-    }
+    // v3.8: Java KHÔNG viết lại/cắt/ghép văn bản LLM. Mọi vi phạm hợp đồng được trả về dưới dạng lỗi BLOCKING
+    // để FanpageBotService yêu cầu LLM regenerate tối đa 1 lần; sau đó dùng fallback/handoff đã phê duyệt.
 
-    public static List<ReplyBubble> sanitizeMechanicalOpenersInBubbles(
-            List<ReplyBubble> bubbles,
-            ConversationState state,
-            PrimaryAction effectiveAction
-    ) {
-        if (bubbles == null || bubbles.isEmpty()) {
-            return List.of();
-        }
-        ConversationState safeState = state != null ? state : ConversationState.initial();
-        boolean priorHadEmHieu = safeState.lastAssistantMessage() != null
-                && EM_HIEU_OPENER_PATTERN.matcher(safeState.lastAssistantMessage()).matches();
-        List<ReplyBubble> result = new ArrayList<>(bubbles.size());
-        for (int i = 0; i < bubbles.size(); i++) {
-            ReplyBubble b = bubbles.get(i);
-            if (b == null || b.text() == null) {
-                continue;
-            }
-            String text = b.text().strip();
-            if (i == 0) {
-                text = rewriteOrStripMechanicalOpener(text, priorHadEmHieu, effectiveAction);
-            } else {
-                text = rewriteOrStripMechanicalOpener(text, false, effectiveAction);
-            }
-            text = fixBoundaryViolations(text, safeState, effectiveAction);
-            if (!text.isBlank()) {
-                result.add(new ReplyBubble(capitalizeFirstLetter(text), b.typingDelayMs()));
-            }
-        }
-        return result.isEmpty() ? bubbles : result;
-    }
+    /** Lỗi BLOCKING: bong bóng vi phạm các lỗi này KHÔNG BAO GIỜ được đưa vào final_bubbles. */
+    public static final java.util.Set<String> BLOCKING_ERRORS = java.util.Set.of(
+            "UNGROUNDED_CATALOG_PRICE", "UNGROUNDED_PACKAGE_BENEFIT", "VR_NO_UNGROUNDED_SERVICE_CLAIM",
+            "FORBIDDEN_NEGATED_SCOPE_USED", "MEDICAL_CLAIM", "INTERNAL_LEAK", "BODY_PART_MISMATCH_HALLUCINATION",
+            "VR-004A_NO_REJECTED_PACKAGE_REPEAT", "REPEATED_PRICE_AFTER_DISCUSSED", "NO_NUMERIC_PRICE_REPEAT_AFTER_DISCUSSED",
+            "FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION", "EMPTY_TEMPLATE_APOLOGY",
+            "VR-007B_NO_FAKE_STATS_OR_ABSOLUTE_SOCIAL_PROOF", "VR-007D_UNGROUNDED_SOCIAL_PROOF",
+            "VR-007H_UNGROUNDED_PRIVATE_ROOM", "OPERATIONAL_PROMISE_WITHOUT_ARTIFACT", "PROMO_NOT_GROUNDED");
 
-    public static String rewriteOrStripMechanicalOpener(
-            String rawText,
-            boolean priorTurnStartedWithEmHieu,
-            PrimaryAction effectiveAction
-    ) {
-        if (rawText == null || rawText.isBlank()) {
-            return "";
-        }
-        String text = rawText.strip();
-        List<String> sents = splitIntoSentencesPreservingPunctuation(text);
-        if (sents.size() >= 2) {
-            String firstSent = sents.get(0).strip();
-            boolean firstIsPureMechanical = firstSent.matches("(?isU)^(?:dạ[,\\s]+)?(?:(?:em\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+)?(?:mình|chị|anh|bạn)\\s+(?:đang|đã)\\s+trải\\s+qua[^.!?]*|.*\\btrải\\s+qua\\s+những\\s+cảm\\s+giác\\s+đó[^.!?]*|(?:em|mình)\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+(?:cảm\\s+giác|nỗi\\s+băn\\s+khoăn|sự\\s+phân\\s+vân)[^.!?]*)[.!?]*$");
-            boolean firstIsRepeatedEmHieu = priorTurnStartedWithEmHieu && EM_HIEU_OPENER_PATTERN.matcher(firstSent).matches();
-            if (firstIsPureMechanical) {
-                String remaining = String.join(" ", sents.subList(1, sents.size())).strip();
-                if (!remaining.isBlank()) {
-                    text = remaining.matches("(?isU)^dạ\\b.*") ? remaining : ("Dạ " + Character.toLowerCase(remaining.charAt(0)) + remaining.substring(1));
-                    sents = splitIntoSentencesPreservingPunctuation(text);
-                }
-            } else if (firstIsRepeatedEmHieu) {
-                String rewrittenFirst = rewriteSingleSentenceMechanicalOpener(firstSent, true, effectiveAction);
-                sents = new ArrayList<>(sents);
-                sents.set(0, rewrittenFirst);
-                text = String.join(" ", sents).strip();
-            }
-        }
-        text = rewriteSingleSentenceMechanicalOpener(text, priorTurnStartedWithEmHieu, effectiveAction);
-        return capitalizeFirstLetter(text.strip());
-    }
-
-    private static String rewriteSingleSentenceMechanicalOpener(
-            String input,
-            boolean priorTurnStartedWithEmHieu,
-            PrimaryAction effectiveAction
-    ) {
-        if (input == null || input.isBlank()) {
-            return "";
-        }
-        String t = input.strip();
-        t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?(?:em\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+)?(?:mình|chị|anh|bạn)\\s+(?:đang|đã)\\s+trải\\s+qua\\s+(?:những\\s+cảm\\s+giác\\s+đó|cảm\\s+giác\\s+đó|tình\\s+trạng\\s+này)\\s*(?:ạ|nhé|nha)?[,;:.!?\\s]*", "Dạ ");
-        t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?(?:em\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+)?(?:mình|chị|anh|bạn)\\s+(?:đang|đã)\\s+trải\\s+qua\\s+(?:cảm\\s+giác\\s+|tình\\s+trạng\\s+)?", "Dạ bị ");
-        t = t.replaceAll("(?isU)\\b(?:mình|chị|anh|bạn)\\s+(?:đang|đã)\\s+trải\\s+qua\\s+những\\s+cảm\\s+giác\\s+đó\\b", "mình đang gặp tình trạng này");
-        t = t.replaceAll("(?isU)\\btrải\\s+qua\\s+những\\s+cảm\\s+giác\\s+đó\\b", "gặp tình trạng mỏi như vậy");
-        t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?với\\s+tình\\s+trạng\\s+[^,.!?]+\\s+xuất\\s+hiện\\s+của\\s+(?:mình|chị|anh)[,\\s]*", "Dạ ");
-        if (effectiveAction == PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE) {
-            t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?em\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+(?:mình|anh|chị|bạn)\\s+đang\\s+(?:bị\\s+|gặp\\s+|cảm\\s+thấy\\s+)?", "Dạ mình đang bị ");
-        }
-        if (priorTurnStartedWithEmHieu && EM_HIEU_OPENER_PATTERN.matcher(t).matches()) {
-            t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?(?:em|mình)\\s+(?:rất\\s+|thật\\s+sự\\s+|cũng\\s+)?(?:hiểu|thấu\\s+hiểu)\\s+(?:rằng\\s+|là\\s+)?(?:sự\\s+băn\\s+khoăn|nỗi\\s+băn\\s+khoăn|sự\\s+phân\\s+vân)\\s+của\\s+(?:mình|anh|chị)(?:\\s+về\\s+chi\\s+phí)?\\s*(?:ạ|nhé)?[.!,;\\s]*",
-                    "Dạ tâm lý cân nhắc kỹ chi phí trước khi trải nghiệm là rất tự nhiên ạ. ");
-            t = t.replaceFirst("(?isU)^(?:dạ[,\\s]+)?(?:em|mình)\\s+(?:rất\\s+|thật\\s+sự\\s+|cũng\\s+)?(?:hiểu|thấu\\s+hiểu)\\s+(?:rằng\\s+|là\\s+)?", "Dạ ");
-        }
-        t = t.replaceAll("(?iU)^Dạ\\s+dạ\\b", "Dạ");
-        return t.strip();
+    public static boolean hasBlockingError(java.util.Collection<String> errs) {
+        return errs != null && errs.stream().anyMatch(BLOCKING_ERRORS::contains);
     }
 
     private static String capitalizeFirstLetter(String text) {
@@ -376,7 +284,7 @@ public final class ReplyContractValidator {
         }
 
         ConversationState safeState = state != null ? state : ConversationState.initial();
-        ConversationState enrichedState = safeState.enrichWithCurrentMessage(customerMessage, List.of());
+        ConversationState enrichedState = safeState;
         PackageCatalogService.PackageSummary activePackageForReferee = PrimaryActionRouter.resolveHeldPackageFromStateCatalog(safeState);
         boolean isFrustratedNow = PrimaryActionRouter.isFrustrationMessage(customerMessage);
         boolean customerEverStatedCang = (customerMessage != null
@@ -398,7 +306,7 @@ public final class ReplyContractValidator {
         // (trừ lượt HARD_HANDOFF / STRONG_REJECTION bắt buộc 1 bong bóng). Không cắt cụt câu thứ 3 của LLM.
         List<ReplyBubble> working = isLegacyStatelessPriceAnchorTest
                 ? new ArrayList<>(bubbles)
-                : new ArrayList<>(autoSplitBubblesExceedingTwoSentences(bubbles, isSingleBubbleTurn));
+                : new ArrayList<>(autoSplitBubblesExceedingTwoSentences(bubbles, isSingleBubbleTurn, !isLlmValidation));
 
         // Style Guidance (1ms auto-fix, NEVER regenerate):
         // 1) Merge orphan emoji-only bubble (e.g. "🥰") into previous bubble
@@ -417,7 +325,7 @@ public final class ReplyContractValidator {
             working = mergedEmoji;
         }
         // 2) DA_OVERUSE: If > 1 bubble starts with "Dạ" (and not Turn 1 opening), strip duplicate leading "Dạ " on bubble 2+ in 1ms
-        if (!openingRequired && working.size() >= 2) {
+        if (!isLlmValidation && !openingRequired && working.size() >= 2) {
             String firstText = working.get(0) != null && working.get(0).text() != null ? working.get(0).text().strip() : "";
             if (firstText.matches("(?isU)^dạ\\b.*")) {
                 for (int idx = 1; idx < working.size(); idx++) {
@@ -445,17 +353,9 @@ public final class ReplyContractValidator {
             ReplyBubble b = working.get(i);
             if (b == null || b.text() == null) continue;
             String text = isLlmValidation ? b.text() : b.text().strip();
-            if (isLlmValidation) {
-                text = text
-                        .replaceFirst("(?isU)^\\s*mình\\s+(hiểu|rất\\s+hiểu|thấu\\s+hiểu)\\s+", "Dạ em $1 ")
-                        .replaceFirst("(?isU)^\\s*mình\\s+đã\\s+trải\\s+qua\\s+cảm\\s+giác\\s+", "Dạ cảm giác ")
-                        .replaceAll("(?iU)(?:dạ[,\\s]+)?(?:mình|chị|anh)\\s+đã\\s+lâu\\s+không\\s+gặp\\s+tình\\s+trạng\\s+này(?:[,\\s]+giờ\\s+(?:lại\\s+)?(?:tái\\s+phát|bị\\s+lại))?", "Dạ vết mỏi cũ nay tái phát trở lại")
-                        .replaceAll("(?iU)\\bem\\s+(sẽ\\s+được\\s+(?:ưu\\s+đãi|giảm|tặng|hưởng)|được\\s+(?:ưu\\s+đãi|giảm\\s+thêm|giảm))", "mình $1")
-                        .replaceAll("(?iU)\\bhay\\s+([^?]+?)\\s+không\\s+(ạ|nhé|nha)\\?", "hay $1 $2?")
-                        .replaceFirst("(?iU)^(?:dạ[,\\s]+)?em\\s+(?:rất\\s+|thật\\s+sự\\s+)?hiểu\\s+(?:mình|anh|chị)\\s+đang\\s+chịu\\s+nhiều\\s+áp\\s+lực[^.!?]*[.!?]\\s+(?=[\\p{L}])", "Dạ ");
-            }
             List<String> sents = splitIntoSentencesPreservingPunctuation(text);
-            if (sents.size() >= 2
+            if (!isLlmValidation
+                    && sents.size() >= 2
                     && sents.get(0).strip().endsWith("?")
                     && sents.get(sents.size() - 1).strip().endsWith("?")) {
                 sents = new ArrayList<>(sents);
@@ -574,7 +474,7 @@ public final class ReplyContractValidator {
             }
 
             // v3.2.6 Check: UNNECESSARY_APOLOGY_ON_META_COMMENT (forbid knee-jerk apology on meta-comment, confirmation, ACK, or clarify turns)
-            if (effectiveAction == PrimaryAction.CLARIFY_SERVICE_DURATION
+            if (!isLlmValidation && effectiveAction == PrimaryAction.CLARIFY_SERVICE_DURATION
                     && lower.matches("(?isU)^\\s*(?:dạ[,\\s]+)?em\\s+xin\\s+lỗi[^,.!?]*[,\\.!?]\\s+.*")) {
                 text = text.replaceFirst("(?isU)^\\s*(?:dạ[,\\s]+)?em\\s+xin\\s+lỗi[^,.!?]*[,\\.!?]\\s+", "Dạ ");
                 lower = text.toLowerCase(Locale.ROOT);
@@ -757,10 +657,6 @@ public final class ReplyContractValidator {
                 errors.add("REPEATED_EM_HIEU_OPENER_CONSECUTIVE_TURNS");
                 hasRepeatedEmHieuHere = true;
             }
-            if (isLlmValidation && (hasMechanicalOpenerHere || hasRepeatedEmHieuHere)) {
-                text = rewriteOrStripMechanicalOpener(text, hasRepeatedEmHieuHere, effectiveAction);
-                lower = text.toLowerCase(Locale.ROOT);
-            }
             // v3.4.2 Mục 3 & 4: Chặn xin lỗi ở POLITE_DEFERRAL_EXIT và ANTI_APOLOGY_PUSHBACK
             boolean isPoliteDeferralTurn = com.example.docmind.service.bot.SentimentIntentLayer.isPoliteDeferralExit(customerMessage)
                     && (safeState.downsellOffered() || safeState.objectionCount() == 0);
@@ -837,17 +733,12 @@ public final class ReplyContractValidator {
             }
 
             // v3.5.0 Mục IV.2: Nếu trong 1 bong bóng có 2 câu cùng kết thúc bằng '?' (vd câu 1 kết bằng 'ạ?'), tự động đổi dấu '?' của câu 1 thành '.' trong 0ms
-            if (countQuestionMarks(text) > 1) {
+            if (!isLlmValidation && countQuestionMarks(text) > 1) {
                 text = text.replaceFirst("\\?(?=\\s+[^?]+\\?\\s*[^\\p{L}\\d]*$)", ".");
                 lower = text.toLowerCase(Locale.ROOT);
             }
 
             // 3. Tối đa N câu mỗi bong bóng (nếu còn dư câu ngắn sau auto-split thì nối dấu chấm đầu tiên thành dấu phẩy trong 0ms thay vì cắt chữ)
-            if (countSentences(text) > maxSentencesPerBubble && isLlmValidation && countSentences(text) == maxSentencesPerBubble + 1) {
-                text = text.replaceFirst("(?<!\\d)\\.\\s+(?=[\\p{L}\\d])", ", ");
-                lower = text.toLowerCase(Locale.ROOT);
-                working.set(i, new ReplyBubble(text, b.typingDelayMs()));
-            }
             if (countSentences(text) > maxSentencesPerBubble) {
                 errors.add("TOO_MANY_SENTENCES");
                 if (!isLlmValidation) {
@@ -1065,15 +956,10 @@ public final class ReplyContractValidator {
             int qInBubble = countQuestionMarks(b.text());
             if (qInBubble > 0) {
                 if (totalQuestionsSeen + qInBubble > maxTotalQuestions) {
-                    if (isLlmValidation && maxTotalQuestions > 0 && i < working.size() - 1) {
+                    errors.add("TOO_MANY_QUESTIONS");
+                    if (!isLlmValidation) {
                         String neutralized = b.text().replace('?', '.');
                         working.set(i, new ReplyBubble(neutralized, b.typingDelayMs()));
-                    } else {
-                        errors.add("TOO_MANY_QUESTIONS");
-                        if (!isLlmValidation) {
-                            String neutralized = b.text().replace('?', '.');
-                            working.set(i, new ReplyBubble(neutralized, b.typingDelayMs()));
-                        }
                     }
                 } else {
                     totalQuestionsSeen += qInBubble;
@@ -1093,7 +979,8 @@ public final class ReplyContractValidator {
                 working.set(0, new ReplyBubble(singleAnchor.text(), effectivePostPriceDelay));
             }
         }
-        if (effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
+        if (!isLlmValidation
+                && effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
                 && working.size() == 2
                 && working.get(0) != null && working.get(0).text() != null
                 && working.get(1) != null && working.get(1).text() != null
@@ -1171,6 +1058,14 @@ public final class ReplyContractValidator {
             List<ReplyBubble> bubbles,
             boolean isSingleBubbleTurn
     ) {
+        return autoSplitBubblesExceedingTwoSentences(bubbles, isSingleBubbleTurn, true);
+    }
+
+    public static List<ReplyBubble> autoSplitBubblesExceedingTwoSentences(
+            List<ReplyBubble> bubbles,
+            boolean isSingleBubbleTurn,
+            boolean allowPunctuationMerge
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of();
         }
@@ -1187,7 +1082,7 @@ public final class ReplyContractValidator {
             List<String> sentences = splitIntoSentencesPreservingPunctuation(b.text().strip());
             int currentDelay = b.typingDelayMs();
             boolean isPriceBubbleInMultiBubbleTurn = bubbles.size() >= 2 && PRICE_PATTERN.matcher(b.text()).find();
-            if (isPriceBubbleInMultiBubbleTurn && sentences.size() > 2) {
+            if (allowPunctuationMerge && isPriceBubbleInMultiBubbleTurn && sentences.size() > 2) {
                 while (sentences.size() > 2) {
                     String s1 = sentences.get(0).replaceFirst("[.!?]+$", ",");
                     String merged = (s1 + " " + sentences.get(1)).strip();

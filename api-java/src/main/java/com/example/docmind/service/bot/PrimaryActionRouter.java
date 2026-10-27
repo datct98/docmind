@@ -53,15 +53,59 @@ public final class PrimaryActionRouter {
         GENERIC_SHORT_DISCOVERY
     }
 
+    /**
+     * v3.8: chính sách mở đầu Turn 1 — tách khỏi boolean {@code openingRequired} để việc "chọn action" và việc
+     * "prepend bong bóng mở đầu cấu hình" không còn dùng chung một cờ.
+     */
+    public enum OpeningPolicy {
+        /** Không phải lượt mở đầu (hoặc BOT_MUTED). */
+        NONE,
+        /** Turn 1 chỉ chào/hỏi giá/tư vấn trống không: 2 bong bóng opening_bubbles cấu hình + bong bóng mời nêu nhu cầu. */
+        BRAND_INTRO,
+        /** Turn 1 đã nêu rõ nhóm dịch vụ: chào ngắn, không prepend opening_bubbles, không hỏi lại nhóm dịch vụ. */
+        SHORT_GREETING,
+        /** Turn 1 hỏi thẳng gói/triệu chứng/FAQ: trả lời trực tiếp, không prepend opening_bubbles. */
+        DIRECT_ANSWER,
+        /** Turn 1 có cờ an toàn/phàn nàn: xử lý ngay, không mở đầu thương hiệu. */
+        SAFETY_OR_REPAIR
+    }
+
     public record RoutingDecision(
             PrimaryAction primaryAction,
             PrimaryAction effectiveResponseAction,
-            boolean openingRequired,
+            OpeningPolicy openingPolicy,
             int maxResponseBubblesForLlm,
             String detectedIntent,
             String correspondingMicroSkillCode,
             String routerRuleId
     ) {
+        /** Tương thích ngược: true => BRAND_INTRO (prepend opening cấu hình), false => NONE. */
+        public RoutingDecision(
+                PrimaryAction primaryAction,
+                PrimaryAction effectiveResponseAction,
+                boolean openingRequired,
+                int maxResponseBubblesForLlm,
+                String detectedIntent,
+                String correspondingMicroSkillCode,
+                String routerRuleId
+        ) {
+            this(primaryAction, effectiveResponseAction,
+                    openingRequired ? OpeningPolicy.BRAND_INTRO : OpeningPolicy.NONE,
+                    maxResponseBubblesForLlm, detectedIntent, correspondingMicroSkillCode, routerRuleId);
+        }
+
+        /** Có phải lượt mở đầu thực sự (đã/ sẽ chào) — dùng để đánh dấu greetingSent. */
+        public boolean openingRequired() {
+            return openingPolicy == OpeningPolicy.BRAND_INTRO
+                    || openingPolicy == OpeningPolicy.SHORT_GREETING
+                    || openingPolicy == OpeningPolicy.DIRECT_ANSWER;
+        }
+
+        /** Chỉ BRAND_INTRO mới prepend các bong bóng opening_bubbles cố định từ persona_config. */
+        public boolean prependsConfiguredOpening() {
+            return openingPolicy == OpeningPolicy.BRAND_INTRO;
+        }
+
         public RoutingDecision(
                 PrimaryAction primaryAction,
                 PrimaryAction effectiveResponseAction,
@@ -441,8 +485,45 @@ public final class PrimaryActionRouter {
             List<ReciprocalRankFusion.FusedChunk> fusedChunks,
             List<String> domainKeywords
     ) {
-        ConversationState priorState = state != null ? state : ConversationState.initial();
-        ConversationState enriched = priorState.enrichWithCurrentMessage(message, domainKeywords);
+        ConversationState enriched = state != null ? state : ConversationState.initial();
+        return route(message, enriched.priorTurnState(), enriched, fusedChunks, domainKeywords);
+    }
+
+    /**
+     * v3.8 HỢP ĐỒNG ENRICH-MỘT-LẦN: {@code priorState} = state các lượt TRƯỚC (từ hydrateForTurn);
+     * {@code enrichedForThisTurn} = priorState + dữ kiện của tin nhắn HIỆN TẠI, được tính đúng 1 lần bởi caller.
+     * Router không enrich lại.
+     */
+    public static RoutingDecision route(
+            String message,
+            ConversationState priorStateIn,
+            ConversationState enrichedForThisTurn,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<String> domainKeywords
+    ) {
+        RoutingDecision d = routeInternal(message, priorStateIn, enrichedForThisTurn, fusedChunks, domainKeywords);
+        boolean firstTurn = priorStateIn == null || !priorStateIn.greetingSent();
+        if (d != null && firstTurn && d.openingPolicy() == OpeningPolicy.NONE
+                && (d.effectiveResponseAction() == PrimaryAction.HARD_HANDOFF_SAFETY
+                    || d.effectiveResponseAction() == PrimaryAction.HARD_HANDOFF_COMPLAINT
+                    || d.effectiveResponseAction() == PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED)) {
+            return new RoutingDecision(d.primaryAction(), d.effectiveResponseAction(), OpeningPolicy.SAFETY_OR_REPAIR,
+                    d.maxResponseBubblesForLlm(), d.detectedIntent(), d.correspondingMicroSkillCode(), d.routerRuleId());
+        }
+        return d;
+    }
+
+    private static RoutingDecision routeInternal(
+            String message,
+            ConversationState priorStateIn,
+            ConversationState enrichedForThisTurn,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<String> domainKeywords
+    ) {
+        ConversationState enriched = enrichedForThisTurn != null
+                ? enrichedForThisTurn
+                : (priorStateIn != null ? priorStateIn : ConversationState.initial());
+        ConversationState priorState = priorStateIn != null ? priorStateIn : enriched.priorTurnState();
         String msg = message != null ? message.strip() : "";
         String lower = Normalizer.normalize(msg, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         DetectedIntent classified = SentimentIntentLayer.classify(msg, priorState);
@@ -498,6 +579,27 @@ public final class PrimaryActionRouter {
                     "CAUTIOUS_SYMPTOM_CLARIFICATION",
                     "spa_condition_first_discovery"
             );
+        }
+
+        // PRE-02C-CAUTIOUS-MEDICAL-RECOMMENDATION (v3.8): sau lượt CAUTIOUS_SYMPTOM_CLARIFICATION, khi khách trả lời kèm dữ kiện
+        // kéo dài / hai bên (slot khởi phát, phân bổ) -> khuyến nghị đánh giá y tế + chuyển chuyên viên, KHÔNG bán gói.
+        // pendingQuestionSlot chỉ là ngữ cảnh định tuyến; căn cứ chính là nhóm triệu chứng thận trọng đã phân loại ở lượt trước.
+        if ("CAUTIOUS_SYMPTOM_CLARIFICATION".equals(priorState.lastIntent())
+                && classified != DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION) {
+            String onset = enriched.knownOnsetDuration() != null ? enriched.knownOnsetDuration().toLowerCase(Locale.ROOT) : "";
+            String dist = enriched.knownSymptomDistribution() != null ? enriched.knownSymptomDistribution().toLowerCase(Locale.ROOT) : "";
+            boolean prolonged = onset.matches("(?isU).*(tuần|tháng|năm|lâu\\s+(rồi|năm)).*");
+            boolean bilateral = dist.matches("(?isU).*(hai|2|cả\\s+hai)\\s+(bên|chân|tay|vai).*");
+            if (prolonged || bilateral) {
+                return new RoutingDecision(
+                        PrimaryAction.HARD_HANDOFF_SAFETY,
+                        PrimaryAction.HARD_HANDOFF_SAFETY,
+                        false,
+                        1,
+                        "CAUTIOUS_MEDICAL_RECOMMENDATION",
+                        "safety_handoff_high_risk"
+                );
+            }
         }
 
         // PRE-03-EXPLICIT-OPT-OUT
@@ -918,6 +1020,14 @@ public final class PrimaryActionRouter {
             intent = "ACKNOWLEDGEMENT";
             skillCode = "spa_booking_advance_after_ack";
         }
+        // R10B-STYLE-COMPLAINT-FIRST (v3.8): góp ý văn phong (kể cả kèm chê đắt trong cùng lượt) -> xử lý giao tiếp trước,
+        // KHÔNG hạ gói; chỉ quay lại thương lượng giá khi lượt sau khách vẫn bàn về giá.
+        else if (SentimentIntentLayer.isConversationStyleComplaint(msg)
+                && !SentimentIntentLayer.isStrongRejection(msg)) {
+            coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
+            intent = "CONVERSATION_STYLE_REPAIR";
+            skillCode = "spa_frustration_rescue";
+        }
         // R11-UNIT-VALUE
         else if (classified == DetectedIntent.PRICE_COMPARISON || isUnitPriceComparisonMessage(msg)) {
             coreAction = PrimaryAction.EXPLAIN_UNIT_VALUE;
@@ -1228,13 +1338,8 @@ public final class PrimaryActionRouter {
             skillCode = "spa_frustration_rescue";
         }
 
-        boolean openingRequired = !priorState.greetingSent()
-                && coreAction != PrimaryAction.HARD_HANDOFF_SAFETY
-                && coreAction != PrimaryAction.HARD_HANDOFF_COMPLAINT
-                && coreAction != PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED
-                && coreAction != PrimaryAction.BOT_MUTED;
-
-        PrimaryAction topAction = openingRequired ? PrimaryAction.OPENING_THEN_RESPOND : coreAction;
+        OpeningPolicy openingPolicy = resolveOpeningPolicy(priorState, enriched, coreAction);
+        PrimaryAction topAction = openingPolicy == OpeningPolicy.BRAND_INTRO ? PrimaryAction.OPENING_THEN_RESPOND : coreAction;
         int maxBubblesForLlm = (coreAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
                 || coreAction == PrimaryAction.REPAIR_AND_RECONFIRM
                 || coreAction == PrimaryAction.DIRECT_CONCRETE_SOLUTION
@@ -1257,11 +1362,40 @@ public final class PrimaryActionRouter {
         return new RoutingDecision(
                 topAction,
                 coreAction,
-                openingRequired,
+                openingPolicy,
                 maxBubblesForLlm,
                 intent,
-                skillCode
+                skillCode,
+                RoutingDecision.resolveRouterRuleId(coreAction, intent)
         );
+    }
+
+    /** Chọn OpeningPolicy cho lượt hiện tại dựa trên NỘI DUNG khách vừa nói (không dùng boolean dùng chung). */
+    static OpeningPolicy resolveOpeningPolicy(ConversationState priorState, ConversationState enriched, PrimaryAction coreAction) {
+        if (priorState.greetingSent() || coreAction == PrimaryAction.BOT_MUTED) {
+            return OpeningPolicy.NONE;
+        }
+        if (coreAction == PrimaryAction.HARD_HANDOFF_SAFETY
+                || coreAction == PrimaryAction.HARD_HANDOFF_COMPLAINT
+                || coreAction == PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED) {
+            return OpeningPolicy.SAFETY_OR_REPAIR;
+        }
+        ConversationState facts = enriched != null ? enriched : priorState;
+        boolean hasSymptomOrScope = (facts.knownSymptoms() != null && !facts.knownSymptoms().isEmpty())
+                || (facts.confirmedScopes() != null && !facts.confirmedScopes().isEmpty());
+        boolean directAction = coreAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
+                || coreAction == PrimaryAction.RECOMMEND_ONE_PACKAGE
+                || coreAction == PrimaryAction.CONFIRM_BOOKING_DETAILS
+                || coreAction == PrimaryAction.DIRECT_CONCRETE_SOLUTION
+                || coreAction == PrimaryAction.EXPLAIN_UNIT_VALUE
+                || coreAction == PrimaryAction.REPAIR_AND_RECONFIRM;
+        if (hasSymptomOrScope || directAction) {
+            return OpeningPolicy.DIRECT_ANSWER;
+        }
+        if (facts.serviceFamilyKnown()) {
+            return OpeningPolicy.SHORT_GREETING;
+        }
+        return OpeningPolicy.BRAND_INTRO;
     }
 
     /**
@@ -1282,8 +1416,8 @@ public final class PrimaryActionRouter {
         }
 
         PagePersonaConfig cfg = pagePersona != null ? pagePersona.resolvedConfig() : PagePersonaConfig.empty();
-        ConversationState priorState = state != null ? state : ConversationState.initial();
-        ConversationState enriched = priorState.enrichWithCurrentMessage(userMessage, cfg.safeDomainKeywords());
+        ConversationState enriched = state != null ? state : ConversationState.initial();
+        ConversationState priorState = enriched.priorTurnState();
 
         String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : cfg.resolvedDefaultCustomerPronoun();
         String capH = Character.toUpperCase(h.charAt(0)) + h.substring(1);
@@ -1409,12 +1543,17 @@ public final class PrimaryActionRouter {
         }
 
         List<ReplyBubble> openingBubbles = new ArrayList<>();
-        if (decision.openingRequired() && eff != PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED) {
+        if (decision.prependsConfiguredOpening() && eff != PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED) {
             List<String> openTexts = cfg.resolvedOpeningBubbles(shopName, shopDesc, h);
             if (!openTexts.isEmpty()) {
                 openingBubbles.add(new ReplyBubble(openTexts.get(0), 0));
                 if (openTexts.size() >= 2 && openTexts.get(1) != null && !openTexts.get(1).isBlank()) {
                     openingBubbles.add(new ReplyBubble(openTexts.get(1), 1000));
+                }
+                if (openTexts.size() >= 3 && openTexts.get(2) != null && !openTexts.get(2).isBlank()
+                        && eff != PrimaryAction.ANSWER_PRICE_ONCE) {
+                    openingBubbles.add(new ReplyBubble(openTexts.get(2), 2000));
+                    return openingBubbles;
                 }
             }
         }
@@ -1423,7 +1562,7 @@ public final class PrimaryActionRouter {
 
         // Khi openingRequired == true và action là ANSWER_PRICE_ONCE, gộp 2 câu mở đầu thành Bubble 1
         // để Bubble 2 báo đúng 1 mức giá và Bubble 3 neo cảm xúc với delay >= postPriceDelayMs.
-        if (decision.openingRequired() && eff == PrimaryAction.ANSWER_PRICE_ONCE) {
+        if (decision.prependsConfiguredOpening() && eff == PrimaryAction.ANSWER_PRICE_ONCE) {
             CatalogOption matched = matchSpecificCatalogOption(userMessage, enriched, fusedChunks);
             if (matched == null) {
                 matched = selectBestSingleCatalogOption(userMessage, enriched, fusedChunks);
@@ -1500,12 +1639,12 @@ public final class PrimaryActionRouter {
                     String clarifyDur = "Dạ với " + famLabel + ", " + h
                             + " muốn xem gói " + unitPair.replace(" hoặc ", " hay ")
                             + " để " + selfP + " báo giá chuẩn cho " + h + " ạ?";
-                    yield List.of(new ReplyBubble(clarifyDur, decision.openingRequired() ? 2500 : 0));
+                    yield List.of(new ReplyBubble(clarifyDur, decision.prependsConfiguredOpening() ? 2500 : 0));
                 }
                 String categories = extractCatalogCategorySummary(fusedChunks);
                 String clarifyText = "Dạ " + h + " đang quan tâm " + categories
                         + " để " + selfP + " gửi đúng mức giá theo thời lượng cho " + h + " nha?";
-                yield List.of(new ReplyBubble(clarifyText, decision.openingRequired() ? 2500 : 0));
+                yield List.of(new ReplyBubble(clarifyText, decision.prependsConfiguredOpening() ? 2500 : 0));
             }
             case ACKNOWLEDGE_AND_ASK_PREFERENCE -> {
                 String problemPhrase = ConversationState.extractProblemOrNeedPhrase(userMessage, cfg.safeDomainKeywords());
@@ -1528,7 +1667,7 @@ public final class PrimaryActionRouter {
                 String ackSentence = "cần tư vấn gói phù hợp".equals(problemPhrase) && !enriched.knownBodyAreas().isEmpty()
                         ? "Dạ với vùng " + String.join(" ", enriched.knownBodyAreas()) + " mà " + h + " đang quan tâm ạ."
                         : "Dạ tình trạng " + problemPhrase + " chắc đang làm " + h + " khá khó chịu ạ.";
-                if (decision.openingRequired()) {
+                if (decision.prependsConfiguredOpening()) {
                     String singleBubble = ackSentence + " " + condQuestion;
                     yield List.of(new ReplyBubble(singleBubble, 2500));
                 } else {
@@ -1623,7 +1762,7 @@ public final class PrimaryActionRouter {
                     String b2 = capH + " muốn xem chi phí gói " + best.unitLabel() + " này hay giữ khung giờ ghé trải nghiệm ạ?";
                     yield List.of(new ReplyBubble(b1, 0), new ReplyBubble(b2, 2000));
                 }
-                if (decision.openingRequired()) {
+                if (decision.prependsConfiguredOpening()) {
                     String b3 = "Dạ với tình trạng " + problemPhrase + ", " + selfP + " gợi ý " + h + " thử "
                             + best.name() + " " + best.unitLabel() + " ạ. "
                             + capH + " muốn trải nghiệm gói này hay cần " + selfP + " báo chi phí chi tiết ạ?";
@@ -1770,7 +1909,7 @@ public final class PrimaryActionRouter {
                 String b1 = "Dạ ý " + h + " là tính theo đơn vị thời gian thì gói " + u1 + " có đơn giá nhỉnh hơn gói " + u2 + " một chút ạ.";
                 String b2 = "Nếu " + h + " muốn làm nhanh gọn thì gói " + u1 + " vẫn hợp; còn muốn thư giãn lâu và tiết kiệm hơn trên mỗi phút thì gói " + u2 + " đáng chọn hơn. "
                         + capH + " ưu tiên làm nhanh hay thư giãn dài hơn ạ?";
-                if (decision.openingRequired()) {
+                if (decision.prependsConfiguredOpening()) {
                     yield List.of(new ReplyBubble(b1 + " " + capH + " ưu tiên làm nhanh hay thư giãn dài hơn ạ?", 2500));
                 }
                 yield List.of(new ReplyBubble(b1, 0), new ReplyBubble(b2, 2000));
@@ -1823,7 +1962,7 @@ public final class PrimaryActionRouter {
                 }
                 String b2 = "Theo " + selfP + ", " + h
                         + " có thể trải nghiệm thử 1 buổi " + heldPkgDisplay + " trước để cảm nhận trực tiếp cách bên " + selfP + " chăm sóc nha 🥰";
-                if (decision.openingRequired()) {
+                if (decision.prependsConfiguredOpening()) {
                     yield List.of(new ReplyBubble(b1 + " " + b2, 2500));
                 }
                 // VR-014A: No numeric price in B1 -> delay 2000ms on B2!
@@ -1928,7 +2067,7 @@ public final class PrimaryActionRouter {
                 }
                 String b1 = "Dạ để " + selfP + " kiểm tra lịch trống cho " + h + ", " + h
                         + " đang muốn đặt gói dịch vụ nào và dự kiến ghé khoảng mấy giờ để " + selfP + " giữ khung giờ phù hợp nha?";
-                yield List.of(new ReplyBubble(b1, decision.openingRequired() ? 1200 : 0));
+                yield List.of(new ReplyBubble(b1, decision.prependsConfiguredOpening() ? 1200 : 0));
             }
             case GENERIC_SHORT_DISCOVERY -> {
                 if ("STRONG_REJECTION".equals(intent)) {
@@ -2030,7 +2169,7 @@ public final class PrimaryActionRouter {
                     yield List.of(new ReplyBubble(confirmText, 0));
                 }
                 if (activeMicroSkill != null && activeMicroSkill.defaultFallbackReply() != null && !activeMicroSkill.defaultFallbackReply().isBlank()
-                        && !decision.openingRequired()) {
+                        && !decision.prependsConfiguredOpening()) {
                     String candidateFallback = activeMicroSkill.resolvedFallbackReply(h);
                     if (priorState.lastBotBubbleHashes() == null
                             || !priorState.lastBotBubbleHashes().contains(ConversationState.shortHash(candidateFallback))) {
@@ -2040,7 +2179,7 @@ public final class PrimaryActionRouter {
                 String categories = extractCatalogCategorySummary(fusedChunks);
                 String discText = "Hôm nay " + h + " đang muốn " + categories
                         + " hay chăm sóc gói nào để " + selfP + " tư vấn nhẹ nhàng cho " + h + " nha?";
-                yield List.of(new ReplyBubble(discText, decision.openingRequired() ? 1200 : 0));
+                yield List.of(new ReplyBubble(discText, decision.prependsConfiguredOpening() ? 1200 : 0));
             }
             default -> List.of();
         };
@@ -2588,7 +2727,9 @@ public final class PrimaryActionRouter {
         if (catalog.isEmpty()) {
             return null;
         }
-        String cleanLower = SentimentIntentLayer.stripMismatchCritiqueClause(lower);
+        String cleanLower = SentimentIntentLayer.stripMismatchCritiqueClause(lower)
+                .replaceAll("(?iU)(?:thôi\\s+)?(?:mình\\s+|tôi\\s+|anh\\s+|chị\\s+|em\\s+)?(?:không\\s+lấy|ko\\s+lấy|k\\s+lấy|không\\s+chọn|bỏ|đổi)\\s+gói\\s+[^,;.!?]+?(?:\\s+nữa)?(?=[,;.!?]|\\s+đổi|\\s+chuyển|$)", " ")
+                .strip();
         int explicitDur = ConversationState.parseDurationInt(ConversationState.extractDurationFromText(cleanLower));
         List<String> msgScopes = ConversationState.extractTargetScopes(cleanLower, List.of());
 
@@ -3809,7 +3950,7 @@ public final class PrimaryActionRouter {
                         + itemsJoined
                         + (isFreeIncluded ? ", đã bao gồm trong gói và không tính thêm phí ạ." : " phục vụ sau buổi làm ạ.");
             }
-            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.openingRequired() ? 2500 : 1000);
+            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.prependsConfiguredOpening() ? 2500 : 1000);
             return appendSecondaryCompoundFaqBubbleIfPresent(
                     primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
             );
@@ -3843,7 +3984,7 @@ public final class PrimaryActionRouter {
                         + " phục vụ miễn phí sau liệu trình giúp hồi phục năng lượng"
                         + (isFreeIncluded ? ", đã bao gồm trong giá gói ạ." : " ạ.");
             }
-            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.openingRequired() ? 2500 : 1000);
+            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.prependsConfiguredOpening() ? 2500 : 1000);
             return appendSecondaryCompoundFaqBubbleIfPresent(
                     primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
             );
@@ -3867,7 +4008,7 @@ public final class PrimaryActionRouter {
                     + "này nằm trong gói " + pkgName + " " + pkgSummary.durationMinutes() + " phút"
                     + priceClause + " gồm " + inc
                     + " giúp làm ấm cơ thể; còn thành phần lá cụ thể bảng dịch vụ tiêu chuẩn chưa liệt kê từng vị ạ.";
-            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.openingRequired() ? 2500 : 1000);
+            ReplyBubble primaryBubble = new ReplyBubble(prefixAck + body, decision != null && decision.prependsConfiguredOpening() ? 2500 : 1000);
             return appendSecondaryCompoundFaqBubbleIfPresent(
                     primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
             );
@@ -3881,7 +4022,7 @@ public final class PrimaryActionRouter {
                 || refEntity.contains("khung giờ vắng")) {
             String faqPolicyAns = extractBestFaqAnswerSentenceFromChunks(userMessage, refEntity, hasApologySentence, fusedChunks);
             if (faqPolicyAns != null && !faqPolicyAns.isBlank()) {
-                ReplyBubble primaryBubble = new ReplyBubble(prefixAck + faqPolicyAns, decision != null && decision.openingRequired() ? 2500 : 1000);
+                ReplyBubble primaryBubble = new ReplyBubble(prefixAck + faqPolicyAns, decision != null && decision.prependsConfiguredOpening() ? 2500 : 1000);
                 return appendSecondaryCompoundFaqBubbleIfPresent(
                         primaryBubble, decision, userMessage, semIntent, refEntity, h, selfP, pkgSummary, catOpt, fusedChunks
                 );
@@ -4041,7 +4182,7 @@ public final class PrimaryActionRouter {
             List<ReciprocalRankFusion.FusedChunk> fusedChunks
     ) {
         if (primaryBubble == null || userMessage == null || userMessage.isBlank()
-                || (decision != null && decision.openingRequired())) {
+                || (decision != null && decision.prependsConfiguredOpening())) {
             return primaryBubble != null ? List.of(primaryBubble) : List.of();
         }
         String normMsg = VietnameseQueryNormalizer.normalizeForSearch(userMessage);

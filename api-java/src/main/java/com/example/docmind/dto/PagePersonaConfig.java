@@ -192,6 +192,13 @@ public record PagePersonaConfig(
         String bName = (botName != null && !botName.isBlank()) ? botName.strip() : "Trợ lý Tư vấn";
         String sName = (pageName != null && !pageName.isBlank()) ? pageName.strip() : "Shop";
 
+        if (openingBubbles != null && openingBubbles.size() >= 3) {
+            return List.of(
+                    interpolateOpeningPlaceholders(openingBubbles.get(0), h, selfP, bName, sName),
+                    interpolateOpeningPlaceholders(openingBubbles.get(1), h, selfP, bName, sName),
+                    interpolateOpeningPlaceholders(openingBubbles.get(2), h, selfP, bName, sName)
+            );
+        }
         if (openingBubbles != null && openingBubbles.size() >= 2) {
             return List.of(
                     interpolateOpeningPlaceholders(openingBubbles.get(0), h, selfP, bName, sName),

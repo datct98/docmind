@@ -34,7 +34,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     private static final UUID PAGE_ID = UUID.fromString("b23cd382-4f7a-4829-8c54-1d410da14bf8");
     private static final UUID DOC_ID = UUID.fromString("c9481efb-f3a9-4613-a2e0-fe50e9b99b39");
 
-    private static List<ReciprocalRankFusion.FusedChunk> buildTestChunks() {
+    static List<ReciprocalRankFusion.FusedChunk> buildTestChunks() {
         String massageTable = """
                 | Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |
                 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -82,7 +82,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         );
     }
 
-    private static PromptBuilder.PagePersona buildTestPersona() {
+    static PromptBuilder.PagePersona buildTestPersona() {
         PagePersonaConfig cfg = new PagePersonaConfig(
                 "BEAUTY_SPA",
                 "nhân viên chăm sóc",
@@ -132,6 +132,14 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(ThinkingMode.REPAIR_FIRST.maxWordsPerBubble()).isEqualTo(65);
     }
 
+    private static PrimaryActionRouter.RoutingDecision routeEnriched(
+            String msg,
+            ConversationState state,
+            List<ReciprocalRankFusion.FusedChunk> chunks,
+            List<String> keywords) {
+        return PrimaryActionRouter.route(msg, state.enrichWithCurrentMessage(msg, keywords), chunks, keywords);
+    }
+
     @Test
     @DisplayName("2. ThinkingModePolicy routes all 10 scenarios and A/B/C benchmark modes accurately")
     void thinkingModePolicyRoutesAllScenariosAndBenchmarkModes() {
@@ -140,7 +148,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
 
         // Scenario 1: Greeting / Broad Price Inquiry -> FAST_NO_THINK
         ConversationState s1 = ConversationState.hydrate(PAGE_ID, "u-s1", List.of(), keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d1 = PrimaryActionRouter.route("Giá sao shop", s1, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d1 = routeEnriched("Giá sao shop", s1, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td1 = ThinkingModePolicy.decide("Giá sao shop", s1, d1, null);
         assertThat(td1.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
         assertThat(td1.thinkEnabled()).isFalse();
@@ -151,7 +159,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ chào mình! Mình đang quan tâm chăm sóc vùng nào ạ?")
         );
         ConversationState s2 = ConversationState.hydrate(PAGE_ID, "u-s2", h2, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d2 = PrimaryActionRouter.route("Mình bị đau mỏi cổ vai gáy", s2, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d2 = routeEnriched("Mình bị đau mỏi cổ vai gáy", s2, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td2 = ThinkingModePolicy.decide("Mình bị đau mỏi cổ vai gáy", s2, d2, null);
         assertThat(td2.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
 
@@ -160,7 +168,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         h3.add(new FanpageBotRequest.ConversationTurn("user", "Mình bị đau mỏi cổ vai gáy"));
         h3.add(new FanpageBotRequest.ConversationTurn("assistant", "Dạ tình trạng mỏi cổ vai gáy của mình bị lâu chưa hay mới gần đây ạ?"));
         ConversationState s3 = ConversationState.hydrate(PAGE_ID, "u-s3", h3, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d3 = PrimaryActionRouter.route("Thi thoảng mới bị thôi", s3, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d3 = routeEnriched("Thi thoảng mới bị thôi", s3, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td3 = ThinkingModePolicy.decide("Thi thoảng mới bị thôi", s3, d3, null);
         assertThat(td3.thinkingMode()).isEqualTo(ThinkingMode.PRICE_ANCHOR_THINK);
         assertThat(td3.thinkEnabled()).isTrue();
@@ -171,7 +179,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         h4.add(new FanpageBotRequest.ConversationTurn("user", "Thi thoảng mới bị thôi"));
         h4.add(new FanpageBotRequest.ConversationTurn("assistant", "Dạ với mỏi cổ vai gáy, mình tham khảo gói Massage cơ bản 60 phút giá 399k (đã bao gồm tắm xông, ngâm chân thảo dược, ăn nhẹ và cam kết không nhận Tip) ạ."));
         ConversationState s4 = ConversationState.hydrate(PAGE_ID, "u-s4", h4, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d4 = PrimaryActionRouter.route("Đắt nhỉ", s4, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d4 = routeEnriched("Đắt nhỉ", s4, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td4 = ThinkingModePolicy.decide("Đắt nhỉ", s4, d4, null);
         assertThat(td4.thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
         assertThat(td4.objectionRootCause()).isEqualTo(ThinkingModePolicy.ObjectionRootCause.GENERAL_PRICE_HESITATION);
@@ -182,7 +190,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         h5.add(new FanpageBotRequest.ConversationTurn("user", "Đắt nhỉ"));
         h5.add(new FanpageBotRequest.ConversationTurn("assistant", "Dạ mức 399k là trọn gói 60 phút chăm sóc chuyên sâu, mình có thể trải nghiệm thử 1 buổi xem hợp tay nghề kỹ thuật viên không ạ 🥰"));
         ConversationState s5 = ConversationState.hydrate(PAGE_ID, "u-s5", h5, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d5 = PrimaryActionRouter.route("Vẫn hơi cao, sinh viên chưa đủ ngân sách, có gói nào rẻ hơn không", s5, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d5 = routeEnriched("Vẫn hơi cao, sinh viên chưa đủ ngân sách, có gói nào rẻ hơn không", s5, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td5 = ThinkingModePolicy.decide("Vẫn hơi cao, sinh viên chưa đủ ngân sách, có gói nào rẻ hơn không", s5, d5, null);
         assertThat(td5.thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
         assertThat(td5.objectionRootCause()).isEqualTo(ThinkingModePolicy.ObjectionRootCause.BUDGET_CONSTRAINT);
@@ -203,12 +211,12 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         h8.add(new FanpageBotRequest.ConversationTurn("user", "Mà hơi đắt"));
         h8.add(new FanpageBotRequest.ConversationTurn("assistant", "Dạ vậy mình tham khảo Gói dưỡng sinh cơ bản 60 phút giá 239k ạ."));
         ConversationState s8 = ConversationState.hydrate(PAGE_ID, "u-s8", h8, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d8 = PrimaryActionRouter.route("Có gói khác k", s8, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d8 = routeEnriched("Có gói khác k", s8, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td8 = ThinkingModePolicy.decide("Có gói khác k", s8, d8, null);
         assertThat(td8.thinkingMode()).isEqualTo(ThinkingMode.PRICE_ANCHOR_THINK);
 
         // Scenario 9: Customer Frustration / Comprehension Repair ("Sao hỏi ăn nhẹ gồm món gì mà cứ nói vòng vo thế") -> REPAIR_FIRST
-        PrimaryActionRouter.RoutingDecision d9 = PrimaryActionRouter.route("Sao hỏi ăn nhẹ gồm món gì mà cứ nói vòng vo thế, dở à", s8, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d9 = routeEnriched("Sao hỏi ăn nhẹ gồm món gì mà cứ nói vòng vo thế, dở à", s8, chunks, keywords);
         CustomerInsightDto frustratedInsight = new CustomerInsightDto(
                 "SKEPTICAL", "Khách hoài nghi", 35, 50, -15, "DECAYING", "Lạnh",
                 "Frustrated customer", "mình", List.of(), List.of("frustrated"), "Apologize and answer directly"
@@ -220,18 +228,18 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(td9.maxOutputTokens()).isEqualTo(500);
 
         // Clarification contrast detail question ("K tôi thấy có buffet thực dưỡng, nó là j") -> REPAIR_FIRST
-        PrimaryActionRouter.RoutingDecision dClarify = PrimaryActionRouter.route("K tôi thấy có buffet thực dưỡng, nó là j", s4, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision dClarify = routeEnriched("K tôi thấy có buffet thực dưỡng, nó là j", s4, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision tdClarify = ThinkingModePolicy.decide("K tôi thấy có buffet thực dưỡng, nó là j", s4, dClarify, null);
         assertThat(tdClarify.thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
 
         // Explicit Opt-Out ("Đừng nhắn nữa") and SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED -> FAST_NO_THINK
-        PrimaryActionRouter.RoutingDecision dOptOut = PrimaryActionRouter.route("Đừng nhắn nữa, phiền quá", s4, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision dOptOut = routeEnriched("Đừng nhắn nữa, phiền quá", s4, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision tdOptOut = ThinkingModePolicy.decide("Đừng nhắn nữa, phiền quá", s4, dOptOut, null);
         assertThat(tdOptOut.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
         assertThat(tdOptOut.thinkEnabled()).isFalse();
 
         // Scenario 10: Service Detail FAQ ("Ăn nhẹ có những món gì em") -> FAST_NO_THINK + Benchmark A/B/C override verification
-        PrimaryActionRouter.RoutingDecision d10 = PrimaryActionRouter.route("Ăn nhẹ có những món gì em", s4, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision d10 = routeEnriched("Ăn nhẹ có những món gì em", s4, chunks, keywords);
         ThinkingModePolicy.ThinkingDecision td10Adaptive = ThinkingModePolicy.decide(
                 "Ăn nhẹ có những món gì em", s4, d10, null, ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C);
         assertThat(td10Adaptive.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
@@ -437,7 +445,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     void promptBuilderInjectsThinkingModeStrategies() {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
         PromptBuilder.PagePersona persona = buildTestPersona();
-        ConversationState state = ConversationState.hydrate(PAGE_ID, "u-prompt", List.of(), List.of("vai gáy"), chunks);
+        ConversationState state = ConversationState.hydrate(PAGE_ID, "u-prompt", List.of(), List.of("vai gáy"), chunks)
+                .enrichWithCurrentMessage("Đắt nhỉ", List.of("vai gáy"));
         PrimaryActionRouter.RoutingDecision decision = PrimaryActionRouter.route("Đắt nhỉ", state, chunks, List.of("vai gáy"));
 
         ThinkingModePolicy.ThinkingDecision objectionDecision = new ThinkingModePolicy.ThinkingDecision(
@@ -517,7 +526,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(state.downsellOffered()).isTrue();
         assertThat(state.retentionAttemptCount()).isEqualTo(1);
 
-        PrimaryActionRouter.RoutingDecision stage3Dec = PrimaryActionRouter.route("Thôi để lúc khác vậy em", state, chunks, keywords);
+        PrimaryActionRouter.RoutingDecision stage3Dec = routeEnriched("Thôi để lúc khác vậy em", state, chunks, keywords);
         assertThat(stage3Dec.detectedIntent()).isEqualTo("STAGE_3_GRACEFUL_EXIT");
 
         ThinkingModePolicy.ThinkingDecision stage3Think = ThinkingModePolicy.decide("Thôi để lúc khác vậy em", state, stage3Dec, null);
@@ -1152,7 +1161,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 new FanpageBotRequest.ConversationTurn("user", "Mình bị đau mỏi cổ vai gáy"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ tình trạng mỏi cổ vai gáy của mình mới gần đây hay đã kéo dài ạ?")
         );
-        ConversationState stateBeforeQuote = ConversationState.hydrate(PAGE_ID, "u-val-angle", hBeforeQuote, keywords, List.of(tableChunk));
+        ConversationState stateBeforeQuote = ConversationState.hydrate(PAGE_ID, "u-val-angle", hBeforeQuote, keywords, List.of(tableChunk))
+                .enrichWithCurrentMessage("Mới bị mấy hôm nay thôi, báo giá giúp mình", keywords);
         PrimaryActionRouter.RoutingDecision quoteDecision = PrimaryActionRouter.route(
                 "Mới bị mấy hôm nay thôi, báo giá giúp mình", stateBeforeQuote, List.of(tableChunk), keywords
         );
@@ -1190,15 +1200,16 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 .contains("VALUE_ANGLE_1");
 
         // Stage 1 objection marks VALUE_ANGLE_2 as delivered
+        ConversationState stateForStage1Obj = afterDeliveredBubble2.enrichWithCurrentMessage("Giá 399k hơi cao nhỉ", keywords);
         PrimaryActionRouter.RoutingDecision stage1ObjDecision = PrimaryActionRouter.route(
-                "Giá 399k hơi cao nhỉ", afterDeliveredBubble2, List.of(tableChunk), keywords
+                "Giá 399k hơi cao nhỉ", stateForStage1Obj, List.of(tableChunk), keywords
         );
         List<FanpageBotResponse.ReplyBubble> stage1Bubbles = List.of(
                 new FanpageBotResponse.ReplyBubble("Dạ em rất hiểu băn khoăn của mình về chi phí ạ.", 0),
                 new FanpageBotResponse.ReplyBubble("Mình có thể trải nghiệm thử 1 buổi trước để cảm nhận trực tiếp nha 🥰", 2000)
         );
         ConversationState afterStage1Obj = ConversationState.updateAfterSend(
-                PAGE_ID, "u-val-angle", afterDeliveredBubble2, "Giá 399k hơi cao nhỉ", stage1ObjDecision, stage1Bubbles, false
+                PAGE_ID, "u-val-angle", stateForStage1Obj, "Giá 399k hơi cao nhỉ", stage1ObjDecision, stage1Bubbles, false
         );
         assertThat(afterStage1Obj.deliveredValueAngles()).contains("VALUE_ANGLE_1", "VALUE_ANGLE_2");
 
@@ -1585,7 +1596,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
 
         // 1. Scenario 1: New conversation ("conv-session-1") -> greetingSent is false, openingRequired is true (3 bubbles: 0ms, 1000ms, 2000ms)
         ConversationState s1Turn1 = ConversationState.hydrateForTurn(
-                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks);
+                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks)
+                .enrichWithCurrentMessage("Giá", keywords);
         assertThat(s1Turn1.greetingSent()).isFalse();
         PrimaryActionRouter.RoutingDecision d1Turn1 = PrimaryActionRouter.route("Giá", s1Turn1, chunks, keywords);
         assertThat(d1Turn1.openingRequired()).isTrue();
@@ -1629,7 +1641,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         // 2. Scenario 2: Subsequent request on SAME conversationId ("conv-session-1") WITHOUT history (webhook mode)
         // Must NOT reset state and must NOT re-send greeting!
         ConversationState s1Turn2NoHistory = ConversationState.hydrateForTurn(
-                PAGE_ID, senderId, "conv-session-1", false, "tôi bị đau đầu, mất ngủ, nhức vai gáy", List.of(), keywords, chunks);
+                PAGE_ID, senderId, "conv-session-1", false, "tôi bị đau đầu, mất ngủ, nhức vai gáy", List.of(), keywords, chunks)
+                .enrichWithCurrentMessage("tôi bị đau đầu, mất ngủ, nhức vai gáy", keywords);
         assertThat(s1Turn2NoHistory.greetingSent()).isTrue();
         assertThat(s1Turn2NoHistory.priceRequestedInSession()).isTrue();
         PrimaryActionRouter.RoutingDecision d1Turn2 = PrimaryActionRouter.route(
@@ -1638,21 +1651,24 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
 
         // 3. Scenario 5: Retry request on "conv-session-1" -> greetingSent remains true, never duplicates opening bubbles
         ConversationState s1Retry = ConversationState.hydrateForTurn(
-                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks);
+                PAGE_ID, senderId, "conv-session-1", false, "Giá", List.of(), keywords, chunks)
+                .enrichWithCurrentMessage("Giá", keywords);
         assertThat(s1Retry.greetingSent()).isTrue();
         PrimaryActionRouter.RoutingDecision d1Retry = PrimaryActionRouter.route("Giá", s1Retry, chunks, keywords);
         assertThat(d1Retry.openingRequired()).isFalse();
 
         // 4. Scenario 4: Two concurrent sessions of the SAME senderId ("conv-session-1" vs "conv-session-2") -> isolated states!
         ConversationState s2Turn1 = ConversationState.hydrateForTurn(
-                PAGE_ID, senderId, "conv-session-2", false, "Xin chào", List.of(), keywords, chunks);
+                PAGE_ID, senderId, "conv-session-2", false, "Xin chào", List.of(), keywords, chunks)
+                .enrichWithCurrentMessage("Xin chào", keywords);
         assertThat(s2Turn1.greetingSent()).isFalse();
         assertThat(s2Turn1.priceRequestedInSession()).isFalse();
         assertThat(ConversationState.getSessionState(PAGE_ID, senderId, "conv-session-1").priceRequestedInSession()).isTrue();
 
         // 5. Scenario 3: UI Reset (resetSession = true) on "conv-session-1" -> resets session and triggers 3-bubble opening again
         ConversationState s1AfterReset = ConversationState.hydrateForTurn(
-                PAGE_ID, senderId, "conv-session-1", true, "Giá", List.of(), keywords, chunks);
+                PAGE_ID, senderId, "conv-session-1", true, "Giá", List.of(), keywords, chunks)
+                .enrichWithCurrentMessage("Giá", keywords);
         assertThat(s1AfterReset.greetingSent()).isFalse();
         PrimaryActionRouter.RoutingDecision d1AfterReset = PrimaryActionRouter.route("Giá", s1AfterReset, chunks, keywords);
         assertThat(d1AfterReset.openingRequired()).isTrue();

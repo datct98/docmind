@@ -832,7 +832,7 @@ class FanpageBotServiceTest {
     void standaloneFirstTurnGreetingMergesIntoTwoBubblesAndClosedYesNoQuestionUpgradesToAbChoice() {
         UUID docId = UUID.randomUUID();
         UUID pageId = UUID.randomUUID();
-        var chunk = sampleChunk("SPA-03 | Phác đồ Trị Nám & Tàn Nhang Laser Pico | 4.500.000 VNĐ/buổi | Bảo hành tái phát 12 tháng");
+        var chunk = sampleChunk("SPA-03 | Phác đồ Trị Nám & Tàn Nhang Laser Pico | 4.500.000 VNĐ/buổi | Bảo hành tái phát 12 tháng | Phòng VIP riêng");
         when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
                 .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
 
@@ -1077,7 +1077,7 @@ class FanpageBotServiceTest {
         UUID docId = UUID.randomUUID();
         UUID pageId = UUID.randomUUID();
         var chunk = sampleChunk(
-                "SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | Da mụn ẩn, mụn viêm, mụn lưng, mờ thâm\n"
+                "SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | Da mụn ẩn, mụn viêm, mụn lưng, mờ thâm | Phòng riêng\n"
                 + "SPA-02 | Căng bóng Meso Collagen | 3.200.000 VNĐ/buổi\n"
                 + "SPA-03 | Phác đồ Trị Nám Laser Pico | 4.500.000 VNĐ/buổi"
         );
@@ -1092,9 +1092,9 @@ class FanpageBotServiceTest {
 
         List<FanpageBotRequest.ConversationTurn> history = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Giá"),
-                new FanpageBotRequest.ConversationTurn("assistant", "Dạ chi phí chỉ từ 650.000đ/buổi ạ. Hiện tại Chị muốn ưu tiên xử lý mụn, nám hay căng bóng ạ?"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ hiện tại Chị muốn ưu tiên xử lý mụn, nám hay căng bóng ạ?"),
                 new FanpageBotRequest.ConversationTurn("user", "Mờ thâm và trị mụn lưng"),
-                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng mụn lưng kèm thâm, liệu trình từ 650.000đ/buổi ạ.")
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng mụn lưng kèm thâm, bên em có phác đồ chuyên biệt cho vùng lưng ạ.")
         );
 
         FanpageBotRequest reqTurn3 = new FanpageBotRequest(
@@ -1158,7 +1158,7 @@ class FanpageBotServiceTest {
     void trialAcceptanceOkThuXemSaoPreservesBookingQuestionAndRoutesToSoftBookingClose() {
         UUID docId = UUID.randomUUID();
         UUID pageId = UUID.randomUUID();
-        var chunk = sampleChunk("SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | Miễn phí soi da AI 3D cùng Bác sĩ");
+        var chunk = sampleChunk("SPA-01 | Liệu trình Trị Mụn Chuẩn Y Khoa | 1.500.000 VNĐ/buổi | Miễn phí soi da AI 3D cùng Bác sĩ | Phòng riêng");
         when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
                 .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
 

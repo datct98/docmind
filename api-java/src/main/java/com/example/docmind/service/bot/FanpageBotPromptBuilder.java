@@ -256,8 +256,7 @@ public final class FanpageBotPromptBuilder {
                     || c.contains("mỏi") || c.contains("đau") || c.contains("cổ vai")
                     || c.contains("massage") || c.contains("dưỡng sinh")
                     || c.contains("mới xuất hiện") || c.contains("thường xuyên") || c.contains("thi thoảng")
-                    || c.contains("60 phút") || c.contains("80 phút") || c.contains("chuyên sâu")
-                    || c.contains("399.000") || c.contains("530.000") || c.contains("580.000")) {
+                    || c.contains("60 phút") || c.contains("80 phút") || c.contains("chuyên sâu")) {
                 return true;
             }
         }
@@ -903,7 +902,6 @@ public final class FanpageBotPromptBuilder {
             if (!wantsSaigon) {
                 effectiveMoc = effectiveMoc.replaceAll("(?im)^\\s*\\*\\s*Chi\\s+nhánh\\s+TP\\.HCM[^\\n]*\\r?\\n?", "");
             }
-            effectiveMoc = effectiveMoc.replace("100.000 VNĐ -", "399.000 VNĐ -");
             String sanitizedMoc = compactPromptText(PromptSecurityGuard.sanitizeUntrustedContent(effectiveMoc.strip()), 360);
             sb.append(sanitizedMoc).append("\n\n");
             usedDocChars += sanitizedMoc.length() + 2;
@@ -1192,17 +1190,20 @@ public final class FanpageBotPromptBuilder {
         boolean asksPromoDirectly = com.example.docmind.service.sales.PriceLadderTracker.isPromoOrDiscountInquiry(customerMessage);
         StringBuilder sb = new StringBuilder();
         sb.append("\n=== CHỈ DẪN BẬC THANG GIÁ & HẠ BẬC (STATEFUL PRICE LADDER GUIDANCE) ===\n");
-        if (result.isCatalogFloor()) {
+        if ((result.isPriceObjection() || result.isTrialRequest()) && result.targetPrice() == null) {
+            sb.append("- Trạng thái: CATALOG CHƯA XÁC MINH cho gói/mức giá phù hợp.\n");
+            sb.append("- YÊU CẦU BẮT BUỘC: KHÔNG đề xuất con số giá hay tên gói mới. Đồng cảm tự nhiên, nói thật là em cần xác nhận lại bảng giá/gói phù hợp rồi báo lại, hoặc mời chuyên viên hỗ trợ trực tiếp.\n");
+        } else if (result.isCatalogFloor()) {
             sb.append("- Trạng thái: ĐÃ Ở MỨC GIÁ SÀN DANH MỤC (")
-              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "129.000 VNĐ")
+              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog")
               .append(")\n");
-            sb.append("- Gói dịch vụ: ").append(result.targetPackageName() != null ? result.targetPackageName() : "Gói cơ bản (DS01)").append("\n");
+            sb.append("- Gói dịch vụ: ").append(result.targetPackageName() != null ? result.targetPackageName() : "gói trong Catalog").append("\n");
             if (result.discountPolicy() != null) {
                 sb.append("- Chính sách ưu đãi áp dụng: ").append(result.discountPolicy()).append("\n");
             }
             sb.append("- YÊU CẦU BẮT BUỘC:\n");
             sb.append("  1. BẮT BUỘC xác nhận đây là mức giá mềm nhất bên em hiện tại (CẤM bịa gói miễn phí hoặc 0đ).\n");
-            sb.append("  2. Giới thiệu chính sách ưu đãi ").append(result.discountPolicy() != null ? result.discountPolicy() : "giảm 10%").append(" để hỗ trợ ").append(h).append(" tiết kiệm tối đa.\n");
+            sb.append("  2. Giới thiệu chính sách ưu đãi ").append(result.discountPolicy() != null ? result.discountPolicy() : "ưu đãi hiện hành trong tài liệu (nếu có)").append(" để hỗ trợ ").append(h).append(" tiết kiệm tối đa.\n");
             sb.append("  3. TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM từ chối phục vụ.\n");
         } else if (result.isPriceObjection()) {
             sb.append("- Trạng thái: KHÁCH CHÊ GIÁ CAO / HỎI GÓI RẺ HƠN\n");
@@ -1210,8 +1211,8 @@ public final class FanpageBotPromptBuilder {
                 sb.append("- Mức giá đã báo lượt trước: ").append(String.format(Locale.ROOT, "%,d VNĐ", result.previousPriceQuoted()).replace(',', '.')).append("\n");
             }
             sb.append("- MỨC GIÁ HẠ BẬC MỤC TIÊU BẮT BUỘC: ")
-              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "239.000 VNĐ")
-              .append(" (").append(result.targetPackageName() != null ? result.targetPackageName() : "Gói Dưỡng sinh cơ bản").append(")\n");
+              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog")
+              .append(" (").append(result.targetPackageName() != null ? result.targetPackageName() : "gói trong Catalog").append(")\n");
             if (result.discountPolicy() != null) {
                 sb.append("- CHÍNH SÁCH ƯU ĐÃI / KHUYẾN MÃI TỪ TÀI LIỆU: ").append(result.discountPolicy()).append("\n");
             }
@@ -1220,11 +1221,11 @@ public final class FanpageBotPromptBuilder {
                 sb.append("  1. TRẢ LỜI TRỰC DIỆN CÂU HỎI KHUYẾN MÃI NGAY CÂU ĐẦU: Nêu rõ bên em hiện có ưu đãi ")
                   .append(result.discountPolicy()).append(".\n");
                 sb.append("  2. Đồng thời gợi ý ngay gói trải nghiệm lẻ mềm nhất là ").append(result.targetPackageName())
-                  .append(" với giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
+                  .append(" với giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog")
                   .append(" nếu ").append(h).append(" muốn thử lẻ 1 buổi trước.\n");
             } else {
                 sb.append("  1. Đồng cảm ấm áp, thấu hiểu khách muốn chọn mức phí vừa vặn để trải nghiệm trước; TUYỆT ĐỐI CẤM thanh minh, bảo vệ giá hay bảo khách 'cứ cân nhắc thêm'.\n");
-                sb.append("  2. Chuyển tiếp mượt mà, chủ động hạ bậc (Down-sell) xuống đúng gói ").append(result.targetPackageName()).append(" mức giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "239.000 VNĐ").append(" (nêu rõ thời gian và quyền lợi thư giãn cốt lõi)");
+                sb.append("  2. Chuyển tiếp mượt mà, chủ động hạ bậc (Down-sell) xuống đúng gói ").append(result.targetPackageName()).append(" mức giá ").append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog").append(" (nêu rõ thời gian và quyền lợi thư giãn cốt lõi)");
                 if (result.discountPolicy() != null) {
                     sb.append(", kết hợp thông báo ưu đãi ").append(result.discountPolicy());
                 }
@@ -1232,19 +1233,21 @@ public final class FanpageBotPromptBuilder {
             }
             String prevFormatted = result.previousPriceQuoted() != null
                     ? String.format(Locale.ROOT, "%,d", result.previousPriceQuoted()).replace(',', '.')
-                    : "399.000";
-            sb.append("  3. TUYỆT ĐỐI CẤM quay ngược lên báo lại gói có giá cao hơn (>= ").append(prevFormatted).append("đ).\n");
+                    : null;
+            if (prevFormatted != null) {
+                sb.append("  3. TUYỆT ĐỐI CẤM quay ngược lên báo lại gói có giá cao hơn (>= ").append(prevFormatted).append("đ).\n");
+            }
             sb.append("  4. TUYỆT ĐỐI CẤM xuất [[HANDOFF]] và CẤM viết nhãn 'A/B' hay chữ 'Hay'. Kết bằng 1 câu hỏi tự nhiên hỏi ").append(h).append(" muốn trải nghiệm lẻ 1 buổi trước hay tham khảo gói ưu đãi tiết kiệm hơn ạ?\n");
         } else if (result.isTrialRequest()) {
             sb.append("- Trạng thái: KHÁCH MUỐN THỬ TRẢI NGHIỆM TRƯỚC\n");
             sb.append("- Gói duy trì nhất quán: ").append(result.targetPackageName()).append(" (")
-              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
+              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog")
               .append(")\n");
             sb.append("- YÊU CẦU BẮT BUỘC:\n");
             sb.append("  1. Đón nhận tích cực, xác nhận đúng gói ").append(result.targetPackageName()).append(" rất phù hợp để ").append(h).append(" trải nghiệm lần đầu.\n");
             sb.append("  2. BẮT BUỘC giữ đúng tên gói ").append(result.targetPackageName()).append(" và đúng mức giá ")
-              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "399.000 VNĐ")
-              .append(" (TUYỆT ĐỐI CẤM tự ý nhảy sang gói 530.000 VNĐ hay bất kỳ gói nào đắt hơn, và CẤM lấy nhầm thời lượng 100 phút của gói khác!).\n");
+              .append(result.targetPrice() != null ? String.format(Locale.ROOT, "%,d VNĐ", result.targetPrice()).replace(',', '.') : "mức giá niêm yết trong Catalog")
+              .append(" (TUYỆT ĐỐI CẤM tự ý nhảy sang gói đắt hơn, và CẤM lấy nhầm thời lượng của gói khác!).\n");
             sb.append("  3. Kết bằng 1 câu hỏi điều hướng đặt lịch cụ thể (khung giờ Sáng hay Chiều).\n");
         }
         sb.append("======================================================================\n");
@@ -1784,9 +1787,7 @@ public final class FanpageBotPromptBuilder {
         }
         sb.append("</THINKING_MODE_STRATEGY>\n\n");
 
-        ConversationState enriched = convState != null
-                ? convState.enrichWithCurrentMessage(customerMessage, cfg.resolvedScopeTaxonomy())
-                : null;
+        ConversationState enriched = convState;
         String careActor = cfg.resolvedCareActor();
         List<String> activeBodyAreas = enriched != null && enriched.confirmedScopes() != null && !enriched.confirmedScopes().isEmpty()
                 ? new ArrayList<>(enriched.confirmedScopes())
@@ -1845,7 +1846,7 @@ public final class FanpageBotPromptBuilder {
         int postPriceDelayMs = cfg.resolvedPostPriceDelayMs();
         sb.append("<GROUNDED_TURN_FACTS>\n");
         boolean hasConfiguredOpeningBubbles = actionDecision != null
-                && actionDecision.openingRequired()
+                && actionDecision.prependsConfiguredOpening()
                 && !cfg.openingBubbles().isEmpty();
         List<String> statedSymptoms = enriched != null && enriched.knownSymptoms() != null
                 ? enriched.knownSymptoms()
@@ -1856,9 +1857,14 @@ public final class FanpageBotPromptBuilder {
         Set<String> negatedScopes = enriched != null && enriched.forbiddenScopes() != null
                 ? enriched.forbiddenScopes()
                 : (convState != null && convState.forbiddenScopes() != null ? convState.forbiddenScopes() : java.util.Set.of());
-        if (actionDecision != null && actionDecision.openingRequired()) {
-            sb.append("- turn_1_opening_guidance: Lượt đầu tiên")
-              .append(hasConfiguredOpeningBubbles ? " (đã có 2 bong bóng mở đầu, chỉ sinh 1 bong bóng phản hồi nối tiếp, không chào lặp lại).\n" : ".\n");
+        if (actionDecision != null && actionDecision.openingPolicy() != null) {
+            switch (actionDecision.openingPolicy()) {
+                case BRAND_INTRO -> sb.append("- turn_1_opening_guidance: Lượt đầu, khách chỉ chào/hỏi chung")
+                        .append(hasConfiguredOpeningBubbles ? " (đã có bong bóng chào + giới thiệu thương hiệu, chỉ sinh 1 bong bóng mời khách nêu nhu cầu, không chào lặp lại).\n" : ".\n");
+                case SHORT_GREETING -> sb.append("- turn_1_opening_guidance: Lượt đầu, khách đã nêu rõ nhóm dịch vụ — chào thật ngắn rồi đi thẳng vào làm rõ nhu cầu bên trong nhóm đó; không hỏi lại khách cần nhóm dịch vụ nào, không giới thiệu thương hiệu dài.\n");
+                case DIRECT_ANSWER -> sb.append("- turn_1_opening_guidance: Lượt đầu, khách hỏi thẳng vấn đề cụ thể — trả lời trực tiếp vào trọng tâm, không chào dài hay giới thiệu thương hiệu.\n");
+                default -> { }
+            }
         }
         if (effAction == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA && enriched != null) {
             PrimaryActionRouter.CatalogOption detailOpt = PrimaryActionRouter.matchSpecificCatalogOption(customerMessage, enriched, chunks);
@@ -2004,8 +2010,11 @@ public final class FanpageBotPromptBuilder {
                 PackageCatalogService.PackageSummary recoveryPkg = PrimaryActionRouter.resolveHeldPackageFromStateCatalog(convState);
                 String recoveryPkgDesc = describeCatalogPackage(recoveryPkg);
                 if (recoveryPkgDesc != null) {
-                    extraFacts.append(", gói gần nhất đã đề xuất=").append(recoveryPkgDesc);
-                    sb.append("- last_offered_package: ").append(recoveryPkgDesc).append('\n');
+                    String safeRecoveryDesc = (convState != null && convState.priceDiscussed())
+                            ? recoveryPkgDesc.replaceAll("\\s*\\([^)]*\\)", "")
+                            : recoveryPkgDesc;
+                    extraFacts.append(", gói gần nhất đã đề xuất=").append(safeRecoveryDesc);
+                    sb.append("- last_offered_package: ").append(safeRecoveryDesc).append('\n');
                     appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, null,
                             convState != null && convState.lastOfferedPriceVnd() != null ? convState.lastOfferedPriceVnd().longValue() : 0L);
                 }
@@ -2018,7 +2027,7 @@ public final class FanpageBotPromptBuilder {
                 constraintText = "KHÔNG báo giá mới, KHÔNG đổi sang gói khác, KHÔNG bắt khách nhắc lại nhu cầu; sinh 1 bong bóng (typing_delay_ms=0).";
             } else if (isRecoveryAfterBotTurn) {
                 objText = "Nhận lỗi thật thà đúng điểm khách vừa phàn nàn trong câu bot vừa nói (ví dụ chưa giải thích vì sao phù hợp, hỏi lại vô duyên), rồi giải thích ngay phương án chăm sóc dựa trên triệu chứng khách đã chia sẻ và dữ kiện catalog đã xác minh.";
-                constraintText = "KHÔNG bắt khách kể lại nhu cầu, KHÔNG hỏi 'xin được hỗ trợ lại', KHÔNG ép chọn gói hay chốt lịch ngay, không lặp lại giá đã báo; sinh 1 bong bóng (typing_delay_ms=0).";
+                constraintText = "TUYỆT ĐỐI CẤM nhắc lại con số giá (như 399k, 239k), CẤM đặt quá 1 dấu hỏi ('?'), KHÔNG bắt khách kể lại nhu cầu, KHÔNG hỏi 'xin được hỗ trợ lại', KHÔNG ép chọn gói hay chốt lịch ngay; sinh 1 bong bóng (typing_delay_ms=0).";
             } else if ("ANTI_APOLOGY_PUSHBACK".equals(detIntent) || "META_COMMENT_ON_GREETING".equals(detIntent)) {
                 objText = "Đáp lại lời nhận xét/trêu của khách một cách tự nhiên, duyên dáng như người thật và giữ mạch trò chuyện nhẹ nhàng.";
                 constraintText = "KHÔNG báo giá, KHÔNG dùng từ 'xin lỗi'; sinh 1 bong bóng (typing_delay_ms=0).";
@@ -2144,7 +2153,6 @@ public final class FanpageBotPromptBuilder {
                 verified.toString()
                         .replaceAll("\\s*\\+\\s*", ", ")
                         .replaceAll("\\s*&\\s*", " và ")
-                        .replaceAll("…", "")
                         .strip(),
                 260
         );
@@ -2166,7 +2174,7 @@ public final class FanpageBotPromptBuilder {
             forbidden.add("buffet thực dưỡng");
         }
         if ((effectivePrice > 0 && effectivePrice < 580_000L) || lower.contains("phòng chung") || lower.contains("khu dưỡng sinh") || !lower.contains("vip")) {
-            forbidden.add("Phòng VIP riêng");
+            forbidden.add("Phòng VIP riêng / Phòng riêng khép kín (gói dưới 580k sử dụng phòng chung có rèm che riêng tư từng giường)");
         }
         if (!forbidden.isEmpty()) {
             sb.append("- forbidden_unverified_tier_perks: Gói này KHÔNG bao gồm [")
