@@ -850,6 +850,7 @@ public final class ThinkingModePolicy {
 
         // 0C (v3.3.4 / v3.5.0). Khách bắt bẻ câu chữ của Bot hoặc bày tỏ tụt cảm xúc ("Tôi thấy tụt cảm xúc quá chán chả buồn nói") -> EMOTIONAL_WARM_THINK
         if ("WORDING_FEEDBACK_REPAIR".equals(detectedIntent)
+                || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(detectedIntent)
                 || "CONVERSATION_STYLE_REPAIR".equals(detectedIntent)
                 || "MOOD_DROP_RECOVERY".equals(detectedIntent)
                 || SentimentIntentLayer.isMoodDropRecoveryMessage(rawMsg)) {

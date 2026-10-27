@@ -120,8 +120,109 @@ public record ConversationState(
         // === v3.8 Semantic slots tách biệt: tần suất / phân bổ triệu chứng / câu hỏi đang chờ khách trả lời ===
         String knownFrequency,
         String knownSymptomDistribution,
-        String pendingQuestionSlot
+        String pendingQuestionSlot,
+        // === v3.9 Episode duration & Funnel state separation (packageInterestAccepted vs bookingStatus) ===
+        String knownEpisodeDuration,
+        boolean packageInterestAccepted,
+        boolean bookingIntentConfirmed,
+        String visitTime,
+        String contactInfo,
+        String bookingStatus
 ) {
+
+    /** Tương thích ngược: chữ ký canonical v3.8. */
+    public ConversationState(
+            boolean greetingSent,
+            boolean introSent,
+            ConversationStage stage,
+            String lastIntent,
+            String lastQuestion,
+            String lastQuestionIntent,
+            Set<String> usedQuestionIntents,
+            String lastBotAction,
+            KnownFacts known,
+            boolean priceDiscussed,
+            List<String> pricesShown,
+            List<String> recommendedOptions,
+            int objectionCount,
+            int ackCount,
+            int clarificationCount,
+            int conditionAskedCount,
+            int preferenceAskedCount,
+            int clarifyServiceTypeCount,
+            int clarifyDurationCount,
+            int frustrationCount,
+            int ambiguousCount,
+            int recommendationCount,
+            int priceRepeatGuardCount,
+            boolean conditionClarified,
+            boolean serviceFamilyKnown,
+            boolean packageRecommended,
+            boolean priceRequestedInSession,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String knownSeverity,
+            String knownDurationOfProblem,
+            String knownTrigger,
+            String knownServiceFamily,
+            String knownPreferredPressure,
+            String knownRecommendedPackage,
+            String lastQuotePackage,
+            String lastSentiment,
+            String lastEmotion,
+            List<String> usedTemplates,
+            boolean humanTakeover,
+            boolean optedOut,
+            boolean downsellOffered,
+            boolean trialInviteOffered,
+            boolean explicitDownsellRequest,
+            boolean packageRejectionDetected,
+            String lastQuotedPackage,
+            String lastQuotedDuration,
+            BigDecimal lastQuotedPrice,
+            String heldPackage,
+            String heldDuration,
+            String downsellPackage,
+            String downsellDuration,
+            BigDecimal downsellPrice,
+            Set<String> rejectedDurations,
+            Set<String> rejectedPackages,
+            String objectionStage,
+            String telemetrySubtype,
+            boolean docsHasFeedback,
+            boolean docsHasRelaxationBenefit,
+            boolean docsHasPrivateRoom,
+            boolean neurologicalRisk,
+            String preferredRegion,
+            List<String> mentionedPackages,
+            List<String> quotedPackages,
+            BigDecimal heldPrice,
+            int alternativeRequestCount,
+            boolean customerCorrectionDetected,
+            String rejectedWrongOffer,
+            List<PackageCatalogService.PackageSummary> availablePackageCatalog,
+            List<String> lastBotBubbleHashes,
+            List<UnresolvedCustomerRequest> outstandingRequests,
+            String lastAssistantMessage,
+            Set<String> confirmedScopes,
+            Set<String> forbiddenScopes,
+            Set<String> apologizedErrorIds,
+            String activeErrorId,
+            List<CustomerCareNoteArtifact> customerCareNotes,
+            List<String> scopeSupersessionEvents,
+            boolean possibleCorrection,
+            boolean packageExplicitlySelected,
+            String selectedPackageId,
+            String knownFrequency,
+            String knownSymptomDistribution,
+            String pendingQuestionSlot
+    ) {
+        this(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent, usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions, objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount, clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount, recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown, packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas, knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily, knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment, lastEmotion, usedTemplates, humanTakeover, optedOut, downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected, lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration, downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages, objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk, preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount, customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes, outstandingRequests, lastAssistantMessage, confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId, customerCareNotes, scopeSupersessionEvents, possibleCorrection, packageExplicitlySelected, selectedPackageId,
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                null, packageExplicitlySelected, false, null, null, packageExplicitlySelected ? "COLLECTING_INFO" : "NONE"
+        );
+    }
 
     /** Tương thích ngược: chữ ký canonical trước v3.8 (slot mới mặc định null). */
     public ConversationState(
@@ -412,6 +513,46 @@ public record ConversationState(
     /** Alias ngữ nghĩa: thời gian khởi phát (tách khỏi tần suất và mức độ). */
     public String knownOnsetDuration() {
         return knownDurationOfProblem;
+    }
+
+    /** Trường ngữ nghĩa 1 (Item 2.1): Thời điểm bắt đầu bị (onset). */
+    public String onset() {
+        return knownDurationOfProblem;
+    }
+
+    /** Trường ngữ nghĩa 2 (Item 2.1): Tần suất xảy ra (frequency). */
+    public String frequency() {
+        return knownFrequency;
+    }
+
+    /** Phân loại tần suất chuẩn hoá (OCCASIONAL | FREQUENT | SPECIFIED). */
+    public String frequencyCategory() {
+        if (knownFrequency == null || knownFrequency.isBlank()) {
+            return null;
+        }
+        String f = knownFrequency.toLowerCase(Locale.ROOT);
+        if (f.contains("thi thoảng") || f.contains("thỉnh thoảng") || f.contains("đôi khi") || f.contains("lâu lâu")) {
+            return "OCCASIONAL";
+        }
+        if (f.contains("thường xuyên") || f.contains("liên tục") || f.contains("hay bị")
+                || f.contains("mỗi ngày") || f.contains("hằng ngày") || f.contains("suốt ngày")) {
+            return "FREQUENT";
+        }
+        return "SPECIFIED";
+    }
+
+    /** Trường ngữ nghĩa 3 (Item 2.1): Thời gian kéo dài của mỗi đợt (duration). */
+    public String duration() {
+        return knownEpisodeDuration;
+    }
+
+    /** Kiểm tra xem danh sách triệu chứng đã được bot xác nhận ở lượt trước hay chưa (chặn lặp câu mở đầu nhại triệu chứng). */
+    public boolean symptomsAcknowledgedInPriorTurn() {
+        return lastAssistantMessage != null
+                && !lastAssistantMessage.isBlank()
+                && knownSymptoms != null
+                && !knownSymptoms.isEmpty()
+                && (conditionAskedCount >= 1 || conditionClarified || packageRecommended || priceDiscussed);
     }
 
     public int priceObjectionCount() {
@@ -780,10 +921,19 @@ public record ConversationState(
             "(?iU)\\b(nhiều\\s+lắm|rất\\s+mỏi|rất\\s+đau|khá\\s+nặng|dữ\\s+dội|nhiều|nặng|nhẹ)\\b"
     );
     private static final Pattern PROBLEM_DURATION_TOKEN_PATTERN = Pattern.compile(
-            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|mới\\s+gần\\s+đây|mới\\s+bị|dạo\\s+này|mấy\\s+ngày|\\d+\\s*(?:ngày|tuần|tháng|năm)|(?:một|hai|ba|bốn|năm|vài|mấy)\\s+(?:ngày|tuần|tháng|năm))\\b"
+            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|mới\\s+gần\\s+đây|mới\\s+bị|dạo\\s+này|mấy\\s+ngày|(?:từ\\s+)?(?:hôm\\s+qua|hôm\\s+kia|tuần\\s+trước|tháng\\s+trước|năm\\s+ngoái)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)\\d+\\s*(?:ngày|tuần|tháng|năm)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)(?:một|hai|ba|bốn|năm|vài|mấy)\\s+(?:ngày|tuần|tháng|năm))\\b"
     );
     private static final Pattern FREQUENCY_TOKEN_PATTERN = Pattern.compile(
-            "(?iU)\\b(thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|đôi\\s+khi|thường\\s+xuyên|liên\\s+tục|hay\\s+bị|mỗi\\s+ngày|hằng\\s+ngày|suốt\\s+ngày)\\b"
+            "(?iU)\\b(thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|thi\\s+thoảmg|thỉnh\\s+thoảmg|lâu\\s+lâu|đôi\\s+khi|đôi\\s+lúc|thường\\s+xuyên|liên\\s+tục|hay\\s+bị|mỗi\\s+ngày|hằng\\s+ngày|hàng\\s+ngày|suốt\\s+ngày)\\b"
+    );
+    private static final Pattern EPISODE_DURATION_TOKEN_PATTERN = Pattern.compile(
+            "(?iU)\\b((?:mỗi\\s+lần|mỗi\\s+đợt|mỗi\\s+cơn|kéo\\s+dài)\\s+(?:khoảng\\s+|tầm\\s+|chừng\\s+)?(?:\\d+|một|hai|ba|vài|mấy)\\s*(?:phút|tiếng|giờ|hôm|ngày)|(?:khoảng\\s+|tầm\\s+)?\\d+\\s*(?:phút|tiếng|giờ)\\s*(?:mỗi\\s+lần|mỗi\\s+đợt|một\\s+lần|mới\\s+hết)|âm\\s+ỉ\\s+cả\\s+(?:ngày|buổi|đêm)|cả\\s+ngày\\s+không\\s+hết)\\b"
+    );
+    private static final Pattern VISIT_TIME_TOKEN_PATTERN = Pattern.compile(
+            "(?iU)\\b((?:sáng|trưa|chiều|tối)\\s+(?:nay|mai|mốt|thứ\\s+[2-7]|chủ\\s+nhật|cuối\\s+tuần)|(?:hôm\\s+nay|ngày\\s+mai|thứ\\s+[2-7]|chủ\\s+nhật|cuối\\s+tuần)(?:\\s+(?:lúc|khoảng|tầm)?\\s*\\d{1,2}\\s*(?:h|giờ)(?:\\s*\\d{1,2}|\\s*rưỡi)?)?|\\d{1,2}\\s*(?:h|giờ)(?:\\s*\\d{1,2}|\\s*rưỡi)?(?:\\s+(?:sáng|trưa|chiều|tối|hôm\\s+nay|ngày\\s+mai))?|khung\\s+giờ\\s+\\d{1,2}\\s*(?:h|giờ))\\b"
+    );
+    private static final Pattern CONTACT_INFO_TOKEN_PATTERN = Pattern.compile(
+            "(?iU)\\b(0\\d{8,10}|\\+?84\\d{8,10})\\b"
     );
     private static final Pattern SYMPTOM_DISTRIBUTION_TOKEN_PATTERN = Pattern.compile(
             "(?iU)\\b(cả\\s+hai\\s+bên|hai\\s+bên|2\\s+bên|một\\s+bên|1\\s+bên|bên\\s+trái|bên\\s+phải|hai\\s+chân|2\\s+chân|hai\\s+tay|2\\s+tay|hai\\s+vai|2\\s+vai)\\b"
@@ -791,15 +941,19 @@ public record ConversationState(
 
     public static final String SLOT_ONSET = "ONSET_DURATION";
     public static final String SLOT_FREQUENCY = "FREQUENCY";
+    public static final String SLOT_EPISODE_DURATION = "EPISODE_DURATION";
     public static final String SLOT_SEVERITY = "SEVERITY";
     public static final String SLOT_TRIGGER = "TRIGGER";
     public static final String SLOT_DISTRIBUTION = "DISTRIBUTION";
+    public static final String SLOT_BOOKING_TIME = "BOOKING_TIME";
 
-    private static final Pattern ASK_ONSET_Q = Pattern.compile("(?isU)(lâu\\s+chưa|từ\\s+bao\\s+giờ|bao\\s+lâu|mới\\s+gần\\s+đây)");
-    private static final Pattern ASK_FREQUENCY_Q = Pattern.compile("(?isU)(thường\\s+xuyên|hay\\s+bị|thỉnh\\s+thoảng\\s+hay|mức\\s+độ\\s+thường|tần\\s+suất)");
+    private static final Pattern ASK_ONSET_Q = Pattern.compile("(?isU)(lâu\\s+chưa|từ\\s+bao\\s+giờ|bắt\\s+đầu\\s+từ\\s+khi\\s+nào|từ\\s+khi\\s+nào|bị\\s+khi\\s+nào|bao\\s+lâu|mới\\s+gần\\s+đây|mới\\s+bị\\s+hay)");
+    private static final Pattern ASK_FREQUENCY_Q = Pattern.compile("(?isU)(thường\\s+xuyên|hay\\s+bị|thỉnh\\s+thoảng\\s+hay|thi\\s+thoảng\\s+hay|mức\\s+độ\\s+thường|tần\\s+suất|thường\\s+xảy\\s+ra|xảy\\s+ra\\s+khi\\s+nào|hay\\s+xuất\\s+hiện)");
+    private static final Pattern ASK_EPISODE_DURATION_Q = Pattern.compile("(?isU)(mỗi\\s+lần\\s+kéo\\s+dài|mỗi\\s+đợt\\s+kéo\\s+dài|kéo\\s+dài\\s+bao\\s+lâu\\s+mỗi\\s+lần)");
     private static final Pattern ASK_SEVERITY_Q = Pattern.compile("(?isU)(nặng\\s+hay\\s+nhẹ|mức\\s+độ|nhiều\\s+không)");
-    private static final Pattern ASK_TRIGGER_Q = Pattern.compile("(?isU)(sau\\s+khi|do\\s+ngồi|ngồi\\s+lâu|vận\\s+động\\s+nhiều|khi\\s+nào)");
+    private static final Pattern ASK_TRIGGER_Q = Pattern.compile("(?isU)(sau\\s+khi|do\\s+ngồi|ngồi\\s+lâu|vận\\s+động\\s+nhiều|khi\\s+làm\\s+việc)");
     private static final Pattern ASK_DISTRIBUTION_Q = Pattern.compile("(?isU)(một\\s+bên|hai\\s+bên|cả\\s+hai)");
+    private static final Pattern ASK_BOOKING_TIME_Q = Pattern.compile("(?isU)(khung\\s+giờ\\s+nào|mấy\\s+giờ|giờ\\s+nào\\s+để\\s+em|dự\\s+kiến\\s+ghé)");
 
     /** Suy ra slot câu hỏi từ nội dung câu hỏi THỰC SỰ nằm trong bong bóng đã giao (null nếu không có câu hỏi). */
     public static String inferPendingQuestionSlot(String deliveredQuestionText) {
@@ -807,7 +961,9 @@ public record ConversationState(
             return null;
         }
         String q = deliveredQuestionText;
+        if (ASK_BOOKING_TIME_Q.matcher(q).find()) return SLOT_BOOKING_TIME;
         if (ASK_DISTRIBUTION_Q.matcher(q).find()) return SLOT_DISTRIBUTION;
+        if (ASK_EPISODE_DURATION_Q.matcher(q).find()) return SLOT_EPISODE_DURATION;
         if (ASK_ONSET_Q.matcher(q).find()) return SLOT_ONSET;
         if (ASK_FREQUENCY_Q.matcher(q).find()) return SLOT_FREQUENCY;
         if (ASK_SEVERITY_Q.matcher(q).find()) return SLOT_SEVERITY;
@@ -817,8 +973,14 @@ public record ConversationState(
 
     static String normalizeFrequency(String raw) {
         if (raw == null) return null;
-        String v = raw.toLowerCase(Locale.ROOT).strip();
-        return "thi thoải".equals(v) ? "thi thoảng" : v;
+        String v = raw.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        if ("thi thoải".equals(v) || "thi thoảmg".equals(v) || "lâu lâu".equals(v)) {
+            return "thi thoảng";
+        }
+        if ("thỉnh thoảmg".equals(v)) {
+            return "thỉnh thoảng";
+        }
+        return v;
     }
 
     private static final Pattern TRIGGER_TOKEN_PATTERN = Pattern.compile(
@@ -831,7 +993,7 @@ public record ConversationState(
             + "hôm\\s+qua|hôm\\s+kia|hôm\\s+nay|mấy\\s+hôm|vài\\s+hôm|"
             + "mấy\\s+ngày|vài\\s+ngày|mấy\\s+tuần|vài\\s+tuần|mấy\\s+tháng|vài\\s+tháng|mấy\\s+năm|vài\\s+năm|"
             + "\\d+\\s*(?:hôm|ngày|tuần|tháng|năm)|(?:hôm|ngày|tuần|tháng|năm)\\s+(?:nay|trước|rồi|qua)|"
-            + "thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|đôi\\s+khi|thường\\s+xuyên|liên\\s+tục|suốt|"
+            + "thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|thi\\s+thoảmg|thỉnh\\s+thoảmg|lâu\\s+lâu|đôi\\s+khi|đôi\\s+lúc|thường\\s+xuyên|liên\\s+tục|suốt|"
             + "tái\\s+phát|bị\\s+lại|lại\\s+bị|kinh\\s+niên|mãn\\s+tính|"
             + "do\\s+ngồi|do\\s+đứng|do\\s+làm\\s+việc|ngồi\\s+lâu|đứng\\s+lâu|ngồi\\s+máy\\s+tính|làm\\s+việc\\s+nhiều|vận\\s+động\\s+nhiều|"
             + "không\\s+rõ\\s+từ\\s+bao\\s+giờ|k\\s+rõ)\\b"
@@ -867,6 +1029,11 @@ public record ConversationState(
 
     public static boolean hasExplicitPackageSelectionSignal(String text) {
         if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (SentimentIntentLayer.isWordingOrExpressionFeedback(text)
+                || SentimentIntentLayer.isConversationStyleComplaint(text)
+                || SentimentIntentLayer.isAlreadyAnsweredSlotPushback(text)) {
             return false;
         }
         String lower = text.toLowerCase(Locale.ROOT);
@@ -1297,6 +1464,13 @@ public record ConversationState(
         String knownTrigger = cached != null ? cached.knownTrigger() : null;
         String knownFrequencyL = cached != null ? cached.knownFrequency() : null;
         String knownSymptomDistributionL = cached != null ? cached.knownSymptomDistribution() : null;
+        String knownEpisodeDurationL = cached != null ? cached.knownEpisodeDuration() : null;
+        boolean packageInterestAcceptedL = cached != null && cached.packageInterestAccepted();
+        boolean bookingIntentConfirmedL = cached != null && cached.bookingIntentConfirmed();
+        String visitTimeL = cached != null ? cached.visitTime() : null;
+        String contactInfoL = cached != null ? cached.contactInfo() : null;
+        String bookingStatusL = cached != null && cached.bookingStatus() != null ? cached.bookingStatus() : "NONE";
+        String pendingQuestionSlotL = cached != null ? cached.pendingQuestionSlot() : null;
         String knownServiceFamily = cached != null ? cached.knownServiceFamily() : null;
         String knownPreferredPressure = cached != null ? cached.knownPreferredPressure() : null;
         String knownRecommendedPackage = cached != null ? cached.knownRecommendedPackage() : null;
@@ -1548,6 +1722,12 @@ public record ConversationState(
                             Math.max(content.lastIndexOf('!', qIdx), content.lastIndexOf('\n', qIdx))
                     );
                     lastQuestion = content.substring(startSent >= 0 ? startSent + 1 : 0, qIdx + 1).strip();
+                    if (cached == null) {
+                        String inferredSlot = inferPendingQuestionSlot(lastQuestion);
+                        if (inferredSlot != null) {
+                            pendingQuestionSlotL = inferredSlot;
+                        }
+                    }
                 }
 
                 if (lower.contains("lâu chưa") || lower.contains("mới gần đây")
@@ -1555,6 +1735,8 @@ public record ConversationState(
                         || lower.contains("ngồi lâu hay vận động")
                         || lower.contains("lâu rồi") || lower.contains("mới bị")
                         || lower.contains("máy tính") || lower.contains("bao lâu")
+                        || lower.contains("bắt đầu từ khi nào") || lower.contains("từ khi nào")
+                        || lower.contains("thường xảy ra") || lower.contains("tần suất")
                         || (lower.contains("mỏi vùng nào") && !knownSymptoms.isEmpty())) {
                     conditionAskedCount++;
                     lastQuestionIntent = "ASK_CONDITION";
@@ -1826,11 +2008,28 @@ public record ConversationState(
                 } else if (!isMismatchHere && SentimentIntentLayer.isTrialAcceptance(content, null)) {
                     lastIntent = "TRIAL_ACCEPTANCE";
                     objectionStage = "BOOKED";
+                    packageInterestAcceptedL = true;
+                    if ("NONE".equals(bookingStatusL)) {
+                        bookingStatusL = "COLLECTING_INFO";
+                    }
                 } else if (!isMismatchHere && PrimaryActionRouter.isAcknowledgementMessage(content)) {
                     ackCount++;
                     lastIntent = "ACKNOWLEDGEMENT";
                 } else if (!isMismatchHere && PrimaryActionRouter.isUnitPriceComparisonMessage(content)) {
                     lastIntent = "PRICE_COMPARISON";
+                }
+
+                if (!isPushbackHere && !isPkgRejectHere && hasExplicitPackageSelectionSignal(cleanContent)) {
+                    packageInterestAcceptedL = true;
+                    if ("NONE".equals(bookingStatusL)) {
+                        bookingStatusL = "COLLECTING_INFO";
+                    }
+                }
+                if (isPkgRejectHere || SentimentIntentLayer.isStrongRejection(content)) {
+                    packageInterestAcceptedL = false;
+                    bookingIntentConfirmedL = false;
+                    bookingStatusL = "NONE";
+                    visitTimeL = null;
                 }
 
                 if (!scopeSignal.possibleCorrection()) {
@@ -1873,6 +2072,9 @@ public record ConversationState(
 
                 if (!isPushbackHere && hasConditionTimeOrProgressionSignal(cleanContent)) {
                     conditionTimeAnsweredInHistory = true;
+                    if (cached == null && (SLOT_ONSET.equals(pendingQuestionSlotL) || SLOT_FREQUENCY.equals(pendingQuestionSlotL) || SLOT_EPISODE_DURATION.equals(pendingQuestionSlotL))) {
+                        pendingQuestionSlotL = null;
+                    }
                 }
 
                 Matcher sevM = SEVERITY_TOKEN_PATTERN.matcher(cleanContent);
@@ -1886,6 +2088,11 @@ public record ConversationState(
                     knownDurationOfProblem = durM.group(1).toLowerCase(Locale.ROOT).strip();
                 }
 
+                Matcher epDurM = EPISODE_DURATION_TOKEN_PATTERN.matcher(cleanContent);
+                if (epDurM.find()) {
+                    knownEpisodeDurationL = epDurM.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+                }
+
                 Matcher freqM = FREQUENCY_TOKEN_PATTERN.matcher(cleanContent);
                 String lastFreq = null;
                 while (freqM.find()) {
@@ -1897,6 +2104,24 @@ public record ConversationState(
                 Matcher distM = SYMPTOM_DISTRIBUTION_TOKEN_PATTERN.matcher(cleanContent);
                 if (distM.find()) {
                     knownSymptomDistributionL = distM.group(1).toLowerCase(Locale.ROOT).strip();
+                }
+
+                if (!isPushbackHere && (packageInterestAcceptedL || "COLLECTING_INFO".equals(bookingStatusL) || "CONFIRM_BOOKING_TIME".equals(lastQuestionIntent))) {
+                    Matcher vtM = VISIT_TIME_TOKEN_PATTERN.matcher(cleanContent);
+                    if (vtM.find()) {
+                        visitTimeL = vtM.group(1).replaceAll("\\s+", " ").strip();
+                        bookingIntentConfirmedL = true;
+                        if (cached == null && SLOT_BOOKING_TIME.equals(pendingQuestionSlotL)) {
+                            pendingQuestionSlotL = null;
+                        }
+                    }
+                }
+                Matcher ciM = CONTACT_INFO_TOKEN_PATTERN.matcher(cleanContent);
+                if (ciM.find()) {
+                    contactInfoL = ciM.group(1).strip();
+                }
+                if (bookingIntentConfirmedL && contactInfoL != null && !contactInfoL.isBlank()) {
+                    bookingStatusL = "CONFIRMED";
                 }
 
                 Matcher trigM = TRIGGER_TOKEN_PATTERN.matcher(cleanContent);
@@ -2069,7 +2294,8 @@ public record ConversationState(
                 Collections.unmodifiableList(new ArrayList<>(scopeSupersessionEvents)),
                 possibleCorrection,
                 cached != null && cached.packageExplicitlySelected(), cached != null ? cached.selectedPackageId() : null,
-                knownFrequencyL, knownSymptomDistributionL, cached != null ? cached.pendingQuestionSlot() : null
+                knownFrequencyL, knownSymptomDistributionL, pendingQuestionSlotL,
+                knownEpisodeDurationL, packageInterestAcceptedL, bookingIntentConfirmedL, visitTimeL, contactInfoL, bookingStatusL
         );
     }
 
@@ -2094,7 +2320,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
         ConversationState prior = ENRICHED_TO_PRIOR_MAP.get(this);
         if (prior != null && prior != this) {
@@ -2131,7 +2358,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
         ConversationState prior = ENRICHED_TO_PRIOR_MAP.get(this);
         if (prior != null && prior != this) {
@@ -2352,6 +2580,11 @@ public record ConversationState(
         if (durM.find()) {
             probDuration = durM.group(1).toLowerCase(Locale.ROOT).strip();
         }
+        String epDurationNow = this.knownEpisodeDuration;
+        Matcher epDurM2 = EPISODE_DURATION_TOKEN_PATTERN.matcher(cleanContent);
+        if (epDurM2.find()) {
+            epDurationNow = epDurM2.group(1).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        }
         // v3.8: tần suất luôn lấy giá trị MỚI NHẤT từ câu nói hiện tại (ghi đè, không nối chuỗi mâu thuẫn)
         String freqNow = this.knownFrequency;
         Matcher freqM2 = FREQUENCY_TOKEN_PATTERN.matcher(cleanContent);
@@ -2435,19 +2668,56 @@ public record ConversationState(
                 || SentimentIntentLayer.isAlternativePackageRequest(content));
         boolean nextPackageExplicitlySelected = selectionNow
                 || (!packageRejectedNow && this.packageExplicitlySelected);
+        boolean trialAcceptedNow = !isPushbackCurrent && !isPkgRejectNow && !packageRejectedNow
+                && SentimentIntentLayer.isTrialAcceptance(content, this)
+                && (offeredIdNow != null || this.packageRecommended || this.priceDiscussed || this.trialInviteOffered);
+        boolean nextPackageInterestAccepted = selectionNow || trialAcceptedNow
+                || (!packageRejectedNow && this.packageInterestAccepted);
         String nextSelectedPackageId = selectionNow
                 ? offeredIdNow
-                : (packageRejectedNow ? null : this.selectedPackageId);
+                : (packageRejectedNow ? null : (trialAcceptedNow && (this.selectedPackageId == null || this.selectedPackageId.isBlank()) ? offeredIdNow : this.selectedPackageId));
+        String nextVisitTime = packageRejectedNow ? null : this.visitTime;
+        if (!isPushbackCurrent && !packageRejectedNow
+                && (nextPackageInterestAccepted || "COLLECTING_INFO".equals(this.bookingStatus) || "CONFIRM_BOOKING_TIME".equals(this.lastQuestionIntent))) {
+            Matcher vtM = VISIT_TIME_TOKEN_PATTERN.matcher(cleanContent);
+            if (vtM.find()) {
+                nextVisitTime = vtM.group(1).replaceAll("\\s+", " ").strip();
+            }
+        }
+        String nextContactInfo = packageRejectedNow ? null : this.contactInfo;
+        Matcher ciM = CONTACT_INFO_TOKEN_PATTERN.matcher(cleanContent);
+        if (ciM.find()) {
+            nextContactInfo = ciM.group(1).strip();
+        }
+        boolean hasExplicitBookingVerb = cleanLower.matches("(?isU).*\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|book\\s+lịch)\\b.*");
+        boolean nextBookingIntentConfirmed = !packageRejectedNow && (this.bookingIntentConfirmed
+                || (nextPackageInterestAccepted && nextVisitTime != null && !nextVisitTime.isBlank())
+                || (hasExplicitBookingVerb && nextVisitTime != null && !nextVisitTime.isBlank()));
+        String nextBookingStatus;
+        if (packageRejectedNow) {
+            nextBookingStatus = "NONE";
+        } else if (nextBookingIntentConfirmed && nextContactInfo != null && !nextContactInfo.isBlank()) {
+            nextBookingStatus = "CONFIRMED";
+        } else if (nextPackageInterestAccepted || nextBookingIntentConfirmed || "COLLECTING_INFO".equals(this.bookingStatus)) {
+            nextBookingStatus = "COLLECTING_INFO";
+        } else {
+            nextBookingStatus = "NONE";
+        }
         // v3.8 pendingQuestionSlot: chỉ xóa khi khách trả lời ĐÚNG slot đang chờ; phản hồi ngoài luồng giữ nguyên slot.
         String nextPendingSlot = this.pendingQuestionSlot;
         if (nextPendingSlot != null && !nextPendingSlot.isBlank()) {
             boolean slotAnswered = switch (nextPendingSlot) {
                 case SLOT_ONSET -> PROBLEM_DURATION_TOKEN_PATTERN.matcher(cleanContent).find()
+                        || FREQUENCY_TOKEN_PATTERN.matcher(cleanContent).find()
                         || (!isPushbackCurrent && hasConditionTimeOrProgressionSignal(cleanContent));
-                case SLOT_FREQUENCY -> FREQUENCY_TOKEN_PATTERN.matcher(cleanContent).find();
+                case SLOT_FREQUENCY -> FREQUENCY_TOKEN_PATTERN.matcher(cleanContent).find()
+                        || (!isPushbackCurrent && hasConditionTimeOrProgressionSignal(cleanContent));
+                case SLOT_EPISODE_DURATION -> EPISODE_DURATION_TOKEN_PATTERN.matcher(cleanContent).find()
+                        || (!isPushbackCurrent && hasConditionTimeOrProgressionSignal(cleanContent));
                 case SLOT_SEVERITY -> SEVERITY_TOKEN_PATTERN.matcher(cleanContent).find();
                 case SLOT_TRIGGER -> TRIGGER_TOKEN_PATTERN.matcher(cleanContent).find();
                 case SLOT_DISTRIBUTION -> SYMPTOM_DISTRIBUTION_TOKEN_PATTERN.matcher(cleanContent).find();
+                case SLOT_BOOKING_TIME -> VISIT_TIME_TOKEN_PATTERN.matcher(cleanContent).find();
                 default -> false;
             };
             if (slotAnswered) {
@@ -2475,7 +2745,7 @@ public record ConversationState(
                         probPhrase,
                         prefPressure,
                         prefOption,
-                        this.known != null ? this.known.preferredTime() : null
+                        nextVisitTime != null ? nextVisitTime : (this.known != null ? this.known.preferredTime() : null)
                 ),
                 this.priceDiscussed,
                 this.pricesShown,
@@ -2548,7 +2818,8 @@ public record ConversationState(
                 Collections.unmodifiableList(nextSupersessionEvents),
                 nextPossibleCorrection,
                 nextPackageExplicitlySelected, nextSelectedPackageId,
-                freqNow, distNow, nextPendingSlot
+                freqNow, distNow, nextPendingSlot,
+                epDurationNow, nextPackageInterestAccepted, nextBookingIntentConfirmed, nextVisitTime, nextContactInfo, nextBookingStatus
         );
         ENRICHED_TO_PRIOR_MAP.put(enriched, this.priorTurnState());
         return enriched;
@@ -2833,11 +3104,19 @@ public record ConversationState(
             nextObjectionCount = base.objectionCount() + 1;
             nextObjectionStage = "PRICE_ESCALATION_HANDOFF";
             nextTelemetrySubtype = "PRICE_ESCALATION_HANDOFF";
-        } else if ("spa_trial_acceptance_booking".equalsIgnoreCase(skillCode)
+        }
+        boolean nextPkgInterestAccepted = base.packageInterestAccepted();
+        boolean nextBookingConfirmed = base.bookingIntentConfirmed();
+        String nextBookingStatus = base.bookingStatus() != null ? base.bookingStatus() : "NONE";
+        if ("spa_trial_acceptance_booking".equalsIgnoreCase(skillCode)
                 || "TRIAL_ACCEPTANCE".equalsIgnoreCase(detectedIntent)) {
             nextObjectionStage = "BOOKED";
             nextQuestionIntent = "CONFIRM_BOOKING_TIME";
             usedQIntents.add("CONFIRM_BOOKING_TIME");
+            nextPkgInterestAccepted = true;
+            if ("NONE".equals(nextBookingStatus)) {
+                nextBookingStatus = "COLLECTING_INFO";
+            }
         } else if (decision != null && decision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY) {
             nextTelemetrySubtype = "SAFETY_HANDOFF";
         }
@@ -2864,7 +3143,12 @@ public record ConversationState(
         }
 
         if ("spa_condition_first_discovery".equalsIgnoreCase(skillCode)
+                || "spa_cautious_symptom_clarification".equalsIgnoreCase(skillCode)
+                || "CAUTIOUS_SYMPTOM_CLARIFICATION".equalsIgnoreCase(detectedIntent)
                 || combinedBotReplyLower.contains("bị lâu chưa")
+                || combinedBotReplyLower.contains("bắt đầu từ khi nào")
+                || combinedBotReplyLower.contains("từ khi nào")
+                || combinedBotReplyLower.contains("thường xảy ra")
                 || (combinedBotReplyLower.contains("mỏi vùng nào") && !base.knownSymptoms().isEmpty())) {
             nextCondAsked++;
             nextQuestionIntent = "ASK_CONDITION";
@@ -3076,7 +3360,8 @@ public record ConversationState(
                 base.possibleCorrection(),
                 base.packageExplicitlySelected(), base.selectedPackageId(),
                 base.knownFrequency(), base.knownSymptomDistribution(),
-                deliveredQuestionThisTurn != null ? inferPendingQuestionSlot(deliveredQuestionThisTurn) : base.pendingQuestionSlot()
+                deliveredQuestionThisTurn != null ? inferPendingQuestionSlot(deliveredQuestionThisTurn) : base.pendingQuestionSlot(),
+                base.knownEpisodeDuration(), nextPkgInterestAccepted, nextBookingConfirmed, base.visitTime(), base.contactInfo(), nextBookingStatus
         );
 
         if (sessionKey != null) {
@@ -4286,7 +4571,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, Collections.unmodifiableSet(nextApologized), errorId.strip(),
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
     }
 
@@ -4311,7 +4597,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, apologizedErrorIds, errorId,
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
     }
 
@@ -4359,7 +4646,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
     }
 
@@ -4413,7 +4701,8 @@ public record ConversationState(
                 confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
                 Collections.unmodifiableList(nextNotes), scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
     }
 
@@ -4490,7 +4779,8 @@ public record ConversationState(
                 scopeSupersessionEvents,
                 possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
-                knownFrequency, knownSymptomDistribution, pendingQuestionSlot
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
         );
         if (this.isAlreadyEnrichedForTurn()) {
             ENRICHED_TO_PRIOR_MAP.put(next, this.priorTurnState());

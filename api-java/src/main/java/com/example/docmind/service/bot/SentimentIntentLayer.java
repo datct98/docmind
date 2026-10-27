@@ -162,14 +162,26 @@ public final class SentimentIntentLayer {
             + "chan\\s+qua\\s+thoi)\\b.*"
     );
 
-    // 3B (v3.3.4). WORDING / EXPRESSION FEEDBACK — khách bắt bẻ hoặc trêu cách Bot dùng từ
-    // (ví dụ: "Đau lưng chứ đau lòng đâu mà nhẹ nhõm"). Đây là phản hồi về CÂU CHỮ, không phải tin nhắn mơ hồ.
+    // 3B (v3.3.4 / v3.9). WORDING / EXPRESSION / REPETITION FEEDBACK — khách bắt bẻ cách dùng từ hoặc phê bình bot nhại lời/lặp câu
+    // (ví dụ: "Đau lưng chứ đau lòng đâu mà nhẹ nhõm", "Nhại đi nhạu lại câu này k biết chán à", "Ai nói là 'em vui mừng khi…' nghe gà vậy").
     private static final Pattern WORDING_OR_EXPRESSION_FEEDBACK_PATTERN = Pattern.compile(
             "(?isU).*(?:\\bchứ\\s+(?:có\\s+phải\\s+)?đau\\s+lòng\\s+đâu\\b"
             + "|\\bđau\\s+lòng\\s+đâu\\s+mà\\s+(?:nhẹ\\s+nhõm|an\\s+ủi|tâm\\s+sự)\\b"
             + "|\\b(?:cơ\\s+thể|đau\\s+lưng|mỏi\\s+gối|tê\\s+tay|nhức\\s+mỏi).*?\\bchứ\\s+.*?\\bđâu\\s+mà\\s+(?:nhẹ\\s+nhõm|tâm\\s+hồn|buồn)\\b"
             + "|\\bdùng\\s+từ\\s+.*?\\bnghe\\s+(?:cứ\\s+như|giống)\\b"
-            + "|\\b(?:nghe\\s+|nói\\s+chuyện\\s+|tư\\s+vấn\\s+|giọng\\s+|văn\\s+)?(?:thảo\\s+mai|sến\\s+súa|sến\\s+quá|sến\\s+vãi|giả\\s+tạo|kịch\\s+quá|diễn\\s+quá)\\b).*"
+            + "|\\b(?:nghe\\s+|nói\\s+chuyện\\s+|tư\\s+vấn\\s+|giọng\\s+|văn\\s+)?(?:thảo\\s+mai|sến\\s+súa|sến\\s+quá|sến\\s+vãi|giả\\s+tạo|kịch\\s+quá|diễn\\s+quá|dịch\\s+máy|ngô\\s+nghê)\\b"
+            + "|\\b(?:nhại\\s+đi\\s+nhại\\s+lại|nhại\\s+đi\\s+nhạu\\s+lại|cứ\\s+nhại|nhại\\s+lại|nhại\\s+lời|lặp\\s+đi\\s+lặp\\s+lại)\\b"
+            + "|\\bcâu\\s+này\\s+(?:không|k|ko|chả)\\s+biết\\s+chán\\b"
+            + "|\\bhiểu\\s+(?:gì|j)\\s+mà\\s+cứ\\s+(?:nhại|lặp|hỏi|nói)\\b"
+            + "|\\b(?:không\\s+ai|k\\s+ai|ko\\s+ai|chả\\s+ai|ai\\s+lại|ai)\\s+nói\\s+là\\b"
+            + "|\\bem\\s+vui\\s+mừng\\s+khi\\b"
+            + "|\\b(?:nghe\\s+|nói\\s+|dùng\\s+từ\\s+)?gà\\s+(?:vậy|thế|quá)\\b).*"
+    );
+
+    private static final Pattern ALREADY_ANSWERED_SLOT_PUSHBACK_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\b(?:ơ|ủa|ơ\\s+hay|ủa\\s+ơ)\\s*[,]?\\s*(?:đã\\s+|vừa\\s+|tôi\\s+|mình\\s+)?(?:bảo|nói|trả\\s+lời)\\b.*?\\b(?:mà|rồi)\\b"
+            + "|\\b(?:đã|vừa)\\s+(?:bảo|nói|trả\\s+lời)\\s+(?:là\\s+|ở\\s+trên\\s+)?.*?\\b(?:rồi|mà)\\b"
+            + "|\\bnói\\s+ở\\s+trên\\s+rồi\\b).*"
     );
 
     // 3C (v3.3.4). NEGATIVE / FRUSTRATED MOOD hướng vào CÁCH TƯ VẤN (chưa phải STRONG_REJECTION).
@@ -487,17 +499,19 @@ public final class SentimentIntentLayer {
         if (hasNeurologicalRisk(message, priorState)) {
             return false;
         }
+        if (priorState != null
+                && ("CAUTIOUS_SYMPTOM_CLARIFICATION".equals(priorState.lastIntent())
+                    || priorState.conditionAskedCount() >= 1
+                    || priorState.conditionClarified())) {
+            return false;
+        }
         if (message != null && !message.isBlank()) {
             String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
             if (NUMBNESS_OR_DIZZINESS_PATTERN.matcher(norm).matches()) {
                 return true;
             }
         }
-        // Giữ nhánh thận trọng ở lượt khách trả lời câu hỏi khởi phát/diễn biến (không kéo dài sang mọi lượt sau).
-        return priorState != null && priorState.knownSymptoms() != null
-                && message != null && ConversationState.hasConditionTimeOrProgressionSignal(message)
-                && priorState.knownSymptoms().stream().anyMatch(sy -> sy != null && NUMBNESS_OR_DIZZINESS_PATTERN
-                        .matcher(sy.toLowerCase(Locale.ROOT)).matches());
+        return false;
     }
 
     public static boolean isNeurologicalRiskMessage(String message) {
@@ -520,13 +534,38 @@ public final class SentimentIntentLayer {
         return isStrongRejection(message);
     }
 
-    /** v3.3.4: Khách bắt bẻ / trêu cách dùng từ của Bot ("đau lưng chứ đau lòng đâu mà nhẹ nhõm"). */
+    /** v3.3.4 / v3.9: Khách bắt bẻ cách dùng từ hoặc phê bình bot nhại lời/lặp câu ("đau lưng chứ đau lòng đâu mà nhẹ nhõm", "nhại đi nhạu lại", "ai nói là 'em vui mừng khi…'"). */
     public static boolean isWordingOrExpressionFeedback(String message) {
         if (message == null || message.isBlank()) {
             return false;
         }
         String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        return WORDING_OR_EXPRESSION_FEEDBACK_PATTERN.matcher(norm).matches();
+        if (WORDING_OR_EXPRESSION_FEEDBACK_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        if (normalizedMsg != null && !normalizedMsg.isBlank()) {
+            String normClass = Normalizer.normalize(normalizedMsg.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            return WORDING_OR_EXPRESSION_FEEDBACK_PATTERN.matcher(normClass).matches();
+        }
+        return false;
+    }
+
+    /** v3.9: Khách nhắc lại rằng mình đã trả lời thông tin đó ở lượt trước ("ơ bảo thi thoảmg bị mà", "đã bảo rồi mà"). */
+    public static boolean isAlreadyAnsweredSlotPushback(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (ALREADY_ANSWERED_SLOT_PUSHBACK_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message);
+        if (normalizedMsg != null && !normalizedMsg.isBlank()) {
+            String normClass = Normalizer.normalize(normalizedMsg.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            return ALREADY_ANSWERED_SLOT_PUSHBACK_PATTERN.matcher(normClass).matches();
+        }
+        return false;
     }
 
     private static final Pattern MOOD_DROP_RECOVERY_PATTERN = Pattern.compile(
@@ -622,10 +661,18 @@ public final class SentimentIntentLayer {
         if (message == null || message.isBlank()) {
             return false;
         }
-        if (isStrongRejection(message)) {
+        if (isStrongRejection(message)
+                || isWordingOrExpressionFeedback(message)
+                || isConversationStyleComplaint(message)
+                || isAlreadyAnsweredSlotPushback(message)
+                || isMetaConversationOnBotBehavior(message)
+                || PrimaryActionRouter.isFrustrationMessage(message)) {
             return false;
         }
         String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (norm.matches("(?isU).*\\bkhông\\s+ạ\\s*\\?\\s*$")) {
+            return false;
+        }
         String ascii = removeDiacritics(message);
         boolean matchesTrial = TRIAL_ACCEPTANCE_PATTERN.matcher(norm).matches()
                 || TRIAL_ACCEPTANCE_ASCII_PATTERN.matcher(ascii).matches();

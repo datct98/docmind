@@ -176,7 +176,7 @@ public final class PrimaryActionRouter {
             if ("PUSHBACK_ON_ASSUMPTION_REPAIR".equals(i)) {
                 return "R00B-PUSHBACK-ON-ASSUMPTION";
             }
-            if ("WORDING_FEEDBACK_REPAIR".equals(i)) {
+            if ("WORDING_FEEDBACK_REPAIR".equals(i) || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(i)) {
                 return "R00W-WORDING-FEEDBACK-REPAIR";
             }
             if ("MID_FUNNEL_LUKEWARM_REENGAGE".equals(i)) {
@@ -637,19 +637,79 @@ public final class PrimaryActionRouter {
             );
         }
 
-        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4): Khách bắt bẻ / trêu cách Bot dùng từ
-        // ("Đau lưng chứ đau lòng đâu mà nhẹ nhõm"). Phải đứng TRƯỚC R00-MISMATCH vì cấu trúc "chứ (có phải) ... đâu"
-        // trùng mẫu phản bác tư vấn lệch, và TRƯỚC R00B vì không phải khách phủ nhận triệu chứng.
-        // Chỉ áp dụng khi Bot đã thực sự nói chuyện trước đó (có lời Bot để bắt bẻ).
+        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4 / v3.9 Priority 2: Style/Wording Repair):
+        // Khách bắt bẻ cách dùng từ hoặc phê bình bot nhại lời/lặp câu ("Đau lưng chứ đau lòng đâu mà nhẹ nhõm",
+        // "Nhại đi nhạu lại câu này k biết chán à", "Ai nói là 'em vui mừng khi…' nghe gà vậy").
+        // Đứng ngay sau Safety/Opt-Out/Complaint và TRƯỚC mọi nhánh bán hàng/báo giá.
         if (SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
+            boolean preserveBookingFunnel = (priorState.packageInterestAccepted() || enriched.packageInterestAccepted())
+                    && "COLLECTING_INFO".equals(priorState.bookingStatus() != null && !"NONE".equals(priorState.bookingStatus()) ? priorState.bookingStatus() : enriched.bookingStatus())
+                    && !SentimentIntentLayer.isStrongRejection(msg)
+                    && !SentimentIntentLayer.isPackageRejection(msg);
             return new RoutingDecision(
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     false,
                     1,
-                    "WORDING_FEEDBACK_REPAIR",
-                    "greeting_warm_intro"
+                    preserveBookingFunnel ? "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL" : "WORDING_FEEDBACK_REPAIR",
+                    preserveBookingFunnel ? "spa_trial_acceptance_booking" : "greeting_warm_intro"
             );
+        }
+        if (SentimentIntentLayer.isConversationStyleComplaint(msg)
+                && !SentimentIntentLayer.isStrongRejection(msg)) {
+            return new RoutingDecision(
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    false,
+                    1,
+                    "CONVERSATION_STYLE_REPAIR",
+                    "spa_frustration_rescue"
+            );
+        }
+        if (SentimentIntentLayer.isAlreadyAnsweredSlotPushback(msg)
+                && !SentimentIntentLayer.isStrongRejection(msg)) {
+            if (priorState.packageRecommended() || priorState.priceDiscussed()) {
+                return new RoutingDecision(
+                        PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                        PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                        false,
+                        1,
+                        "WORDING_FEEDBACK_REPAIR",
+                        "greeting_warm_intro"
+                );
+            }
+            if (enriched.conditionClarified()
+                    && (!enriched.knownSymptoms().isEmpty() || !enriched.knownBodyAreas().isEmpty() || priorState.serviceFamilyKnown())) {
+                CatalogOption grounded = selectBestSingleCatalogOption(msg, enriched, fusedChunks);
+                if (grounded == null && fusedChunks != null && !fusedChunks.isEmpty()) {
+                    return new RoutingDecision(
+                            PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                            PrimaryAction.HARD_HANDOFF_COMPLAINT,
+                            false,
+                            1,
+                            "UNGROUNDED_SCOPE_HANDOFF",
+                            "complaint_immediate_handoff"
+                    );
+                }
+                if (priorState.priceRequestedInSession()) {
+                    return new RoutingDecision(
+                            PrimaryAction.ANSWER_PRICE_ONCE,
+                            PrimaryAction.ANSWER_PRICE_ONCE,
+                            false,
+                            2,
+                            "RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED",
+                            "spa_recommend_and_quote_if_requested"
+                    );
+                }
+                return new RoutingDecision(
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        false,
+                        2,
+                        "RECOMMEND_AFTER_CONDITION",
+                        "spa_recommend_after_condition"
+                );
+            }
         }
 
         boolean isHarshEntityMismatchCritique = SentimentIntentLayer.hasHarshPronouns(msg)
@@ -1349,6 +1409,7 @@ public final class PrimaryActionRouter {
                 || coreAction == PrimaryAction.ADVANCE_AFTER_ACK
                 || "CONVERSATION_STYLE_REPAIR".equals(intent)
                 || "WORDING_FEEDBACK_REPAIR".equals(intent)
+                || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)
                 || "META_COMMENT_ON_GREETING".equals(intent)
                 || "META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(intent)
                 || "CONFIRM_PREVIOUS_INFO_ADVANCE".equals(intent)
@@ -1474,6 +1535,12 @@ public final class PrimaryActionRouter {
         }
 
         // R00W-WORDING-FEEDBACK-REPAIR (v3.8): 1 bubble, tiếp nhận góp ý ngắn gọn, tự nhiên, tuyệt đối không kèm quảng cáo dịch vụ hay icon 💙 trong cùng lượt.
+        if ("WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)) {
+            String preserveText = "Dạ cảm ơn " + h + " đã góp ý nha, " + selfP
+                    + " rút kinh nghiệm nói chuyện tự nhiên hơn ạ. Hôm nay hay ngày mai " + h
+                    + " tiện ghé vào tầm mấy giờ để " + selfP + " sắp xếp lịch đón " + h + " nhé?";
+            return List.of(new ReplyBubble(preserveText, 0));
+        }
         if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
             String wordingText = "Dạ cảm ơn " + h + " đã góp ý thẳng thắn ạ, " + selfP
                     + " xin rút kinh nghiệm để nói chuyện ngắn gọn, tự nhiên và đi thẳng vào trọng tâm hơn với " + h + " nhé ạ.";
@@ -2095,6 +2162,12 @@ public final class PrimaryActionRouter {
                             : "Dạ tại " + selfP + " quen miệng hay khách sáo quá đó ạ, " + h
                               + " đừng để bụng nha. Hôm nay " + h + " đang muốn thư giãn vùng nào để " + selfP + " tư vấn ngay cho " + h + " ạ?";
                     yield List.of(new ReplyBubble(lightReply, 0));
+                }
+                if ("WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)) {
+                    String preserveText = "Dạ cảm ơn " + h + " đã góp ý nha, " + selfP
+                            + " rút kinh nghiệm nói chuyện tự nhiên hơn ạ. Hôm nay hay ngày mai " + h
+                            + " tiện ghé vào tầm mấy giờ để " + selfP + " sắp xếp lịch đón " + h + " nhé?";
+                    yield List.of(new ReplyBubble(preserveText, 0));
                 }
                 if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
                     String wittyRepair = "Dạ cảm ơn " + h + " đã góp ý thẳng thắn ạ, " + selfP

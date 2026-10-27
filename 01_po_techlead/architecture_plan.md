@@ -393,6 +393,32 @@ flowchart TD
 5. **`P1-6` (Cổng 4 — Sửa tại nguồn lỗi rò rỉ dấu `|` từ `<CONVERSATION_HISTORY>` & khôi phục `sent_bubble_ledger`)**:
    - `FanpageBotPromptBuilder.buildUserTurnAndContextPart(...)`: Serialize lịch sử bong bóng bằng khoảng trắng/câu thay vì nối `" | "`, triệt tiêu hoàn toàn hiện tượng LLM bắt chước sinh ký tự `|` ở đầu bong bóng.
 
+---
+
+### 4.8. Chỉ Thị Kỹ Thuật P0/P1 `v3.8.2` — Truy Vết Nguồn Lặp 4 Bước, Thứ Tự Ưu Tiên Cứng Router, Tách Trạng Thái Phễu (`packageInterestAccepted` / `bookingStatus`) & Khóa `Final Output Gate` (`qwen3:14b`)
+
+1. **Điều Tra 4 Bước & Xử Lý Tận Gốc Hiện Tượng Lặp Nguyên Văn Câu Trả Lời (P0-1)**:
+   - Truy vết log từng tầng của hội thoại lỗi `sim_1793079356629_gjx2f4` chứng minh nguyên nhân thuộc **TH3 + TH4**:
+     - Câu mở đầu *"Em hiểu rồi ạ. Mình đang cảm thấy đau đầu, mỏi gối, tê tay..."* (Turn 2, 3, 4): `raw_llm_output` sao chép câu mở đầu từ `<CONVERSATION_HISTORY>` khi `<GROUNDED_TURN_FACTS>` truyền lặp lại danh sách triệu chứng mà không chặn nhắc lại triệu chứng cũ.
+     - Câu quảng cáo *"Gói Massage cơ bản sẽ giúp mình thư giãn toàn thân, nhẹ đầu và dễ vào giấc hơn nhờ liệu trình êm sâu và không gian yên tĩnh."* + *"Mình [có] muốn thử trải nghiệm một buổi không ạ?"* (Turn 4, 5, 7, 8): Turn 4 & 5 bị rớt khỏi `STYLE_REPAIR` sang nhánh bán hàng, Turn 7 bị lùi phễu sau khi khách đã nói *"Uk thử xem"*, và Turn 8 thiếu cổng chặn độ trùng lặp token liên lượt.
+   - Giải pháp tại nguồn + `Final Output Gate` (`ReplyContractValidator.validate` & `FanpageBotService.enforceFinalOutputGate`):
+     - Bổ sung kiểm tra `CROSS_TURN_SENTENCE_REPETITION` (chặn câu mô tả quảng cáo, câu đồng cảm mở đầu, câu mời trải nghiệm có độ trùng lặp **`> 70% token`** so với bong bóng bot ở lượt liền trước; miễn trừ cho dữ kiện cố định như tên gói, thời lượng, mức giá, giờ mở cửa và câu hỏi khung giờ ghé khi đang bảo toàn phễu đặt lịch).
+     - Bổ sung kiểm tra `FORBIDDEN_SYMPTOM_LIST_PARROTING_REPEAT` và chỉ dẫn trong `FanpageBotPromptBuilder` cấm nhắc lại danh sách triệu chứng ở đầu lượt khi triệu chứng đã được xác nhận ở lượt trước.
+2. **Tách `onset` / `frequency` / `duration`, Đóng `pendingQuestionSlot` & Đảm Bảo Ưu Tiên An Toàn (P0-2)**:
+   - Chuẩn hóa biến thể gõ nhầm `"thi thoảmg"`, `"thỉnh thoảmg"` -> `"thi thoảng"` trong `VietnameseQueryNormalizer` và nhận diện `"lâu lâu"` là tín hiệu tần suất `OCCASIONAL` (đồng thời vẫn trích xuất `"mất ngủ"` trong `"lâu lâu mất ngủ"`).
+   - Khi khách trả lời `"Thi thoảng bị lâu lâu mất ngủ"`, `ConversationState` ghi nhận `frequency = "thi thoảng"`, `frequencyCategory = "OCCASIONAL"`, đóng `pendingQuestionSlot = null` và chuyển sang tư vấn dịch vụ thư giãn sau khi đã làm rõ thận trọng (`cautiousClarificationCount >= 1`) và không có dấu hiệu nguy hiểm cấp tính.
+3. **Tách 2 Tầng `STYLE_REPAIR` & Cấm Bán Hàng Kèm Theo (P0-3)**:
+   - Tầng Nhận diện (`SentimentIntentLayer`): Nhận diện các câu phê bình lỗi giao tiếp cụ thể (`"ơ bảo ... mà"`, `"nhại đi nhạu lại"`, `"lặp đi lặp lại"`, `"k ai nói là..."`, `"ai lại nói là..."`, hoặc trích dẫn câu bot trong ngoặc kép).
+   - Tầng Điều phối (`PrimaryActionRouter` & `FanpageBotPromptBuilder`): Áp dụng thứ tự ưu tiên cứng `Safety -> Style/Wording Repair -> Current Request/Slot Resolution -> Sales/Quoting`. Ở lượt `WORDING_FEEDBACK_REPAIR` thuần túy (Turn 4, Turn 5), loại bỏ hoàn toàn mục tiêu bán hàng/quảng cáo gói và cấm hỏi câu mời trải nghiệm (`maxTotalQuestions = 0`).
+4. **Tách Trạng Thái Đồng Ý Thử Gói vs. Đặt Lịch & Chặn Lùi Phễu Turn 6 -> Turn 7 (P0-4)**:
+   - Tách rõ `packageInterestAccepted`, `bookingIntentConfirmed`, `visitTime`, `contactInfo`, `bookingStatus` (`NONE` | `COLLECTING_INFO` | `CONFIRMED`) trong `ConversationState.java`.
+   - Khi khách nói `"Uk thử xem"` (Turn 6): `packageInterestAccepted = true`, `bookingStatus = "COLLECTING_INFO"`, hỏi ngắn gọn khung giờ dự kiến ghé (xóa bỏ mẫu câu dịch máy `"Em vui mừng khi..."` trong migration `V22__clean_dynamic_duration_and_trial_accept_rules.sql`, không lặp giá `399k`).
+   - Khi khách góp ý câu chữ ở Turn 7 mà không từ chối gói: Định tuyến sang `WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL`, giữ nguyên `packageInterestAccepted = true` và `bookingStatus = "COLLECTING_INFO"`, nhận lời góp ý ngắn gọn rồi hỏi tiếp khung giờ ghé — tuyệt đối không lùi phễu về hỏi lại *"Mình muốn trải nghiệm buổi này không ạ?"*.
+5. **Xử Lý Phản Đối Giá Lần 1 Bám Sát Catalog (P1-5) & Ngân Sách Lịch Sử Thông Minh + Đường Truyền Động Thời Lượng Catalog (P1-6)**:
+   - `HANDLE_PRICE_OBJECTION_FIRST_TIME` (Turn 8 `"Mà đắt quá"`): Tối đa 2 bong bóng, giữ nguyên gói đang chọn, nêu đúng quyền lợi từ chunk Catalog/Chính sách đã xác minh (`60 phút`, `massage trị liệu toàn thân`, `buffet thực dưỡng`, `không gian yên tĩnh có rèm che riêng từng giường`).
+   - Thay thế cắt chuỗi thô `substring(0, 260) + "..."` trong `FanpageBotPromptBuilder` bằng `appendTurnBoundaryBudgetedHistory` cắt theo ranh giới lượt và ngân sách token; truyền động `valid_catalog_durations` vào `<GROUNDED_TURN_FACTS>`; thu hẹp kiểm tra câu hỏi xác nhận trong `ReplyContractValidator` (`isParrotingOrRepeatedConfirmationQuestion`).
+
+
 
 
 

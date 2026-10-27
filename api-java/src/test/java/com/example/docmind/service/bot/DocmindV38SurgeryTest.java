@@ -692,4 +692,189 @@ class DocmindV38SurgeryTest {
             assertThat(factsBlock).doesNotContain("target_catalog_price");
         }
     }
+
+    @Test
+    @DisplayName("P0.1 & P0.2: Tách onset/frequency/duration, đóng pendingQuestionSlot khi khách trả lời 'Thi thoảng bị lâu lâu mất ngủ' và chặn lặp nguyên văn >70% token")
+    void p01_and_p02_pendingQuestionSlotClosureAndCrossTurnRepetitionGate() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        List<String> kws = List.of("đau đầu", "mỏi gối", "tê tay", "mất ngủ", "massage");
+
+        List<ConversationTurn> historyTurn3 = List.of(
+                new ConversationTurn("user", "Xin giá"),
+                new ConversationTurn("assistant", "Dạ chào mình, em là An Nhiên ạ.\nBên em chuyên massage thư giãn.\nMình đang muốn thư giãn vùng nào ạ?"),
+                new ConversationTurn("user", "Đau đầu mỏi gối tê tay"),
+                new ConversationTurn("assistant", "Em hiểu rồi ạ. Mình đang cảm thấy đau đầu, mỏi gối, tê tay. Tình trạng này bắt đầu từ khi nào ạ?")
+        );
+        String msgTurn3 = "Thi thoảng bị lâu lâu mất ngủ";
+        ConversationState st3 = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p02", "c-p02", false, msgTurn3, historyTurn3, kws, chunks
+        ).enrichWithCurrentMessage(msgTurn3, kws);
+
+        assertThat(st3.frequency()).isEqualTo("thi thoảng");
+        assertThat(st3.frequencyCategory()).isEqualTo("OCCASIONAL");
+        assertThat(st3.knownSymptoms()).contains("mất ngủ");
+        assertThat(st3.pendingQuestionSlot()).isNull();
+
+        PrimaryActionRouter.RoutingDecision dec3 = PrimaryActionRouter.route(msgTurn3, st3, chunks, kws);
+        assertThat(dec3.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE);
+
+        // Chặn nhại lại danh sách triệu chứng đã xác nhận ở đầu lượt
+        var repeatSymptomRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Em hiểu rồi ạ. Mình đang cảm thấy đau đầu, mỏi gối, tê tay, và thỉnh thoảng bị mất ngủ.", 0)),
+                st3, msgTurn3, dec3.effectiveResponseAction(), false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(repeatSymptomRes.errors()).contains("FORBIDDEN_SYMPTOM_LIST_PARROTING_REPEAT");
+
+        // Chặn lặp câu quảng cáo/câu mời trải nghiệm có độ trùng lặp > 70% token so với lượt liền trước
+        List<ConversationTurn> historyTurn5 = List.of(
+                new ConversationTurn("user", "Xin giá"),
+                new ConversationTurn("assistant", "Dạ chào mình ạ."),
+                new ConversationTurn("user", "Đau đầu mỏi gối tê tay"),
+                new ConversationTurn("assistant", "Em hiểu rồi ạ. Tình trạng này bắt đầu từ khi nào ạ?"),
+                new ConversationTurn("user", "Ơ bảo thi thoảmg bị mà"),
+                new ConversationTurn("assistant", "Dạ với tình trạng đau đầu, mỏi gối, em gợi ý gói Massage cơ bản 60 phút giá 399k ạ.\n\nGói Massage cơ bản sẽ giúp mình thư giãn toàn thân, nhẹ đầu và dễ vào giấc hơn nhờ liệu trình êm sâu và không gian yên tĩnh. Mình muốn thử trải nghiệm một buổi không ạ?")
+        );
+        ConversationState st5 = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p01-t5", "c-p01-t5", false, "Mà đắt quá", historyTurn5, kws, chunks
+        ).enrichWithCurrentMessage("Mà đắt quá", kws);
+        var repeatPromoRes = ReplyContractValidator.validateAndEnforce(
+                List.of(
+                        new ReplyBubble("Dạ em hiểu mình cân nhắc chi phí ạ. Gói Massage cơ bản sẽ giúp mình thư giãn toàn thân, nhẹ đầu và dễ vào giấc hơn nhờ liệu trình êm sâu và không gian yên tĩnh.", 0),
+                        new ReplyBubble("Mình có muốn thử trải nghiệm một buổi không ạ?", 2000)
+                ),
+                st5, "Mà đắt quá", PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME, false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(repeatPromoRes.errors()).contains("CROSS_TURN_SENTENCE_REPETITION");
+    }
+
+    @Test
+    @DisplayName("P0.3 & P0.4: Tách 2 tầng STYLE_REPAIR, tách packageInterestAccepted vs COLLECTING_INFO và bảo toàn vị trí phễu ở Turn 6 -> Turn 7")
+    void p03_and_p04_styleRepairAndFunnelPreservationAcrossTurn6AndTurn7() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        List<String> kws = List.of("đau đầu", "mỏi gối", "massage");
+
+        // Turn 5: "Hiểu j mà cứ nhại đi nhạu lại thế" -> Nhận diện STYLE_REPAIR, cấm kèm bán hàng
+        String msgTurn5 = "Hiểu j mà cứ nhại đi nhạu lại thế";
+        assertThat(SentimentIntentLayer.isWordingOrExpressionFeedback(msgTurn5)).isTrue();
+
+        List<ConversationTurn> historyTurn5 = List.of(
+                new ConversationTurn("user", "Xin giá"),
+                new ConversationTurn("assistant", "Dạ chào mình ạ."),
+                new ConversationTurn("user", "Đau đầu mỏi gối"),
+                new ConversationTurn("assistant", "Dạ với tình trạng đau đầu, mỏi gối, em gợi ý gói Massage cơ bản 60 phút giá 399k ạ.\n\nGói giúp thư giãn toàn thân. Mình muốn thử trải nghiệm một buổi không ạ?")
+        );
+        ConversationState st5 = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p03", "c-p03", false, msgTurn5, historyTurn5, kws, chunks
+        ).enrichWithCurrentMessage(msgTurn5, kws);
+        PrimaryActionRouter.RoutingDecision dec5 = PrimaryActionRouter.route(msgTurn5, st5, chunks, kws);
+        assertThat(dec5.detectedIntent()).isEqualTo("WORDING_FEEDBACK_REPAIR");
+
+        // Turn 6: "Uk thử xem" -> packageInterestAccepted = true, bookingStatus = COLLECTING_INFO; chặn "Em vui mừng khi..."
+        String msgTurn6 = "Uk thử xem";
+        List<ConversationTurn> historyTurn6 = List.of(
+                new ConversationTurn("user", "Xin giá"),
+                new ConversationTurn("assistant", "Dạ với tình trạng của mình, em gợi ý gói Massage cơ bản 60 phút giá 399k ạ."),
+                new ConversationTurn("user", msgTurn5),
+                new ConversationTurn("assistant", "Dạ em cảm ơn mình đã nhắc thẳng thắn ạ, để em nói chuyện ngắn gọn và tự nhiên hơn nha.")
+        );
+        ConversationState st6 = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p04", "c-p04", false, msgTurn6, historyTurn6, kws, chunks
+        ).enrichWithCurrentMessage(msgTurn6, kws);
+        assertThat(st6.packageInterestAccepted()).isTrue();
+        assertThat(st6.bookingStatus()).isEqualTo("COLLECTING_INFO");
+        PrimaryActionRouter.RoutingDecision dec6 = PrimaryActionRouter.route(msgTurn6, st6, chunks, kws);
+        assertThat(dec6.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS);
+
+        var machineTransTrialRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Em vui mừng khi mình muốn thử gói Massage cơ bản 60 phút giá 399k ạ. Mình dự kiến ghé khung giờ nào ạ?", 0)),
+                st6, msgTurn6, dec6.effectiveResponseAction(), false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(machineTransTrialRes.errors()).contains("FORBIDDEN_MACHINE_TRANSLATION_TRIAL_ACCEPT");
+
+        // Turn 7: "Lạy chúa k ai nói là 'em vui mừng khi…' khi khách đồng ý cả gà vậy" -> Giữ nguyên COLLECTING_INFO, chặn lùi phễu hỏi lại thử gói
+        String msgTurn7 = "Lạy chúa k ai nói là 'em vui mừng khi…' khi khách đồng ý cả gà vậy";
+        assertThat(SentimentIntentLayer.isWordingOrExpressionFeedback(msgTurn7)).isTrue();
+        List<ConversationTurn> historyTurn7 = new java.util.ArrayList<>(historyTurn6);
+        historyTurn7.add(new ConversationTurn("user", msgTurn6));
+        historyTurn7.add(new ConversationTurn("assistant", "Dạ vâng ạ. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp nhé?"));
+
+        ConversationState st7 = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p04", "c-p04", false, msgTurn7, historyTurn7, kws, chunks
+        ).enrichWithCurrentMessage(msgTurn7, kws);
+        assertThat(st7.packageInterestAccepted()).isTrue();
+        assertThat(st7.bookingStatus()).isEqualTo("COLLECTING_INFO");
+
+        PrimaryActionRouter.RoutingDecision dec7 = PrimaryActionRouter.route(msgTurn7, st7, chunks, kws);
+        assertThat(dec7.detectedIntent()).isEqualTo("WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL");
+
+        var regressedFunnelRes = ReplyContractValidator.validateAndEnforce(
+                List.of(
+                        new ReplyBubble("Dạ em cảm ơn mình đã góp ý ạ.", 0),
+                        new ReplyBubble("Mình muốn trải nghiệm buổi này không ạ?", 2000)
+                ),
+                st7, msgTurn7, dec7.effectiveResponseAction(), false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(regressedFunnelRes.errors()).contains("FORBIDDEN_FUNNEL_REGRESSION_AFTER_ACCEPT");
+
+        var preservedFunnelRes = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ cảm ơn mình đã góp ý thẳng thắn ạ, em xin rút kinh nghiệm nói chuyện tự nhiên hơn nha. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp ạ?", 0)),
+                st7, msgTurn7, dec7.effectiveResponseAction(), false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(preservedFunnelRes.errors()).doesNotContain("FORBIDDEN_FUNNEL_REGRESSION_AFTER_ACCEPT", "FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK");
+    }
+
+    @Test
+    @DisplayName("P1.5 & P1.6: Chê đắt lần 1 tối đa 2 bong bóng & cấm tự đổi gói; lịch sử giữ nguyên văn không cắt substring(0,260); cho phép câu hỏi xác nhận hợp lệ")
+    void p15_and_p16_priceObjectionStep1AndTurnBoundaryHistoryAndConfirmationQuestion() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        PromptBuilder.PagePersona persona = ThinkingModePolicyAndAdaptiveRouterTest.buildTestPersona();
+        List<String> kws = List.of("đau đầu", "mỏi gối", "massage");
+
+        List<ConversationTurn> history = List.of(
+                new ConversationTurn("user", "Xin giá"),
+                new ConversationTurn("assistant", "Dạ với tình trạng của mình, em gợi ý gói Massage cơ bản 60 phút giá 399k ạ.")
+        );
+        ConversationState st = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p15", "c-p15", false, "Mà đắt quá", history, kws, chunks
+        ).enrichWithCurrentMessage("Mà đắt quá", kws);
+
+        // Chặn 3 bong bóng và chặn tự đề xuất đổi sang gói khác ở lần chê đắt đầu tiên
+        var step1InvalidRes = ReplyContractValidator.validateAndEnforce(
+                List.of(
+                        new ReplyBubble("Dạ em hiểu mình cân nhắc chi phí ạ.", 0),
+                        new ReplyBubble("Gói 60 phút chăm sóc toàn thân kèm ăn nhẹ và phòng chung có rèm riêng ạ.", 2000),
+                        new ReplyBubble("Hoặc em gợi ý đổi sang gói khác phù hợp hơn với ngân sách của mình nhé?", 2000)
+                ),
+                st, "Mà đắt quá", PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME, false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(step1InvalidRes.errors()).contains("TOO_MANY_BUBBLES_ON_PRICE_OBJECTION_STEP1", "FORBIDDEN_PREMATURE_DOWNSELL_OFFER_STEP1");
+
+        // Cho phép câu hỏi xác nhận khung giờ hợp lệ ("... đúng không ạ?"), nhưng chặn câu hỏi xác nhận nhại triệu chứng hiển nhiên
+        var validBookingConfirm = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ mình muốn đặt khung giờ 18h tối nay tại cơ sở Bích Câu đúng không ạ?", 0)),
+                st, "Cho anh đặt 18h tối nay", PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS, false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(validBookingConfirm.errors()).doesNotContain("FORBIDDEN_AWKWARD_CLOSING_QUESTION");
+
+        var parrotingSymptomConfirm = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ mình đang bị đau đầu và mỏi gối phải không ạ?", 0)),
+                st, "Đau đầu mỏi gối", PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE, false, 10000, ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(parrotingSymptomConfirm.errors()).contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION");
+
+        // Kiểm tra lịch sử > 300 ký tự không bị cắt cụt bằng substring(0, 260) + "..."
+        String longTurnWithQuoteAtEnd = "Mình đã chia sẻ rất kỹ tình trạng từ đầu buổi trò chuyện rồi, công việc văn phòng ngồi máy tính nhiều nên thỉnh thoảng mới bị nhức mỏi thôi chứ không phải lúc nào cũng đau liên tục, thế mà bạn lại trả lời câu máy móc kiểu 'em vui mừng khi mình muốn thử gói' nghe rất thiếu tự nhiên";
+        assertThat(longTurnWithQuoteAtEnd.length()).isGreaterThan(260);
+        List<ConversationTurn> longHistory = List.of(
+                new ConversationTurn("user", longTurnWithQuoteAtEnd),
+                new ConversationTurn("assistant", "Dạ cảm ơn mình đã góp ý thẳng thắn ạ.")
+        );
+        PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.route("Mà đắt quá", st, chunks, kws);
+        String prompt = FanpageBotPromptBuilder.buildDynamicRuntimePrompt(
+                "Mà đắt quá", "Khách", longHistory, chunks, List.of(), persona,
+                FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION, "mình", null, List.of(),
+                null, null, List.of(), st, dec, List.of(), null, false
+        );
+        assertThat(prompt).contains("'em vui mừng khi mình muốn thử gói' nghe rất thiếu tự nhiên");
+    }
 }

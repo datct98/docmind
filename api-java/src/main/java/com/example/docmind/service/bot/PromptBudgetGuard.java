@@ -255,6 +255,7 @@ public final class PromptBudgetGuard {
                 || "ENTITY_MISMATCH_RECONSULT".equals(intent)
                 || "POLITE_MISMATCH_PIVOT".equals(intent)
                 || "WORDING_FEEDBACK_REPAIR".equals(intent)
+                || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)
                 || "MOOD_DROP_RECOVERY".equals(intent)
                 || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(intent)
                 || customerCorrection) {

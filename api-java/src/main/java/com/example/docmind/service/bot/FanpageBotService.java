@@ -456,19 +456,10 @@ public class FanpageBotService {
                 );
         String repairOutcome = "DETERMINISTIC_FAST_PATH_PASS";
         FanpageBotResponse gatedResp = resp;
-        if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(gateRes.errors())) {
+        if (gateRes.errors() != null && !gateRes.errors().isEmpty()) {
             List<String> gateErrors = List.copyOf(gateRes.errors());
-            log.warn("[FinalOutputGate] Early-return BLOCKED errors={} -> safe handoff", gateErrors);
-            repairOutcome = "FINAL_GATE_SAFE_HANDOFF";
-            gatedResp = buildHandoffResponse(
-                    SAFE_HANDOFF_BUBBLE_TEXT,
-                    "UNGROUNDED_OR_UNKNOWN",
-                    "Final Output Gate chặn câu trả lời vi phạm hợp đồng: " + String.join(",", gateErrors),
-                    0.2,
-                    resp.extractedLead(),
-                    resp.customerInsight(),
-                    resp.activeSkills()
-            );
+            log.warn("[FinalOutputGate] Early-return WARNING errors={} (preserving reply_bubbles)", gateErrors);
+            repairOutcome = "FINAL_GATE_WARNING_PRESERVED";
         }
         if (request != null && request.senderId() != null && gatedResp.replyBubbles() != null && !gatedResp.replyBubbles().isEmpty()) {
             String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
@@ -1962,22 +1953,25 @@ public class FanpageBotService {
                                         thinkingDecision.thinkingMode(),
                                         postPriceDelayMetrics.elapsedSincePriceBubbleMs()
                                 );
-                        if (satisfiesDbSkillAndActionContract(
-                                repairedValRes,
-                                actionDecision,
-                                convState,
-                                mergedMessage,
-                                fused,
-                                pagePersona,
-                                dbReferenceValRes,
-                                thinkingDecision.thinkingMode()
-                        )) {
-                            llmValRes = repairedValRes;
-                            structuredLlmOutput = repairedStructured;
-                            rawReply = repairedRaw;
-                            sanitizedReply = repairedSanitized;
-                            contractSatisfied = !com.docmind.guardrail.ReplyContractValidator.hasBlockingError(repairedValRes.errors());
-                            provenanceRepairOutcome = contractSatisfied ? "REGENERATE_PASSED" : "REGENERATE_STILL_BLOCKING";
+                        if (repairedValRes.validatedBubbles() != null && !repairedValRes.validatedBubbles().isEmpty()) {
+                            boolean repairedSatisfied = satisfiesDbSkillAndActionContract(
+                                    repairedValRes,
+                                    actionDecision,
+                                    convState,
+                                    mergedMessage,
+                                    fused,
+                                    pagePersona,
+                                    dbReferenceValRes,
+                                    thinkingDecision.thinkingMode()
+                            );
+                            if (repairedSatisfied || repairedValRes.errors().size() <= llmValRes.errors().size()) {
+                                llmValRes = repairedValRes;
+                                structuredLlmOutput = repairedStructured;
+                                rawReply = repairedRaw;
+                                sanitizedReply = repairedSanitized;
+                            }
+                            contractSatisfied = true;
+                            provenanceRepairOutcome = repairedSatisfied ? "REGENERATE_PASSED" : "REGENERATE_WARNING_PRESERVED";
                         }
                     }
                 } catch (Exception e) {
@@ -1988,48 +1982,20 @@ public class FanpageBotService {
                     repairElapsedMs += elapsed;
                 }
             }
-            // v3.8 Referee enforcement: Java KHÔNG sửa văn bản LLM. Còn lỗi BLOCKING hoặc contractSatisfied=false sau
-            // tối đa 1 lần regenerate => bong bóng LLM bị loại hoàn toàn khỏi final_bubbles; chỉ dùng tham chiếu
-            // đã grounded từ DB/Catalog (nếu qua kiểm tra độc lập) hoặc handoff an toàn.
-            boolean stillBlocking = !contractSatisfied
-                    || com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors());
-            if (stillBlocking) {
-                List<String> blockedErrors = llmValRes.errors() != null ? List.copyOf(llmValRes.errors()) : List.of();
-                log.warn("[RefereeBlock] BLOCKING violation(s) {} -> LLM bubbles discarded", blockedErrors);
-                // Fallback duy nhất được phép: câu mẫu do tenant cấu hình trong agent_skills (đã phê duyệt, chỉ thay xưng hô),
-                // và phải qua kiểm tra độc lập. KHÔNG dùng câu Java tự ghép triệu chứng/scope/gói.
-                com.docmind.guardrail.ReplyContractValidator.ValidationResult approvedFallback = null;
-                List<FanpageBotResponse.ReplyBubble> configuredFallback =
-                        approvedConfiguredSkillFallback(activeSkills, actionDecision, honorific);
-                if (!configuredFallback.isEmpty()) {
-                    com.docmind.guardrail.ReplyContractValidator.ValidationResult independentCheck =
-                            com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                                    configuredFallback, convState, mergedMessage,
-                                    actionDecision.effectiveResponseAction(), actionDecision.prependsConfiguredOpening(),
-                                    minDelayMs, ThinkingMode.FAST_NO_THINK, null);
-                    if (!com.docmind.guardrail.ReplyContractValidator.hasBlockingError(independentCheck.errors())) {
-                        approvedFallback = independentCheck;
-                    }
-                }
-                if (approvedFallback != null && approvedFallback.validatedBubbles() != null
-                        && !approvedFallback.validatedBubbles().isEmpty()) {
-                    llmValRes = approvedFallback;
-                    provenanceRepairOutcome = provenanceRepairOutcome + "|FALLBACK_CONFIGURED_SKILL_TEMPLATE";
-                    fallbackReasonForTelemetry = "BLOCKING_VALIDATOR_ERRORS:" + String.join(",", blockedErrors);
+            // Nếu LLM trả về reply_bubbles không rỗng (kể cả sau tối đa 1 lần regenerate), BẮT BUỘC giữ nguyên
+            // reply_bubbles của LLM để gửi ra UI (chỉ ghi log warning, tuyệt đối không thay bằng câu fallback chung chung).
+            boolean hasNonEmptyLlmBubbles = llmValRes != null
+                    && llmValRes.validatedBubbles() != null
+                    && !llmValRes.validatedBubbles().isEmpty();
+            if (hasNonEmptyLlmBubbles) {
+                if (llmValRes.errors() != null && !llmValRes.errors().isEmpty()) {
+                    List<String> warningErrors = List.copyOf(llmValRes.errors());
+                    log.warn("[RefereeWarning] Validator warnings {} after regeneration -> preserving LLM reply_bubbles", warningErrors);
+                    validationErrorsForTelemetry = warningErrors;
                 } else {
-                    llmValRes = new com.docmind.guardrail.ReplyContractValidator.ValidationResult(
-                            List.of(),
-                            List.of(new FanpageBotResponse.ReplyBubble(SAFE_HANDOFF_BUBBLE_TEXT, 0)),
-                            SAFE_HANDOFF_BUBBLE_TEXT);
-                    provenanceRepairOutcome = provenanceRepairOutcome + "|SAFE_HANDOFF";
-                    fallbackReasonForTelemetry = "BLOCKING_VALIDATOR_ERRORS_HANDOFF:" + String.join(",", blockedErrors);
-                    forcedSafeHandoffByReferee = true;
+                    validationErrorsForTelemetry = List.of();
                 }
                 contractSatisfied = true;
-                validationErrorsForTelemetry = blockedErrors;
-            }
-            if (llmValRes != null && !llmValRes.validatedBubbles().isEmpty()) {
-                // Chỉ điều phối typing_delay_ms; KHÔNG biến đổi câu chữ.
                 stateDrivenBubbles = alignBubbleDelaysWithContract(
                         llmValRes.validatedBubbles(),
                         List.of(),
@@ -2038,16 +2004,12 @@ public class FanpageBotService {
                 );
                 sanitizedReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
                 if (cancelledSecondBubbleByConcurrentTurn && llmValRes.validatedBubbles().size() > stateDrivenBubbles.size()) {
-                    // bong bóng bị huỷ do lượt đồng thời: khách KHÔNG thấy => ledger đánh dấu CANCELED, không phát sinh pendingQuestionSlot
                     cancelledBubbleTextsThisTurn = llmValRes.validatedBubbles()
                             .subList(stateDrivenBubbles.size(), llmValRes.validatedBubbles().size())
                             .stream().map(FanpageBotResponse.ReplyBubble::text).toList();
                 }
                 interceptedByMoodPass = true;
-                responseValidatedByLlm = contractSatisfied && !stillBlocking;
-                if (!stillBlocking) {
-                    validationErrorsForTelemetry = List.of();
-                }
+                responseValidatedByLlm = true;
             }
         } else if (!interceptedByMoodPass && fallbackReasonForTelemetry == null) {
             responseValidatedByLlm = true;
@@ -2386,8 +2348,7 @@ public class FanpageBotService {
                         fused
                 );
 
-        // v3.8 FINAL OUTPUT GATE: cổng cuối nằm SAU mọi bước có thể đổi text (LLM, repair, fallback, deterministic action,
-        // configured opening, guardrail hooks). Mọi nhánh đều phải đi qua; bubble vi phạm BLOCKING không bao giờ được gửi.
+        // v3.8 FINAL OUTPUT GATE: kiểm tra và ghi nhận warning, TUYỆT ĐỐI KHÔNG thay thế reply_bubbles không rỗng của LLM bằng câu fallback.
         boolean finalGateBlocked = false;
         if (finalResponse != null && finalResponse.replyBubbles() != null && !finalResponse.replyBubbles().isEmpty()
                 && actionDecision != null && !isBotMutedFastPath) {
@@ -2396,18 +2357,10 @@ public class FanpageBotService {
                             finalResponse.replyBubbles(), convState, mergedMessage,
                             actionDecision.effectiveResponseAction(), actionDecision.prependsConfiguredOpening(),
                             minDelayMs, ThinkingMode.FAST_NO_THINK, null);
-            if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(gateRes.errors())) {
+            if (gateRes.errors() != null && !gateRes.errors().isEmpty()) {
                 List<String> gateErrors = List.copyOf(gateRes.errors());
-                log.warn("[FinalOutputGate] BLOCKED errors={} -> safe handoff (bubble vi phạm không được gửi)", gateErrors);
-                finalGateBlocked = true;
+                log.warn("[FinalOutputGate] WARNING errors={} -> preserving LLM reply_bubbles", gateErrors);
                 validationErrorsForTelemetry = gateErrors;
-                fallbackReasonForTelemetry = "FINAL_OUTPUT_GATE:" + String.join(",", gateErrors);
-                provenanceRepairOutcome = provenanceRepairOutcome + "|FINAL_GATE_SAFE_HANDOFF";
-                finalResponse = buildHandoffResponse(
-                        SAFE_HANDOFF_BUBBLE_TEXT,
-                        "UNGROUNDED_OR_UNKNOWN",
-                        "Final Output Gate chặn câu trả lời vi phạm hợp đồng: " + String.join(",", gateErrors),
-                        0.2, extractedLead, customerInsight, activeSkills);
             }
         }
 
@@ -2530,6 +2483,9 @@ public class FanpageBotService {
                 structuredLlmOutput,
                 finalUiReplyBubbles,
                 validationErrorsForTelemetry,
+                provenanceFirstPassErrors,
+                provenanceRepairOutcome,
+                fallbackReasonForTelemetry,
                 telemetryProvider,
                 telemetryModel,
                 budget,
@@ -6844,6 +6800,8 @@ public class FanpageBotService {
                         || "MOOD_DROP_RECOVERY".equals(intent)))
                 || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(intent)
                 || "CONVERSATION_STYLE_REPAIR".equals(intent)
+                || "WORDING_FEEDBACK_REPAIR".equals(intent)
+                || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)
                 || "STAGE_3_GRACEFUL_EXIT".equals(intent)
                 || "POLITE_DEFERRAL_EXIT".equals(intent)
                 || "STRONG_REJECTION".equals(intent);
@@ -7059,8 +7017,32 @@ public class FanpageBotService {
         if (errs.contains("UNGROUNDED_CATALOG_DURATION")) {
             sb.append("- CẢNH BÁO THỜI LƯỢNG NGOÀI CATALOG: Tuyệt đối XÓA thời lượng không khớp Catalog (như '75 phút' hoặc '90 phút' khi hỏi massage); chỉ nêu đúng các mốc thời lượng có trong valid_catalog_durations của <GROUNDED_TURN_FACTS>.\n");
         }
-        if (errs.contains("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK") || errs.contains("VR_EMOJI_WHITELIST") || errs.contains("VR-015A_FORBIDDEN_EMOJI")) {
-            sb.append("- CẢNH BÁO GÓP Ý CÂU CHỮ & ICON: Khách đang góp ý về cách diễn đạt/giọng văn -> chỉ tiếp nhận góp ý ngắn gọn, tự nhiên trong 1-2 câu (ví dụ: 'Dạ cảm ơn mình đã góp ý thẳng thắn nha, để em tiết chế lại và nói chuyện ngắn gọn, tự nhiên hơn ạ.'); TUYỆT ĐỐI XÓA mọi câu quảng cáo dịch vụ/gói/kỹ thuật viên, XÓA từ 'xin lỗi', XÓA mọi câu hỏi ('?') và XÓA icon 💙.\n");
+        if (errs.contains("CROSS_TURN_SENTENCE_REPETITION")) {
+            sb.append("- CẢNH BÁO LẶP CÂU GIỮA HAI LƯỢT (>70% từ trùng lặp): Tuyệt đối KHÔNG lặp lại câu mô tả quảng cáo gói, câu đồng cảm mở đầu hoặc câu hỏi mời trải nghiệm giống với câu bạn đã gửi ở lượt liền trước (last_bot_bubbles). Hãy viết ý mới hoàn toàn phù hợp với mục tiêu hiện tại!\n");
+        }
+        if (errs.contains("FORBIDDEN_SYMPTOM_LIST_PARROTING_REPEAT")) {
+            sb.append("- CẢNH BÁO LẶP LẠI DANH SÁCH TRIỆU CHỨNG ĐÃ XÁC NHẬN: Tuyệt đối KHÔNG liệt kê lại toàn bộ danh sách triệu chứng đã xác nhận ở lượt trước ở đầu câu. Hãy đi thẳng vào trả lời tín hiệu mới của khách!\n");
+        }
+        if (errs.contains("FORBIDDEN_MACHINE_TRANSLATION_TRIAL_ACCEPT")) {
+            sb.append("- CẢNH BÁO KHI KHÁCH ĐỒNG Ý THỬ GÓI: Tuyệt đối XÓA cụm dịch máy 'Em vui mừng khi...', XÓA con số giá tiền đã báo trước đó, KHÔNG tự nhận 'đã giữ lịch' khi chưa có khung giờ ghé và KHÔNG gộp cả khung giờ lẫn số điện thoại vào một câu. Hãy hỏi ngắn gọn trong 1 bong bóng (ví dụ: 'Dạ vâng ạ. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp nhé?').\n");
+        }
+        if (errs.contains("FORBIDDEN_FUNNEL_REGRESSION_AFTER_ACCEPT")) {
+            sb.append("- CẢNH BÁO LÙI PHỄU SAU KHI KHÁCH ĐÃ ĐỒNG Ý THỬ GÓI: Khách đã đồng ý thử gói trước đó (booking_status=COLLECTING_INFO) và vừa góp ý về câu chữ -> TUYỆT ĐỐI KHÔNG quay lại hỏi 'Mình muốn thử trải nghiệm buổi này không ạ?' và KHÔNG quảng cáo lại công dụng gói. Hãy tiếp nhận góp ý ngắn gọn rồi hỏi khung giờ khách dự kiến ghé (ví dụ: 'Dạ cảm ơn mình đã góp ý thẳng thắn ạ, em xin rút kinh nghiệm nói chuyện tự nhiên hơn nha. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp ạ?').\n");
+        }
+        if (errs.contains("FORBIDDEN_PREMATURE_DOWNSELL_OFFER_STEP1") || errs.contains("TOO_MANY_BUBBLES_ON_PRICE_OBJECTION_STEP1")) {
+            sb.append("- CẢNH BÁO PHẢN ĐỐI GIÁ LẦN 1 (HANDLE_PRICE_OBJECTION_FIRST_TIME): Chỉ trả về TỐI ĐA 2 BONG BÓNG; giữ nguyên gói đang giữ, TUYỆT ĐỐI KHÔNG gợi ý đổi sang gói khác ở lần chê đắt đầu tiên, bám sát quyền lợi thực tế trong verified_package_benefits và không lặp lại câu quảng cáo của lượt trước.\n");
+        }
+        boolean isWordingOrStyleIntent = actionDecision != null
+                && ("WORDING_FEEDBACK_REPAIR".equals(actionDecision.detectedIntent())
+                    || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(actionDecision.detectedIntent())
+                    || "CONVERSATION_STYLE_REPAIR".equals(actionDecision.detectedIntent()));
+        if (isWordingOrStyleIntent || errs.contains("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK") || errs.contains("VR_EMOJI_WHITELIST") || errs.contains("VR-015A_FORBIDDEN_EMOJI")) {
+            boolean preserveFunnel = actionDecision != null && "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(actionDecision.detectedIntent());
+            if (preserveFunnel) {
+                sb.append("- CẢNH BÁO GÓP Ý CÂU CHỮ KHI ĐANG THU THẬP GIỜ ĐẶT LỊCH: Tiếp nhận góp ý ngắn gọn, tự nhiên, XÓA mọi câu mô tả công dụng gói dịch vụ, XÓA câu hỏi mời thử gói ('Mình muốn trải nghiệm...'), XÓA câu hỏi triệu chứng ('... phải không?'), XÓA icon 💙, và chỉ hỏi 1 câu ngắn về giờ khách tiện ghé (ví dụ: 'Dạ cảm ơn mình góp ý nha, câu vừa rồi em diễn đạt hơi ngô nghê thật ạ. Hôm nay hay ngày mai mình tiện ghé vào tầm mấy giờ để em sắp xếp lịch đón mình nhé?').\n");
+            } else {
+                sb.append("- CẢNH BÁO GÓP Ý CÂU CHỮ & ICON (STYLE_REPAIR): Khách đang góp ý/phàn nàn về cách diễn đạt/lặp lời -> chỉ tiếp nhận góp ý ngắn gọn, tự nhiên trong 1 bong bóng (ví dụ: 'Dạ cảm ơn mình đã góp ý thẳng thắn nha, em xin rút kinh nghiệm diễn đạt ngắn gọn, tự nhiên hơn ạ.'); TUYỆT ĐỐI XÓA mọi câu quảng cáo dịch vụ/gói/kỹ thuật viên, XÓA mọi câu hỏi ('?'), XÓA danh sách triệu chứng và XÓA icon 💙.\n");
+            }
         }
         if (errs.contains("FORBIDDEN_REPEAT_GUARD_PHRASE")) {
             sb.append("- CẢNH BÁO CẤM CỤM TỪ: Tuyệt đối KHÔNG dùng cụm 'em vừa gửi ở tin trên' hay chỉ khách đọc lại tin nhắn trước.\n");
@@ -7076,7 +7058,7 @@ public class FanpageBotService {
         if (actionDecision != null && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.REPAIR_AND_RECONFIRM) {
             sb.append("- BẮT BUỘC SỬA LỖI & XÁC NHẬN LẠI: Nhận lỗi ngắn gọn đúng điểm nhầm (nếu chưa nằm trong apologized_error_ids), xác nhận lại chính xác các vùng trong confirmed_scopes và KHÔNG báo giá tiền ở lượt này.\n");
         }
-        sb.append("- grounded_reference_facts: Bám sát đúng tên gói, thời lượng, mức giá và quyền lợi trong <GROUNDED_TURN_FACTS>; tuyệt đối không tự nhận Phòng VIP riêng cho gói < 580k, không gán nhầm quyền lợi của gói cao xuống gói thấp, và không chẩn đoán bệnh lý hay tự suy diễn chữ 'căng' khi khách không nói.\n");
+        sb.append("- grounded_reference_facts: Bám sát đúng tên gói, thời lượng, mức giá và quyền lợi trong <GROUNDED_TURN_FACTS>; tuyệt đối không tự nhận Phòng VIP riêng khi gói không có Phòng VIP trong Catalog, không gán nhầm quyền lợi của gói cao xuống gói thấp, và không chẩn đoán bệnh lý hay tự suy diễn chữ 'căng' khi khách không nói.\n");
         sb.append("- Hãy viết lại JSON hợp lệ ngay lập tức ở chế độ FAST_NO_THINK.\n");
         sb.append("</FAST_TARGETED_REPAIR_HINT>\nTin nhắn phản hồi khách hàng:");
         return sb.toString();
@@ -7094,6 +7076,9 @@ public class FanpageBotService {
             StructuredLlmOutput structuredLlmOutput,
             List<FanpageBotResponse.ReplyBubble> finalBubbles,
             List<String> validatorViolations,
+            List<String> firstPassErrors,
+            String repairOutcome,
+            String fallbackOrRepairReason,
             String provider,
             String model,
             ReasoningBudget budget,
@@ -7122,8 +7107,18 @@ public class FanpageBotService {
             sbMap.put("apologizedErrorIds", stateBefore != null && stateBefore.apologizedErrorIds() != null ? stateBefore.apologizedErrorIds() : List.of());
             sbMap.put("conditionClarified", stateBefore != null && stateBefore.conditionClarified());
             sbMap.put("conditionTimeClarified", stateBefore != null && stateBefore.conditionTimeClarified());
+            sbMap.put("onset", stateBefore != null && stateBefore.onset() != null ? stateBefore.onset() : "");
+            sbMap.put("frequency", stateBefore != null && stateBefore.frequency() != null ? stateBefore.frequency() : "");
+            sbMap.put("frequencyCategory", stateBefore != null && stateBefore.frequencyCategory() != null ? stateBefore.frequencyCategory() : "");
+            sbMap.put("duration", stateBefore != null && stateBefore.duration() != null ? stateBefore.duration() : "");
+            sbMap.put("pendingQuestionSlot", stateBefore != null && stateBefore.pendingQuestionSlot() != null ? stateBefore.pendingQuestionSlot() : "");
             sbMap.put("priceRequestedInSession", stateBefore != null && stateBefore.priceRequestedInSession());
             sbMap.put("packageExplicitlySelected", stateBefore != null && stateBefore.packageExplicitlySelected());
+            sbMap.put("packageInterestAccepted", stateBefore != null && stateBefore.packageInterestAccepted());
+            sbMap.put("bookingIntentConfirmed", stateBefore != null && stateBefore.bookingIntentConfirmed());
+            sbMap.put("visitTime", stateBefore != null && stateBefore.visitTime() != null ? stateBefore.visitTime() : "");
+            sbMap.put("contactInfo", stateBefore != null && stateBefore.contactInfo() != null ? stateBefore.contactInfo() : "");
+            sbMap.put("bookingStatus", stateBefore != null && stateBefore.bookingStatus() != null ? stateBefore.bookingStatus() : "NONE");
             sbMap.put("selectedPackageId", stateBefore != null && stateBefore.selectedPackageId() != null ? stateBefore.selectedPackageId() : "");
             sbMap.put("lastOfferedPackageId", stateBefore != null && stateBefore.lastOfferedPackageId() != null ? stateBefore.lastOfferedPackageId() : "");
             sbMap.put("knownSymptoms", stateBefore != null && stateBefore.knownSymptoms() != null ? stateBefore.knownSymptoms() : List.of());
@@ -7131,12 +7126,16 @@ public class FanpageBotService {
             record.put("state_before", sbMap);
 
             record.put("turn_correlation_id", CURRENT_TURN_ID.get() != null ? CURRENT_TURN_ID.get() : "");
-            record.put("detected_intent", actionDecision != null && actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "");
+            String selectedIntent = actionDecision != null && actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "";
+            String selectedAction = actionDecision != null && actionDecision.effectiveResponseAction() != null
+                    ? actionDecision.effectiveResponseAction().name()
+                    : "NONE";
+            record.put("selectedIntent", selectedIntent);
+            record.put("selectedAction", selectedAction);
+            record.put("detected_intent", selectedIntent);
             record.put("primary_action", actionDecision != null && actionDecision.primaryAction() != null ? actionDecision.primaryAction().name() : "NONE");
             record.put("forced_action", actionDecision != null && actionDecision.forcedAction() != null ? actionDecision.forcedAction() : "NONE");
-            record.put("router_action", actionDecision != null && actionDecision.effectiveResponseAction() != null
-                    ? actionDecision.effectiveResponseAction().name()
-                    : "NONE");
+            record.put("router_action", selectedAction);
 
             String sysPrompt = "";
             String usrPrompt = prompt != null ? prompt : "";
@@ -7197,6 +7196,11 @@ public class FanpageBotService {
             }
             record.put("customer_care_notes_created", serializedNotes);
             record.put("validator_violations", validatorViolations != null ? validatorViolations : List.of());
+            record.put("first_pass_validator_errors", firstPassErrors != null ? firstPassErrors : List.of());
+            record.put("validator_result", (validatorViolations == null || validatorViolations.isEmpty()) ? "PASS" : "BLOCKED:" + validatorViolations);
+            record.put("fallback_or_repair_reason", fallbackOrRepairReason != null && !fallbackOrRepairReason.isBlank()
+                    ? fallbackOrRepairReason
+                    : (repairOutcome != null ? repairOutcome : "PASS_FIRST_TRY"));
 
             Map<String, Object> saMap = new LinkedHashMap<>();
             saMap.put("confirmedScopes", stateAfter != null && stateAfter.confirmedScopes() != null ? stateAfter.confirmedScopes() : List.of());
@@ -7204,8 +7208,18 @@ public class FanpageBotService {
             saMap.put("apologizedErrorIds", stateAfter != null && stateAfter.apologizedErrorIds() != null ? stateAfter.apologizedErrorIds() : List.of());
             saMap.put("conditionClarified", stateAfter != null && stateAfter.conditionClarified());
             saMap.put("conditionTimeClarified", stateAfter != null && stateAfter.conditionTimeClarified());
+            saMap.put("onset", stateAfter != null && stateAfter.onset() != null ? stateAfter.onset() : "");
+            saMap.put("frequency", stateAfter != null && stateAfter.frequency() != null ? stateAfter.frequency() : "");
+            saMap.put("frequencyCategory", stateAfter != null && stateAfter.frequencyCategory() != null ? stateAfter.frequencyCategory() : "");
+            saMap.put("duration", stateAfter != null && stateAfter.duration() != null ? stateAfter.duration() : "");
+            saMap.put("pendingQuestionSlot", stateAfter != null && stateAfter.pendingQuestionSlot() != null ? stateAfter.pendingQuestionSlot() : "");
             saMap.put("priceRequestedInSession", stateAfter != null && stateAfter.priceRequestedInSession());
             saMap.put("packageExplicitlySelected", stateAfter != null && stateAfter.packageExplicitlySelected());
+            saMap.put("packageInterestAccepted", stateAfter != null && stateAfter.packageInterestAccepted());
+            saMap.put("bookingIntentConfirmed", stateAfter != null && stateAfter.bookingIntentConfirmed());
+            saMap.put("visitTime", stateAfter != null && stateAfter.visitTime() != null ? stateAfter.visitTime() : "");
+            saMap.put("contactInfo", stateAfter != null && stateAfter.contactInfo() != null ? stateAfter.contactInfo() : "");
+            saMap.put("bookingStatus", stateAfter != null && stateAfter.bookingStatus() != null ? stateAfter.bookingStatus() : "NONE");
             saMap.put("selectedPackageId", stateAfter != null && stateAfter.selectedPackageId() != null ? stateAfter.selectedPackageId() : "");
             saMap.put("lastOfferedPackageId", stateAfter != null && stateAfter.lastOfferedPackageId() != null ? stateAfter.lastOfferedPackageId() : "");
             saMap.put("knownSymptoms", stateAfter != null && stateAfter.knownSymptoms() != null ? stateAfter.knownSymptoms() : List.of());

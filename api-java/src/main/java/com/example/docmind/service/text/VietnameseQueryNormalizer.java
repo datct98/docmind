@@ -56,11 +56,18 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "bao\\s+nhiu", "bao nhiêu");
         addBoundaryPattern(phrases, "b\\s*nhieu", "bao nhiêu");
         addBoundaryPattern(phrases, "thi\\s+thaorng", "thi thoảng");
+        addBoundaryPattern(phrases, "thi\\s+thoảmg", "thi thoảng");
+        addBoundaryPattern(phrases, "thi\\s+thoamg", "thi thoảng");
         addBoundaryPattern(phrases, "thi\\s+thoang", "thi thoảng");
         addBoundaryPattern(phrases, "thi\\s+thỉang", "thi thoảng");
         addBoundaryPattern(phrases, "thi\\s+thiang", "thi thoảng");
         addBoundaryPattern(phrases, "thỉnh\\s+thỉang", "thỉnh thoảng");
+        addBoundaryPattern(phrases, "thỉnh\\s+thoảmg", "thỉnh thoảng");
+        addBoundaryPattern(phrases, "thinh\\s+thoamg", "thỉnh thoảng");
         addBoundaryPattern(phrases, "thinh\\s+thoang", "thỉnh thoảng");
+        addBoundaryPattern(phrases, "nhại\\s+đi\\s+nhạu\\s+lại", "nhại đi nhại lại");
+        addBoundaryPattern(phrases, "nhai\\s+di\\s+nhau\\s+lai", "nhại đi nhại lại");
+        addBoundaryPattern(phrases, "nhai\\s+di\\s+nhai\\s+lai", "nhại đi nhại lại");
         addBoundaryPattern(phrases, "tụt\\s+hứng\\s+tghooi\\s+rẹp", "tụt hứng thôi dẹp");
         addBoundaryPattern(phrases, "tut\\s+hung\\s+tghooi\\s+rep", "tụt hứng thôi dẹp");
         addBoundaryPattern(phrases, "tụt\\s+hứng\\s+(?:thôi|thooi|tghooi|thoi)\\s+(?:dẹp|rẹp|dep|rep)", "tụt hứng thôi dẹp");
@@ -250,6 +257,8 @@ public final class VietnameseQueryNormalizer {
         addWord(words, "thỉang", "thoảng");
         addWord(words, "thiang", "thoảng");
         addWord(words, "thoangr", "thoảng");
+        addWord(words, "thoảmg", "thoảng");
+        addWord(words, "thoamg", "thoảng");
         addWord(words, "tghooi", "thôi");
         addWord(words, "thooi", "thôi");
         addWord(words, "thoii", "thôi");
