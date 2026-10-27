@@ -168,7 +168,8 @@ public final class SentimentIntentLayer {
             "(?isU).*(?:\\bchứ\\s+(?:có\\s+phải\\s+)?đau\\s+lòng\\s+đâu\\b"
             + "|\\bđau\\s+lòng\\s+đâu\\s+mà\\s+(?:nhẹ\\s+nhõm|an\\s+ủi|tâm\\s+sự)\\b"
             + "|\\b(?:cơ\\s+thể|đau\\s+lưng|mỏi\\s+gối|tê\\s+tay|nhức\\s+mỏi).*?\\bchứ\\s+.*?\\bđâu\\s+mà\\s+(?:nhẹ\\s+nhõm|tâm\\s+hồn|buồn)\\b"
-            + "|\\bdùng\\s+từ\\s+.*?\\bnghe\\s+(?:cứ\\s+như|giống)\\b).*"
+            + "|\\bdùng\\s+từ\\s+.*?\\bnghe\\s+(?:cứ\\s+như|giống)\\b"
+            + "|\\b(?:nghe\\s+|nói\\s+chuyện\\s+|tư\\s+vấn\\s+|giọng\\s+|văn\\s+)?(?:thảo\\s+mai|sến\\s+súa|sến\\s+quá|sến\\s+vãi|giả\\s+tạo|kịch\\s+quá|diễn\\s+quá)\\b).*"
     );
 
     // 3C (v3.3.4). NEGATIVE / FRUSTRATED MOOD hướng vào CÁCH TƯ VẤN (chưa phải STRONG_REJECTION).

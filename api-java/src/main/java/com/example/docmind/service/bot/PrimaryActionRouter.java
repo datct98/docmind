@@ -323,7 +323,7 @@ public final class PrimaryActionRouter {
     private static final Pattern PROBLEM_OR_SYMPTOM_PATTERN = Pattern.compile(
             "(?isU).*\\b(mỏi|đau|nhức|nhói|tê|tê\\s+tay|tê\\s+chân|tê\\s+bì|căng|cứng|nặng|mệt|stress|mất\\s+ngủ|khó\\s+ngủ|"
             + "căng\\s+thẳng|căng\\s+cơ|căng\\s+cổ|đau\\s+cơ|đau\\s+đầu|đau\\s+lưng|mỏi\\s+vai|đau\\s+vai|nhức\\s+gáy|mỏi\\s+cổ|"
-            + "ê\\s+buốt|ố\\s+vàng|xỉn\\s+màu|vôi\\s+răng|chảy\\s+máu\\s+nướu|sâu\\s+răng|lệch\\s+khớp|mụn|thâm|nám)\\b.*"
+            + "ê\\s+buốt|ố\\s+vàng|xỉn\\s+màu|(?<!cạo\\s|lấy\\s)vôi\\s+răng|chảy\\s+máu\\s+nướu|sâu\\s+răng|lệch\\s+khớp|mụn|thâm|nám)\\b.*"
     );
 
     private static final Pattern BOOKING_INTENT_PATTERN = Pattern.compile(
@@ -485,7 +485,8 @@ public final class PrimaryActionRouter {
             List<ReciprocalRankFusion.FusedChunk> fusedChunks,
             List<String> domainKeywords
     ) {
-        ConversationState enriched = state != null ? state : ConversationState.initial();
+        ConversationState base = state != null ? state : ConversationState.initial();
+        ConversationState enriched = base.ensureTurnEnriched(message, domainKeywords);
         return route(message, enriched.priorTurnState(), enriched, fusedChunks, domainKeywords);
     }
 
@@ -640,14 +641,14 @@ public final class PrimaryActionRouter {
         // ("Đau lưng chứ đau lòng đâu mà nhẹ nhõm"). Phải đứng TRƯỚC R00-MISMATCH vì cấu trúc "chứ (có phải) ... đâu"
         // trùng mẫu phản bác tư vấn lệch, và TRƯỚC R00B vì không phải khách phủ nhận triệu chứng.
         // Chỉ áp dụng khi Bot đã thực sự nói chuyện trước đó (có lời Bot để bắt bẻ).
-        if (priorState.greetingSent() && SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
+        if (SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
             return new RoutingDecision(
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     false,
                     1,
                     "WORDING_FEEDBACK_REPAIR",
-                    "spa_frustration_rescue"
+                    "greeting_warm_intro"
             );
         }
 
@@ -785,6 +786,7 @@ public final class PrimaryActionRouter {
                 || !priorState.confirmedScopes().isEmpty()
                 || !priorState.knownSymptoms().isEmpty();
         boolean afterAskConditionWithoutTimeAnswer = !enriched.conditionClarified()
+                && (!priorState.knownSymptoms().isEmpty() || !priorState.confirmedScopes().isEmpty())
                 && ("ASK_CONDITION_ONCE".equals(priorState.lastIntent())
                     || "CONVERSATION_STYLE_REPAIR".equals(priorState.lastIntent())
                     || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(priorState.lastIntent())
@@ -919,7 +921,7 @@ public final class PrimaryActionRouter {
                     && !SentimentIntentLayer.hasPositiveServiceInterestSignal(msg)) {
                 coreAction = PrimaryAction.GENERIC_SHORT_DISCOVERY;
                 intent = "ANTI_APOLOGY_PUSHBACK";
-                skillCode = "spa_graceful_exit_after_rejection";
+                skillCode = hasKnownSymptomsOrScopes ? "spa_condition_first_discovery" : "spa_discovery_ask_one_need";
             } else if (priorState.priceRequestedInSession() && !priorState.priceDiscussed() && hasKnownContext && enriched.conditionClarified()) {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "META_APOLOGY_POSITIVE_INTEREST_QUOTE";
@@ -1346,6 +1348,7 @@ public final class PrimaryActionRouter {
                 || coreAction == PrimaryAction.CLARIFY_SERVICE_DURATION
                 || coreAction == PrimaryAction.ADVANCE_AFTER_ACK
                 || "CONVERSATION_STYLE_REPAIR".equals(intent)
+                || "WORDING_FEEDBACK_REPAIR".equals(intent)
                 || "META_COMMENT_ON_GREETING".equals(intent)
                 || "META_APOLOGY_POSITIVE_INTEREST_ADVANCE".equals(intent)
                 || "CONFIRM_PREVIOUS_INFO_ADVANCE".equals(intent)
@@ -1384,6 +1387,7 @@ public final class PrimaryActionRouter {
         boolean hasSymptomOrScope = (facts.knownSymptoms() != null && !facts.knownSymptoms().isEmpty())
                 || (facts.confirmedScopes() != null && !facts.confirmedScopes().isEmpty());
         boolean directAction = coreAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
+                || coreAction == PrimaryAction.ANSWER_PRICE_ONCE
                 || coreAction == PrimaryAction.RECOMMEND_ONE_PACKAGE
                 || coreAction == PrimaryAction.CONFIRM_BOOKING_DETAILS
                 || coreAction == PrimaryAction.DIRECT_CONCRETE_SOLUTION
@@ -1416,7 +1420,8 @@ public final class PrimaryActionRouter {
         }
 
         PagePersonaConfig cfg = pagePersona != null ? pagePersona.resolvedConfig() : PagePersonaConfig.empty();
-        ConversationState enriched = state != null ? state : ConversationState.initial();
+        ConversationState base = state != null ? state : ConversationState.initial();
+        ConversationState enriched = base.ensureTurnEnriched(userMessage, cfg.safeDomainKeywords());
         ConversationState priorState = enriched.priorTurnState();
 
         String h = (honorific != null && !honorific.isBlank()) ? honorific.strip() : cfg.resolvedDefaultCustomerPronoun();
@@ -1468,14 +1473,10 @@ public final class PrimaryActionRouter {
             return List.of(new ReplyBubble(breakupText, 0));
         }
 
-        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4): 1 bubble, nhận câu chữ chưa khéo một cách duyên dáng rồi nói lại
-        // đúng ý về cảm giác cơ thể. KHÔNG báo lại giá, KHÔNG hỏi "nói lại cho em hiểu", KHÔNG đổi chủ đề sang gói khác.
+        // R00W-WORDING-FEEDBACK-REPAIR (v3.8): 1 bubble, tiếp nhận góp ý ngắn gọn, tự nhiên, tuyệt đối không kèm quảng cáo dịch vụ hay icon 💙 trong cùng lượt.
         if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
-            String areaPhrase = !enriched.knownBodyAreas().isEmpty()
-                    ? "vùng " + String.join(", ", enriched.knownBodyAreas()) + " đang mỏi"
-                    : (enriched.known().hasCustomerProblemOrNeed() ? "chỗ đang " + enriched.known().customerProblemOrNeed() : "cơ thể");
-            String wordingText = "Dạ " + h + " bắt lỗi chuẩn quá, " + selfP + " dùng từ chưa khéo rồi ạ. Ý " + selfP
-                    + " là sau buổi chăm sóc, " + areaPhrase + " sẽ được thả lỏng và dễ chịu hơn ạ.";
+            String wordingText = "Dạ cảm ơn " + h + " đã góp ý thẳng thắn ạ, " + selfP
+                    + " xin rút kinh nghiệm để nói chuyện ngắn gọn, tự nhiên và đi thẳng vào trọng tâm hơn với " + h + " nhé ạ.";
             return List.of(new ReplyBubble(wordingText, 0));
         }
 
@@ -2085,17 +2086,19 @@ public final class PrimaryActionRouter {
                     yield List.of(new ReplyBubble(politeClose, 0));
                 }
                 if ("ANTI_APOLOGY_PUSHBACK".equals(intent)) {
-                    String lightReply = "Dạ tại " + selfP + " quen miệng hay khách sáo quá đó ạ, " + h
-                            + " đừng để bụng nha 😄 Khi nào " + h + " muốn ghé thả lỏng cơ thể thì cứ ới " + selfP + " nhé ạ!";
+                    String symptomRef = !enriched.knownSymptoms().isEmpty()
+                            ? String.join(", ", enriched.knownSymptoms())
+                            : (!enriched.knownBodyAreas().isEmpty() ? "mỏi vùng " + String.join(", ", enriched.knownBodyAreas()) : null);
+                    String lightReply = symptomRef != null
+                            ? "Dạ tại " + selfP + " quen miệng hay khách sáo quá đó ạ. Tình trạng " + symptomRef + " của " + h
+                              + " mới xuất hiện gần đây hay đã kéo dài lâu rồi để " + selfP + " chọn liệu trình phù hợp nhất cho " + h + " ạ?"
+                            : "Dạ tại " + selfP + " quen miệng hay khách sáo quá đó ạ, " + h
+                              + " đừng để bụng nha. Hôm nay " + h + " đang muốn thư giãn vùng nào để " + selfP + " tư vấn ngay cho " + h + " ạ?";
                     yield List.of(new ReplyBubble(lightReply, 0));
                 }
                 if ("WORDING_FEEDBACK_REPAIR".equals(intent)) {
-                    String areaPhrase = !enriched.knownBodyAreas().isEmpty()
-                            ? String.join(" và ", enriched.knownBodyAreas())
-                            : (enriched.known().hasCustomerProblemOrNeed() ? enriched.known().customerProblemOrNeed() : "cơ thể");
-                    String wittyRepair = "Dạ " + selfP + " dùng từ hơi sến thật ạ, ý " + selfP
-                            + " là kỹ thuật viên sẽ ấn miết mở cơ kỹ dọc vùng " + areaPhrase
-                            + " đang mỏi để nhả căng cứng, tối về " + h + " nằm êm người và dễ ngủ hơn hẳn đó ạ.";
+                    String wittyRepair = "Dạ cảm ơn " + h + " đã góp ý thẳng thắn ạ, " + selfP
+                            + " xin rút kinh nghiệm để nói chuyện ngắn gọn, tự nhiên và đi thẳng vào trọng tâm hơn với " + h + " nhé ạ.";
                     yield List.of(new ReplyBubble(wittyRepair, 0));
                 }
                 if ("META_COMMENT_ON_GREETING".equals(intent)) {
@@ -3600,6 +3603,7 @@ public final class PrimaryActionRouter {
         ).matcher(normQuestion);
         if (defSubjectMatcher.find()) {
             String rawSubj = defSubjectMatcher.group(1)
+                    .toLowerCase(Locale.ROOT)
                     .replaceAll("(?iU)\\b(?:bên\\s+mình|bên\\s+em|bên\\s+shop|ở\\s+đây|tại\\s+spa|trong\\s+gói|của\\s+gói|dạ|cho\\s+hỏi|mình\\s+hỏi|tôi\\s+hỏi)\\b", " ")
                     .replaceAll("\\s+", " ")
                     .strip();
@@ -3613,8 +3617,10 @@ public final class PrimaryActionRouter {
                     }
                 }
                 if (!distinctiveTokens.isEmpty()) {
-                    long matchedCount = distinctiveTokens.stream().filter(allText::contains).count();
-                    if (matchedCount * 2 < distinctiveTokens.size()) {
+                    long matchedCount = distinctiveTokens.stream()
+                            .filter(tok -> Pattern.compile("(?iU)(?<![\\p{L}\\d])" + Pattern.quote(tok) + "(?![\\p{L}\\d])").matcher(allText).find())
+                            .count();
+                    if (matchedCount * 2 <= distinctiveTokens.size()) {
                         return false;
                     }
                 }

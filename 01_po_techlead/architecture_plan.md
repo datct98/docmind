@@ -376,6 +376,24 @@ flowchart TD
 2. **Hồ Sơ Kiểm Toán Append-Only (`live_audit.jsonl` + `run_manifest.json`)**:
    - File [`docs/benchmarks/live_audit.jsonl`](file:///Users/chutiendat/Documents/Project/docmind/docs/benchmarks/live_audit.jsonl) (`15` bản ghi: 5 lượt Kịch bản A + 7 lượt Kịch bản B + 3 lượt Gate 5 Nha Khoa Tỏa Sáng) và [`docs/benchmarks/run_manifest.json`](file:///Users/chutiendat/Documents/Project/docmind/docs/benchmarks/run_manifest.json) (`run_id = v3671-master-20261026T142015Z-5203f5`, `SHA-256 = a555dd5a130816c70a1be314d1e958ec0926ca2d79e0bb3c504863ee0465c2d3`, `cross_domain_term_leak_rate = 0%`).
 
+---
+
+### 4.7. Bản Vá Nghiệm Thu 4 Cổng `v3.8.1` (`P0-1` → `P1-6` Fix at Source & Live Provenance Verification trên `qwen3:14b`)
+
+1. **`P0-1` (Cổng 1 — Định tuyến đúng sau `BRAND_INTRO` & khi khách hỏi `"Hả là sao? Sao lại xin lỗi"`)**:
+   - `ConversationState.inferLastQuestionSlotFromBotText(...)`: Khớp câu hỏi kết của Bong bóng 3 `BRAND_INTRO` (`"...nhức mỏi vùng nào hay mình chỉ muốn nằm thư giãn toàn thân..."`) thành `CLARIFY_SERVICE_TYPE` và dùng `IdentityWeakMap` cho `ENRICHED_FOR_MESSAGE` để không bị mất làm giàu trạng thái khi `ConversationState.empty()` có cùng giá trị record.
+   - `PrimaryActionRouter.decideCore(...)` & `FanpageBotService.selectRelevantSkills(...)`: Chặn việc đẩy câu trả lời triệu chứng ở Turn 2 sang `CONVERSATION_STYLE_REPAIR` / `spa_frustration_rescue`; khi `detectedIntent == ANTI_APOLOGY_PUSHBACK` (`"Hả là sao? Sao lại xin lỗi"`), giữ nguyên giai đoạn tư vấn hiện tại (`DISCOVERY`) và chọn skill khám phá (`spa_condition_first_discovery`), cấm gán `spa_graceful_exit_after_rejection` hoặc `SOFT_BOOKING_CLOSE`.
+2. **`P0-2` (Cổng 3 — Giao tiếp tự nhiên: `"Nghe thảo mai vãi"`, cấm câu hỏi xác nhận hiển nhiên & icon `💙`)**:
+   - `SentimentIntentLayer.WORDING_FEEDBACK_PATTERN`: Nhận diện `"thảo mai"`, `"văn mẫu"`, `"giả trân"`, `"kịch bản"` vào `WORDING_FEEDBACK_REPAIR` (ưu tiên trước `isCustomerFrustrated`).
+   - `ReplyContractValidator`: Chặn câu hỏi xác nhận hiển nhiên (`"... phải không? / đúng không?"` -> `FORBIDDEN_AWKWARD_CLOSING_QUESTION`), chặn icon `💙` (`DISALLOWED_HYPE_EMOJI`), và chặn mọi câu hỏi (`?`) hoặc từ `"xin lỗi"` trong lượt `WORDING_FEEDBACK_REPAIR`.
+3. **`P0-3` (Cổng 2 — Chặn bịa `"tinh dầu thảo dược"` & cam kết y khoa `"giảm đau đầu hiệu quả"`)**:
+   - `ReplyContractValidator`: Mở rộng `PACKAGE_BENEFIT_TRUTH_VIOLATION` để chặn `"tinh dầu thảo dược"` cả khi chưa chọn gói hoặc khi gói đang giữ (`NS01`) không có trong catalog; mở rộng `MEDICAL_CLAIM_PATTERN` chặn `"giảm/hết/đỡ/trị/chữa ... (đau|nhức|mỏi|mất ngủ) ... hiệu quả"`.
+4. **`P0-4` & `P0-5` (Cổng 2 — Đồng bộ thời lượng massage `60/80/100 phút` & FAQ giờ mở cửa `09:00–21:00`, nhận khách cuối `19:30`)**:
+   - Migration [`V21__fix_nang_sen_skills_and_opening_hours_faq.sql`](file:///Users/chutiendat/Documents/Project/docmind/api-java/src/main/resources/db/migration/V21__fix_nang_sen_skills_and_opening_hours_faq.sql) cập nhật `spa_clarify_duration_once` (`60 phút, 80 phút và 100 phút`), `PB-SPA-EMOTIONAL-REPAIR-001` và các chunk chính sách/FAQ giờ mở cửa (`09:00–21:00`, nhận khách cuối `19:30`) của Nàng Sen Spa; `ReplyContractValidator` chặn `UNGROUNDED_CATALOG_DURATION` (`75 phút, 90 phút`).
+5. **`P1-6` (Cổng 4 — Sửa tại nguồn lỗi rò rỉ dấu `|` từ `<CONVERSATION_HISTORY>` & khôi phục `sent_bubble_ledger`)**:
+   - `FanpageBotPromptBuilder.buildUserTurnAndContextPart(...)`: Serialize lịch sử bong bóng bằng khoảng trắng/câu thay vì nối `" | "`, triệt tiêu hoàn toàn hiện tượng LLM bắt chước sinh ký tự `|` ở đầu bong bóng.
+
+
 
 
 

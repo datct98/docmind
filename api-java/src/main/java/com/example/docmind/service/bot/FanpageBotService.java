@@ -4373,8 +4373,12 @@ public class FanpageBotService {
         if (refEntity != null && !refEntity.isBlank() && !combinedLower.equals(refEntity.toLowerCase(Locale.ROOT))) {
             qb.append(refEntity.strip()).append(' ');
         }
+        boolean isPolicyHoursOrAddressQuery = combinedLower.matches(
+                "(?s).*(?:mở\\s+cửa|đóng\\s+cửa|mấy\\s+giờ|giờ\\s+hoạt\\s+động|giờ\\s+làm\\s+việc|nhận\\s+khách|địa\\s+chỉ|chi\\s+nhánh|cơ\\s+sở).*");
         if (combinedLower.matches("(?s).*(?:thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|nước\\s+ép|trà\\s+thảo\\s+mộc|trái\\s+cây|hoa\\s+quả|thực\\s+đơn|món\\s+gì|món\\s+nào|uống\\s+gì).*")) {
             qb.append("FAQ ăn nhẹ điểm tâm phục hồi nước ép trái cây thực đơn buffet thực dưỡng sau liệu trình miễn phí ");
+        } else if (isPolicyHoursOrAddressQuery) {
+            qb.append("FAQ giờ mở cửa 09:00 21:00 nhận khách cuối 19:30 chính sách đặt lịch giờ hoạt động địa chỉ cơ sở ");
         } else if (combinedLower.matches("(?s).*(?:phòng|riêng\\s+tư|không\\s+gian|vip|rèm|cộng\\s+đồng).*")) {
             qb.append("FAQ không gian phòng riêng VIP phòng cộng đồng có rèm riêng tư ");
         } else if (combinedLower.matches("(?s).*(?:bao\\s+lâu|mấy\\s+phút|thời\\s+lượng|thời\\s+gian).*")) {
@@ -4382,7 +4386,7 @@ public class FanpageBotService {
         } else {
             qb.append("FAQ bao gồm điểm nổi bật quy trình chi tiết quyền lợi ");
         }
-        if (activePkg != null && !activePkg.isBlank()) {
+        if (activePkg != null && !activePkg.isBlank() && !isPolicyHoursOrAddressQuery) {
             qb.append(activePkg.strip());
         }
         return qb.toString().replaceAll("\\s+", " ").strip();
@@ -4405,6 +4409,8 @@ public class FanpageBotService {
                 .toLowerCase(Locale.ROOT);
         boolean isRefreshmentOrMenuQuery = queryContext.matches(
                 "(?s).*(?:thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|nước\\s+ép|trà\\s+thảo\\s+mộc|trái\\s+cây|hoa\\s+quả|thực\\s+đơn|món\\s+gì|món\\s+nào).*");
+        boolean isOpeningHoursOrPolicyQuery = queryContext.matches(
+                "(?s).*(?:mở\\s+cửa|đóng\\s+cửa|mấy\\s+giờ|giờ\\s+hoạt\\s+động|giờ\\s+làm\\s+việc|nhận\\s+khách|địa\\s+chỉ|chi\\s+nhánh|cơ\\s+sở).*");
 
         if (metadataCache != null && pageId != null) {
             BacklinkGraph graph = metadataCache.getGraphForPage(pageId);
@@ -4427,6 +4433,12 @@ public class FanpageBotService {
                     if (isRefreshmentOrMenuQuery) {
                         if (headingLower.contains("thực đơn")
                                 || (headingLower.contains("faq") && (nodeLower.contains("ăn nhẹ") || nodeLower.contains("điểm tâm") || nodeLower.contains("nước ép") || nodeLower.contains("thực dưỡng")))) {
+                            matchedFaqNodes.add(new ReciprocalRankFusion.FusedChunk(node.toRetrievedChunk(0.99), 0.99));
+                            existingIds.add(node.chunkId());
+                        }
+                    } else if (isOpeningHoursOrPolicyQuery) {
+                        if ((headingLower.contains("faq") || headingLower.contains("chính_sách") || headingLower.contains("chính sách"))
+                                && (nodeLower.contains("mở cửa") || nodeLower.contains("nhận khách cuối") || nodeLower.contains("19:30") || nodeLower.contains("21:00"))) {
                             matchedFaqNodes.add(new ReciprocalRankFusion.FusedChunk(node.toRetrievedChunk(0.99), 0.99));
                             existingIds.add(node.chunkId());
                         }
@@ -4455,6 +4467,9 @@ public class FanpageBotService {
                     : "";
             if (isRefreshmentOrMenuQuery
                     && (hp.contains("thực đơn") || hp.contains("faq") || tx.contains("điểm tâm phục hồi") || tx.contains("thực đơn buffet"))) {
+                prioritizedFaq.add(fc);
+            } else if (isOpeningHoursOrPolicyQuery
+                    && (tx.contains("mở cửa") || tx.contains("nhận khách cuối") || tx.contains("19:30") || hp.contains("chính_sách_đặt_lịch"))) {
                 prioritizedFaq.add(fc);
             } else {
                 remaining.add(fc);
@@ -4635,7 +4650,17 @@ public class FanpageBotService {
         if (FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(message, history)) {
             return FanpageBotPromptBuilder.SalesStage.DISCOVERY;
         }
+        if (SentimentIntentLayer.isAntiApologyPushback(message)
+                || SentimentIntentLayer.isWordingOrExpressionFeedback(message)
+                || SentimentIntentLayer.isConversationStyleComplaint(message)
+                || SentimentIntentLayer.isMetaConversationOnBotBehavior(message)
+                || SentimentIntentLayer.isComprehensionFailureMessage(message)) {
+            return turnCount <= 4
+                    ? FanpageBotPromptBuilder.SalesStage.DISCOVERY
+                    : FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
+        }
         if (FanpageBotPromptBuilder.isServiceExplanationOrProcessInquiry(message)
+                || SentimentIntentLayer.isDetailOrFaqQuestion(message, null, null)
                 || FanpageBotPromptBuilder.isWellnessOrDiscomfortMessage(message)
                 || FanpageBotPromptBuilder.isSymptomFollowUpTurn(message, history)) {
             return FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION;
@@ -6959,12 +6984,23 @@ public class FanpageBotService {
         }
         List<String> errs = failedValRes != null && failedValRes.errors() != null ? failedValRes.errors() : List.of("CONTRACT_MISMATCH");
         sb.append("<FAST_TARGETED_REPAIR_HINT>\n");
+        if (failedValRes != null && failedValRes.combinedText() != null && !failedValRes.combinedText().isBlank()) {
+            sb.append("- rejected_draft (BẢN NHÁP VỪA BỊ TỪ CHỐI - PHẢI SỬA LỖI TRONG BẢN NÀY): \"")
+              .append(failedValRes.combinedText().replace("\n", " ").strip())
+              .append("\"\n");
+        }
         sb.append("- violation_hint: Phản hồi trước đó vi phạm hợp đồng kiểm định (")
           .append(errs)
           .append(").\n");
         if (actionDecision != null) {
             sb.append("- required_primary_action: ").append(actionDecision.effectiveResponseAction()).append('\n');
             sb.append("- max_bubbles: ").append(actionDecision.maxResponseBubblesForLlm()).append(" (mỗi bong bóng tối đa 2 câu, <= 65 từ).\n");
+        }
+        if (errs.contains("TOO_MANY_QUESTIONS") || errs.contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION")) {
+            sb.append("- CẢNH BÁO SỐ LƯỢNG CÂU HỎI & CÂU HỎI XÁC NHẬN: Toàn bộ phản hồi (tính gộp tất cả các bong bóng) CHỈ ĐƯỢC CÓ TỐI ĐA 1 DẤU CHẤM HỎI '?'. Tuyệt đối XÓA ngay câu hỏi xác nhận hiển nhiên ('... phải không?', '... đúng không?', '... phải không ạ?') ở câu đầu hoặc Bubble 1; câu nhận diện triệu chứng bắt buộc kết thúc bằng dấu chấm '.'!\n");
+        }
+        if (errs.contains("TOO_MANY_SENTENCES")) {
+            sb.append("- CẢNH BÁO SỐ CÂU TRONG BONG BÓNG: Mỗi bong bóng CHỈ ĐƯỢC CÓ TỐI ĐA 2 CÂU (tối đa 2 dấu kết câu './!/?'). Hãy gộp ý hoặc viết gọn lại trong đúng 1-2 câu mỗi bong bóng!\n");
         }
         if (errs.contains("UNGROUNDED_PACKAGE_BENEFIT")) {
             sb.append("- CẢNH BÁO QUYỀN LỢI GÓI: Gói đang báo/giữ phải khớp chính xác quyền lợi theo mã gói trong <GROUNDED_TURN_FACTS>. Tuyệt đối xoá các quyền lợi không thuộc gói (như 'xông hơi', 'xông thảo dược', 'tắm xông', 'ngâm bồn', 'phòng VIP' cho gói 399k; hoặc 'massage toàn thân', 'full body', 'buffet thực dưỡng' cho gói dưỡng sinh cơ bản 239k).\n");
@@ -6978,8 +7014,11 @@ public class FanpageBotService {
         if (errs.contains("FORBIDDEN_MECHANICAL_OPENER") || errs.contains("REPEATED_EM_HIEU_OPENER_CONSECUTIVE_TURNS")) {
             sb.append("- CẢNH BÁO CÂU MỞ ĐẦU: Tuyệt đối KHÔNG mở đầu bằng 'Dạ với tình trạng ... xuất hiện của mình', 'Dạ vừa bị ...', 'Em hiểu mình đang...', và KHÔNG lặp lại 'Dạ em hiểu...' ở 2 lượt liên tiếp. Hãy chạm thẳng vào cảm giác cơ thể hoặc nhu cầu thực tế của khách.\n");
         }
-        if (errs.contains("FORBIDDEN_APOLOGY_ON_POLITE_DEFERRAL") || errs.contains("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK")) {
-            sb.append("- CẢNH BÁO CẤM XIN LỖI: Tuyệt đối KHÔNG dùng từ 'xin lỗi', KHÔNG nói 'không làm phiền nữa', KHÔNG nói 'chuyển sang nhân viên hỗ trợ trực tiếp' hay 'tóm tắt lại thông tin', và KHÔNG đặt câu hỏi (?).\n");
+        if (errs.contains("FORBIDDEN_APOLOGY_ON_POLITE_DEFERRAL")) {
+            sb.append("- CẢNH BÁO CẤM XIN LỖI KHI KHÁCH TẠM DỪNG: Tuyệt đối KHÔNG dùng từ 'xin lỗi', KHÔNG nói 'không làm phiền nữa', KHÔNG nói 'chuyển sang nhân viên hỗ trợ trực tiếp' hay 'tóm tắt lại thông tin', và KHÔNG đặt câu hỏi (?).\n");
+        }
+        if (errs.contains("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK") || errs.contains("UNNECESSARY_APOLOGY_ON_META_COMMENT")) {
+            sb.append("- CẢNH BÁO CẤM CHỮ 'XIN LỖI': Tuyệt đối XÓA hoàn toàn 2 chữ 'xin lỗi' / 'thứ lỗi' khỏi toàn bộ câu trả lời (kể cả trong câu giải thích 'vì đã nói xin lỗi'). Hãy đáp tự nhiên vui vẻ (ví dụ: 'Dạ tại em sợ hỏi hơi kỹ làm mình sốt ruột thôi ạ.') rồi hỏi 1 câu ngắn xem triệu chứng của khách mới bị gần đây hay đã lâu.\n");
         }
         if (errs.contains("REPEATED_TURN2_SLEEP_SCENE_IN_TURN3")) {
             sb.append("- CẢNH BÁO TRÙNG LẶP CẢNH CƠ THỂ: Tuyệt đối KHÔNG lặp lại cảnh 'nằm xuống/đặt lưng xuống mà đầu vẫn nặng trĩu' của lượt trước; câu mở đầu phải phản hồi trực tiếp tín hiệu tần suất khách vừa nêu.\n");
@@ -7015,10 +7054,21 @@ public class FanpageBotService {
             sb.append("- CẢNH BÁO HỨA LỆCH KHÔNG GIAN/THỜI GIAN: Khách đang nhắn tin và chưa đặt lịch; tuyệt đối không nói 'em sẽ chăm sóc kỹ hơn cho mình ngay ạ'. Hãy dùng 'Khi mình ghé, em sẽ dặn...'.\n");
         }
         if (errs.contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION")) {
-            sb.append("- CẢNH BÁO CÂU HỎI KẾT: Tuyệt đối KHÔNG dùng câu hỏi vô tri hoặc sai ngữ pháp như 'Mình thấy liệu trình này hợp nhu cầu không ạ?', 'Mình thấy thế nào ạ?', 'hay ... không ạ?', 'phải không?'.\n");
+            sb.append("- CẢNH BÁO CÂU HỎI KẾT: Tuyệt đối KHÔNG dùng câu hỏi xác nhận hiển nhiên nhại lại lời khách ('... phải không?', '... đúng không?') hay câu hỏi vô tri ('Mình thấy liệu trình này hợp nhu cầu không ạ?', 'Mình thấy thế nào ạ?').\n");
+        }
+        if (errs.contains("UNGROUNDED_CATALOG_DURATION")) {
+            sb.append("- CẢNH BÁO THỜI LƯỢNG NGOÀI CATALOG: Tuyệt đối XÓA thời lượng không khớp Catalog (như '75 phút' hoặc '90 phút' khi hỏi massage); chỉ nêu đúng các mốc thời lượng có trong valid_catalog_durations của <GROUNDED_TURN_FACTS>.\n");
+        }
+        if (errs.contains("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK") || errs.contains("VR_EMOJI_WHITELIST") || errs.contains("VR-015A_FORBIDDEN_EMOJI")) {
+            sb.append("- CẢNH BÁO GÓP Ý CÂU CHỮ & ICON: Khách đang góp ý về cách diễn đạt/giọng văn -> chỉ tiếp nhận góp ý ngắn gọn, tự nhiên trong 1-2 câu (ví dụ: 'Dạ cảm ơn mình đã góp ý thẳng thắn nha, để em tiết chế lại và nói chuyện ngắn gọn, tự nhiên hơn ạ.'); TUYỆT ĐỐI XÓA mọi câu quảng cáo dịch vụ/gói/kỹ thuật viên, XÓA từ 'xin lỗi', XÓA mọi câu hỏi ('?') và XÓA icon 💙.\n");
         }
         if (errs.contains("FORBIDDEN_REPEAT_GUARD_PHRASE")) {
             sb.append("- CẢNH BÁO CẤM CỤM TỪ: Tuyệt đối KHÔNG dùng cụm 'em vừa gửi ở tin trên' hay chỉ khách đọc lại tin nhắn trước.\n");
+        }
+        if (actionDecision != null
+                && (actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
+                    || actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT)) {
+            sb.append("- CẢNH BÁO HANDOFF AN TOÀN (max_questions=0): Đây là lượt chuyển chuyên viên -> TUYỆT ĐỐI XÓA mọi dấu chấm hỏi '?' khỏi câu trả lời, chỉ dùng dấu chấm '.' và thông báo chuyển chuyên viên hỗ trợ trực tiếp trong 1 bong bóng.\n");
         }
         if (actionDecision != null && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.DIRECT_CONCRETE_SOLUTION) {
             sb.append("- BẮT BUỘC CAM KẾT VẬN HÀNH (Operational Assurance): Phải có câu hứa chủ động 'Khi mình ghé, em sẽ dặn [nhân sự phụ trách trong care_actor] lưu ý chăm sóc kỹ đúng vùng trong confirmed_scopes' và KHÔNG báo giá tiền ở lượt này.\n");
@@ -7028,7 +7078,7 @@ public class FanpageBotService {
         }
         sb.append("- grounded_reference_facts: Bám sát đúng tên gói, thời lượng, mức giá và quyền lợi trong <GROUNDED_TURN_FACTS>; tuyệt đối không tự nhận Phòng VIP riêng cho gói < 580k, không gán nhầm quyền lợi của gói cao xuống gói thấp, và không chẩn đoán bệnh lý hay tự suy diễn chữ 'căng' khi khách không nói.\n");
         sb.append("- Hãy viết lại JSON hợp lệ ngay lập tức ở chế độ FAST_NO_THINK.\n");
-        sb.append("</FAST_TARGETED_REPAIR_HINT>");
+        sb.append("</FAST_TARGETED_REPAIR_HINT>\nTin nhắn phản hồi khách hàng:");
         return sb.toString();
     }
 

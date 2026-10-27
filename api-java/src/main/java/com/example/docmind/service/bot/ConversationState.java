@@ -641,8 +641,70 @@ public record ConversationState(
     private static final Map<String, Object> WEBHOOK_EVENT_DEDUP_STORE = new ConcurrentHashMap<>();
     private static final Map<String, LastTurnPreStateSnapshot> LAST_TURN_PRE_STATE_STORE = new ConcurrentHashMap<>();
     private static final Map<String, PendingBubbleRecord> PENDING_BUBBLE_STORE = new ConcurrentHashMap<>();
-    private static final Map<ConversationState, ConversationState> ENRICHED_TO_PRIOR_MAP =
-            Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static final class IdentityWeakMap {
+        private final Map<IdentityKey, ConversationState> delegate = new ConcurrentHashMap<>();
+        private final java.lang.ref.ReferenceQueue<ConversationState> queue = new java.lang.ref.ReferenceQueue<>();
+
+        private static final class IdentityKey extends java.lang.ref.WeakReference<ConversationState> {
+            private final int hash;
+
+            IdentityKey(ConversationState referent) {
+                super(referent);
+                this.hash = System.identityHashCode(referent);
+            }
+
+            IdentityKey(ConversationState referent, java.lang.ref.ReferenceQueue<ConversationState> q) {
+                super(referent, q);
+                this.hash = System.identityHashCode(referent);
+            }
+
+            @Override
+            public int hashCode() {
+                return hash;
+            }
+
+            @Override
+            public boolean equals(Object obj) {
+                if (this == obj) return true;
+                if (!(obj instanceof IdentityKey other)) return false;
+                ConversationState a = this.get();
+                ConversationState b = other.get();
+                return a != null && a == b;
+            }
+        }
+
+        private void expungeStaleEntries() {
+            java.lang.ref.Reference<? extends ConversationState> ref;
+            while ((ref = queue.poll()) != null) {
+                delegate.remove(ref);
+            }
+        }
+
+        boolean containsKey(ConversationState key) {
+            if (key == null) return false;
+            expungeStaleEntries();
+            return delegate.containsKey(new IdentityKey(key));
+        }
+
+        ConversationState get(ConversationState key) {
+            if (key == null) return null;
+            expungeStaleEntries();
+            return delegate.get(new IdentityKey(key));
+        }
+
+        ConversationState getOrDefault(ConversationState key, ConversationState defaultValue) {
+            ConversationState val = get(key);
+            return val != null ? val : defaultValue;
+        }
+
+        void put(ConversationState key, ConversationState value) {
+            if (key == null || value == null) return;
+            expungeStaleEntries();
+            delegate.put(new IdentityKey(key, queue), value);
+        }
+    }
+
+    private static final IdentityWeakMap ENRICHED_TO_PRIOR_MAP = new IdentityWeakMap();
 
     public boolean isAlreadyEnrichedForTurn() {
         return ENRICHED_TO_PRIOR_MAP.containsKey(this);
@@ -650,6 +712,13 @@ public record ConversationState(
 
     public ConversationState priorTurnState() {
         return ENRICHED_TO_PRIOR_MAP.getOrDefault(this, this);
+    }
+
+    public ConversationState ensureTurnEnriched(String message, List<String> domainKeywords) {
+        if (isAlreadyEnrichedForTurn() || message == null || message.isBlank()) {
+            return this;
+        }
+        return enrichWithCurrentMessage(message, domainKeywords);
     }
 
     private static final Pattern OPERATIONAL_CARE_PROMISE_PATTERN = Pattern.compile(
@@ -1483,12 +1552,16 @@ public record ConversationState(
 
                 if (lower.contains("lâu chưa") || lower.contains("mới gần đây")
                         || lower.contains("gần đây hay") || lower.contains("hay đã kéo dài")
-                        || lower.contains("ngồi lâu hay vận động") || lower.contains("mỏi vùng nào")
+                        || lower.contains("ngồi lâu hay vận động")
                         || lower.contains("lâu rồi") || lower.contains("mới bị")
-                        || lower.contains("máy tính") || lower.contains("bao lâu")) {
+                        || lower.contains("máy tính") || lower.contains("bao lâu")
+                        || (lower.contains("mỏi vùng nào") && !knownSymptoms.isEmpty())) {
                     conditionAskedCount++;
                     lastQuestionIntent = "ASK_CONDITION";
                     usedQuestionIntents.add("ASK_CONDITION");
+                } else if (lower.contains("mỏi vùng nào")) {
+                    lastQuestionIntent = "ASK_INITIAL_NEED";
+                    usedQuestionIntents.add("ASK_INITIAL_NEED");
                 }
                 if (lower.contains("lực nhẹ") || lower.contains("lực vừa") || lower.contains("lực mạnh")) {
                     preferenceAskedCount++;
@@ -2520,7 +2593,9 @@ public record ConversationState(
         String sessionKey = buildSessionKey(pageId, senderId, conversationId);
         String normUserMsg = VietnameseQueryNormalizer.normalize(userMessage != null ? userMessage : "")
                 .toLowerCase(Locale.ROOT).strip();
-        ConversationState base = prevState != null ? prevState : initial();
+        ConversationState base = prevState != null
+                ? prevState.ensureTurnEnriched(userMessage, List.of())
+                : initial().ensureTurnEnriched(userMessage, List.of());
         ConversationState effectivePrev = base.priorTurnState();
         if (sessionKey != null) {
             LastTurnPreStateSnapshot snap = LAST_TURN_PRE_STATE_STORE.get(sessionKey);
@@ -2790,10 +2865,13 @@ public record ConversationState(
 
         if ("spa_condition_first_discovery".equalsIgnoreCase(skillCode)
                 || combinedBotReplyLower.contains("bị lâu chưa")
-                || combinedBotReplyLower.contains("mỏi vùng nào")) {
+                || (combinedBotReplyLower.contains("mỏi vùng nào") && !base.knownSymptoms().isEmpty())) {
             nextCondAsked++;
             nextQuestionIntent = "ASK_CONDITION";
             usedQIntents.add("ASK_CONDITION");
+        } else if (combinedBotReplyLower.contains("mỏi vùng nào")) {
+            nextQuestionIntent = "ASK_INITIAL_NEED";
+            usedQIntents.add("ASK_INITIAL_NEED");
         } else if (combinedBotReplyLower.contains("lực nhẹ") || combinedBotReplyLower.contains("lực vừa")) {
             nextPrefAsked++;
             nextQuestionIntent = "ASK_PRESSURE_PREFERENCE";

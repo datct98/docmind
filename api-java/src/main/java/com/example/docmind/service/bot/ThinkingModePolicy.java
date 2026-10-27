@@ -770,7 +770,8 @@ public final class ThinkingModePolicy {
     ) {
         String rawMsg = customerMessage != null ? customerMessage.strip() : "";
         String normMsg = Normalizer.normalize(rawMsg, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        ConversationState safeState = convState != null ? convState : ConversationState.initial();
+        ConversationState safeState = (convState != null ? convState : ConversationState.initial())
+                .ensureTurnEnriched(rawMsg, List.of());
         PrimaryAction effectiveAction = actionDecision != null && actionDecision.effectiveResponseAction() != null
                 ? actionDecision.effectiveResponseAction()
                 : PrimaryAction.GENERIC_SHORT_DISCOVERY;

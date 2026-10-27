@@ -39,7 +39,7 @@ public final class ReplyContractValidator {
             "(?isU).*(?:system\\s+prompt|chunk_id|document_id|<document_context>|<experience_library>|template_id|reasoning_brief|<think>).*"
     );
     private static final Pattern MEDICAL_CLAIM_PATTERN = Pattern.compile(
-            "(?isU).*(?:cam\\s+kết\\s+khỏi|chữa\\s+khỏi(?:\\s+hẳn)?|điều\\s+trị\\s+dứt\\s+điểm|trị\\s+dứt\\s+điểm|khỏi\\s+bệnh\\s+100%|hết\\s+tê\\s+tay|khỏi\\s+đau\\s+đầu|điều\\s+trị\\s+bệnh|chữa\\s+thoát\\s+vị|chữa\\s+thoái\\s+hóa|cam\\s+kết\\s+hết\\s+đau|đảm\\s+bảo\\s+khỏi|khí\\s+huyết\\s+(?:lên\\s+vùng\\s+đầu\\s+)?kém\\s+lưu\\s+thông|tắc\\s+nghẽn\\s+kinh\\s+lạc|máu\\s+lên\\s+não\\s+kém).*"
+            "(?isU).*(?:cam\\s+kết\\s+khỏi|chữa\\s+khỏi(?:\\s+hẳn)?|điều\\s+trị\\s+dứt\\s+điểm|trị\\s+dứt\\s+điểm|khỏi\\s+bệnh\\s+100%|hết\\s+tê\\s+tay|khỏi\\s+đau\\s+đầu|điều\\s+trị\\s+bệnh|chữa\\s+thoát\\s+vị|chữa\\s+thoái\\s+hóa|cam\\s+kết\\s+hết\\s+đau|đảm\\s+bảo\\s+khỏi|khí\\s+huyết\\s+(?:lên\\s+vùng\\s+đầu\\s+)?kém\\s+lưu\\s+thông|tắc\\s+nghẽn\\s+kinh\\s+lạc|máu\\s+lên\\s+não\\s+kém|(?:giảm|trị|chữa|hết|cải\\s+thiện)\\s+(?:đau\\s+đầu|mất\\s+ngủ|đau\\s+nhức|nhức\\s+mỏi|đau\\s+vai\\s+gáy)\\s+hiệu\\s+quả|(?:trị|chữa|dứt\\s+điểm|khỏi\\s+hẳn)\\s+(?:đau\\s+đầu|mất\\s+ngủ)).*"
     );
     private static final Pattern FAKE_STATS_SOCIAL_PROOF_PATTERN = Pattern.compile(
             "(?isU).*(?:(?<!miễn\\s+phí\\s)\\b(?:9\\d|100)\\s*%|10\\.000\\s+khách|hàng\\s+nghìn\\s+khách|tất\\s+cả\\s+khách\\s+đều|ai\\s+cũng\\s+hài\\s+lòng|khách\\s+nào\\s+cũng\\s+thích|100%\\s+khách|chắc\\s+chắn\\s+hài\\s+lòng|cam\\s+kết\\s+hài\\s+lòng\\s+100%|đều\\s+phản\\s+hồi).*"
@@ -48,7 +48,7 @@ public final class ReplyContractValidator {
             "(?isU).*(?:nhiều\\s+anh/chị\\s+sau\\s+buổi\\s+đầu|phản\\s+hồi\\s+khá\\s+tốt).*"
     );
     private static final Pattern FORBIDDEN_EMOJI_PATTERN = Pattern.compile(
-            "[😂🤣😒🙄😤😡💸🤑]"
+            "[😂🤣😒🙄😤😡💸🤑💙]"
     );
     private static final Pattern UNSTATED_CANG_ASSUMPTION_PATTERN = Pattern.compile(
             "(?isU).*(?:thường\\s+căng\\s+sau\\s+ngồi\\s+lâu|căng\\s+sau\\s+ngồi\\s+lâu\\s+hay\\s+vận\\s+động|đang\\s+bị\\s+căng\\b).*"
@@ -76,7 +76,7 @@ public final class ReplyContractValidator {
             + "rẻ\\s+hơn\\s+(?:một\\s+)?ly\\s+cà\\s+phê|\\d+k\\s*/\\s*phút|personally)(?![\\p{L}\\d]).*"
     );
 
-    private static final Pattern DISALLOWED_HYPE_EMOJI_PATTERN = Pattern.compile("[🚀💪🎁✅😤]");
+    private static final Pattern DISALLOWED_HYPE_EMOJI_PATTERN = Pattern.compile("[🚀💪🎁✅😤💙]");
 
     // v3.4.1 Mục 4 & 5: Cấm các câu mở đầu máy móc / nhại triệu chứng và câu hỏi chất vấn vô duyên ở lần chê đắt 2.
     private static final Pattern FORBIDDEN_MECHANICAL_OPENER_PATTERN = Pattern.compile(
@@ -121,10 +121,11 @@ public final class ReplyContractValidator {
 
     /** Lỗi BLOCKING: bong bóng vi phạm các lỗi này KHÔNG BAO GIỜ được đưa vào final_bubbles. */
     public static final java.util.Set<String> BLOCKING_ERRORS = java.util.Set.of(
-            "UNGROUNDED_CATALOG_PRICE", "UNGROUNDED_PACKAGE_BENEFIT", "VR_NO_UNGROUNDED_SERVICE_CLAIM",
+            "UNGROUNDED_CATALOG_PRICE", "UNGROUNDED_CATALOG_DURATION", "UNGROUNDED_PACKAGE_BENEFIT", "VR_NO_UNGROUNDED_SERVICE_CLAIM",
             "FORBIDDEN_NEGATED_SCOPE_USED", "MEDICAL_CLAIM", "INTERNAL_LEAK", "BODY_PART_MISMATCH_HALLUCINATION",
             "VR-004A_NO_REJECTED_PACKAGE_REPEAT", "REPEATED_PRICE_AFTER_DISCUSSED", "NO_NUMERIC_PRICE_REPEAT_AFTER_DISCUSSED",
-            "FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION", "EMPTY_TEMPLATE_APOLOGY",
+            "FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION", "FORBIDDEN_AWKWARD_CLOSING_QUESTION", "FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK",
+            "FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK", "VR_EMOJI_WHITELIST", "VR-015A_FORBIDDEN_EMOJI", "EMPTY_TEMPLATE_APOLOGY",
             "VR-007B_NO_FAKE_STATS_OR_ABSOLUTE_SOCIAL_PROOF", "VR-007D_UNGROUNDED_SOCIAL_PROOF",
             "VR-007H_UNGROUNDED_PRIVATE_ROOM", "OPERATIONAL_PROMISE_WITHOUT_ARTIFACT", "PROMO_NOT_GROUNDED");
 
@@ -168,7 +169,7 @@ public final class ReplyContractValidator {
                 .replaceAll("(?isU)\\(\\s*không\\s+phải\\s+[^)]*\\)", " ");
 
         String[] restrictedPhysicalClaims = {
-            "xông hơi", "đá nóng", "đá muối", "ngâm chân", "ngâm bồn", "chườm ngải cứu", "nến thơm", "phòng vip", "phòng riêng biệt"
+            "tinh dầu thảo dược", "tinh dầu", "xông hơi", "đá nóng", "đá muối", "ngâm chân", "ngâm bồn", "chườm ngải cứu", "nến thơm", "phòng vip", "phòng riêng biệt"
         };
         for (String claim : restrictedPhysicalClaims) {
             if (lower.contains(claim) && !allowedSpec.contains(claim)) {
@@ -284,7 +285,7 @@ public final class ReplyContractValidator {
         }
 
         ConversationState safeState = state != null ? state : ConversationState.initial();
-        ConversationState enrichedState = safeState;
+        ConversationState enrichedState = safeState.ensureTurnEnriched(customerMessage, List.of());
         PackageCatalogService.PackageSummary activePackageForReferee = PrimaryActionRouter.resolveHeldPackageFromStateCatalog(safeState);
         boolean isFrustratedNow = PrimaryActionRouter.isFrustrationMessage(customerMessage);
         boolean customerEverStatedCang = (customerMessage != null
@@ -541,7 +542,7 @@ public final class ReplyContractValidator {
                 }
             }
 
-            // v3.2.1 price_grounding_check: Mọi con số giá trong câu trả lời phải khớp gói thực tế trong availablePackageCatalog
+            // v3.2.1 price_grounding_check & duration_grounding_check: Mọi con số giá và thời lượng trong câu trả lời phải khớp gói thực tế trong availablePackageCatalog
             if (safeState.availablePackageCatalog() != null && !safeState.availablePackageCatalog().isEmpty()) {
                 java.util.regex.Matcher pm = PRICE_PATTERN.matcher(text);
                 List<Long> mentionedPricesVnd = new ArrayList<>();
@@ -555,6 +556,32 @@ public final class ReplyContractValidator {
                         if (!groundedInCatalog) {
                             errors.add("UNGROUNDED_CATALOG_PRICE");
                         }
+                    }
+                }
+                java.util.regex.Matcher dm = Pattern.compile("(?iU)\\b(\\d{2,3})\\s*phút\\b").matcher(text);
+                String custLowerForDur = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
+                boolean massageOnlyClarify = effectiveAction == PrimaryAction.CLARIFY_SERVICE_DURATION
+                        && custLowerForDur.contains("massage")
+                        && !custLowerForDur.contains("dưỡng sinh")
+                        && !custLowerForDur.contains("gội");
+                while (dm.find()) {
+                    try {
+                        int mentionedMin = Integer.parseInt(dm.group(1));
+                        boolean isStepDur = !massageOnlyClarify && (mentionedMin == 5 || mentionedMin == 10 || mentionedMin == 15 || mentionedMin == 20 || mentionedMin == 30);
+                        boolean groundedDur = safeState.availablePackageCatalog().stream()
+                                .anyMatch(pkg -> {
+                                    if (pkg == null || pkg.durationMinutes() != mentionedMin) return false;
+                                    if (massageOnlyClarify) {
+                                        String c = pkg.code() != null ? pkg.code().toUpperCase(Locale.ROOT) : "";
+                                        String n = pkg.displayName() != null ? pkg.displayName().toLowerCase(Locale.ROOT) : "";
+                                        return c.startsWith("NS") || n.contains("massage");
+                                    }
+                                    return true;
+                                });
+                        if (!groundedDur && !isStepDur && !errors.contains("UNGROUNDED_CATALOG_DURATION")) {
+                            errors.add("UNGROUNDED_CATALOG_DURATION");
+                        }
+                    } catch (NumberFormatException ignored) {
                     }
                 }
                 if (hasUngroundedPackageBenefitClaim(lower, mentionedPricesVnd, safeState, effectiveAction)) {
@@ -669,6 +696,13 @@ public final class ReplyContractValidator {
             if (isAntiApologyTurn
                     && (lower.contains("xin lỗi") || lower.contains("chuyển sang nhân viên") || lower.contains("chuyển nhân viên") || lower.contains("tóm tắt lại thông tin"))) {
                 errors.add("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK");
+            }
+            if (isLlmValidation
+                    && com.example.docmind.service.bot.SentimentIntentLayer.isWordingOrExpressionFeedback(customerMessage)
+                    && (lower.matches("(?isU).*\\b(liệu\\s+trình|kỹ\\s+thuật\\s+viên|massage|dưỡng\\s+sinh|thảo\\s+dược|ngâm\\s+bồn|xông\\s+hơi|buffet|ấn\\s+huyệt|giãn\\s+cơ|399k|239k|530k|580k)\\b.*")
+                        || lower.contains("?")
+                        || lower.contains("xin lỗi"))) {
+                errors.add("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK");
             }
             // v3.4.2 Mục 5.2 & 5.3: Chặn lặp lại cảnh "nằm xuống/đầu nặng trĩu" ở Turn 3 và chặn lặp lại nguyên câu mô tả của Turn 3 B2 ở Turn 4
             if (isLlmValidation
@@ -841,7 +875,7 @@ public final class ReplyContractValidator {
             if (lower.matches("(?isU).*\\bchăm\\s+sóc\\s+(?:kỹ\\s+hơn\\s+)?cho\\s+(?:mình|chị|anh)\\s+ngay\\s+(?:ạ|bây\\s+giờ)\\b.*")) {
                 errors.add("FORBIDDEN_OUT_OF_SPACE_PROMISE");
             }
-            if (lower.matches("(?isU).*(?:liệu\\s+trình\\s+này\\s+hợp\\s+nhu\\s+cầu\\s+không\\s+ạ|(?:mình|chị|anh)\\s+thấy\\s+thế\\s+nào\\s+ạ|đang\\s+quan\\s+tâm\\s+[^?]+\\s+hay\\s+[^?]+\\s+không\\s+ạ\\?|đang\\s+đau\\s+ở\\s+[^?]+\\s+và\\s+[^?]+\\s+phải\\s+không).*")) {
+            if (lower.matches("(?isU).*(?:liệu\\s+trình\\s+này\\s+hợp\\s+nhu\\s+cầu\\s+không\\s+ạ|(?:mình|chị|anh)\\s+thấy\\s+thế\\s+nào\\s+ạ|đang\\s+quan\\s+tâm\\s+[^?]+\\s+hay\\s+[^?]+\\s+không\\s+ạ\\?|(?:phải\\s+không|đúng\\s+không)\\s*(?:ạ|nhỉ|ha|hả|em|chị|anh)?\\s*\\?).*")) {
                 errors.add("FORBIDDEN_AWKWARD_CLOSING_QUESTION");
             }
             if (lower.matches("(?isU).*(?:đã\\s+gửi\\s+ở\\s+tin\\s+nhắn\\s+trên|vừa\\s+gửi\\s+ở\\s+tin\\s+trên).*")) {
@@ -1315,7 +1349,9 @@ public final class ReplyContractValidator {
                 && !lowerText.matches("(?isU).*(?:không\\s+(?:có|bao\\s+gồm)|chưa\\s+(?:có|bao\\s+gồm))[^.!?]{0,40}(?:massage\\s+toàn\\s+thân|full\\s+body|massage\\s+body).*");
         boolean claimsBuffet = lowerText.contains("buffet thực dưỡng")
                 && !lowerText.matches("(?isU).*(?:không\\s+(?:có|bao\\s+gồm)|chưa\\s+(?:có|bao\\s+gồm))[^.!?]{0,40}buffet\\s+thực\\s+dưỡng.*");
-        if (!claimsSauna && !claimsHerbalBath && !claimsVipRoom && !claimsFullBody && !claimsBuffet) {
+        boolean claimsEssentialOil = (lowerText.contains("tinh dầu thảo dược") || lowerText.contains("tinh dầu"))
+                && !lowerText.matches("(?isU).*(?:không\\s+(?:có|bao\\s+gồm)|chưa\\s+(?:có|bao\\s+gồm))[^.!?]{0,40}tinh\\s+dầu.*");
+        if (!claimsSauna && !claimsHerbalBath && !claimsVipRoom && !claimsFullBody && !claimsBuffet && !claimsEssentialOil) {
             return false;
         }
 
@@ -1323,6 +1359,8 @@ public final class ReplyContractValidator {
         if (mentionedPricesVnd != null && !mentionedPricesVnd.isEmpty()) {
             targetPrices.addAll(mentionedPricesVnd);
         } else if ((effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
+                || effectiveAction == PrimaryAction.RECOMMEND_ONE_PACKAGE
+                || effectiveAction == PrimaryAction.GENERIC_SHORT_DISCOVERY
                 || effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME
                 || effectiveAction == PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT
                 || effectiveAction == PrimaryAction.CONFIRM_BOOKING_DETAILS)
@@ -1332,6 +1370,18 @@ public final class ReplyContractValidator {
         }
 
         if (targetPrices.isEmpty()) {
+            if (claimsEssentialOil) {
+                boolean anyCatalogHasEssentialOil = safeState.availablePackageCatalog().stream().anyMatch(pkg -> {
+                    if (pkg == null) return false;
+                    String combined = ((pkg.displayName() != null ? pkg.displayName() : "") + " "
+                            + (pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
+                            + (pkg.processSummary() != null ? pkg.processSummary() : "")).toLowerCase(Locale.ROOT);
+                    return combined.contains("tinh dầu");
+                });
+                if (!anyCatalogHasEssentialOil) {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -1340,6 +1390,18 @@ public final class ReplyContractValidator {
                 .toList();
         if (matchingPackages.isEmpty()) {
             return false;
+        }
+
+        if (claimsEssentialOil) {
+            boolean anyHasOil = matchingPackages.stream().anyMatch(pkg -> {
+                String combined = ((pkg.displayName() != null ? pkg.displayName() : "") + " "
+                        + (pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
+                        + (pkg.processSummary() != null ? pkg.processSummary() : "")).toLowerCase(Locale.ROOT);
+                return combined.contains("tinh dầu");
+            });
+            if (!anyHasOil) {
+                return true;
+            }
         }
 
         if (claimsSauna) {

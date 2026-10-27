@@ -496,4 +496,200 @@ class DocmindV38SurgeryTest {
         assertThat(bubbles.get(1)).isEqualTo(new ReplyBubble(b2, 1000));
         assertThat(bubbles.get(2)).isEqualTo(new ReplyBubble(b3, 2000));
     }
+
+    @Test
+    @DisplayName("P0-1: Turn 2 kể triệu chứng sau BRAND_INTRO định tuyến đúng sang khám phá tình trạng (không Frustration Recovery); 'Hả là sao? Sao lại xin lỗi' không gán Graceful Exit")
+    void p01_turn2AfterBrandIntroRoutesToSymptomDiscoveryNotFrustrationRepairAndAntiApologyDoesNotExit() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        List<String> kws = List.of("vai", "gáy", "cổ", "đầu", "mất ngủ", "massage", "dưỡng sinh");
+        String b1 = "Dạ chào mình, em là An Nhiên — chuyên viên chăm sóc khách hàng của Nàng Sen Spa ạ.";
+        String b2 = "Nàng Sen là góc nhỏ tĩnh lặng để mình gác lại mệt mỏi, thả lỏng cơ thể với liệu trình massage giãn cơ êm sâu và gội đầu thảo dược ấm áp, giúp nhẹ đầu và dễ vào giấc hơn";
+        String b3 = "Để em gửi mức giá trọn gói vừa vặn nhất, hôm nay cơ thể mình đang nhức mỏi vùng nào hay mình chỉ muốn nằm thư giãn toàn thân cho nhẹ người ạ?";
+
+        ConversationState s1 = ConversationState.initial().enrichWithCurrentMessage("Tư vấn", kws);
+        PrimaryActionRouter.RoutingDecision d1 = PrimaryActionRouter.route("Tư vấn", s1, chunks, kws);
+        ConversationState afterT1 = ConversationState.updateAfterSend(
+                PAGE_ID, "u-p01", "c-p01", s1, "Tư vấn", d1,
+                List.of(new ReplyBubble(b1, 0), new ReplyBubble(b2, 1000), new ReplyBubble(b3, 2000)),
+                false, 0
+        );
+        assertThat(afterT1.conditionAskedCount()).isZero();
+        assertThat(afterT1.lastQuestionIntent()).isEqualTo("ASK_INITIAL_NEED");
+
+        String turn2Msg = "Tôi đau đầu, dễ mất ngủ và đau nhức vai gáy";
+        ConversationState s2 = afterT1.enrichWithCurrentMessage(turn2Msg, kws);
+        PrimaryActionRouter.RoutingDecision d2 = PrimaryActionRouter.route(turn2Msg, s2, chunks, kws);
+        assertThat(d2.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE);
+        assertThat(d2.detectedIntent()).isNotEqualTo("CONVERSATION_STYLE_REPAIR");
+        assertThat(d2.correspondingMicroSkillCode()).isEqualTo("spa_condition_first_discovery");
+
+        String turn3Msg = "Hả là sao? Sao lại xin lỗi";
+        ConversationState s3 = s2.enrichWithCurrentMessage(turn3Msg, kws);
+        PrimaryActionRouter.RoutingDecision d3 = PrimaryActionRouter.route(turn3Msg, s3, chunks, kws);
+        assertThat(d3.detectedIntent()).isEqualTo("ANTI_APOLOGY_PUSHBACK");
+        assertThat(d3.correspondingMicroSkillCode()).isNotEqualTo("spa_graceful_exit_after_rejection");
+        assertThat(d3.correspondingMicroSkillCode()).isEqualTo("spa_condition_first_discovery");
+    }
+
+    @Test
+    @DisplayName("P0-2: 'Nghe thảo mai vãi' định tuyến sang WORDING_FEEDBACK_REPAIR, chặn quảng cáo dịch vụ & icon 💙; chặn câu hỏi xác nhận hiển nhiên '... phải không?'")
+    void p02_wordingFeedbackThaoMaiRoutesToWordingFeedbackRepairAndBlocksSalesPitchEmojiAndConfirmationEcho() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        List<String> kws = List.of("vai", "gáy", "cổ", "đầu", "massage");
+        ConversationState st = ConversationState.initial().enrichWithCurrentMessage("Tôi đau đầu, mỏi vai gáy", kws);
+
+        assertThat(SentimentIntentLayer.isWordingOrExpressionFeedback("Nghe thảo mai vãi")).isTrue();
+        ConversationState stFeedback = st.enrichWithCurrentMessage("Nghe thảo mai vãi", kws);
+        PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.route("Nghe thảo mai vãi", stFeedback, chunks, kws);
+        assertThat(dec.detectedIntent()).isEqualTo("WORDING_FEEDBACK_REPAIR");
+        assertThat(dec.correspondingMicroSkillCode()).isEqualTo("greeting_warm_intro");
+
+        // Validator blocks sales pitch and 💙 on wording feedback
+        var badPitch = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ em cảm ơn mình góp ý nha 💙 Bên em có gói massage trị liệu chuyên sâu chăm sóc kỹ vùng vai gáy ạ.", 0)),
+                stFeedback, "Nghe thảo mai vãi",
+                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(badPitch.errors()).contains("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK", "VR-015A_FORBIDDEN_EMOJI");
+        assertThat(ReplyContractValidator.hasBlockingError(badPitch.errors())).isTrue();
+
+        var goodAck = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ em cảm ơn mình đã góp ý thẳng thắn nha, để em nói chuyện ngắn gọn và tự nhiên hơn ạ.", 0)),
+                stFeedback, "Nghe thảo mai vãi",
+                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(ReplyContractValidator.hasBlockingError(goodAck.errors())).isFalse();
+
+        // Validator blocks "... phải không?" / "... đúng không?"
+        var badEcho = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ mình đang bị đau đầu, dễ mất ngủ và đau nhức vai gáy phải không ạ?", 0)),
+                st, "Tôi đau đầu, dễ mất ngủ và đau nhức vai gáy",
+                PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(badEcho.errors()).contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION");
+        assertThat(ReplyContractValidator.hasBlockingError(badEcho.errors())).isTrue();
+    }
+
+    @Test
+    @DisplayName("P0-3: Chặn gán sai 'tinh dầu thảo dược' cho gói không có trong spec và chặn tuyên bố 'giảm đau đầu hiệu quả'")
+    void p03_blocksUngroundedTinhDauThaoDuocAndMedicalHeadacheEfficacyClaim() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        List<String> kws = List.of("vai", "gáy", "cổ", "đầu", "massage");
+        ConversationState st = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p03", "c-p03", true, "Giá sao", List.of(), kws, chunks
+        ).enrichWithCurrentMessage("Tôi đau đầu, mỏi vai gáy thi thoảng", kws);
+
+        var badHerbOil = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ em gợi ý gói Massage cơ bản 60 phút giá 399k kết hợp tinh dầu thảo dược giúp giảm đau đầu hiệu quả ạ.", 0)),
+                st, "Giá sao",
+                PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(badHerbOil.errors()).contains("UNGROUNDED_PACKAGE_BENEFIT", "MEDICAL_CLAIM");
+        assertThat(ReplyContractValidator.hasBlockingError(badHerbOil.errors())).isTrue();
+    }
+
+    @Test
+    @DisplayName("P0-4: Chặn thời lượng '75 phút, 90 phút' không tồn tại trong nhóm dịch vụ massage của Nàng Sen Spa")
+    void p04_blocksUngrounded75And90MinuteMassageDurations() {
+        String realNangSenMassageCatalog = """
+                | Mã dịch vụ | Tên dịch vụ | Giá | Thời gian | Quy trình tóm tắt | Không gian / Phòng | Nhân sự thực hiện | Điểm nổi bật | Phù hợp với khách nào |
+                | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+                | NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | Phòng chung (có rèm riêng) | KTV tiêu chuẩn | Giá tốt nhất trong nhóm massage trị liệu | Khách lần đầu trải nghiệm |
+                | NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage | Phòng chung (có rèm riêng) | KTV tiêu chuẩn | Có ngâm bồn thảo dược giúp giãn cơ | Khách mỏi nhiều vùng |
+                | NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage | Phòng VIP riêng | KTV cứng tay | Gói được chọn nhiều nhất | Khách đau cổ vai gáy – lưng |
+                | DS04 | Silver – Gói dưỡng sinh phục hồi | 500.000VNĐ | 90 phút | Gội 30p + Spa 60p | Khu dưỡng sinh + phòng spa | KTV dưỡng sinh | Linh hoạt theo nhu cầu | Khách muốn kết hợp gội và massage |
+                """;
+        List<ReciprocalRankFusion.FusedChunk> realChunks = List.of(
+                new ReciprocalRankFusion.FusedChunk(
+                        new com.example.docmind.repository.RetrievedChunk(
+                                UUID.fromString("c9481efb-0010-4613-a2e0-fe50e9b99b39"),
+                                DOC_ID,
+                                List.of("MASSAGE", "Cơ sở Hà Nội"),
+                                List.of(),
+                                1,
+                                new double[]{0, 0, 10, 10},
+                                realNangSenMassageCatalog,
+                                0.96
+                        ),
+                        0.96
+                )
+        );
+        List<String> kws = List.of("massage", "giá");
+        ConversationState st = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p04", "c-p04", true, "Xin giá dịch vụ massage", List.of(), kws, realChunks
+        ).enrichWithCurrentMessage("Xin giá dịch vụ massage", kws);
+
+        var badDuration = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ mình muốn tham khảo gói massage 60 phút, 75 phút hay 90 phút để em báo giá chuẩn cho mình ạ?", 0)),
+                st, "Xin giá dịch vụ massage",
+                PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(badDuration.errors()).contains("UNGROUNDED_CATALOG_DURATION");
+        assertThat(ReplyContractValidator.hasBlockingError(badDuration.errors())).isTrue();
+
+        var validDuration = ReplyContractValidator.validateAndEnforce(
+                List.of(new ReplyBubble("Dạ bên em có các gói massage 60 phút, 80 phút và 100 phút, hiện mình đang nhức mỏi vùng nào để em gửi gói hợp nhất ạ?", 0)),
+                st, "Xin giá dịch vụ massage",
+                PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION, false, 10_000,
+                ThinkingMode.FAST_NO_THINK, null
+        );
+        assertThat(validDuration.errors()).doesNotContain("UNGROUNDED_CATALOG_DURATION");
+    }
+
+    @Test
+    @DisplayName("P0-5 & P1-6: FAQ giờ mở cửa không tiêm nhầm gói báo giá; <CONVERSATION_HISTORY> không còn ký tự ' | ' gây rò rỉ ra bong bóng")
+    void p05_and_p16_openingHoursFaqDoesNotInjectPackageQuoteAndHistoryHasNoPipeDelimiter() {
+        List<ReciprocalRankFusion.FusedChunk> chunks = ThinkingModePolicyAndAdaptiveRouterTest.buildTestChunks();
+        PromptBuilder.PagePersona persona = ThinkingModePolicyAndAdaptiveRouterTest.buildTestPersona();
+        List<String> kws = List.of("mở cửa", "mấy giờ", "massage");
+
+        List<ConversationTurn> history = List.of(
+                new ConversationTurn("user", "Tư vấn"),
+                new ConversationTurn("assistant", "Dạ chào mình, em là An Nhiên ạ.\nBên em chuyên massage thư giãn.\nHôm nay mình đang mỏi vùng nào ạ?")
+        );
+        ConversationState st = ConversationState.hydrateForTurn(
+                PAGE_ID, "u-p05", "c-p05", false, "Bên mình mở cửa tới mấy giờ ạ?", history, kws, chunks
+        ).enrichWithCurrentMessage("Bên mình mở cửa tới mấy giờ ạ?", kws);
+        PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.route("Bên mình mở cửa tới mấy giờ ạ?", st, chunks, kws);
+        assertThat(dec.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
+
+        String prompt = FanpageBotPromptBuilder.buildDynamicRuntimePrompt(
+                "Bên mình mở cửa tới mấy giờ ạ?",
+                "Khách",
+                history,
+                chunks,
+                List.of(),
+                persona,
+                FanpageBotPromptBuilder.SalesStage.DISCOVERY,
+                "mình",
+                null,
+                List.of(),
+                null,
+                null,
+                List.of(),
+                st,
+                dec,
+                List.of(),
+                null,
+                false
+        );
+        int histStart = prompt.indexOf("<CONVERSATION_HISTORY>");
+        int histEnd = prompt.indexOf("</CONVERSATION_HISTORY>");
+        assertThat(histStart).isGreaterThanOrEqualTo(0);
+        String historyBlock = prompt.substring(histStart, histEnd);
+        assertThat(historyBlock).doesNotContain(" | ");
+
+        int factsStart = prompt.indexOf("<GROUNDED_TURN_FACTS>");
+        int factsEnd = prompt.indexOf("</GROUNDED_TURN_FACTS>");
+        if (factsStart >= 0 && factsEnd > factsStart) {
+            String factsBlock = prompt.substring(factsStart, factsEnd);
+            assertThat(factsBlock).doesNotContain("target_catalog_package_name");
+            assertThat(factsBlock).doesNotContain("target_catalog_price");
+        }
+    }
 }
