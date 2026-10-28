@@ -1958,143 +1958,7 @@ public class FanpageBotService {
         String provenanceRepairOutcome = isConfiguredThreeBubbleBrandIntro ? "CONFIGURED_BRAND_INTRO_3_BUBBLES" : "NOT_NEEDED";
         List<String> provenanceFirstPassErrors = List.of();
         String provenanceSanitizedOutput = sanitizedReply;
-        if (!interceptedByMoodPass && isLiveConfiguredLlm && hasRuntimeControlPolicy && !leadReadyHandoff && actionDecision != null) {
-            List<FanpageBotResponse.ReplyBubble> llmCandidateBubbles = buildCandidateBubblesFromLlmOutput(
-                    structuredLlmOutput,
-                    sanitizedReply,
-                    actionDecision,
-                    pagePersona,
-                    honorific,
-                    minDelayMs
-            );
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult llmValRes =
-                    com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                            llmCandidateBubbles,
-                            convState,
-                            mergedMessage,
-                            actionDecision.effectiveResponseAction(),
-                            actionDecision.prependsConfiguredOpening(),
-                            minDelayMs,
-                            thinkingDecision.thinkingMode(),
-                            postPriceDelayMetrics.elapsedSincePriceBubbleMs()
-                    );
-            boolean contractSatisfied = satisfiesDbSkillAndActionContract(
-                    llmValRes,
-                    actionDecision,
-                    convState,
-                    mergedMessage,
-                    fused,
-                    pagePersona,
-                    dbReferenceValRes,
-                    thinkingDecision.thinkingMode()
-            );
-            provenanceFirstPassErrors = llmValRes.errors() != null ? List.copyOf(llmValRes.errors()) : List.of();
-            provenanceSanitizedOutput = sanitizedReply;
-            boolean semanticRegenerateUsed = false;
-            if ((!contractSatisfied || com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors()))
-                    && !semanticRegenerateUsed) {
-                semanticRegenerateUsed = true;
-                provenanceRepairOutcome = "REGENERATE_FAILED";
-                long targetedRepairStartNs = System.nanoTime();
-                retryCount++;
-                try {
-                    String repairPrompt = buildFastTargetedRepairPrompt(
-                            prompt,
-                            llmValRes,
-                            actionDecision,
-                            dbReferenceValRes
-                    );
-                    ReasoningBudget fastRepairBudget = ReasoningBudget.forThinkingMode(ThinkingMode.FAST_NO_THINK);
-                    String repairedRaw = llmClient.complete(repairPrompt, fastRepairBudget);
-                    if (repairedRaw == null) {
-                        repairedRaw = llmClient.complete(repairPrompt);
-                    }
-                    if (repairedRaw != null && !repairedRaw.isBlank()
-                            && !repairedRaw.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*")
-                            && !repairedRaw.startsWith("[stub-llm]")) {
-                        String repairedSanitized = PromptSecurityGuard.sanitizeModelOutput(repairedRaw);
-                        StructuredLlmOutput repairedStructured = parseStructuredLlmJsonOutput(repairedSanitized, minDelayMs);
-                        if (repairedStructured != null && repairedStructured.parsedFromJson() && !repairedStructured.bubbles().isEmpty()) {
-                            repairedSanitized = String.join("\n\n", repairedStructured.bubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-                        }
-                        List<FanpageBotResponse.ReplyBubble> repairedCandidates = buildCandidateBubblesFromLlmOutput(
-                                repairedStructured,
-                                repairedSanitized,
-                                actionDecision,
-                                pagePersona,
-                                honorific,
-                                minDelayMs
-                        );
-                        com.docmind.guardrail.ReplyContractValidator.ValidationResult repairedValRes =
-                                com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                                        repairedCandidates,
-                                        convState,
-                                        mergedMessage,
-                                        actionDecision.effectiveResponseAction(),
-                                        actionDecision.prependsConfiguredOpening(),
-                                        minDelayMs,
-                                        thinkingDecision.thinkingMode(),
-                                        postPriceDelayMetrics.elapsedSincePriceBubbleMs()
-                                );
-                        if (repairedValRes.validatedBubbles() != null && !repairedValRes.validatedBubbles().isEmpty()) {
-                            boolean repairedSatisfied = satisfiesDbSkillAndActionContract(
-                                    repairedValRes,
-                                    actionDecision,
-                                    convState,
-                                    mergedMessage,
-                                    fused,
-                                    pagePersona,
-                                    dbReferenceValRes,
-                                    thinkingDecision.thinkingMode()
-                            );
-                            if (repairedSatisfied || repairedValRes.errors().size() <= llmValRes.errors().size()) {
-                                llmValRes = repairedValRes;
-                                structuredLlmOutput = repairedStructured;
-                                rawReply = repairedRaw;
-                                sanitizedReply = repairedSanitized;
-                            }
-                            contractSatisfied = true;
-                            provenanceRepairOutcome = repairedSatisfied ? "REGENERATE_PASSED" : "REGENERATE_WARNING_PRESERVED";
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("[FastTargetedRepair] Exception during targeted repair: {}", e.getMessage());
-                } finally {
-                    long elapsed = (System.nanoTime() - targetedRepairStartNs) / 1_000_000L;
-                    targetedRepairElapsedMs += elapsed;
-                    repairElapsedMs += elapsed;
-                }
-            }
-            // Nếu LLM trả về reply_bubbles không rỗng (kể cả sau tối đa 1 lần regenerate), BẮT BUỘC giữ nguyên
-            // reply_bubbles của LLM để gửi ra UI (chỉ ghi log warning, tuyệt đối không thay bằng câu fallback chung chung).
-            boolean hasNonEmptyLlmBubbles = llmValRes != null
-                    && llmValRes.validatedBubbles() != null
-                    && !llmValRes.validatedBubbles().isEmpty();
-            if (hasNonEmptyLlmBubbles) {
-                if (llmValRes.errors() != null && !llmValRes.errors().isEmpty()) {
-                    List<String> warningErrors = List.copyOf(llmValRes.errors());
-                    log.warn("[RefereeWarning] Validator warnings {} after regeneration -> preserving LLM reply_bubbles", warningErrors);
-                    validationErrorsForTelemetry = warningErrors;
-                } else {
-                    validationErrorsForTelemetry = List.of();
-                }
-                contractSatisfied = true;
-                stateDrivenBubbles = alignBubbleDelaysWithContract(
-                        llmValRes.validatedBubbles(),
-                        List.of(),
-                        postPriceDelayMetrics,
-                        cancelledSecondBubbleByConcurrentTurn
-                );
-                sanitizedReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-                if (cancelledSecondBubbleByConcurrentTurn && llmValRes.validatedBubbles().size() > stateDrivenBubbles.size()) {
-                    cancelledBubbleTextsThisTurn = llmValRes.validatedBubbles()
-                            .subList(stateDrivenBubbles.size(), llmValRes.validatedBubbles().size())
-                            .stream().map(FanpageBotResponse.ReplyBubble::text).toList();
-                }
-                interceptedByMoodPass = true;
-                responseValidatedByLlm = true;
-            }
-        } else if (!interceptedByMoodPass && fallbackReasonForTelemetry == null) {
+        if (!interceptedByMoodPass && fallbackReasonForTelemetry == null) {
             responseValidatedByLlm = true;
         }
         long validationMs = Math.max(0L, ((System.nanoTime() - validationStartNs) / 1_000_000L) - targetedRepairElapsedMs);
@@ -2801,20 +2665,6 @@ public class FanpageBotService {
             List<FanpageBotRequest.ConversationTurn> history,
             PriceLadderResult priceLadder,
             String detectedBranch,
-            String customerName) {
-        return generateGroundedFallbackReply(
-                mergedMessage, fused, honorific, isFirstTurn, salesStage, history, priceLadder, detectedBranch, customerName, null, null);
-    }
-
-    static String generateGroundedFallbackReply(
-            String mergedMessage,
-            List<ReciprocalRankFusion.FusedChunk> fused,
-            String honorific,
-            boolean isFirstTurn,
-            FanpageBotPromptBuilder.SalesStage salesStage,
-            List<FanpageBotRequest.ConversationTurn> history,
-            PriceLadderResult priceLadder,
-            String detectedBranch,
             String customerName,
             ObsidianMetadataCache metadataCache,
             UUID pageId) {
@@ -3141,10 +2991,6 @@ public class FanpageBotService {
         if (msg == null && lower == null) return false;
         return (msg != null && EXTREME_BUDGET_CEILING_PATTERN.matcher(msg).find())
                 || (lower != null && EXTREME_BUDGET_CEILING_PATTERN.matcher(lower).find());
-    }
-
-    private static boolean isComparisonQuery(String lower) {
-        return isComparisonQuery(lower, lower);
     }
 
     private static boolean isComparisonQuery(String msg, String lower) {
@@ -3862,10 +3708,6 @@ public class FanpageBotService {
         return String.join(" -> ", orderedSteps.values());
     }
 
-    private static String extractReadableSentenceFromTable(String tableText) {
-        return extractReadableSentenceFromTable(tableText, null);
-    }
-
     private static String extractReadableSentenceFromTable(String tableText, String query) {
         if (tableText == null || !tableText.contains("|")) {
             return "";
@@ -3972,95 +3814,6 @@ public class FanpageBotService {
                 .replaceAll("\\|", "")
                 .replaceAll("\\s+", " ")
                 .strip();
-    }
-
-    private static String extractDynamicComparison(List<ReciprocalRankFusion.FusedChunk> fused, String msg, String lowerMsg) {
-        if (fused == null || fused.isEmpty()) {
-            return null;
-        }
-
-        List<String> codes = ChunkMetadataExtractor.extractServiceCodes(msg);
-        if (codes.size() >= 2) {
-            String codeA = codes.get(0).toUpperCase(Locale.ROOT);
-            String codeB = codes.get(1).toUpperCase(Locale.ROOT);
-            String descA = findServiceDescription(fused, codeA);
-            String descB = findServiceDescription(fused, codeB);
-            if (descA != null && descB != null) {
-                return "Gói " + codeA + " là " + descA + ", trong khi gói " + codeB + " là " + descB + " ạ.";
-            }
-        }
-
-        for (ReciprocalRankFusion.FusedChunk fc : fused) {
-            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
-            String text = fc.chunk().text();
-            for (String line : text.split("\r?\n")) {
-                if (!line.contains("|")) continue;
-                String[] parts = line.split("\\|");
-                if (parts.length >= 3) {
-                    String col1 = parts[1].trim();
-                    String col2 = parts[2].trim();
-                    if (matchesComparisonTokens(col1.toLowerCase(Locale.ROOT), col2.toLowerCase(Locale.ROOT), lowerMsg)) {
-                        String ans = col2.replaceAll("^[D|d]ạ\\s*", "").strip();
-                        return ans.endsWith("ạ.") || ans.endsWith("ạ") ? ans : ans + " ạ.";
-                    }
-                }
-            }
-        }
-
-        String topText = fused.get(0).chunk().text();
-        if (topText != null) {
-            for (String line : topText.split("\r?\n")) {
-                String clean = line.replaceAll("^[#\\-*|\\s]+", "").replaceAll("[|#*]+$", "").strip();
-                String low = clean.toLowerCase(Locale.ROOT);
-                if ((low.contains("khác") || low.contains("hơn") || low.contains("phòng riêng") || low.contains("vip") || low.contains("chuyên sâu"))
-                        && clean.length() > 20) {
-                    return clean;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static String findServiceDescription(List<ReciprocalRankFusion.FusedChunk> fused, String code) {
-        for (ReciprocalRankFusion.FusedChunk fc : fused) {
-            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
-            for (String line : fc.chunk().text().split("\r?\n")) {
-                if (line.toUpperCase(Locale.ROOT).contains(code) && line.contains("|")) {
-                    String[] parts = line.split("\\|");
-                    if (parts.length >= 4) {
-                        String name = parts[2].trim();
-                        String price = parts[3].trim();
-                        return name + " (" + price + ")";
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private static boolean matchesComparisonTokens(String col1Low, String col2Low, String lowerMsg) {
-        String combined = col1Low + " " + col2Low;
-        List<Long> queryPrices = PriceLadderTracker.extractPricesFromText(lowerMsg);
-        if (queryPrices.size() >= 2) {
-            int matchCount = 0;
-            for (Long p : queryPrices) {
-                String kVal = (p / 1000) + "k";
-                String fullVal = PriceLadderTracker.formatPrice(p).toLowerCase(Locale.ROOT);
-                if (combined.contains(kVal) || combined.contains(String.valueOf(p)) || combined.contains(fullVal)) {
-                    matchCount++;
-                }
-            }
-            if (matchCount >= 2) return true;
-        } else if (!queryPrices.isEmpty()) {
-            Long p = queryPrices.get(0);
-            String kVal = (p / 1000) + "k";
-            if (combined.contains(kVal) || combined.contains(String.valueOf(p))) {
-                return true;
-            }
-        }
-        return (col1Low.contains("khác gì") || col1Low.contains("khác nhau") || col1Low.contains("gội tại phòng") || col1Low.contains("di chuyển"))
-                && (combined.contains("phòng riêng") || combined.contains("vip") || combined.contains("di chuyển"));
     }
 
     private static String resolveDynamicPromoPolicy(
@@ -4745,17 +4498,6 @@ public class FanpageBotService {
     ) {
     }
 
-    static PostProcessedBotReply postProcessReply(String rawReply, List<ReciprocalRankFusion.FusedChunk> chunks) {
-        return postProcessReply(rawReply, chunks, "Chị", true, FanpageBotPromptBuilder.SalesStage.DISCOVERY);
-    }
-
-    static PostProcessedBotReply postProcessReply(
-            String rawReply,
-            List<ReciprocalRankFusion.FusedChunk> chunks,
-            String resolvedHonorific) {
-        return postProcessReply(rawReply, chunks, resolvedHonorific, true, FanpageBotPromptBuilder.SalesStage.DISCOVERY);
-    }
-
     /**
      * Hậu xử lý câu trả lời của LLM:
      * 1. Bóc tách cờ [[HANDOFF: lý do]] hoặc câu từ chối máy móc ("Không tìm thấy thông tin...").
@@ -4763,43 +4505,6 @@ public class FanpageBotService {
      * 3. Sửa lỗi đảo ngược chủ ngữ ("Em có thể tham khảo..." -> "Chị/Anh có thể tham khảo..."), đồng nhất xưng hô Anh/Chị 100%,
      *    loại bỏ câu chào lặp lại ở lượt 2+, sửa lỗi nhầm tên Combo và gọt câu hỏi kết thúc dồn dập thành 1 câu tự nhiên.
      */
-    static PostProcessedBotReply postProcessReply(
-            String rawReply,
-            List<ReciprocalRankFusion.FusedChunk> chunks,
-            String resolvedHonorific,
-            boolean isFirstTurn,
-            FanpageBotPromptBuilder.SalesStage salesStage) {
-        return postProcessReply(rawReply, chunks, resolvedHonorific, isFirstTurn, salesStage, null);
-    }
-
-    /**
-     * Hậu xử lý câu trả lời của LLM:
-     * 1. Bóc tách cờ [[HANDOFF: lý do]] hoặc câu từ chối máy móc ("Không tìm thấy thông tin...").
-     * 2. Xóa sạch mọi trích dẫn [1], [2], mã nội bộ SPA-01, tiêu đề 📋/💬, cụm RAG máy móc ("Dựa trên tài liệu được cung cấp...").
-     * 3. Sửa lỗi đảo ngược chủ ngữ ("Em có thể tham khảo..." -> "Chị/Anh có thể tham khảo..."), đồng nhất xưng hô Anh/Chị 100%,
-     *    loại bỏ câu chào lặp lại ở lượt 2+, sửa lỗi nhầm tên Combo và gọt câu hỏi kết thúc dồn dập thành 1 câu tự nhiên.
-     */
-    static PostProcessedBotReply postProcessReply(
-            String rawReply,
-            List<ReciprocalRankFusion.FusedChunk> chunks,
-            String resolvedHonorific,
-            boolean isFirstTurn,
-            FanpageBotPromptBuilder.SalesStage salesStage,
-            List<FanpageBotRequest.ConversationTurn> history) {
-        return postProcessReply(rawReply, chunks, resolvedHonorific, isFirstTurn, salesStage, history, null);
-    }
-
-    static PostProcessedBotReply postProcessReply(
-            String rawReply,
-            List<ReciprocalRankFusion.FusedChunk> chunks,
-            String resolvedHonorific,
-            boolean isFirstTurn,
-            FanpageBotPromptBuilder.SalesStage salesStage,
-            List<FanpageBotRequest.ConversationTurn> history,
-            String currentMessage) {
-        return postProcessReply(rawReply, chunks, resolvedHonorific, isFirstTurn, salesStage, history, currentMessage, null);
-    }
-
     static PostProcessedBotReply postProcessReply(
             String rawReply,
             List<ReciprocalRankFusion.FusedChunk> chunks,
@@ -5186,14 +4891,6 @@ public class FanpageBotService {
             String cleanText,
             String currentMessage,
             FanpageBotPromptBuilder.ConversationBookingState bookingState,
-            String resolvedHonorific) {
-        return enforceConversationBookingConsistency(cleanText, currentMessage, bookingState, resolvedHonorific, null, false);
-    }
-
-    static String enforceConversationBookingConsistency(
-            String cleanText,
-            String currentMessage,
-            FanpageBotPromptBuilder.ConversationBookingState bookingState,
             String resolvedHonorific,
             List<FanpageBotRequest.ConversationTurn> history,
             boolean isFirstTurn) {
@@ -5307,14 +5004,6 @@ public class FanpageBotService {
      * - Xóa mã nội bộ SPA-01, SPA-02... (kể cả khi có hoặc không có dấu ngoặc).
      * - Rút gọn các câu hỏi xin phép dồn dập, khô khan ở cuối tin nhắn thành đúng 1 câu hỏi gợi mở tự nhiên theo từng giai đoạn.
      */
-    public static String polishConversationalVietnamese(
-            String rawText,
-            String resolvedHonorific,
-            boolean isFirstTurn,
-            FanpageBotPromptBuilder.SalesStage salesStage) {
-        return polishConversationalVietnamese(rawText, resolvedHonorific, isFirstTurn, salesStage, null, null);
-    }
-
     public static String polishConversationalVietnamese(
             String rawText,
             String resolvedHonorific,
@@ -5496,27 +5185,6 @@ public class FanpageBotService {
                 .replaceAll("[ \\t]{2,}", " ")
                 .replaceAll("\\n{3,}", "\n\n")
                 .strip();
-    }
-
-    static String polishClosingQuestions(String text, String honorific) {
-        return polishClosingQuestions(text, honorific, FanpageBotPromptBuilder.SalesStage.DISCOVERY, true, null, null);
-    }
-
-    static String polishClosingQuestions(
-            String text,
-            String honorific,
-            FanpageBotPromptBuilder.SalesStage salesStage,
-            boolean isFirstTurn) {
-        return polishClosingQuestions(text, honorific, salesStage, isFirstTurn, null, null);
-    }
-
-    static String polishClosingQuestions(
-            String text,
-            String honorific,
-            FanpageBotPromptBuilder.SalesStage salesStage,
-            boolean isFirstTurn,
-            List<FanpageBotRequest.ConversationTurn> history) {
-        return polishClosingQuestions(text, honorific, salesStage, isFirstTurn, history, null);
     }
 
     /**
@@ -6170,16 +5838,6 @@ public class FanpageBotService {
             String customerMessage,
             String honorific,
             PriceLadderResult priceLadder,
-            long turnStartNs) {
-        return deliberatePostPriceMoodPreservationPass(
-                currentReply, customerMessage, honorific, priceLadder, null, null, turnStartNs);
-    }
-
-    static String deliberatePostPriceMoodPreservationPass(
-            String currentReply,
-            String customerMessage,
-            String honorific,
-            PriceLadderResult priceLadder,
             String detectedBranch,
             long turnStartNs) {
         return deliberatePostPriceMoodPreservationPass(
@@ -6288,56 +5946,6 @@ public class FanpageBotService {
         return candidateReply;
     }
 
-    public record BrainReflection(
-            String observedFact,
-            String careNoteDelta,
-            String workingHypothesis,
-            String intendedSpeechAct,
-            String detectedCustomerIntent
-    ) {
-        public BrainReflection {
-            observedFact = observedFact != null ? observedFact.strip() : "";
-            careNoteDelta = careNoteDelta != null ? careNoteDelta.strip() : "";
-            workingHypothesis = workingHypothesis != null ? workingHypothesis.strip() : "";
-            intendedSpeechAct = intendedSpeechAct != null ? intendedSpeechAct.strip() : "";
-            detectedCustomerIntent = detectedCustomerIntent != null ? detectedCustomerIntent.strip() : "";
-        }
-
-        public BrainReflection(
-                String observedFact,
-                String careNoteDelta,
-                String workingHypothesis,
-                String intendedSpeechAct
-        ) {
-            this(observedFact, careNoteDelta, workingHypothesis, intendedSpeechAct, "");
-        }
-
-        public BrainReflection(
-                String observedFact,
-                String careNoteDelta,
-                String workingHypothesis
-        ) {
-            this(observedFact, careNoteDelta, workingHypothesis, "", "");
-        }
-
-        public static BrainReflection empty() {
-            return new BrainReflection("", "", "", "", "");
-        }
-
-        public static BrainReflection fromClean(CleanAgentOutputRefereeAndSanitizer.BrainReflection r) {
-            return r == null ? empty() : new BrainReflection(
-                    r.observedFact(), r.careNoteDelta(), r.workingHypothesis(), r.intendedSpeechAct(), r.detectedCustomerIntent());
-        }
-
-        public boolean hasAnyContent() {
-            return !observedFact.isEmpty()
-                    || !careNoteDelta.isEmpty()
-                    || !workingHypothesis.isEmpty()
-                    || !intendedSpeechAct.isEmpty()
-                    || !detectedCustomerIntent.isEmpty();
-        }
-    }
-
     public record StructuredLlmOutput(
             boolean parsedFromJson,
             List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -6346,50 +5954,24 @@ public class FanpageBotService {
             String updatedSalesStage,
             ConversationState.GroundingCheck groundingCheck,
             String groundingCheckText,
-            BrainReflection brainReflection
+            CleanAgentOutputRefereeAndSanitizer.BrainReflection brainReflection
     ) {
         public StructuredLlmOutput {
             if (brainReflection == null) {
-                brainReflection = BrainReflection.empty();
+                brainReflection = CleanAgentOutputRefereeAndSanitizer.BrainReflection.empty();
             }
-        }
-
-        public StructuredLlmOutput(
-                boolean parsedFromJson,
-                List<FanpageBotResponse.ReplyBubble> bubbles,
-                Boolean shouldHandoff,
-                String handoffReason,
-                String updatedSalesStage,
-                ConversationState.GroundingCheck groundingCheck,
-                String groundingCheckText
-        ) {
-            this(parsedFromJson, bubbles, shouldHandoff, handoffReason, updatedSalesStage, groundingCheck, groundingCheckText, BrainReflection.empty());
-        }
-
-        public StructuredLlmOutput(
-                boolean parsedFromJson,
-                List<FanpageBotResponse.ReplyBubble> bubbles,
-                Boolean shouldHandoff,
-                String handoffReason,
-                String updatedSalesStage
-        ) {
-            this(parsedFromJson, bubbles, shouldHandoff, handoffReason, updatedSalesStage, null, null, BrainReflection.empty());
         }
 
         public static StructuredLlmOutput fromClean(CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput s) {
             return s == null ? null : new StructuredLlmOutput(
                     s.parsedFromJson(), s.bubbles(), s.shouldHandoff(), s.handoffReason(),
                     s.updatedSalesStage(), s.groundingCheck(), s.groundingCheckText(),
-                    BrainReflection.fromClean(s.brainReflection()));
+                    s.brainReflection());
         }
     }
 
     public static StructuredLlmOutput parseStructuredLlmJsonOutput(String rawText, int minPostPriceDelayMs) {
         return StructuredLlmOutput.fromClean(CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(rawText, minPostPriceDelayMs));
-    }
-
-    public static String stripMarkdownCodeFencesAndExtractJson(String rawText) {
-        return CleanAgentOutputRefereeAndSanitizer.stripMarkdownCodeFencesAndExtractJson(rawText);
     }
 
     // v3.3.4 RC-01: Câu chào lặp CHỈ được cắt khi nằm ở ĐẦU bong bóng (neo ^), tuyệt đối không đụng tới
@@ -6466,504 +6048,6 @@ public class FanpageBotService {
                 null,
                 ThinkingModePolicy.BenchmarkConfigMode.ADAPTIVE_C
         ).thinkingMode();
-    }
-
-    public static ThinkingMode resolveSelectiveThinkingMode(
-            PrimaryActionRouter.RoutingDecision decision,
-            ConversationState state
-    ) {
-        return resolveSelectiveThinkingMode(decision, state, null);
-    }
-
-    private static List<FanpageBotResponse.ReplyBubble> buildCandidateBubblesFromLlmOutput(
-            StructuredLlmOutput structuredLlmOutput,
-            String sanitizedReply,
-            PrimaryActionRouter.RoutingDecision actionDecision,
-            PromptBuilder.PagePersona pagePersona,
-            String honorific,
-            int minDelayMs
-    ) {
-        List<FanpageBotResponse.ReplyBubble> rawBubbles = new ArrayList<>();
-        if (structuredLlmOutput != null && structuredLlmOutput.parsedFromJson() && !structuredLlmOutput.bubbles().isEmpty()) {
-            rawBubbles.addAll(structuredLlmOutput.bubbles());
-        } else if (sanitizedReply != null && !sanitizedReply.isBlank()) {
-            String[] paragraphs = sanitizedReply.split("\\n\\s*\\n|\\|\\|MSG\\|\\|");
-            int idx = 0;
-            for (String p : paragraphs) {
-                if (p != null && !p.isBlank()) {
-                    rawBubbles.add(new FanpageBotResponse.ReplyBubble(
-                            BubbleCapHook.capitalizeFirstLetter(p.strip()),
-                            idx == 0 ? 0 : 4000
-                    ));
-                    idx++;
-                }
-            }
-        }
-        if (rawBubbles.isEmpty()) {
-            return List.of();
-        }
-
-        // v3.8 ALLOWLIST: chỉ chuẩn hoá khoảng trắng/ký tự điều khiển + viết hoa chữ cái đầu bong bóng (không đổi ngữ nghĩa).
-        // KHÔNG thay từ/cụm, KHÔNG sửa xưng hô, KHÔNG cắt dấu "…", KHÔNG gỡ lời chào: mọi vi phạm do Validator báo BLOCKING
-        // để LLM regenerate tối đa 1 lần.
-        List<FanpageBotResponse.ReplyBubble> normalizedBubbles = new ArrayList<>(rawBubbles.size());
-        for (FanpageBotResponse.ReplyBubble rb : rawBubbles) {
-            if (rb == null || rb.text() == null || rb.text().isBlank()) continue;
-            String cleaned = rb.text().replaceAll("[\\p{Cntrl}&&[^\\n]]", "").replaceAll("[ \\t]{2,}", " ").strip();
-            if (cleaned.isBlank()) continue;
-            normalizedBubbles.add(new FanpageBotResponse.ReplyBubble(
-                    BubbleCapHook.capitalizeFirstLetter(cleaned),
-                    rb.typingDelayMs()
-            ));
-        }
-        if (normalizedBubbles.isEmpty()) {
-            return List.of();
-        }
-
-        // Section 1.2: On Turn 1 of a new conversation, prepend 2 CONFIGURED_OPENING bubbles (0ms, 1000ms)
-        // followed by Bubble 3 (2000ms, LLM_LIVE) addressing the customer's Turn 1 intent.
-        boolean hasConfiguredOpening = actionDecision != null
-                && actionDecision.prependsConfiguredOpening()
-                && pagePersona != null
-                && pagePersona.resolvedConfig() != null
-                && pagePersona.resolvedConfig().openingBubbles() != null
-                && pagePersona.resolvedConfig().openingBubbles().size() >= 2
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.BOT_MUTED;
-        if (hasConfiguredOpening) {
-            List<String> openingCfg = pagePersona.resolvedConfig().openingBubbles();
-            String b1Text = openingCfg.get(0) != null ? openingCfg.get(0).strip() : "";
-            String b2Text = openingCfg.get(1) != null ? openingCfg.get(1).strip() : "";
-            String b3Text;
-            if (openingCfg.size() >= 3 && openingCfg.get(2) != null && !openingCfg.get(2).isBlank()) {
-                b3Text = openingCfg.get(2).strip();
-            } else {
-                FanpageBotResponse.ReplyBubble llmBubble3 = normalizedBubbles.get(normalizedBubbles.size() - 1);
-                b3Text = llmBubble3.text() != null ? llmBubble3.text().strip() : "";
-            }
-            List<FanpageBotResponse.ReplyBubble> turn1ThreeBubbles = new ArrayList<>(3);
-            if (!b1Text.isBlank()) {
-                turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b1Text, 0));
-            }
-            if (!b2Text.isBlank()) {
-                turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b2Text, 1000));
-            }
-            turn1ThreeBubbles.add(new FanpageBotResponse.ReplyBubble(b3Text, 2000));
-            return turn1ThreeBubbles;
-        }
-        return normalizedBubbles;
-    }
-
-    private static boolean satisfiesDbSkillAndActionContract(
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult llmValRes,
-            PrimaryActionRouter.RoutingDecision actionDecision,
-            ConversationState convState,
-            String customerMessage,
-            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
-            PromptBuilder.PagePersona pagePersona,
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult dbReferenceValRes
-    ) {
-        return satisfiesDbSkillAndActionContract(
-                llmValRes,
-                actionDecision,
-                convState,
-                customerMessage,
-                fusedChunks,
-                pagePersona,
-                dbReferenceValRes,
-                ThinkingMode.FAST_NO_THINK
-        );
-    }
-
-    private static boolean satisfiesDbSkillAndActionContract(
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult llmValRes,
-            PrimaryActionRouter.RoutingDecision actionDecision,
-            ConversationState convState,
-            String customerMessage,
-            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
-            PromptBuilder.PagePersona pagePersona,
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult dbReferenceValRes,
-            ThinkingMode thinkingMode
-    ) {
-        if (llmValRes == null || llmValRes.validatedBubbles() == null || llmValRes.validatedBubbles().isEmpty()) {
-            return false;
-        }
-        String combined = llmValRes.combinedText();
-        if (combined == null || combined.isBlank() || combined.length() < 15) {
-            return false;
-        }
-        String lower = combined.toLowerCase(Locale.ROOT);
-        if (lower.contains("\"reply_bubbles\"") || lower.contains("\"should_handoff\"") || lower.contains("\"state_updates\"") || lower.contains("\"grounding_check\"")) {
-            return false;
-        }
-        if (com.docmind.guardrail.ReplyContractValidator.hasBlockingError(llmValRes.errors())) {
-            return false;
-        }
-        if (actionDecision == null) {
-            return true;
-        }
-        PrimaryActionRouter.PrimaryAction action = actionDecision.effectiveResponseAction();
-        String intent = actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "";
-        if (action == PrimaryActionRouter.PrimaryAction.DIRECT_CONCRETE_SOLUTION
-                && convState != null
-                && ((convState.confirmedScopes() != null && !convState.confirmedScopes().isEmpty())
-                    || (convState.knownBodyAreas() != null && !convState.knownBodyAreas().isEmpty()))
-                && !ConversationState.containsOperationalCarePromise(combined, convState.careActor())) {
-            return false;
-        }
-
-        // 0. Nếu là SERVICE_DETAIL_AND_FAQ_QA, câu trả lời của LLM phải giải đáp câu hỏi chi tiết/FAQ đang tồn đọng,
-        // không được bịa món ăn/quyền lợi ngoài kho tri thức và không được ép chốt lịch khi đang giải cứu bức xúc / sửa lỗi giải thích
-        if (action == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA) {
-            if ("PUSHBACK_ON_ASSUMPTION_REPAIR".equals(intent)) {
-                if (lower.matches("(?s).*(?:đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|khung\\s+giờ|mấy\\s+giờ|sáng\\s+hay\\s+chiều).*")) {
-                    return false;
-                }
-            } else {
-                ConversationState.UnresolvedCustomerRequest activeUnresolved = null;
-                if (convState != null) {
-                    activeUnresolved = convState.mostRecentUnresolvedRequest();
-                    if (activeUnresolved == null) {
-                        activeUnresolved = convState.latestRequest();
-                    }
-                }
-                if (activeUnresolved != null && !ConversationState.doesBotReplyAnswerDetailRequest(combined, activeUnresolved)) {
-                    return false;
-                }
-                if (lower.contains("mình đang nghiêng về") || lower.contains("hay dịch vụ khác ạ")) {
-                    return false;
-                }
-                if (intent.contains("FRUSTRATION_RECOVERY") || intent.contains("COMPREHENSION_REPAIR")) {
-                    if (lower.matches("(?s).*(?:đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|khung\\s+giờ|mấy\\s+giờ|sáng\\s+hay\\s+chiều).*")) {
-                        return false;
-                    }
-                }
-                List<String> groundedMenuItems = PrimaryActionRouter.extractGroundedMenuItemsFromChunks(fusedChunks);
-                String normCustomerMsg = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
-                boolean asksAboutMenuItems = normCustomerMsg.contains("món gì") || normCustomerMsg.contains("những món") || normCustomerMsg.contains("thực đơn");
-                if (!groundedMenuItems.isEmpty() && asksAboutMenuItems) {
-                    int matchedMenuCount = 0;
-                    for (String item : groundedMenuItems) {
-                        if (lower.contains(item.toLowerCase(Locale.ROOT))) {
-                            matchedMenuCount++;
-                        }
-                    }
-                    if (matchedMenuCount < Math.min(2, groundedMenuItems.size())) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // 1. Kiểm tra tính xác thực của mọi con số giá xuất hiện trong câu trả lời LLM so với convState.availablePackageCatalog() và kho tri thức DB
-        Matcher priceMatcher = Pattern.compile("(?iU)\\b(\\d{2,4}k|\\d{1,3}(?:\\.\\d{3})+)\\b").matcher(combined);
-        StringBuilder allowedPriceCorpus = new StringBuilder();
-        if (convState != null && convState.availablePackageCatalog() != null) {
-            for (var pkg : convState.availablePackageCatalog()) {
-                if (pkg != null) {
-                    if (pkg.priceDisplay() != null) {
-                        allowedPriceCorpus.append(" ").append(pkg.priceDisplay().toLowerCase(Locale.ROOT));
-                    }
-                    if (pkg.priceVnd() > 0L) {
-                        allowedPriceCorpus.append(" ").append(pkg.priceVnd() / 1000L).append("k");
-                    }
-                }
-            }
-        }
-        if (convState != null && convState.pricesShown() != null) {
-            convState.pricesShown().forEach(v -> allowedPriceCorpus.append(" ").append(v.toLowerCase(Locale.ROOT)));
-        }
-        if (convState != null && convState.lastOfferedPrice() != null) {
-            allowedPriceCorpus.append(" ").append(convState.lastOfferedPrice().toLowerCase(Locale.ROOT));
-        }
-        if (fusedChunks != null) {
-            for (ReciprocalRankFusion.FusedChunk fc : fusedChunks) {
-                if (fc != null && fc.chunk() != null && fc.chunk().text() != null) {
-                    allowedPriceCorpus.append(" ").append(fc.chunk().text().toLowerCase(Locale.ROOT));
-                }
-            }
-        }
-        String corpusStr = allowedPriceCorpus.toString();
-        while (priceMatcher.find()) {
-            String quotedPrice = priceMatcher.group(1).toLowerCase(Locale.ROOT);
-            String altPrice = quotedPrice.endsWith("k")
-                    ? quotedPrice.substring(0, quotedPrice.length() - 1) + ".000"
-                    : (quotedPrice.endsWith(".000") ? quotedPrice.substring(0, quotedPrice.length() - 4) + "k" : quotedPrice);
-            if (!corpusStr.isBlank() && !corpusStr.contains(quotedPrice) && !corpusStr.contains(altPrice)) {
-                return false;
-            }
-        }
-
-        // 2. Đảm bảo chỉ báo giá ở các lượt được phép báo giá và cấm báo giá ở các lượt khám phá / sửa lỗi / thoát lịch sự
-        boolean forbidPriceOnCurrentTurn = action == PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION
-                || action == PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE
-                || action == PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY
-                || action == PrimaryActionRouter.PrimaryAction.ADVANCE_AFTER_ACK
-                || action == PrimaryActionRouter.PrimaryAction.REPAIR_AND_RECONFIRM
-                || action == PrimaryActionRouter.PrimaryAction.DIRECT_CONCRETE_SOLUTION
-                || action == PrimaryActionRouter.PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED
-                || action == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                || action == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
-                || "GENERATE_PRICE_ANCHOR_BUBBLE".equals(intent)
-                || (action == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
-                    && ("ENTITY_MISMATCH_RECONSULT".equals(intent)
-                        || "MOOD_DROP_RECOVERY".equals(intent)))
-                || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(intent)
-                || "CONVERSATION_STYLE_REPAIR".equals(intent)
-                || "WORDING_FEEDBACK_REPAIR".equals(intent)
-                || "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL".equals(intent)
-                || "STAGE_3_GRACEFUL_EXIT".equals(intent)
-                || "POLITE_DEFERRAL_EXIT".equals(intent)
-                || "STRONG_REJECTION".equals(intent);
-        if (forbidPriceOnCurrentTurn && Pattern.compile("(?iU)\\b(\\d{2,4}k|\\d{1,3}(?:\\.\\d{3})+)\\b").matcher(combined).find()) {
-            return false;
-        }
-        if (("STAGE_3_GRACEFUL_EXIT".equals(intent) || "POLITE_DEFERRAL_EXIT".equals(intent) || "STRONG_REJECTION".equals(intent))
-                && (combined.contains("?") || lower.contains("mệt mỏi không") || lower.contains("xin lỗi nhẹ nhàng"))) {
-            return false;
-        }
-        if ((action == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                || action == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
-                || action == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
-                || thinkingMode == ThinkingMode.PRICE_ANCHOR_THINK)
-                && lower.matches("(?s).*(?:nói\\s+lại\\s+cho\\s+em|chưa\\s+hiểu\\s+rõ\\s+ý|mình\\s+có\\s+thể\\s+nói\\s+lại).*")) {
-            return false;
-        }
-        if (action == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                && customerMessage != null
-                && !customerMessage.toLowerCase(Locale.ROOT).matches("(?s).*(?:đặt\\s+lịch|giữ\\s+lịch|khung\\s+giờ|mấy\\s+giờ).*")
-                && lower.matches("(?s).*(?:hôm\\s+nay\\s+hay\\s+ngày\\s+mai|giữ\\s+lịch|mình\\s+muốn\\s+đặt\\s+lịch\\s+hôm\\s+nay).*")) {
-            return false;
-        }
-        if (action == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                || action == PrimaryActionRouter.PrimaryAction.EXPLAIN_UNIT_VALUE
-                || action == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT) {
-            if (!Pattern.compile("(?iU)\\b(\\d{2,4}k|\\d{1,3}(?:\\.\\d{3})+)\\b").matcher(combined).find()) {
-                return false;
-            }
-            if ("POLITE_PRICE_REMINDER".equals(intent) && convState != null && convState.lastOfferedPrice() != null && !convState.lastOfferedPrice().isBlank()) {
-                String expectedPrice = convState.lastOfferedPrice().toLowerCase(Locale.ROOT);
-                String altExpected = expectedPrice.endsWith("k")
-                        ? expectedPrice.substring(0, expectedPrice.length() - 1) + ".000"
-                        : expectedPrice;
-                if (!lower.contains(expectedPrice) && !lower.contains(altExpected)) {
-                    return false;
-                }
-            }
-        }
-        if (action == PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS
-                && convState != null
-                && convState.downsellOffered()
-                && convState.lastOfferedPrice() != null
-                && !convState.lastOfferedPrice().isBlank()
-                && Pattern.compile("(?iU)\\b(\\d{2,4}k|\\d{1,3}(?:\\.\\d{3})+)\\b").matcher(combined).find()) {
-            String expectedPrice = convState.lastOfferedPrice().toLowerCase(Locale.ROOT);
-            String altExpected = expectedPrice.endsWith("k")
-                    ? expectedPrice.substring(0, expectedPrice.length() - 1) + ".000"
-                    : expectedPrice;
-            boolean hasExpectedPrice = lower.contains(expectedPrice) || lower.contains(altExpected);
-            if (!hasExpectedPrice) {
-                return false;
-            }
-        }
-
-        // 3. Nếu là Handoff (An toàn y khoa / Khiếu nại / Ngoài phạm vi), cấm hỏi thêm và bắt buộc có thông điệp chuyển chuyên viên/quản lý
-        if (action == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                || action == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT) {
-            if (combined.contains("?")) {
-                return false;
-            }
-            if (!lower.contains("quản lý")
-                    && !lower.contains("chuyên viên")
-                    && !lower.contains("nhân viên")
-                    && !lower.contains("kỹ thuật viên")
-                    && !lower.contains("bác sĩ")
-                    && !lower.contains("y tế")) {
-                return false;
-            }
-        }
-
-        // 4. Đối chiếu thời lượng và quyền lợi trực tiếp với convState.availablePackageCatalog()
-        boolean quotedPackageHasVipRoom = false;
-        boolean quotedPackageHasBuffet = true;
-        boolean quotedPackageIsFullBody = true;
-        if (convState != null && convState.availablePackageCatalog() != null) {
-            for (var pkg : convState.availablePackageCatalog()) {
-                if (pkg == null || pkg.priceDisplay() == null) {
-                    continue;
-                }
-                String pLower = pkg.priceDisplay().toLowerCase(Locale.ROOT);
-                if (lower.contains(pLower)) {
-                    String room = pkg.roomType() != null ? pkg.roomType().toLowerCase(Locale.ROOT) : "";
-                    String name = pkg.displayName() != null ? pkg.displayName().toLowerCase(Locale.ROOT) : "";
-                    String inc = pkg.includesSummary() != null ? pkg.includesSummary().toLowerCase(Locale.ROOT) : "";
-                    if (room.contains("vip") || name.contains("vip") || pkg.priceVnd() >= 580_000L) {
-                        quotedPackageHasVipRoom = true;
-                    }
-                    if ("239k".equals(pLower) || (pkg.code() != null && pkg.code().toUpperCase(Locale.ROOT).contains("DS02"))) {
-                        quotedPackageHasBuffet = inc.contains("buffet thực dưỡng");
-                        quotedPackageIsFullBody = inc.contains("toàn thân") || inc.contains("full body");
-                    }
-                }
-            }
-        }
-        if (action != PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
-                && !quotedPackageHasVipRoom && lower.matches("(?s).*phòng\\s+vip.*")
-                && !lower.matches("(?s).*(?:không\\s+phải\\s+phòng\\s+vip|chưa\\s+phải\\s+phòng\\s+vip|từ\\s+gói\\s+580k).*")) {
-            return false;
-        }
-        if (action == PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT) {
-            if (!quotedPackageHasBuffet && lower.contains("buffet thực dưỡng")) {
-                return false;
-            }
-            if (!quotedPackageIsFullBody
-                    && (lower.contains("massage toàn thân") || lower.contains("trị liệu toàn thân") || lower.contains("full body"))) {
-                return false;
-            }
-        }
-        if (action == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
-                && customerMessage != null
-                && customerMessage.toLowerCase(Locale.ROOT).contains("phòng chung")) {
-            boolean hasReason = lower.contains("chi phí") || lower.contains("giá") || lower.contains("mềm")
-                    || lower.contains("tiết kiệm") || lower.contains("hợp lý") || lower.contains("dễ tiếp cận");
-            boolean hasPrivacyReassurance = lower.contains("rèm");
-            if (!hasReason || !hasPrivacyReassurance) {
-                return false;
-            }
-        }
-
-        // 5. Đảm bảo số lượng bong bóng nằm trong giới hạn cấu trúc (1..3 bong bóng)
-        if (llmValRes.validatedBubbles().isEmpty() || llmValRes.validatedBubbles().size() > 3) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private String buildFastTargetedRepairPrompt(
-            String originalPrompt,
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult failedValRes,
-            PrimaryActionRouter.RoutingDecision actionDecision,
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult dbReferenceValRes
-    ) {
-        StringBuilder sb = new StringBuilder(originalPrompt != null ? originalPrompt.length() + 512 : 512);
-        if (originalPrompt != null) {
-            sb.append(originalPrompt).append("\n\n");
-        }
-        List<String> errs = failedValRes != null && failedValRes.errors() != null ? failedValRes.errors() : List.of("CONTRACT_MISMATCH");
-        sb.append("<FAST_TARGETED_REPAIR_HINT>\n");
-        if (failedValRes != null && failedValRes.combinedText() != null && !failedValRes.combinedText().isBlank()) {
-            sb.append("- rejected_draft (BẢN NHÁP VỪA BỊ TỪ CHỐI - PHẢI SỬA LỖI TRONG BẢN NÀY): \"")
-              .append(failedValRes.combinedText().replace("\n", " ").strip())
-              .append("\"\n");
-        }
-        sb.append("- violation_hint: Phản hồi trước đó vi phạm hợp đồng kiểm định (")
-          .append(errs)
-          .append(").\n");
-        if (actionDecision != null) {
-            sb.append("- required_primary_action: ").append(actionDecision.effectiveResponseAction()).append('\n');
-            sb.append("- max_bubbles: ").append(actionDecision.maxResponseBubblesForLlm()).append(" (mỗi bong bóng tối đa 2 câu, <= 65 từ).\n");
-        }
-        if (errs.contains("TOO_MANY_QUESTIONS") || errs.contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION")) {
-            sb.append("- CẢNH BÁO SỐ LƯỢNG CÂU HỎI & CÂU HỎI XÁC NHẬN: Toàn bộ phản hồi (tính gộp tất cả các bong bóng) CHỈ ĐƯỢC CÓ TỐI ĐA 1 DẤU CHẤM HỎI '?'. Tuyệt đối XÓA ngay câu hỏi xác nhận hiển nhiên ('... phải không?', '... đúng không?', '... phải không ạ?') ở câu đầu hoặc Bubble 1; câu nhận diện triệu chứng bắt buộc kết thúc bằng dấu chấm '.'!\n");
-        }
-        if (errs.contains("TOO_MANY_SENTENCES")) {
-            sb.append("- CẢNH BÁO SỐ CÂU TRONG BONG BÓNG: Mỗi bong bóng CHỈ ĐƯỢC CÓ TỐI ĐA 2 CÂU (tối đa 2 dấu kết câu './!/?'). Hãy gộp ý hoặc viết gọn lại trong đúng 1-2 câu mỗi bong bóng!\n");
-        }
-        if (errs.contains("UNGROUNDED_PACKAGE_BENEFIT")) {
-            sb.append("- CẢNH BÁO QUYỀN LỢI GÓI: Gói đang báo/giữ phải khớp chính xác quyền lợi theo mã gói trong <GROUNDED_TURN_FACTS>. Tuyệt đối xoá các quyền lợi không thuộc gói (như 'xông hơi', 'xông thảo dược', 'tắm xông', 'ngâm bồn', 'phòng VIP' cho gói 399k; hoặc 'massage toàn thân', 'full body', 'buffet thực dưỡng' cho gói dưỡng sinh cơ bản 239k).\n");
-        }
-        if (errs.contains("BODY_PART_MISMATCH_HALLUCINATION")) {
-            sb.append("- CẢNH BÁO NHẦM VÙNG CƠ THỂ: Khách đang chỉ đau mỏi vùng chân/bắp chân/gối trong <GROUNDED_TURN_FACTS> (known_body_areas_all). Tuyệt đối XÓA ngay mọi từ 'vai', 'gáy', 'cổ', 'bả vai', 'lưng' khỏi câu trả lời; chỉ tập trung mô tả chăm sóc đúng vùng chân/bắp chân/gối và giấc ngủ!\n");
-        }
-        if (errs.contains("MACHINE_TRANSLATED_PHRASE") || errs.contains("EMPTY_TEMPLATE_APOLOGY") || errs.contains("FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION")) {
-            sb.append("- CẢNH BÁO NGÔN NGỮ: Viết lại bằng tiếng Việt đời thường (nói 'giúp dễ ngủ hơn, ngủ sâu giấc hơn' thay vì 'hỗ trợ giấc ngủ'); không hỏi xác nhận kiểu 'mình đang quan tâm gói... giá... ạ?' khi khách chưa chọn gói mà hãy giải thích vì sao gói hợp với triệu chứng rồi mới nêu giá; không xin lỗi chung chung 'không hiểu rõ... xin được hỗ trợ lại', hãy nhận đúng điểm vừa nói vụng và giải thích luôn.\n");
-        }
-        if (errs.contains("FORBIDDEN_MECHANICAL_OPENER") || errs.contains("REPEATED_EM_HIEU_OPENER_CONSECUTIVE_TURNS")) {
-            sb.append("- CẢNH BÁO CÂU MỞ ĐẦU: Tuyệt đối KHÔNG mở đầu bằng 'Dạ với tình trạng ... xuất hiện của mình', 'Dạ vừa bị ...', 'Em hiểu mình đang...', và KHÔNG lặp lại 'Dạ em hiểu...' ở 2 lượt liên tiếp. Hãy chạm thẳng vào cảm giác cơ thể hoặc nhu cầu thực tế của khách.\n");
-        }
-        if (errs.contains("FORBIDDEN_APOLOGY_ON_POLITE_DEFERRAL")) {
-            sb.append("- CẢNH BÁO CẤM XIN LỖI KHI KHÁCH TẠM DỪNG: Tuyệt đối KHÔNG dùng từ 'xin lỗi', KHÔNG nói 'không làm phiền nữa', KHÔNG nói 'chuyển sang nhân viên hỗ trợ trực tiếp' hay 'tóm tắt lại thông tin', và KHÔNG đặt câu hỏi (?).\n");
-        }
-        if (errs.contains("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK") || errs.contains("UNNECESSARY_APOLOGY_ON_META_COMMENT")) {
-            sb.append("- CẢNH BÁO CẤM CHỮ 'XIN LỖI': Tuyệt đối XÓA hoàn toàn 2 chữ 'xin lỗi' / 'thứ lỗi' khỏi toàn bộ câu trả lời (kể cả trong câu giải thích 'vì đã nói xin lỗi'). Hãy đáp tự nhiên vui vẻ (ví dụ: 'Dạ tại em sợ hỏi hơi kỹ làm mình sốt ruột thôi ạ.') rồi hỏi 1 câu ngắn xem triệu chứng của khách mới bị gần đây hay đã lâu.\n");
-        }
-        if (errs.contains("REPEATED_TURN2_SLEEP_SCENE_IN_TURN3")) {
-            sb.append("- CẢNH BÁO TRÙNG LẶP CẢNH CƠ THỂ: Tuyệt đối KHÔNG lặp lại cảnh 'nằm xuống/đặt lưng xuống mà đầu vẫn nặng trĩu' của lượt trước; câu mở đầu phải phản hồi trực tiếp tín hiệu tần suất khách vừa nêu.\n");
-        }
-        if (errs.contains("REPEATED_TURN3_BUBBLE2_DESCRIPTION_IN_TURN4")) {
-            sb.append("- CẢNH BÁO TRÙNG LẶP MÔ TẢ GÓI: Tuyệt đối KHÔNG lặp lại câu mô tả ở Bubble 2 của lượt trước; hãy thuyết phục bằng góc nhìn mới của gói (thời lượng 60 phút chăm sóc kỹ toàn thân, không gian yên tĩnh có rèm che riêng kín đáo, trọn gói không nhận Tip).\n");
-        }
-        if (errs.contains("UNSOLICITED_SHARED_ROOM_MENTION")) {
-            sb.append("- CẢNH BÁO KHÔNG GIAN: Khi khách chưa hỏi về phòng, tuyệt đối KHÔNG tự khoe chữ 'phòng chung'; chỉ mô tả 'không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo'.\n");
-        }
-        if (errs.contains("ROBOTIC_OR_MIXED_PRONOUN_VOICE")) {
-            sb.append("- CẢNH BÁO GIỌNG VĂN & ĐẠI TỪ: Giữ đồng nhất đại từ khách hàng trong <GROUNDED_TURN_FACTS> xuyên suốt câu (không trộn 'Chị' và 'mình' trong cùng câu); không dùng văn dịch máy như 'đang gặp phải tình trạng', 'khiến mình mệt mỏi hẳn luôn', 'Liệu mình/Chị có muốn'.\n");
-        }
-        if (errs.contains("REPEATED_BUBBLE_HASH")) {
-            sb.append("- CẢNH BÁO LẶP CÂU: Tuyệt đối KHÔNG lặp lại câu mở đầu của lượt trước; hãy đổi cách diễn đạt hoàn toàn mới và giải thích ngắn gọn lý do vì sao câu hỏi trước được đặt ra.\n");
-        }
-        if (errs.contains("INVERTED_CUSTOMER_PRONOUN")) {
-            sb.append("- CẢNH BÁO XƯNG HÔ: Tuyệt đối KHÔNG gọi khách là 'Em' (như 'Em đang quan tâm...'). Hãy gọi khách bằng đại từ khách hàng trong <GROUNDED_TURN_FACTS> và tự xưng là 'em'.\n");
-        }
-        if (errs.contains("FORBIDDEN_NEGATED_SCOPE_USED")) {
-            sb.append("- CẢNH BÁO VÙNG ĐÃ PHỦ ĐỊNH: Tuyệt đối KHÔNG nhắc lại bất kỳ từ nào trong forbidden_scopes dưới dạng triệu chứng của khách hoặc vùng sẽ chăm sóc.\n");
-        }
-        if (errs.contains("DUPLICATE_ERROR_APOLOGY")) {
-            sb.append("- CẢNH BÁO LẶP XIN LỖI: Lỗi này đã được xin lỗi ở lượt trước (nằm trong apologized_error_ids). Tuyệt đối XÓA mọi từ 'xin lỗi', 'thứ lỗi', 'sơ suất', 'lơ đễnh' và đi thẳng vào giải pháp chăm sóc cụ thể kèm cam kết 'Khi mình ghé, em sẽ dặn...' cho nhân sự phụ trách.\n");
-        }
-        if (errs.contains("OPERATIONAL_PROMISE_WITHOUT_ARTIFACT")) {
-            sb.append("- CẢNH BÁO HỨA VẬN HÀNH KHI CHƯA RÕ PHẠM VI: Chưa có vùng/nhu cầu xác thực trong confirmed_scopes nên không hứa 'em sẽ dặn/ghi chú'; hãy chuyển sang lời hứa định hướng trải nghiệm nhẹ nhàng.\n");
-        }
-        if (errs.contains("PROMO_NOT_GROUNDED")) {
-            sb.append("- CẢNH BÁO KHUYẾN MÃI: Tuyệt đối KHÔNG tự bịa chương trình giảm giá/ưu đãi ngoài dữ liệu; hãy nói rõ hiện chưa có chương trình giảm giá trực tiếp và nêu giá trị thực tế kèm lời hứa dặn nhân sự phụ trách chăm sóc chu đáo.\n");
-        }
-        if (errs.contains("FORBIDDEN_OUT_OF_SPACE_PROMISE")) {
-            sb.append("- CẢNH BÁO HỨA LỆCH KHÔNG GIAN/THỜI GIAN: Khách đang nhắn tin và chưa đặt lịch; tuyệt đối không nói 'em sẽ chăm sóc kỹ hơn cho mình ngay ạ'. Hãy dùng 'Khi mình ghé, em sẽ dặn...'.\n");
-        }
-        if (errs.contains("FORBIDDEN_AWKWARD_CLOSING_QUESTION")) {
-            sb.append("- CẢNH BÁO CÂU HỎI KẾT: Tuyệt đối KHÔNG dùng câu hỏi xác nhận hiển nhiên nhại lại lời khách ('... phải không?', '... đúng không?') hay câu hỏi vô tri ('Mình thấy liệu trình này hợp nhu cầu không ạ?', 'Mình thấy thế nào ạ?').\n");
-        }
-        if (errs.contains("UNGROUNDED_CATALOG_DURATION")) {
-            sb.append("- CẢNH BÁO THỜI LƯỢNG NGOÀI CATALOG: Tuyệt đối XÓA thời lượng không khớp Catalog (như '75 phút' hoặc '90 phút' khi hỏi massage); chỉ nêu đúng các mốc thời lượng có trong valid_catalog_durations của <GROUNDED_TURN_FACTS>.\n");
-        }
-        if (errs.contains("CROSS_TURN_SENTENCE_REPETITION")) {
-            sb.append("- CẢNH BÁO LẶP CÂU GIỮA HAI LƯỢT (>70% từ trùng lặp): Tuyệt đối KHÔNG lặp lại câu mô tả quảng cáo gói, câu đồng cảm mở đầu hoặc câu hỏi mời trải nghiệm giống với câu bạn đã gửi ở lượt liền trước (last_bot_bubbles). Hãy viết ý mới hoàn toàn phù hợp với mục tiêu hiện tại!\n");
-        }
-        if (errs.contains("FORBIDDEN_SYMPTOM_LIST_PARROTING_REPEAT")) {
-            sb.append("- CẢNH BÁO LẶP LẠI DANH SÁCH TRIỆU CHỨNG ĐÃ XÁC NHẬN: Tuyệt đối KHÔNG liệt kê lại toàn bộ danh sách triệu chứng đã xác nhận ở lượt trước ở đầu câu. Hãy đi thẳng vào trả lời tín hiệu mới của khách!\n");
-        }
-        if (errs.contains("FORBIDDEN_MACHINE_TRANSLATION_TRIAL_ACCEPT")) {
-            sb.append("- CẢNH BÁO KHI KHÁCH ĐỒNG Ý THỬ GÓI: Tuyệt đối XÓA cụm dịch máy 'Em vui mừng khi...', XÓA con số giá tiền đã báo trước đó, KHÔNG tự nhận 'đã giữ lịch' khi chưa có khung giờ ghé và KHÔNG gộp cả khung giờ lẫn số điện thoại vào một câu. Hãy hỏi ngắn gọn trong 1 bong bóng (ví dụ: 'Dạ vâng ạ. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp nhé?').\n");
-        }
-        if (errs.contains("FORBIDDEN_FUNNEL_REGRESSION_AFTER_ACCEPT")) {
-            sb.append("- CẢNH BÁO LÙI PHỄU SAU KHI KHÁCH ĐÃ ĐỒNG Ý THỬ GÓI: Khách đã đồng ý thử gói trước đó (booking_status=COLLECTING_INFO) và vừa góp ý về câu chữ -> TUYỆT ĐỐI KHÔNG quay lại hỏi 'Mình muốn thử trải nghiệm buổi này không ạ?' và KHÔNG quảng cáo lại công dụng gói. Hãy tiếp nhận góp ý ngắn gọn rồi hỏi khung giờ khách dự kiến ghé (ví dụ: 'Dạ cảm ơn mình đã góp ý thẳng thắn ạ, em xin rút kinh nghiệm nói chuyện tự nhiên hơn nha. Mình dự kiến ghé bên em vào khung giờ nào để em hỗ trợ tiếp ạ?').\n");
-        }
-        if (errs.contains("FORBIDDEN_PREMATURE_DOWNSELL_OFFER_STEP1") || errs.contains("TOO_MANY_BUBBLES_ON_PRICE_OBJECTION_STEP1")) {
-            sb.append("- CẢNH BÁO PHẢN ĐỐI GIÁ LẦN 1 (HANDLE_PRICE_OBJECTION_FIRST_TIME): Chỉ trả về TỐI ĐA 2 BONG BÓNG; giữ nguyên gói đang giữ, TUYỆT ĐỐI KHÔNG gợi ý đổi sang gói khác ở lần chê đắt đầu tiên, bám sát quyền lợi thực tế trong verified_package_benefits và không lặp lại câu quảng cáo của lượt trước.\n");
-        }
-        if (errs.contains("VR_EMOJI_WHITELIST") || errs.contains("VR-015A_FORBIDDEN_EMOJI")) {
-            sb.append("- CẢNH BÁO ICON: Xóa các icon không phù hợp (như 💙).\n");
-        }
-        if (errs.contains("FORBIDDEN_REPEAT_GUARD_PHRASE")) {
-            sb.append("- CẢNH BÁO CẤM CỤM TỪ: Tuyệt đối KHÔNG dùng cụm 'em vừa gửi ở tin trên' hay chỉ khách đọc lại tin nhắn trước.\n");
-        }
-        if (actionDecision != null
-                && (actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                    || actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT)) {
-            sb.append("- CẢNH BÁO HANDOFF AN TOÀN (max_questions=0): Đây là lượt chuyển chuyên viên -> TUYỆT ĐỐI XÓA mọi dấu chấm hỏi '?' khỏi câu trả lời, chỉ dùng dấu chấm '.' và thông báo chuyển chuyên viên hỗ trợ trực tiếp trong 1 bong bóng.\n");
-        }
-        if (actionDecision != null && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.DIRECT_CONCRETE_SOLUTION) {
-            sb.append("- BẮT BUỘC CAM KẾT VẬN HÀNH (Operational Assurance): Phải có câu hứa chủ động 'Khi mình ghé, em sẽ dặn [nhân sự phụ trách trong care_actor] lưu ý chăm sóc kỹ đúng vùng trong confirmed_scopes' và KHÔNG báo giá tiền ở lượt này.\n");
-        }
-        if (actionDecision != null && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.REPAIR_AND_RECONFIRM) {
-            sb.append("- BẮT BUỘC SỬA LỖI & XÁC NHẬN LẠI: Nhận lỗi ngắn gọn đúng điểm nhầm (nếu chưa nằm trong apologized_error_ids), xác nhận lại chính xác các vùng trong confirmed_scopes và KHÔNG báo giá tiền ở lượt này.\n");
-        }
-        sb.append("- grounded_reference_facts: Bám sát đúng tên gói, thời lượng, mức giá và quyền lợi trong <GROUNDED_TURN_FACTS>; tuyệt đối không tự nhận Phòng VIP riêng khi gói không có Phòng VIP trong Catalog, không gán nhầm quyền lợi của gói cao xuống gói thấp, và không chẩn đoán bệnh lý hay tự suy diễn chữ 'căng' khi khách không nói.\n");
-        sb.append("- Hãy viết lại JSON hợp lệ ngay lập tức ở chế độ FAST_NO_THINK.\n");
-        sb.append("</FAST_TARGETED_REPAIR_HINT>\nTin nhắn phản hồi khách hàng:");
-        return sb.toString();
     }
 
     private void emitLiveAuditJsonLog(
@@ -7151,13 +6235,6 @@ public class FanpageBotService {
 
     public static List<FanpageBotResponse.ReplyBubble> alignBubbleDelaysWithContract(
             List<FanpageBotResponse.ReplyBubble> llmBubbles,
-            List<FanpageBotResponse.ReplyBubble> contractBubbles
-    ) {
-        return alignBubbleDelaysWithContract(llmBubbles, contractBubbles, null, false);
-    }
-
-    public static List<FanpageBotResponse.ReplyBubble> alignBubbleDelaysWithContract(
-            List<FanpageBotResponse.ReplyBubble> llmBubbles,
             List<FanpageBotResponse.ReplyBubble> contractBubbles,
             ThinkingModePolicy.PostPriceDelayMetrics postPriceDelayMetrics,
             boolean cancelSecondBubbleIfPostPrice
@@ -7231,25 +6308,6 @@ public class FanpageBotService {
                     || "spa_stage3_graceful_exit".equalsIgnoreCase(dbSkillCode);
         }
         return false;
-    }
-
-    /** Câu fallback đã cấu hình sẵn của micro-skill đang áp dụng (không do Java ghép). */
-    private static List<FanpageBotResponse.ReplyBubble> approvedConfiguredSkillFallback(
-            List<AgentSkillDto> skills,
-            PrimaryActionRouter.RoutingDecision decision,
-            String honorific) {
-        if (skills == null || skills.isEmpty() || decision == null || decision.correspondingMicroSkillCode() == null) {
-            return List.of();
-        }
-        for (AgentSkillDto sk : skills) {
-            if (sk != null && decision.correspondingMicroSkillCode().equals(sk.code())) {
-                String t = sk.resolvedFallbackReply(honorific != null && !honorific.isBlank() ? honorific : "mình");
-                if (t != null && !t.isBlank()) {
-                    return List.of(new FanpageBotResponse.ReplyBubble(t.strip(), 0));
-                }
-            }
-        }
-        return List.of();
     }
 
     /** Che SĐT/email/CCCD và token/secret trong log audit; giữ nguyên văn bản triệu chứng/hội thoại. */

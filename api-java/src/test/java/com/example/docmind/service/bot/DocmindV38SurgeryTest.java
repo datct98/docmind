@@ -75,17 +75,26 @@ class DocmindV38SurgeryTest {
     void stringSurgeryRemoved() throws Exception {
         String v = Files.readString(Path.of("src/main/java/com/docmind/guardrail/ReplyContractValidator.java"));
         String s = Files.readString(Path.of("src/main/java/com/example/docmind/service/bot/FanpageBotService.java"));
+        String referee = Files.readString(Path.of("src/main/java/com/example/docmind/service/bot/CleanAgentOutputRefereeAndSanitizer.java"));
+        String orchestrator = Files.readString(Path.of("src/main/java/com/example/docmind/service/bot/CleanAgentOrchestratorService.java"));
         for (String name : List.of("sanitizeMechanicalOpenersInBubbles", "rewriteOrStripMechanicalOpener",
                 "rewriteSingleSentenceMechanicalOpener", "fixBoundaryViolations")) {
             assertThat(v).as(name).doesNotContain(name + "(");
             assertThat(s).as(name).doesNotContain(name + "(");
+            assertThat(referee).as(name).doesNotContain(name + "(");
+            assertThat(orchestrator).as(name).doesNotContain(name + "(");
         }
-        int a = s.indexOf("private static List<FanpageBotResponse.ReplyBubble> buildCandidateBubblesFromLlmOutput(");
-        int b = s.indexOf("private static boolean satisfiesDbSkillAndActionContract(", a);
-        String assembly = s.substring(a, b);
+        assertThat(s).contains("cleanAgentOrchestratorService.executeCleanAgentTurn(");
+        int a = referee.indexOf("public static List<FanpageBotResponse.ReplyBubble> extractCleanBubblesFromOutput(");
+        int b = referee.indexOf("public static boolean hasQuotedPriceInText(", a);
+        String assembly = referee.substring(a, b);
         assertThat(assembly).doesNotContain("replaceAll(\"(?iU)\\\\s*\\\\+\\\\s*\"")
                 .doesNotContain("stripRedundantGreetingPrefixPreservingGrammar")
-                .doesNotContain("HonorificConsistencyHook");
+                .doesNotContain("HonorificConsistencyHook")
+                .doesNotContain("deliberatePostPriceMoodPreservationPass")
+                .doesNotContain("postProcessReply")
+                .doesNotContain("polishConversationalVietnamese")
+                .doesNotContain("polishClosingQuestions");
     }
 
     // =============================================================== 2. OpeningPolicy
@@ -463,7 +472,8 @@ class DocmindV38SurgeryTest {
         for (String rel : List.of(
                 "src/main/java/com/example/docmind/service/bot/PrimaryActionRouter.java",
                 "src/main/java/com/docmind/guardrail/ReplyContractValidator.java",
-                "src/main/java/com/example/docmind/service/bot/FanpageBotPromptBuilder.java")) {
+                "src/main/java/com/example/docmind/service/bot/FanpageBotPromptBuilder.java",
+                "src/main/java/com/example/docmind/service/bot/CleanAgentOrchestratorService.java")) {
             String content = Files.readString(Path.of(rel));
             assertThat(content).as("No duplicate enrichWithCurrentMessage in " + rel)
                     .doesNotContain(".enrichWithCurrentMessage(");
