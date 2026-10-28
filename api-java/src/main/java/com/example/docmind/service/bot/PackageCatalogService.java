@@ -267,9 +267,14 @@ public final class PackageCatalogService {
 
             String normalizedRoomCell = roomCell != null ? roomCell.strip() : "";
             String roomLower = normalizedRoomCell.toLowerCase(Locale.ROOT);
-            boolean isSharedOrCurtainRoom = roomLower.contains("phòng chung")
+            String rawIncludesCell = includesCell != null ? includesCell.strip() : "";
+            String rawIncLower = rawIncludesCell.toLowerCase(Locale.ROOT);
+            boolean hasBuffetInIncludes = rawIncLower.contains("buffet");
+            boolean isVipRoom = roomLower.contains("vip") && !roomLower.contains("phòng chung");
+            boolean isSharedOrCurtainRoom = !isVipRoom && (roomLower.contains("phòng chung")
                     || roomLower.contains("khu dưỡng sinh")
-                    || ("HN".equalsIgnoreCase(region) && priceVnd > 0L && priceVnd < 580_000L && !roomLower.contains("vip"));
+                    || roomLower.contains("rèm")
+                    || ("HN".equalsIgnoreCase(region) && priceVnd > 0L && priceVnd < 580_000L));
             if (roomLower.contains("phòng chung")) {
                 // v3.3.4 RC-07: GIỮ rõ nhãn "Phòng chung" để LLM không thể diễn giải thành phòng riêng/VIP
                 normalizedRoomCell = "Phòng chung yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo";
@@ -277,22 +282,38 @@ public final class PackageCatalogService {
             String safeHighlightCell = highlightCell != null ? highlightCell.strip() : "";
             if (isSharedOrCurtainRoom && !safeHighlightCell.isBlank()) {
                 safeHighlightCell = safeHighlightCell.replaceAll("(?iU)phòng\\s+vip(?:\\s+riêng(?:\\s+tư)?)?",
-                        "Không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo");
+                        "không gian yên tĩnh, rèm che kín đáo");
+            }
+            if (!hasBuffetInIncludes && !isVipRoom && !safeHighlightCell.isBlank()) {
+                safeHighlightCell = safeHighlightCell.replaceAll("(?iU)(?:thưởng\\s+thức\\s+)?buffet\\s+thực\\s+dưỡng",
+                        "ăn nhẹ thực dưỡng");
             }
 
-            String enrichedIncludes = includesCell != null ? includesCell.strip() : "";
+            String enrichedIncludes = rawIncludesCell;
             String hlLower = safeHighlightCell.toLowerCase(Locale.ROOT);
             String incLower = enrichedIncludes.toLowerCase(Locale.ROOT);
             if (hlLower.contains("tắm xông") && !incLower.contains("tắm xông") && !incLower.contains("xông hơi")) {
                 enrichedIncludes = enrichedIncludes.isEmpty() ? "Tắm xông thảo dược" : (enrichedIncludes + ", tắm xông thảo dược");
             }
-            if (hlLower.contains("buffet thực dưỡng") && !incLower.contains("buffet")) {
+            if (hlLower.contains("buffet thực dưỡng") && !incLower.contains("buffet") && isVipRoom) {
                 enrichedIncludes = enrichedIncludes.isEmpty() ? "Buffet thực dưỡng" : (enrichedIncludes + ", buffet thực dưỡng");
+            } else if ((hlLower.contains("ăn nhẹ thực dưỡng") || hlLower.contains("thực dưỡng"))
+                    && !incLower.contains("thực dưỡng") && !incLower.contains("buffet")) {
+                enrichedIncludes = enrichedIncludes.isEmpty() ? "Ăn nhẹ thực dưỡng" : (enrichedIncludes + ", ăn nhẹ thực dưỡng");
             } else if (hlLower.contains("ăn nhẹ") && !incLower.contains("ăn nhẹ") && !incLower.contains("buffet")) {
                 enrichedIncludes = enrichedIncludes.isEmpty() ? "Ăn nhẹ sau liệu trình" : (enrichedIncludes + ", ăn nhẹ sau liệu trình");
             }
-            String enrichedProcess = (processCell != null && !processCell.isBlank())
-                    ? (!safeHighlightCell.isBlank() ? safeHighlightCell + " | " + processCell.strip() : processCell.strip())
+            String safeProcessCell = processCell != null ? processCell.strip() : "";
+            if (isSharedOrCurtainRoom && !safeProcessCell.isBlank()) {
+                safeProcessCell = safeProcessCell.replaceAll("(?iU)phòng\\s+vip(?:\\s+riêng(?:\\s+tư)?)?",
+                        "không gian yên tĩnh, rèm che kín đáo");
+            }
+            if (!hasBuffetInIncludes && !isVipRoom && !safeProcessCell.isBlank()) {
+                safeProcessCell = safeProcessCell.replaceAll("(?iU)(?:thưởng\\s+thức\\s+)?buffet\\s+thực\\s+dưỡng",
+                        "ăn nhẹ thực dưỡng");
+            }
+            String enrichedProcess = !safeProcessCell.isBlank()
+                    ? (!safeHighlightCell.isBlank() ? safeHighlightCell + " | " + safeProcessCell : safeProcessCell)
                     : safeHighlightCell;
 
             String uid = region + "_" + code;

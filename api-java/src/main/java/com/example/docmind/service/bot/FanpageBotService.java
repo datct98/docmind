@@ -1086,7 +1086,10 @@ public class FanpageBotService {
                 }
             }
         }
-        if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
+        boolean isLiveConfiguredLlmPreCheck = llmClient != null && llmClient.name() != null
+                && llmClient.name().toLowerCase(Locale.ROOT).matches("^(?:ollama|openai|openai_compatible|gemini|anthropic|claude|deepseek|qwen|dashscope|grok|xai|openrouter|custom):.*");
+        boolean cleanAgentEligiblePreCheck = isCleanAgentMode() && isLiveConfiguredLlmPreCheck && !isGeneratePriceAnchorAction;
+        if (!cleanAgentEligiblePreCheck && agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
             try {
                 agentSkillService.recordSkillsApplied(activeSkills);
             } catch (Exception e) {
@@ -1273,8 +1276,10 @@ public class FanpageBotService {
         }
 
         // 5.5. MAP OF CONTENT (MOC) & STATEFUL PRICE LADDER TRACKER
+        boolean isLiveConfiguredLlm = isLiveConfiguredLlmPreCheck;
+        boolean cleanAgentEligible = isCleanAgentMode() && isLiveConfiguredLlm && !isGeneratePriceAnchorAction && !leadReadyHandoff;
         String mocSummary = null;
-        if (mapOfContentService != null) {
+        if (!cleanAgentEligible && mapOfContentService != null) {
             try {
                 mocSummary = mapOfContentService.getOrBuildMapOfContent(pageId, null);
             } catch (Exception e) {
@@ -1282,36 +1287,40 @@ public class FanpageBotService {
             }
         }
 
-        String detectedBranch = PriceLadderTracker.resolveBranch(mergedMessage, request.history(), null);
-        ObsidianMetadataCache metaCacheForLadder = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
-        if (isPreRoutedDetailOrFaq || preEnrichedState.hasUnresolvedCustomerRequest()) {
-            fused = enrichFusedChunksForDetailAndFaqQa(fused, preEnrichedState, mergedMessage, metaCacheForLadder, pageId);
-        } else {
-            fused = enrichFusedChunksWithPriceLadderTargets(fused, null, mergedMessage, metaCacheForLadder, pageId);
-        }
-        // v3.8: ladder chỉ từ availablePackageCatalog đã xác minh (state hoặc parser Catalog chính thức trên chunk ACTIVE của tenant)
-        List<PackageCatalogService.PackageSummary> verifiedCatalogForLadder =
-                (preEnrichedState != null && preEnrichedState.availablePackageCatalog() != null
-                        && !preEnrichedState.availablePackageCatalog().isEmpty())
-                        ? preEnrichedState.availablePackageCatalog()
-                        : PackageCatalogService.extractCatalog(fused, List.of());
-        PriceLadderResult priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), verifiedCatalogForLadder, detectedBranch);
-        if (!isPreRoutedDetailOrFaq && !preEnrichedState.hasUnresolvedCustomerRequest()) {
-            fused = enrichFusedChunksWithPriceLadderTargets(fused, priceLadder, mergedMessage, metaCacheForLadder, pageId);
-        }
-        if (priceLadder != null && (priceLadder.isPriceObjection() || priceLadder.isCatalogFloor())
-                && (priceLadder.discountPolicy() == null || priceLadder.discountPolicy().isBlank())) {
-            String dynamicPromo = resolveDynamicPromoPolicy(fused, metaCacheForLadder, pageId);
-            priceLadder = new PriceLadderResult(
-                    priceLadder.isPriceObjection(),
-                    priceLadder.isTrialRequest(),
-                    priceLadder.previousPriceQuoted(),
-                    priceLadder.targetPrice(),
-                    priceLadder.targetPackageName(),
-                    dynamicPromo,
-                    priceLadder.isCatalogFloor(),
-                    priceLadder.rationale()
-            );
+        String detectedBranch = null;
+        PriceLadderResult priceLadder = null;
+        if (!cleanAgentEligible) {
+            detectedBranch = PriceLadderTracker.resolveBranch(mergedMessage, request.history(), null);
+            ObsidianMetadataCache metaCacheForLadder = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
+            if (isPreRoutedDetailOrFaq || preEnrichedState.hasUnresolvedCustomerRequest()) {
+                fused = enrichFusedChunksForDetailAndFaqQa(fused, preEnrichedState, mergedMessage, metaCacheForLadder, pageId);
+            } else {
+                fused = enrichFusedChunksWithPriceLadderTargets(fused, null, mergedMessage, metaCacheForLadder, pageId);
+            }
+            // v3.8: ladder chỉ từ availablePackageCatalog đã xác minh (state hoặc parser Catalog chính thức trên chunk ACTIVE của tenant)
+            List<PackageCatalogService.PackageSummary> verifiedCatalogForLadder =
+                    (preEnrichedState != null && preEnrichedState.availablePackageCatalog() != null
+                            && !preEnrichedState.availablePackageCatalog().isEmpty())
+                            ? preEnrichedState.availablePackageCatalog()
+                            : PackageCatalogService.extractCatalog(fused, List.of());
+            priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), verifiedCatalogForLadder, detectedBranch);
+            if (!isPreRoutedDetailOrFaq && !preEnrichedState.hasUnresolvedCustomerRequest()) {
+                fused = enrichFusedChunksWithPriceLadderTargets(fused, priceLadder, mergedMessage, metaCacheForLadder, pageId);
+            }
+            if (priceLadder != null && (priceLadder.isPriceObjection() || priceLadder.isCatalogFloor())
+                    && (priceLadder.discountPolicy() == null || priceLadder.discountPolicy().isBlank())) {
+                String dynamicPromo = resolveDynamicPromoPolicy(fused, metaCacheForLadder, pageId);
+                priceLadder = new PriceLadderResult(
+                        priceLadder.isPriceObjection(),
+                        priceLadder.isTrialRequest(),
+                        priceLadder.previousPriceQuoted(),
+                        priceLadder.targetPrice(),
+                        priceLadder.targetPackageName(),
+                        dynamicPromo,
+                        priceLadder.isCatalogFloor(),
+                        priceLadder.rationale()
+                );
+            }
         }
 
         // 6. XÁC ĐỊNH NHỊP ĐỘ TƯ VẤN (3-STAGE CONSULTATIVE PACING)
@@ -1359,8 +1368,8 @@ public class FanpageBotService {
                                 isFirstTurn,
                                 pagePersona
                         );
+                customerInsight = agentBrainService.enrichCustomerInsight(pageId, request.senderId(), customerInsight, brainAdvice);
                 if (brainAdvice != null) {
-                    customerInsight = agentBrainService.enrichCustomerInsight(customerInsight, brainAdvice);
                     activeSkills = agentBrainService.synchronizeActiveSkills(activeSkills, candidateSkills, brainAdvice);
                 }
             } catch (Exception e) {
@@ -1369,7 +1378,7 @@ public class FanpageBotService {
         }
 
         List<com.example.docmind.dto.SampleDialogueDto> sampleDialogues = List.of();
-        if (playbookUploadService != null && !hasActiveCompactPolicy) {
+        if (!cleanAgentEligible && playbookUploadService != null && !hasActiveCompactPolicy) {
             try {
                 sampleDialogues = playbookUploadService.retrieveRelevantDialogues(contextualQuery, pageId, 1);
             } catch (Exception e) {
@@ -1377,8 +1386,6 @@ public class FanpageBotService {
             }
         }
 
-        boolean isLiveConfiguredLlm = llmClient != null && llmClient.name() != null
-                && llmClient.name().toLowerCase(Locale.ROOT).matches("^(?:ollama|openai|openai_compatible|gemini|anthropic|claude|deepseek|qwen|dashscope|grok|xai|openrouter|custom):.*");
         boolean hasRuntimeControlPolicy = pagePersona != null
                 && ((pagePersona.resolvedConfig().openingBubbles() != null && !pagePersona.resolvedConfig().openingBubbles().isEmpty())
                     || (pagePersona.resolvedConfig().preferenceDiscoveryPrompt() != null && !pagePersona.resolvedConfig().preferenceDiscoveryPrompt().isBlank())
@@ -1388,16 +1395,15 @@ public class FanpageBotService {
         boolean hasPriorPriceInHistory = (priceLadder != null && priceLadder.previousPriceQuoted() != null)
                 || hasQuotedPriceInAssistantHistory(request.history());
 
-        ConversationState priorStateWithChunks = preRetrievalState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
         ConversationState convState = preEnrichedState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
-        if (isCleanAgentMode() && isLiveConfiguredLlm && !isGeneratePriceAnchorAction && !leadReadyHandoff) {
+        if (cleanAgentEligible) {
             return executeCleanAgentTurn(
                     pageId,
                     request,
                     mergedMessage,
                     honorific,
                     pagePersona,
-                    priorStateWithChunks,
+                    preRetrievalState,
                     convState,
                     fused,
                     appliedRules,
@@ -1411,6 +1417,7 @@ public class FanpageBotService {
                     retrievalMs
             );
         }
+        ConversationState priorStateWithChunks = preRetrievalState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
         String stateBeforeTelemetry = formatStateTelemetrySummary(priorStateWithChunks);
         PrimaryActionRouter.RoutingDecision actionDecision = isGeneratePriceAnchorAction
                 ? new PrimaryActionRouter.RoutingDecision(
@@ -6338,6 +6345,36 @@ public class FanpageBotService {
 
     private static final ObjectMapper LLM_JSON_MAPPER = new ObjectMapper();
 
+    public record BrainReflection(
+            String observedFact,
+            String careNoteDelta,
+            String workingHypothesis,
+            String intendedSpeechAct
+    ) {
+        public BrainReflection {
+            observedFact = observedFact != null ? observedFact.strip() : "";
+            careNoteDelta = careNoteDelta != null ? careNoteDelta.strip() : "";
+            workingHypothesis = workingHypothesis != null ? workingHypothesis.strip() : "";
+            intendedSpeechAct = intendedSpeechAct != null ? intendedSpeechAct.strip() : "";
+        }
+
+        public BrainReflection(
+                String observedFact,
+                String careNoteDelta,
+                String workingHypothesis
+        ) {
+            this(observedFact, careNoteDelta, workingHypothesis, "");
+        }
+
+        public static BrainReflection empty() {
+            return new BrainReflection("", "", "", "");
+        }
+
+        public boolean hasAnyContent() {
+            return !observedFact.isEmpty() || !careNoteDelta.isEmpty() || !workingHypothesis.isEmpty() || !intendedSpeechAct.isEmpty();
+        }
+    }
+
     public record StructuredLlmOutput(
             boolean parsedFromJson,
             List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -6345,8 +6382,27 @@ public class FanpageBotService {
             String handoffReason,
             String updatedSalesStage,
             ConversationState.GroundingCheck groundingCheck,
-            String groundingCheckText
+            String groundingCheckText,
+            BrainReflection brainReflection
     ) {
+        public StructuredLlmOutput {
+            if (brainReflection == null) {
+                brainReflection = BrainReflection.empty();
+            }
+        }
+
+        public StructuredLlmOutput(
+                boolean parsedFromJson,
+                List<FanpageBotResponse.ReplyBubble> bubbles,
+                Boolean shouldHandoff,
+                String handoffReason,
+                String updatedSalesStage,
+                ConversationState.GroundingCheck groundingCheck,
+                String groundingCheckText
+        ) {
+            this(parsedFromJson, bubbles, shouldHandoff, handoffReason, updatedSalesStage, groundingCheck, groundingCheckText, BrainReflection.empty());
+        }
+
         public StructuredLlmOutput(
                 boolean parsedFromJson,
                 List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -6354,13 +6410,15 @@ public class FanpageBotService {
                 String handoffReason,
                 String updatedSalesStage
         ) {
-            this(parsedFromJson, bubbles, shouldHandoff, handoffReason, updatedSalesStage, null, null);
+            this(parsedFromJson, bubbles, shouldHandoff, handoffReason, updatedSalesStage, null, null, BrainReflection.empty());
         }
     }
 
     /**
      * Bóc tách đầu ra JSON của LLM (tự động lột bỏ markdown code fences {@code ```json ... ```})
-     * hỗ trợ các trường {@code grounding_check}, {@code reply_bubbles}, {@code should_handoff}, {@code handoff_reason}, và {@code state_updates}.
+     * hỗ trợ các trường {@code reply_bubbles}, {@code brain_reflection}, {@code grounding_check}, {@code should_handoff}, {@code handoff_reason}, và {@code state_updates}.
+     * Chịu lỗi 100%: nếu {@code brain_reflection} bị thiếu, null, sai kiểu dữ liệu hoặc bị cắt cụt ở cuối JSON,
+     * vẫn cứu và giữ nguyên {@code reply_bubbles} hợp lệ mà không làm hỏng lượt trả lời.
      */
     public static StructuredLlmOutput parseStructuredLlmJsonOutput(String rawText, int minPostPriceDelayMs) {
         if (rawText == null || rawText.isBlank()) {
@@ -6368,69 +6426,27 @@ public class FanpageBotService {
         }
         String jsonCandidate = stripMarkdownCodeFencesAndExtractJson(rawText);
         if (jsonCandidate == null || !jsonCandidate.startsWith("{")) {
-            return new StructuredLlmOutput(false, List.of(), null, null, null);
+            return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
         }
         try {
             JsonNode root = LLM_JSON_MAPPER.readTree(jsonCandidate);
             if (root == null || !root.isObject()) {
-                return new StructuredLlmOutput(false, List.of(), null, null, null);
+                return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
             }
-            List<FanpageBotResponse.ReplyBubble> bubbles = new ArrayList<>();
-            JsonNode bubblesNode = root.has("reply_bubbles") ? root.get("reply_bubbles")
-                    : (root.has("bubbles") ? root.get("bubbles") : null);
-            if (bubblesNode != null && bubblesNode.isArray()) {
-                int idx = 0;
-                boolean prevContainsPrice = false;
-                for (JsonNode item : bubblesNode) {
-                    if (item == null || item.isNull()) continue;
-                    String text = null;
-                    int delayMs = idx == 0 ? 900 : 2800;
-                    if (item.isTextual()) {
-                        text = item.asText();
-                    } else if (item.isObject()) {
-                        if (item.hasNonNull("text")) {
-                            text = item.get("text").asText();
-                        } else if (item.hasNonNull("content")) {
-                            text = item.get("content").asText();
-                        }
-                        if (item.hasNonNull("delay_ms")) {
-                            delayMs = item.get("delay_ms").asInt(delayMs);
-                        } else if (item.hasNonNull("delay_before_ms")) {
-                            delayMs = item.get("delay_before_ms").asInt(delayMs);
-                        } else if (item.hasNonNull("typing_delay_ms")) {
-                            delayMs = item.get("typing_delay_ms").asInt(delayMs);
-                        } else if (item.hasNonNull("typingDelayMs")) {
-                            delayMs = item.get("typingDelayMs").asInt(delayMs);
-                        }
-                    }
-                    if (text != null && !text.isBlank()) {
-                        String cleanBubbleText = BubbleCapHook.capitalizeFirstLetter(text.strip());
-                        if (idx > 0 && prevContainsPrice && minPostPriceDelayMs > 0) {
-                            delayMs = Math.max(delayMs, minPostPriceDelayMs);
-                        }
-                        bubbles.add(new FanpageBotResponse.ReplyBubble(cleanBubbleText, Math.max(0, delayMs)));
-                        prevContainsPrice = hasQuotedPriceInText(cleanBubbleText);
-                        idx++;
-                    }
-                }
-            } else if (root.hasNonNull("reply_text") || root.hasNonNull("reply")) {
-                String singleText = root.hasNonNull("reply_text") ? root.get("reply_text").asText() : root.get("reply").asText();
-                if (singleText != null && !singleText.isBlank()) {
-                    bubbles.addAll(splitIntoBubbles(singleText.strip()));
-                }
-            }
-
+            List<FanpageBotResponse.ReplyBubble> bubbles = extractBubblesFromRootNode(root, minPostPriceDelayMs);
             if (bubbles.isEmpty()) {
-                return new StructuredLlmOutput(false, List.of(), null, null, null);
+                return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
             }
 
             Boolean shouldHandoff = null;
-            if (root.hasNonNull("should_handoff")) {
+            if (root.hasNonNull("should_handoff") && root.get("should_handoff").isBoolean()) {
                 shouldHandoff = root.get("should_handoff").asBoolean(false);
-            } else if (root.hasNonNull("needs_human_handoff")) {
+            } else if (root.hasNonNull("needs_human_handoff") && root.get("needs_human_handoff").isBoolean()) {
                 shouldHandoff = root.get("needs_human_handoff").asBoolean(false);
             }
-            String handoffReason = root.hasNonNull("handoff_reason") ? root.get("handoff_reason").asText(null) : null;
+            String handoffReason = root.hasNonNull("handoff_reason") && root.get("handoff_reason").isTextual()
+                    ? root.get("handoff_reason").asText(null)
+                    : null;
             String updatedSalesStage = null;
             JsonNode stateUpdates = root.get("state_updates");
             if (stateUpdates != null && stateUpdates.isObject()) {
@@ -6485,11 +6501,133 @@ public class FanpageBotService {
                     groundingCheck = new ConversationState.GroundingCheck(List.of(), negated, null, null);
                 }
             }
-            return new StructuredLlmOutput(true, bubbles, shouldHandoff, handoffReason, updatedSalesStage, groundingCheck, groundingCheckText);
+
+            BrainReflection brainReflection = extractSafeBrainReflection(root.get("brain_reflection"));
+            return new StructuredLlmOutput(
+                    true,
+                    bubbles,
+                    shouldHandoff,
+                    handoffReason,
+                    updatedSalesStage,
+                    groundingCheck,
+                    groundingCheckText,
+                    brainReflection
+            );
         } catch (Exception e) {
             log.debug("[LLM-JSON] Non-fatal JSON parse fallback: {}", e.getMessage());
+            return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
+        }
+    }
+
+    private static List<FanpageBotResponse.ReplyBubble> extractBubblesFromRootNode(JsonNode root, int minPostPriceDelayMs) {
+        List<FanpageBotResponse.ReplyBubble> bubbles = new ArrayList<>();
+        if (root == null || !root.isObject()) {
+            return bubbles;
+        }
+        JsonNode bubblesNode = root.has("reply_bubbles") ? root.get("reply_bubbles")
+                : (root.has("bubbles") ? root.get("bubbles") : null);
+        if (bubblesNode != null && bubblesNode.isArray()) {
+            int idx = 0;
+            boolean prevContainsPrice = false;
+            for (JsonNode item : bubblesNode) {
+                if (item == null || item.isNull()) continue;
+                String text = null;
+                int delayMs = idx == 0 ? 900 : 2800;
+                if (item.isTextual()) {
+                    text = item.asText();
+                } else if (item.isObject()) {
+                    if (item.hasNonNull("text")) {
+                        text = item.get("text").asText();
+                    } else if (item.hasNonNull("content")) {
+                        text = item.get("content").asText();
+                    }
+                    if (item.hasNonNull("delay_ms")) {
+                        delayMs = item.get("delay_ms").asInt(delayMs);
+                    } else if (item.hasNonNull("delay_before_ms")) {
+                        delayMs = item.get("delay_before_ms").asInt(delayMs);
+                    } else if (item.hasNonNull("typing_delay_ms")) {
+                        delayMs = item.get("typing_delay_ms").asInt(delayMs);
+                    } else if (item.hasNonNull("typingDelayMs")) {
+                        delayMs = item.get("typingDelayMs").asInt(delayMs);
+                    }
+                }
+                if (text != null && !text.isBlank()) {
+                    String cleanBubbleText = BubbleCapHook.capitalizeFirstLetter(text.strip());
+                    if (idx > 0 && prevContainsPrice && minPostPriceDelayMs > 0) {
+                        delayMs = Math.max(delayMs, minPostPriceDelayMs);
+                    }
+                    bubbles.add(new FanpageBotResponse.ReplyBubble(cleanBubbleText, Math.max(0, delayMs)));
+                    prevContainsPrice = hasQuotedPriceInText(cleanBubbleText);
+                    idx++;
+                }
+            }
+        } else if (root.hasNonNull("reply_text") || root.hasNonNull("reply")) {
+            String singleText = root.hasNonNull("reply_text") ? root.get("reply_text").asText() : root.get("reply").asText();
+            if (singleText != null && !singleText.isBlank()) {
+                bubbles.addAll(splitIntoBubbles(singleText.strip()));
+            }
+        }
+        return bubbles;
+    }
+
+    private static BrainReflection extractSafeBrainReflection(JsonNode brNode) {
+        if (brNode == null || brNode.isNull() || !brNode.isObject()) {
+            return BrainReflection.empty();
+        }
+        try {
+            String observedFact = extractSafeTextualField(brNode, "observed_fact");
+            String careNoteDelta = extractSafeTextualField(brNode, "care_note_delta");
+            String workingHypothesis = extractSafeTextualField(brNode, "working_hypothesis");
+            String intendedSpeechAct = extractSafeTextualField(brNode, "intended_speech_act");
+            return new BrainReflection(observedFact, careNoteDelta, workingHypothesis, intendedSpeechAct);
+        } catch (Exception ignored) {
+            return BrainReflection.empty();
+        }
+    }
+
+    private static String extractSafeTextualField(JsonNode parent, String fieldName) {
+        if (parent == null || fieldName == null || !parent.hasNonNull(fieldName)) {
+            return "";
+        }
+        JsonNode field = parent.get(fieldName);
+        if (field == null || field.isNull() || field.isObject() || field.isArray() || field.isBoolean() || field.isNumber()) {
+            return "";
+        }
+        String val = field.asText("");
+        return val != null ? val.strip() : "";
+    }
+
+    private static StructuredLlmOutput salvageReplyBubblesFromPartialJson(String jsonCandidate, int minPostPriceDelayMs) {
+        if (jsonCandidate == null || jsonCandidate.isBlank()) {
             return new StructuredLlmOutput(false, List.of(), null, null, null);
         }
+        try {
+            // Nếu phần "brain_reflection" ở sau bị lỗi cú pháp hoặc cắt cụt, cắt bỏ từ "brain_reflection" và đóng ngoặc JSON
+            int brIdx = jsonCandidate.indexOf("\"brain_reflection\"");
+            if (brIdx > 0) {
+                int commaBefore = jsonCandidate.lastIndexOf(',', brIdx);
+                if (commaBefore > 0) {
+                    String salvagedJson = jsonCandidate.substring(0, commaBefore).strip() + "}";
+                    JsonNode salvagedRoot = LLM_JSON_MAPPER.readTree(salvagedJson);
+                    List<FanpageBotResponse.ReplyBubble> salvagedBubbles = extractBubblesFromRootNode(salvagedRoot, minPostPriceDelayMs);
+                    if (!salvagedBubbles.isEmpty()) {
+                        return new StructuredLlmOutput(true, salvagedBubbles, false, null, null, null, null, BrainReflection.empty());
+                    }
+                }
+            }
+            // Fallback 2: Trích xuất trực tiếp mảng "reply_bubbles": [...]
+            Matcher m = Pattern.compile("(?s)\"(?:reply_bubbles|bubbles)\"\\s*:\\s*(\\[.*?\\])").matcher(jsonCandidate);
+            if (m.find()) {
+                String arrJson = "{\"reply_bubbles\":" + m.group(1) + "}";
+                JsonNode arrRoot = LLM_JSON_MAPPER.readTree(arrJson);
+                List<FanpageBotResponse.ReplyBubble> arrBubbles = extractBubblesFromRootNode(arrRoot, minPostPriceDelayMs);
+                if (!arrBubbles.isEmpty()) {
+                    return new StructuredLlmOutput(true, arrBubbles, false, null, null, null, null, BrainReflection.empty());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return new StructuredLlmOutput(false, List.of(), null, null, null);
     }
 
     public static String stripMarkdownCodeFencesAndExtractJson(String rawText) {
@@ -7481,11 +7619,11 @@ public class FanpageBotService {
 
             I. NGHỆ THUẬT GIAO TIẾP CÓ "HỒN" & NHỊP ĐỘ CẢM XÚC (EMOTIONAL PACING):
             1. Đúng nhịp độ — Không biến mọi lượt chat thành văn mẫu quảng cáo:
-               - Ở lượt Khám phá nhu cầu, lượt Trả lời câu hỏi vặn/góp ý của khách, và lượt Hỏi giờ đặt lịch: Hãy trò chuyện ngắn gọn, tự nhiên, nhanh nhẹn như hai người đang nhắn tin trực tiếp (không chèn các câu quảng cáo dài dòng).
+               - Ở lượt Khám phá nhu cầu, lượt Trả lời câu hỏi vặn/góp ý của khách, lượt Khách xin tạm dừng/đang bận, và lượt Hỏi giờ đặt lịch: Hãy trò chuyện ngắn gọn, tự nhiên, nhanh nhẹn như hai người đang nhắn tin trực tiếp (không chèn các câu quảng cáo dài dòng).
                - Chỉ bung "Đòn Neo Cảm Xúc & Tôn Vinh Tay Nghề/Trải Nghiệm" ở đúng 2 thời điểm vàng: (a) Khi đề xuất gói lần đầu tiên, và (b) Khi khách băn khoăn về giá lần thứ nhất (`priceObjectionCount == 1`).
             2. Bán cảm xúc và niềm tin nhưng trung thực 100% về phân hạng dịch vụ:
                - Hãy dùng ngôn từ giàu sức gợi về chất lượng chuyên môn, sự chăm sóc tỉ mỉ và cảm giác dễ chịu/hiệu quả thực tế mà khách sẽ nhận được.
-               - TUYỆT ĐỐI TRUNG THỰC VỚI HẠNG MỤC VẬT CHẤT CỦA TỪNG GÓI: Mỗi gói trong <SCOPE_FILTERED_CATALOG> có mục `Không gian/Hình thức` và `Quyền lợi đi kèm` riêng. Hãy dùng từ ngữ ấm áp để làm nổi bật ĐÚNG không gian và quyền lợi có thật của gói đang tư vấn (tuyệt đối không tự ý nâng khống không gian tiêu chuẩn thành "phòng riêng/VIP" và không lấy quyền lợi của gói cao cấp đắp sang gói tiết kiệm).
+               - TUYỆT ĐỐI TRUNG THỰC VỚI HẠNG MỤC VẬT CHẤT CỦA TỪNG GÓI: Mỗi gói trong <SCOPE_FILTERED_CATALOG> có mục `Không gian/Hình thức` và `Quyền lợi đi kèm` riêng. Hãy dùng từ ngữ ấm áp để làm nổi bật ĐÚNG không gian và quyền lợi có thật của gói đang tư vấn (tuyệt đối không tự ý nâng khống không gian tiêu chuẩn thành "phòng riêng/VIP", không tự ý phóng đại tên quyền lợi vượt quá hồ sơ gói, và không lấy quyền lợi của gói cao cấp đắp sang gói tiết kiệm).
 
             II. PHẢN XẠ TINH TẾ THEO TỪNG TÌNH HUỐNG TÂM LÝ:
             1. Khi khách mới nêu vấn đề ngắn gọn (chưa rõ thời gian/bối cảnh & chưa hỏi khám phá lần nào):
@@ -7497,28 +7635,49 @@ public class FanpageBotService {
 
             3. Khi đã rõ tình trạng -> Chủ động đề xuất gói & Báo giá lần đầu (`priceObjectionCount == 0`):
                - Khi khách chưa từng nhắc tên gói (`heldPkg == null`), bạn là người CHỦ ĐỘNG GỢI Ý gói số 1 trong `[NHÓM 1 — GÓI CHỦ LỰC]` (dùng cụm "{self_pronoun} gợi ý {customer_pronoun} tham khảo...", CẤM nói "{customer_pronoun} đang quan tâm đến gói...").
-               - Tách 2 bong bóng:
+               - Tách 2–3 bong bóng ngắn gọn, tự nhiên:
                  + Bong bóng 1: Kết nối tự nhiên tình trạng của khách với lý do chuyên môn vì sao gói số 1 này là phù hợp nhất, nêu rõ tên gói, thời lượng và mức giá trọn gói (kết thúc bằng dấu ".").
-                 + Bong bóng 2: Gợi cảm nhận hấp dẫn về quy trình chăm sóc + đúng không gian & quyền lợi đi kèm của gói đó trong <SCOPE_FILTERED_CATALOG>, khép lại bằng 1 câu hỏi mở nhẹ nhàng (không hỏi câu vô nghĩa "thử 1 buổi lẻ hay đặt gói trọn vẹn" khi giá niêm yết vốn là giá 1 buổi).
+                 + Bong bóng 2: Gợi cảm nhận hấp dẫn về quy trình chăm sóc + đúng không gian & quyền lợi đi kèm của gói đó trong <SCOPE_FILTERED_CATALOG> (kết thúc bằng dấu ".").
+                 + Bong bóng 3 (hoặc câu hỏi độc lập ở cuối): Khép lại bằng 1 câu hỏi mở nhẹ nhàng mời khách trải nghiệm thử (không hỏi câu vô nghĩa "thử 1 buổi lẻ hay đặt gói trọn vẹn" khi giá niêm yết vốn là giá 1 buổi).
 
             4. Khi khách chê đắt / băn khoăn về giá LẦN ĐẦU TIÊN (`priceObjectionCount == 1` và khách chưa xin gói rẻ hơn / chưa nêu ngân sách thấp):
                - QUY TẮC VÀNG: Giữ nguyên gói đang tư vấn! TUYỆT ĐỐI CẤM hạ gói và CẤM tự gạ "hay để em gợi ý gói tiết kiệm hơn nhé?". CẤM mở đầu bằng câu sáo rỗng "Dạ em hiểu mình đang cân nhắc ạ".
-               - Áp dụng nghệ thuật [NEO CẢM XÚC -> TRAO NIỀM TIN -> KHƠI SỰ TÒ MÒ] trong 2 bong bóng ngắn (25–38 từ/bong bóng):
+               - Áp dụng nghệ thuật [NEO CẢM XÚC -> TRAO NIỀM TIN -> KHƠI SỰ TÒ MÒ] trong 2–3 bong bóng ngắn (20–35 từ/bong bóng):
                  + Bong bóng 1 (Trao niềm tin vào chiều sâu chuyên môn): Giải thích khéo léo rằng giá trị của gói nằm ở trọn vẹn thời lượng chuyên viên lành nghề tập trung xử lý sâu từng điểm đang có vấn đề chứ không chỉ làm qua loa bề mặt, mang lại sự thay đổi cảm nhận rõ rệt ngay từ lần đầu.
-                 + Bong bóng 2 (Trải nghiệm trọn vẹn & Khơi sự tò mò): Điểm lại đúng không gian và quyền lợi chu đáo đi kèm của gói đó (không phát sinh chi phí phụ) và mời khách thử trải nghiệm trước 1 lần để tự mình kiểm chứng chất lượng.
+                 + Bong bóng 2 (Trải nghiệm trọn vẹn): Điểm lại đúng không gian và quyền lợi chu đáo đi kèm của gói đó (không phát sinh chi phí phụ, kết thúc bằng dấu ".").
+                 + Bong bóng 3 (Khơi sự tò mò / Mời thử): Tách câu hỏi mời khách thử trải nghiệm trước 1 lần để tự mình kiểm chứng chất lượng thành bong bóng độc lập ở cuối (kết thúc bằng dấu "?").
 
             5. Khi khách chê đắt LẦN THỨ HAI (`priceObjectionCount >= 2`) HOẶC khách chủ động xin gói rẻ hơn / nêu ngân sách thấp:
-               - Nếu trong `[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC]` có gói phù hợp: Giới thiệu tự nhiên gói Nhóm 2 đó kèm ĐÚNG không gian và quyền lợi của riêng gói Nhóm 2 (không lấy quyền lợi hay câu quảng cáo của gói Nhóm 1 đắp sang).
+               - Nếu trong `[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC]` có gói phù hợp: Giới thiệu tự nhiên gói Nhóm 2 đó kèm ĐÚNG không gian, quyền lợi và phạm vi vùng chăm sóc thực tế của riêng gói Nhóm 2 (nếu gói Nhóm 2 chỉ chăm sóc phạm vi hẹp hơn thì nêu rõ vùng được chăm sóc và vùng không bao gồm; không lấy quyền lợi hay câu quảng cáo của gói Nhóm 1 đắp sang).
                - Nếu Nhóm 2 trống: Chia sẻ chân thành vì sao tình trạng của khách cần đúng gói tiêu chuẩn hiện tại để đảm bảo hiệu quả chăm sóc.
 
-            6. Khi khách hỏi xác nhận chi tiết ("là 1 buổi à") hoặc đồng thuận muốn thử ("Nghe ổn đó", "Uk", "Ừ", "Ok", "Thử xem"):
-               - Nếu khách hỏi xác nhận: Trả lời trực diện ngay đầu câu ("Dạ đúng rồi ạ...") và CẤM lặp lại danh sách quyền lợi.
-               - Khi khách đồng thuận: Chốt thẳng vào gói vừa trao đổi gần nhất (nếu vừa giới thiệu gói Nhóm 2 thì chốt thẳng gói Nhóm 2 đó, CẤM hỏi ngược bắt khách chọn lại giữa 2 gói!) và hỏi gọn gàng xem hôm nay hay ngày mai khách tiện ghé vào khung giờ nào để chuẩn bị chu đáo.
+            6. Khi khách lưỡng lự / xin suy nghĩ thêm (`HESITATION_OR_DEFERRAL`) hoặc nhắn xác nhận khép lại cuộc trò chuyện (`POLITE_CLOSING_ACKNOWLEDGMENT`):
+               - Trường hợp A (`STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL` — Khách lưỡng lự trong ngữ cảnh đã băn khoăn về giá và trong <SCOPE_FILTERED_CATALOG> có sẵn gói `[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM]` chưa được giới thiệu):
+                 + Trả lời trong 2 bong bóng ngắn (20–32 từ/bong bóng):
+                   * Bong bóng 1 (Giải tỏa áp lực): Nhẹ nhàng trấn an khách cứ thoải mái tham khảo thêm, chưa cần vội đặt lịch ngay.
+                   * Bong bóng 2 (Mở lối thoát mềm không ép buộc): Nhắc nhẹ nếu khách muốn thử một phương án nhẹ nhàng, tiết kiệm hơn thì bên Page cũng có gói Nhóm 2 (nêu đúng tên gói + giá trọn gói + nêu rõ phạm vi vùng chăm sóc của gói Nhóm 2 nếu hẹp hơn gói Nhóm 1), khi nào tiện cứ nhắn {self_pronoun} để so sánh chi tiết.
+               - Trường hợp B (`STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE` — Khách đang bận việc, hẹn tối/hôm khác xem lại, `priceObjectionCount == 0`, hoặc khách nhắn `"Ok"`, `"Ừ"`, `"Vâng"` để khép lại cuộc trò chuyện sau khi đã hẹn suy nghĩ thêm):
+                 + Tôn trọng hoàn toàn nhịp độ của khách — TUYỆT ĐỐI KHÔNG cố nhồi thêm gói mới và TUYỆT ĐỐI CẤM hỏi ép giờ đặt lịch!
+                 + Tách lời chào tạm biệt thành 2 bong bóng ngắn gọn, giàu cảm xúc:
+                   * Bong bóng 1 (Ghi nhận & Hẹn gặp lại): Xác nhận {self_pronoun} đã lưu sẵn thông tin gói và các lưu ý chăm sóc (`care_notes`) của {customer_pronoun} để bất cứ khi nào {customer_pronoun} thu xếp được thời gian cần hỗ trợ cứ nhắn {self_pronoun} ngay (kết thúc bằng dấu ".").
+                   * Bong bóng 2 (Lời chúc ấm áp tách riêng): Câu chúc {customer_pronoun} một ngày/buổi tối thật nhiều niềm vui, nhẹ nhàng và thư thái (ví dụ: "Chúc {customer_pronoun} một ngày thật nhiều niềm vui và thư thái ạ!").
 
-            III. ĐỊNH DẠNG ĐẦU RA:
-            - Trả về duy nhất JSON hợp lệ: `{"reply_bubbles": [{"text": "...", "typing_delay_ms": 0}, ...], "should_handoff": false}`.
-            - Tối đa 1–2 bong bóng mỗi lượt (20–40 từ/bong bóng), không lặp lại câu chữ của lượt trước. Câu trần thuật kết thúc bằng dấu ".", chỉ câu hỏi thực sự ở cuối lượt mới dùng dấu "?".
+            7. Khi khách hỏi xác nhận chi tiết ("là 1 buổi à"), đồng thuận muốn thử (`STAGE_4_POSITIVE_TRIAL_OR_BOOKING`), hoặc xác nhận sau khi đã chốt lịch (`POST_BOOKING_CLOSING_ACK`):
+               - Nếu khách hỏi xác nhận hoặc muốn nghe chi tiết gói (`SERVICE_OR_UNIT_DETAIL_QUESTION`): Trả lời trực diện, rõ ràng đúng thông tin gói trong <SCOPE_FILTERED_CATALOG>, không thúc ép chốt giờ.
+               - Khi khách đồng thuận muốn thử (`STAGE_4_POSITIVE_TRIAL_OR_BOOKING`): Chốt thẳng vào gói vừa trao đổi gần nhất (nếu vừa giới thiệu gói Nhóm 2 hoặc khách chọn gói Nhóm 2 thì chốt thẳng gói Nhóm 2 đó, CẤM hỏi ngược bắt khách chọn lại giữa 2 gói!), khéo léo nhắc lại lưu ý chăm sóc trong `care_notes` của <AGENT_BRAIN_INSIGHT> theo đúng trạng thái thực tế: nếu chưa chốt giờ hẹn (`booking_funnel_status != "CONFIRMED"`) thì nói "{self_pronoun} lưu lại lưu ý này để khi {customer_pronoun} ghé, chuyên viên chuẩn bị chu đáo" (TUYỆT ĐỐI CẤM nói quá khứ "{self_pronoun} đã dặn chuyên viên" khi khách chưa chốt lịch!), và hỏi gọn gàng xem khách tiện ghé vào khung giờ nào để chuẩn bị chu đáo.
+               - Khi lịch hẹn đã xác nhận (`POST_BOOKING_CLOSING_ACK` / `booking_funnel_status == "CONFIRMED"`): Cảm ơn ấm áp và hẹn đón tiếp {customer_pronoun} đúng khung giờ đã đặt, CẤM hỏi lại khung giờ đặt lịch.
+
+            III. ĐỊNH DẠNG ĐẦU RA (BẮT BUỘC):
+            - Trả về duy nhất JSON hợp lệ gồm `"reply_bubbles"` (đặt đầu tiên) và `"brain_reflection"` (đặt ngay sau):
+              `{"reply_bubbles": [{"text": "...", "typing_delay_ms": 0}], "brain_reflection": {"observed_fact": "Sự thật mới khách vừa trực tiếp chia sẻ ở lượt này (để rỗng \"\" nếu không có)", "care_note_delta": "Lưu ý chăm sóc dựa trên điều khách thực sự chia sẻ (để rỗng \"\" nếu không có; CẤM tự bịa chỉ định điều trị ngoài quy trình gói)", "working_hypothesis": "Giả thuyết ngắn có căn cứ về băn khoăn hoặc mong muốn hiện tại của khách", "intended_speech_act": "RESPECTED_PAUSE_WITH_SOFT_OPTION | OFFERED_PACKAGE_DETAILS | INVITED_TRIAL_OR_ASKED_TIME | BOOKING_CONFIRMED_ACK | GENERAL_CONSULTATION"}, "should_handoff": false}`.
+            - Tối đa 1–3 bong bóng ngắn gọn, tự nhiên mỗi lượt (15–38 từ/bong bóng), không lặp lại câu chữ của lượt trước. Câu trần thuật kết thúc bằng dấu ".", chỉ câu hỏi thực sự ở cuối lượt mới dùng dấu "?".
             """;
+
+    public static final String SPEECH_ACT_RESPECTED_PAUSE = "RESPECTED_PAUSE_WITH_SOFT_OPTION";
+    public static final String SPEECH_ACT_OFFERED_DETAILS = "OFFERED_PACKAGE_DETAILS";
+    public static final String SPEECH_ACT_INVITED_TRIAL_OR_TIME = "INVITED_TRIAL_OR_ASKED_TIME";
+    public static final String SPEECH_ACT_BOOKING_CONFIRMED = "BOOKING_CONFIRMED_ACK";
+    public static final String SPEECH_ACT_GENERAL_CONSULTATION = "GENERAL_CONSULTATION";
 
     private static final Pattern CHALLENGE_ASSUMPTION_PATTERN = Pattern.compile(
             "(?isU).*\\b(sao\\s+(?:em\\s+|bạn\\s+|shop\\s+|mày\\s+)?biết|biết\\s+hay\\s+(?:vậy|thế|nhỉ)|"
@@ -7547,7 +7706,17 @@ public class FanpageBotService {
     );
 
     private static final Pattern HESITATION_OR_DEFERRAL_CLEAN_PATTERN = Pattern.compile(
-            "(?isU).*\\b(để\\s+(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+)?(?:xem|tính|nghĩ|cân\\s+nhắc|hỏi|bàn)(?:\\s+lại|\\s+thêm)?(?:\\s+đã|\\s+nhé|\\s+nha)?|chưa\\s+biết(?:\\s+nữa|\\s+được|\\s+ạ)?|từ\\s+từ\\s+đã|để\\s+sau|khi\\s+khác|hôm\\s+khác)\\b.*"
+            "(?isU).*\\b("
+            + "để\\s+(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|hỏi|bàn|tham\\s+khảo)(?:\\s+lại|\\s+thêm|\\s+trước)?(?:\\s+đã|\\s+nhé|\\s+nha|\\s+ạ)?|"
+            + "(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|tham\\s+khảo)(?:\\s+lại|\\s+thêm)?\\s+(?:đã|trước\\s+đã|thêm\\s+đã)(?:\\s+nhé|\\s+nha|\\s+ạ|\\s+em)?|"
+            + "(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+)?(?:nghĩ|suy\\s+nghĩ|cân\\s+nhắc|tham\\s+khảo)\\s+thêm(?:\\s+đã|\\s+chút|\\s+nhé|\\s+nha|\\s+ạ|\\s+em)?|"
+            + "chưa\\s+quyết(?:\\s+định)?(?:\\s+được|\\s+đã|\\s+nhé|\\s+ạ)?|"
+            + "chưa\\s+biết(?:\\s+nữa|\\s+được|\\s+ạ)?|từ\\s+từ(?:\\s+đã|\\s+nhé|\\s+ạ)?|để\\s+sau|để\\s+tối|đang\\s+bận|bận\\s+chút|bận\\s+rồi|khi\\s+khác|hôm\\s+khác|lúc\\s+khác"
+            + ")\\b.*"
+    );
+
+    private static final Pattern PURE_BUSY_OR_STOP_DEFERRAL_PATTERN = Pattern.compile(
+            "(?isU).*\\b(đang\\s+bận|bận\\s+chút|bận\\s+rồi|bận\\s+việc|để\\s+tối(?:\\s+xem|\\s+nhắn|\\s+chị|\\s+anh|\\s+mình)?|thôi\\s+để|(?:để\\s+)?hôm\\s+khác|(?:để\\s+)?khi\\s+khác|(?:để\\s+)?lúc\\s+khác|để\\s+sau\\s+nhé)\\b.*"
     );
 
     private static final Pattern CLEAN_PRICE_OBJECTION_EXTRA_PATTERN = Pattern.compile(
@@ -7555,7 +7724,7 @@ public class FanpageBotService {
     );
 
     private static final Pattern EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN = Pattern.compile(
-            "(?isU).*\\b(gói\\s+(?:nào\\s+)?(?:rẻ|tiết\\s+kiệm|thấp|nhẹ\\s+tiền|mềm)\\s+hơn|có\\s+gói\\s+(?:nào\\s+)?(?:rẻ|tiết\\s+kiệm|mềm|thấp)|ngân\\s+sách|(?:chỉ\\s+có|tầm|khoảng|dưới)\\s+\\d{2,3}\\s*k|gói\\s+[12]\\d{2}\\s*k)\\b.*"
+            "(?isU).*\\b(gói\\s+(?:nào\\s+)?(?:rẻ|tiết\\s+kiệm|thấp|nhẹ\\s+tiền|mềm)\\s+hơn|có\\s+gói\\s+(?:nào\\s+)?(?:rẻ|tiết\\s+kiệm|mềm|thấp)|ngân\\s+sách|(?:chỉ\\s+có|tầm|khoảng|dưới)\\s+\\d{2,3}\\s*k|(?:có|tìm|xin|tư\\s+vấn)\\s+gói\\s+(?:nào\\s+)?(?:tầm\\s+|khoảng\\s+|dưới\\s+)?[12]\\d{2}\\s*k)\\b.*"
     );
 
     private static final Pattern POSITIVE_TRIAL_INTEREST_CLEAN_PATTERN = Pattern.compile(
@@ -7614,6 +7783,7 @@ public class FanpageBotService {
 
         // Cổng BOT_MUTED (khi đã opt-out hoặc nhân viên đã tiếp nhận)
         if (safePrior.optedOut() || safePrior.humanTakeover()) {
+            PROVENANCE_V38_LOGGED.set(true);
             return new FanpageBotResponse(
                     "",
                     List.of(),
@@ -7682,6 +7852,7 @@ public class FanpageBotService {
                         incomingHistorySize
                 );
                 List<Integer> introDelays = introBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
+                PROVENANCE_V38_LOGGED.set(true);
                 return new FanpageBotResponse(
                         introText,
                         introBubbles,
@@ -7705,6 +7876,16 @@ public class FanpageBotService {
         // =========================================================================
         List<FanpageBotRequest.ConversationTurn> safeHistory = request.history() != null ? request.history() : List.of();
         String prevBotTurnText = resolveImmediatelyPrecedingBotText(safeHistory, safePrior.lastAssistantMessage());
+        String recalledSpeechAct = (agentBrainService != null)
+                ? agentBrainService.getRecalledActualSentSpeechAct(pageId, request.senderId())
+                : "";
+        String effectivePrecedingSpeechAct = inferPrecedingBotSpeechAct(
+                customerInsight,
+                prevBotTurnText,
+                safeHistory,
+                safePrior.bookingStatus(),
+                recalledSpeechAct
+        );
 
         boolean isMismatch = SentimentIntentLayer.isEntityMismatchCorrection(mergedMessage)
                 || "ENTITY_MISMATCH_CORRECTION".equals(safeConv.lastIntent());
@@ -7756,29 +7937,63 @@ public class FanpageBotService {
                 ? null
                 : (safeConv.heldPrice() != null ? safeConv.heldPrice() : safeConv.lastQuotedPrice());
 
-        boolean isDetailOrUnitQuestion = SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv)
+        boolean isBareAck = !isMetaOrChallenge
+                && !hasPriceObjectionKeyword
+                && !isHesitation
+                && isBareAcknowledgmentMessage(mergedMessage);
+        boolean hasProactiveBookingInfo = !isMetaOrChallenge
+                && !hasPriceObjectionKeyword
+                && !isHesitation
+                && hasProactiveBookingOrPackageSelectionInMessage(mergedMessage);
+        boolean isBookingAlreadyConfirmed = "CONFIRMED".equalsIgnoreCase(safeConv.bookingStatus())
+                || "CONFIRMED".equalsIgnoreCase(safePrior.bookingStatus())
+                || SPEECH_ACT_BOOKING_CONFIRMED.equalsIgnoreCase(effectivePrecedingSpeechAct);
+        boolean isPostBookingClosingAck = isBareAck && isBookingAlreadyConfirmed;
+        boolean isPoliteClosingAck = isBareAck
+                && !isPostBookingClosingAck
+                && (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingSpeechAct)
+                    || wasPriorCustomerTurnHesitation(safeHistory)
+                    || isPauseOrDeferralBotReply(prevBotTurnText));
+        boolean isAckForOfferedDetails = isBareAck
+                && !isPostBookingClosingAck
+                && !isPoliteClosingAck
+                && SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingSpeechAct);
+
+        boolean isDetailOrUnitQuestion = isAckForOfferedDetails
+                || SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv)
                 || (mergedMessage != null && mergedMessage.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(?:1|một)\\s+buổi\\s+(?:à|hả|phải\\s+không|đúng\\s+không|hay\\s+sao)\\b.*"));
 
         boolean isPositiveTrialInterest = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
                 && !isHesitation
+                && !isPoliteClosingAck
+                && !isPostBookingClosingAck
                 && !isDetailOrUnitQuestion
-                && isPositiveInterestForTrialInvite(mergedMessage);
+                && (isPositiveInterestForTrialInvite(mergedMessage)
+                    || (isBareAck && SPEECH_ACT_INVITED_TRIAL_OR_TIME.equalsIgnoreCase(effectivePrecedingSpeechAct)));
         boolean isAckOrAcceptNow = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
                 && !isHesitation
+                && !isPoliteClosingAck
+                && !isPostBookingClosingAck
                 && !isDetailOrUnitQuestion
                 && (isPositiveTrialInterest
+                    || hasProactiveBookingInfo
                     || SentimentIntentLayer.isTrialAcceptanceMessage(mergedMessage)
                     || ((safeConv.packageRecommended() || safeConv.priceDiscussed())
                         && PrimaryActionRouter.isAcknowledgementMessage(mergedMessage)));
+        boolean priorTurnWasPause = SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingSpeechAct)
+                || wasPriorCustomerTurnHesitation(safeHistory);
         boolean packageInterestAccepted = !hasPriceObjectionKeyword
                 && !isHesitation
-                && (safeConv.packageInterestAccepted()
-                    || isAckOrAcceptNow
-                    || "COLLECTING_INFO".equals(safePrior.bookingStatus())
-                    || "COLLECTING_VISIT_TIME".equals(safePrior.bookingStatus()));
-        String bookingFunnelStatus = ("CONFIRMED".equals(safeConv.bookingStatus()) || "CONFIRMED".equals(safePrior.bookingStatus()))
+                && !isPoliteClosingAck
+                && !isPostBookingClosingAck
+                && !isDetailOrUnitQuestion
+                && (isAckOrAcceptNow
+                    || (!priorTurnWasPause && (safeConv.packageInterestAccepted()
+                        || "COLLECTING_INFO".equals(safePrior.bookingStatus())
+                        || "COLLECTING_VISIT_TIME".equals(safePrior.bookingStatus()))));
+        String bookingFunnelStatus = isBookingAlreadyConfirmed
                 ? "CONFIRMED"
                 : (packageInterestAccepted ? "COLLECTING_VISIT_TIME" : "NONE");
 
@@ -7794,11 +8009,14 @@ public class FanpageBotService {
                 packageInterestAccepted,
                 knownSymptoms,
                 knownBodyAreas,
-                statedContextOrTiming
+                statedContextOrTiming,
+                effectivePrecedingSpeechAct,
+                bookingFunnelStatus,
+                safeHistory
         );
 
         // =========================================================================
-        // BƯỚC 2: PHÂN TẦNG <SCOPE_FILTERED_CATALOG> ĐA NGÀNH NGHỀ (TIERED & SCOPE-GROUNDED)
+        // BƯỚC 2: PHÂN TẦNG <SCOPE_FILTERED_CATALOG> & HỢP NHẤT FUNNEL STAGE DUY NHẤT
         // =========================================================================
         List<String> domainKeywords = pagePersona != null && pagePersona.resolvedConfig() != null
                 ? pagePersona.resolvedConfig().resolvedScopeTaxonomy()
@@ -7817,7 +8035,20 @@ public class FanpageBotService {
                 safeConv.rejectedPackages(),
                 isMismatch
         );
-        boolean holdSinglePackageFirstObjection = priceObjectionCount == 1 && !isExplicitDownsell;
+
+        String cleanStage = resolveCleanFunnelStage(
+                currentTurnSignals,
+                mergedMessage,
+                priceObjectionCount,
+                packageInterestAccepted,
+                tieredCatalog,
+                safeHistory
+        );
+        boolean isPriceContextHesitationTurn = "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(cleanStage);
+        boolean isPureDeferralOrBusyTurn = "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage);
+        boolean holdSinglePackageFirstObjection = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
+        boolean isDownsellOrRepeatObjectionStage = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(cleanStage);
+
         List<PackageCatalogService.PackageSummary> scopeFilteredCatalog = holdSinglePackageFirstObjection
                 ? tieredCatalog.primaryRecommendations()
                 : tieredCatalog.allAllowedPackages();
@@ -7829,10 +8060,14 @@ public class FanpageBotService {
         String heldPackageDisplay = resolveHeldPackageDisplay(rawHeldPackage, rawHeldDuration, rawHeldPrice, allCatalog);
         String heldPriceDisplay = resolveHeldPriceDisplay(rawHeldPrice, rawHeldPackage, allCatalog);
 
-        // Khi khách chê đắt lần 2 (hoặc xin gói rẻ hơn) và có gói Nhóm 2, hoặc ở lượt đồng thuận ngay sau khi đã hạ bậc sang Nhóm 2:
-        // cập nhật ngay heldPackage thành gói Nhóm 2 để khóa chặt vào phương án tiết kiệm.
+        boolean customerProactivelyPickedDownsell = packageInterestAccepted
+                && tieredCatalog.economicalAlternatives() != null
+                && !tieredCatalog.economicalAlternatives().isEmpty()
+                && (customerExplicitlyAskedForEconomicalGroup(mergedMessage, tieredCatalog.economicalAlternatives())
+                    || hasPackagePriceMentionedInText(mergedMessage, tieredCatalog.economicalAlternatives()));
         if (!isMetaOrChallenge
-                && (priceObjectionCount >= 2 || isExplicitDownsell)
+                && !isPoliteClosingAck
+                && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || customerProactivelyPickedDownsell)
                 && tieredCatalog.economicalAlternatives() != null
                 && !tieredCatalog.economicalAlternatives().isEmpty()) {
             PackageCatalogService.PackageSummary downsellPkg = tieredCatalog.economicalAlternatives().get(0);
@@ -7842,11 +8077,35 @@ public class FanpageBotService {
         boolean heldPkgIsNull = (rawHeldPackage == null || rawHeldPackage.isBlank())
                 && ("null".equalsIgnoreCase(heldPackageDisplay) || heldPackageDisplay == null || heldPackageDisplay.isBlank());
         PackageCatalogService.PackageSummary activeTurnPkg = (!isMetaOrChallenge
-                && (priceObjectionCount >= 2 || isExplicitDownsell)
+                && !isPoliteClosingAck
+                && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
                 && tieredCatalog.economicalAlternatives() != null
                 && !tieredCatalog.economicalAlternatives().isEmpty())
                 ? tieredCatalog.economicalAlternatives().get(0)
                 : findHeldOrTopPrimaryPackage(tieredCatalog, heldPackageDisplay, heldPriceDisplay);
+
+        // Chỉ gọi enrichCustomerInsight nếu chưa được làm giàu ở bước trước (tránh gọi lặp 2 lần)
+        CustomerInsightDto enrichedTurnInsight = customerInsight;
+        if (agentBrainService != null && (enrichedTurnInsight == null || enrichedTurnInsight.careNotes() == null)) {
+            enrichedTurnInsight = agentBrainService.enrichCustomerInsight(pageId, request.senderId(), enrichedTurnInsight, null);
+        }
+
+        // Đồng bộ danh sách activeSkills theo đúng quyết định cuối cùng của lượt (cleanStage) & chuẩn hóa tên hiển thị trên UI
+        List<AgentSkillDto> alignedActiveSkills = alignCleanAgentActiveSkills(
+                activeSkills,
+                candidateSkills,
+                cleanStage,
+                isHesitation || isPoliteClosingAck || isPriceContextHesitationTurn || isPureDeferralOrBusyTurn,
+                isPostBookingClosingAck,
+                isDetailOrUnitQuestion && !packageInterestAccepted
+        );
+        if (agentSkillService != null && alignedActiveSkills != null && !alignedActiveSkills.isEmpty()) {
+            try {
+                agentSkillService.recordSkillsApplied(alignedActiveSkills);
+            } catch (Exception e) {
+                log.warn("Non-fatal: failed to record clean-agent skill telemetry: {}", e.getMessage());
+            }
+        }
 
         // =========================================================================
         // BƯỚC 3: DỰNG PROMPT CÓ TÁCH SYSTEM/USER & GỌI LLM VỚI THINKING MODE THÔNG MINH
@@ -7871,8 +8130,8 @@ public class FanpageBotService {
                 fused != null ? fused : List.of(),
                 safeHistory,
                 mergedMessage,
-                customerInsight,
-                activeSkills,
+                enrichedTurnInsight,
+                alignedActiveSkills,
                 safeConv.visitTime() != null && !safeConv.visitTime().isBlank()
                         ? Map.of("visit_time", safeConv.visitTime().strip())
                         : Map.of()
@@ -7882,7 +8141,8 @@ public class FanpageBotService {
                 isChallengeAssumption,
                 isStyleOrRepetitionComplaint,
                 isMismatch,
-                hasPriceObjectionKeyword,
+                hasPriceObjectionKeyword || isPriceContextHesitationTurn,
+                isPureDeferralOrBusyTurn || isPostBookingClosingAck,
                 conditionClarified,
                 packageInterestAccepted,
                 isDetailOrUnitQuestion,
@@ -7890,6 +8150,7 @@ public class FanpageBotService {
         );
         ReasoningBudget cleanBudget = ReasoningBudget.forThinkingMode(selectedThinkingMode);
         String rawReply = null;
+        long llmStartNs = System.nanoTime();
         try {
             rawReply = llmClient.complete(prompt, cleanBudget);
             if (rawReply == null || rawReply.isBlank()) {
@@ -7913,6 +8174,7 @@ public class FanpageBotService {
                 log.warn("[CleanAgentMode] JSON retry exception: {}", e.getMessage());
             }
         }
+        long llmElapsedMs = Math.max(0L, (System.nanoTime() - llmStartNs) / 1_000_000L);
 
         List<FanpageBotResponse.ReplyBubble> candidateBubbles = extractCleanBubblesFromOutput(structured, sanitizedReply, minDelayMs);
 
@@ -7926,15 +8188,19 @@ public class FanpageBotService {
                         scopeFilteredCatalog,
                         excludedCatalog,
                         priceObjectionCount,
-                        isExplicitDownsell,
+                        isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
                         activeTurnPkg,
-                        heldPkgIsNull
+                        heldPkgIsNull,
+                        bookingFunnelStatus
                 )
         );
         if (detectCleanCrossTurnRepetition(candidateBubbles, prevBotTurnText, safeHistory)) {
             allViolations.add("CROSS_TURN_REPETITION");
         }
 
+        boolean repairApplied = false;
+        boolean usedSafeHandoffFallback = false;
+        List<String> telemetryErrors = new ArrayList<>();
         if (!allViolations.isEmpty()) {
             log.warn("[CleanAgentMode] Holistic Referee detected violations: {} -> regenerating full turn", allViolations);
             String repairHintPrompt = buildCleanRepairPrompt(prompt, allViolations, selfPronoun, safeHonorific, activeTurnPkg);
@@ -7949,29 +8215,67 @@ public class FanpageBotService {
                         candidateBubbles = repairedBubbles;
                         structured = repairedStructured;
                         rawReply = repairedRaw;
+                        repairApplied = true;
                     }
                 }
             } catch (Exception e) {
                 log.warn("[CleanAgentMode] Holistic Referee regeneration exception: {}", e.getMessage());
             }
+            List<String> postRepairViolations = checkCleanCatalogGrounding(
+                    candidateBubbles,
+                    allCatalog,
+                    scopeFilteredCatalog,
+                    excludedCatalog,
+                    priceObjectionCount,
+                    isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
+                    activeTurnPkg,
+                    heldPkgIsNull,
+                    bookingFunnelStatus
+            );
+            boolean stillHasUngroundedPrice = postRepairViolations.stream()
+                    .anyMatch(v -> v != null && v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:"));
+            if (stillHasUngroundedPrice) {
+                candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(SAFE_HANDOFF_BUBBLE_TEXT, 0));
+                usedSafeHandoffFallback = true;
+                telemetryErrors.add("UNGROUNDED_CATALOG_PRICE");
+            }
         }
 
+        // Tách tự nhiên câu hỏi mời thử độc lập ở cuối trong STAGE_1 / STAGE_2 (tối đa 3 bong bóng, không tách máy móc)
+        // hoặc tách lời chúc tạm biệt ở cuối thành bong bóng thứ 2 có kiểm soát trong STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE
+        List<FanpageBotResponse.ReplyBubble> splitReadyBubbles = usedSafeHandoffFallback
+                ? candidateBubbles
+                : splitClosingWishBubbleIfApplicable(
+                        splitNaturalTrialInviteBubbleIfApplicable(
+                                candidateBubbles,
+                                cleanStage,
+                                minDelayMs
+                        ),
+                        cleanStage,
+                        minDelayMs
+                );
+
         // Chuẩn hóa an toàn tại chỗ và dấu câu
-        List<FanpageBotResponse.ReplyBubble> finalBubbles = new ArrayList<>(candidateBubbles.size());
-        for (int i = 0; i < candidateBubbles.size(); i++) {
-            FanpageBotResponse.ReplyBubble b = candidateBubbles.get(i);
+        List<FanpageBotResponse.ReplyBubble> finalBubbles = new ArrayList<>(splitReadyBubbles.size());
+        for (int i = 0; i < splitReadyBubbles.size(); i++) {
+            FanpageBotResponse.ReplyBubble b = splitReadyBubbles.get(i);
             if (b == null || b.text() == null || b.text().isBlank()) {
                 continue;
             }
-            String normText = sanitizeMinorCleanAgentWordingInPlace(
-                    b.text().strip(),
-                    selfPronoun,
-                    safeHonorific,
-                    activeTurnPkg,
-                    heldPkgIsNull
-            );
-            normText = com.docmind.guardrail.ReplyContractValidator.normalizeDeclarativeQuestionMarks(normText);
-            normText = BubbleCapHook.capitalizeFirstLetter(normText);
+            String normText = usedSafeHandoffFallback
+                    ? b.text().strip()
+                    : sanitizeMinorCleanAgentWordingInPlace(
+                            b.text().strip(),
+                            selfPronoun,
+                            safeHonorific,
+                            activeTurnPkg,
+                            heldPkgIsNull,
+                            bookingFunnelStatus
+                    );
+            if (!usedSafeHandoffFallback) {
+                normText = com.docmind.guardrail.ReplyContractValidator.normalizeDeclarativeQuestionMarks(normText);
+                normText = BubbleCapHook.capitalizeFirstLetter(normText);
+            }
             int delay = (i == 0)
                     ? 0
                     : (!finalBubbles.isEmpty() && hasQuotedPriceInText(finalBubbles.get(0).text()) ? minDelayMs : 2000);
@@ -7984,18 +8288,19 @@ public class FanpageBotService {
                     selfPronoun,
                     safeHonorific,
                     activeTurnPkg,
-                    heldPkgIsNull
+                    heldPkgIsNull,
+                    bookingFunnelStatus
             );
             fallbackText = com.docmind.guardrail.ReplyContractValidator.normalizeDeclarativeQuestionMarks(fallbackText);
             fallbackText = BubbleCapHook.capitalizeFirstLetter(fallbackText);
             finalBubbles.add(new FanpageBotResponse.ReplyBubble(fallbackText, 0));
         }
 
-        boolean shouldHandoff = structured != null && Boolean.TRUE.equals(structured.shouldHandoff());
+        boolean shouldHandoff = usedSafeHandoffFallback || (structured != null && Boolean.TRUE.equals(structured.shouldHandoff()));
         String combinedReplyText = String.join("\n\n", finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
         boolean replyHasPrice = hasQuotedPriceInText(combinedReplyText);
 
-        // Lưu SentBubbleLedger và ConversationState.updateAfterSend
+        // Xác nhận sau gửi (Post-Send Commit): Chỉ commit tiến độ đầu ra và trí nhớ khi finalBubbles hợp lệ sẵn sàng gửi
         PrimaryActionRouter.RoutingDecision stateSyncDecision = buildCleanStateSyncDecision(
                 isMismatch,
                 isChallengeAssumption || isStyleOrRepetitionComplaint,
@@ -8003,6 +8308,7 @@ public class FanpageBotService {
                 hasPriceObjectionKeyword,
                 priceObjectionCount,
                 isAckOrAcceptNow || packageInterestAccepted,
+                isHesitation || isPoliteClosingAck,
                 conditionClarified,
                 replyHasPrice,
                 shouldHandoff
@@ -8010,6 +8316,7 @@ public class FanpageBotService {
         String ledgerKey = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
         String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, mergedMessage);
         SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, mergedMessage);
+        ConversationState stateAfterTurn = safeConv;
         if (!finalBubbles.isEmpty()) {
             SentBubbleLedger.recordAssistantTurn(
                     ledgerKey,
@@ -8018,18 +8325,54 @@ public class FanpageBotService {
                     SentBubbleLedger.DeliveryStatus.DELIVERED,
                     List.of()
             );
+            stateAfterTurn = ConversationState.updateAfterSend(
+                    pageId,
+                    request.senderId(),
+                    request.conversationId(),
+                    safeConv,
+                    mergedMessage,
+                    stateSyncDecision,
+                    finalBubbles,
+                    shouldHandoff,
+                    incomingHistorySize
+            );
         }
-        ConversationState stateAfterTurn = ConversationState.updateAfterSend(
-                pageId,
-                request.senderId(),
-                request.conversationId(),
-                safeConv,
-                mergedMessage,
-                stateSyncDecision,
+
+        BrainReflection rawReflection = structured != null && structured.brainReflection() != null
+                ? structured.brainReflection()
+                : BrainReflection.empty();
+        String validatedObservedFact = validateCleanCareNoteDelta(rawReflection.observedFact(), excludedCatalog, activeTurnPkg);
+        String validatedCareNoteDelta = validateCleanCareNoteDelta(rawReflection.careNoteDelta(), excludedCatalog, activeTurnPkg);
+        String validatedWorkingHypothesis = validateCleanCareNoteDelta(rawReflection.workingHypothesis(), excludedCatalog, null);
+        String actualSentSpeechAct = resolveActualSentSpeechAct(
+                cleanStage,
                 finalBubbles,
-                shouldHandoff,
-                incomingHistorySize
+                bookingFunnelStatus,
+                rawReflection.intendedSpeechAct()
         );
+
+        if (agentBrainService != null && !finalBubbles.isEmpty()) {
+            try {
+                agentBrainService.retainTurnWithReflection(
+                        pageId,
+                        request.senderId(),
+                        request.customerName(),
+                        mergedMessage,
+                        combinedReplyText,
+                        stateAfterTurn != null && stateAfterTurn.customerCareNotes() != null
+                                ? stateAfterTurn.customerCareNotes()
+                                : List.of(),
+                        validatedObservedFact,
+                        validatedCareNoteDelta,
+                        validatedWorkingHypothesis,
+                        actualSentSpeechAct,
+                        knownBodyAreas
+                );
+                enrichedTurnInsight = agentBrainService.enrichCustomerInsight(pageId, request.senderId(), enrichedTurnInsight, null);
+            } catch (Exception e) {
+                log.debug("[CleanAgentMode] Non-fatal retainTurnWithReflection exception: {}", e.getMessage());
+            }
+        }
 
         String resolvedStage = shouldHandoff
                 ? "HUMAN_HANDOFF"
@@ -8040,9 +8383,53 @@ public class FanpageBotService {
                         : salesStage.code()));
         List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
         long totalTurnMs = Math.max(1L, (System.nanoTime() - turnStartNs) / 1_000_000L);
-        log.info("[CleanAgentMode] page_id={} sender_id={} signals={} thinkingMode={} priceObjectionCount={} conditionClarified={} heldPkg={} primaryCatalog={} downsellCatalog={} bubbles={} totalTurnMs={} finalBubbles={}",
+        final String bubbleSourceTag = usedSafeHandoffFallback ? "SAFE_HANDOFF_FALLBACK" : "CLEAN_AGENT_LLM";
+        this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
+                stateSyncDecision.effectiveResponseAction(),
+                selectedThinkingMode,
+                stateSyncDecision.detectedIntent(),
+                List.of(),
+                List.of(),
+                !usedSafeHandoffFallback,
+                usedSafeHandoffFallback ? "UNGROUNDED_CATALOG_PRICE" : null,
+                retrievalMs,
+                llmElapsedMs,
+                0L,
+                totalTurnMs,
+                totalTurnMs,
+                cleanStage,
+                false,
+                cleanBudget.maxTokens(),
+                prompt.length(),
+                0L,
+                0L,
+                10_000,
+                0L,
+                finalBubbles.size(),
+                usedSafeHandoffFallback,
+                0L,
+                0L,
+                0L,
+                0L,
+                0,
+                llmElapsedMs,
+                usedSafeHandoffFallback,
+                usedSafeHandoffFallback ? "UNGROUNDED_CATALOG_PRICE" : null,
+                bubbleSourceTag,
+                repairApplied,
+                repairApplied ? 1 : 0,
+                usedSafeHandoffFallback ? "BLOCKED" : "PASS",
+                List.copyOf(telemetryErrors),
+                "clean_agent",
+                llmClient != null ? llmClient.name() : "none",
+                "chat",
+                finalBubbles.stream().map(b -> bubbleSourceTag).toList()
+        );
+        ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
+        log.info("[CleanAgentMode] page_id={} sender_id={} stage={} signals={} thinkingMode={} priceObjectionCount={} conditionClarified={} heldPkg={} primaryCatalog={} downsellCatalog={} bubbles={} careNoteDeltaPresent={} actualSentSpeechAct={} totalTurnMs={} finalBubbles={}",
                 pageId,
                 request.senderId(),
+                cleanStage,
                 currentTurnSignals,
                 selectedThinkingMode,
                 priceObjectionCount,
@@ -8051,26 +8438,12 @@ public class FanpageBotService {
                 tieredCatalog.primaryRecommendations().size(),
                 tieredCatalog.economicalAlternatives().size(),
                 finalBubbles.size(),
+                !validatedCareNoteDelta.isEmpty(),
+                actualSentSpeechAct,
                 totalTurnMs,
                 finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
 
-        if (agentBrainService != null) {
-            try {
-                agentBrainService.retainTurnAsync(
-                        pageId,
-                        request.senderId(),
-                        request.customerName(),
-                        mergedMessage,
-                        combinedReplyText,
-                        stateAfterTurn != null && stateAfterTurn.customerCareNotes() != null
-                                ? stateAfterTurn.customerCareNotes()
-                                : List.of()
-                );
-            } catch (Exception e) {
-                log.debug("[CleanAgentMode] Non-fatal retainTurnAsync exception: {}", e.getMessage());
-            }
-        }
-
+        PROVENANCE_V38_LOGGED.set(true);
         return new FanpageBotResponse(
                 combinedReplyText,
                 finalBubbles,
@@ -8082,10 +8455,61 @@ public class FanpageBotService {
                 shouldHandoff && structured != null ? structured.handoffReason() : null,
                 extractedLead,
                 appliedRules != null ? appliedRules : List.of(),
-                customerInsight,
-                activeSkills != null ? activeSkills : List.of(),
+                enrichedTurnInsight,
+                alignedActiveSkills != null ? alignedActiveSkills : List.of(),
                 List.of("CLEAN_AGENT_MODE")
         );
+    }
+
+    /**
+     * Xác thực {@code care_note_delta} / {@code observed_fact} từ {@code brain_reflection}:
+     * Loại bỏ nếu chứa cam kết chữa khỏi bệnh lý y khoa lâm sàng hoặc tên gói/tiện ích bị loại trừ ({@code excludedCatalog}).
+     */
+    public static String validateCleanCareNoteDelta(
+            String candidateNote,
+            List<PackageCatalogService.PackageSummary> excludedCatalog
+    ) {
+        return validateCleanCareNoteDelta(candidateNote, excludedCatalog, null);
+    }
+
+    public static String validateCleanCareNoteDelta(
+            String candidateNote,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            PackageCatalogService.PackageSummary activePackage
+    ) {
+        if (candidateNote == null || candidateNote.isBlank()) {
+            return "";
+        }
+        String trimmed = candidateNote.strip();
+        if (FORBIDDEN_MEDICAL_CLAIM_CLEAN_PATTERN.matcher(trimmed).find()) {
+            return "";
+        }
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (excludedCatalog != null) {
+            for (PackageCatalogService.PackageSummary ex : excludedCatalog) {
+                if (ex == null) continue;
+                if (ex.displayName() != null && ex.displayName().strip().length() >= 5
+                        && lower.contains(ex.displayName().strip().toLowerCase(Locale.ROOT))) {
+                    return "";
+                }
+                if (ex.code() != null && !ex.code().isBlank()
+                        && Pattern.compile("(?iU)\\b" + Pattern.quote(ex.code().strip()) + "\\b").matcher(trimmed).find()) {
+                    return "";
+                }
+            }
+        }
+        if (activePackage != null) {
+            String spaceLower = activePackage.customerFacingSpaceNote() != null
+                    ? activePackage.customerFacingSpaceNote().toLowerCase(Locale.ROOT)
+                    : "";
+            boolean allowsPrivateOrVip = spaceLower.contains("phòng riêng")
+                    || spaceLower.contains("phòng vip")
+                    || spaceLower.contains("vip");
+            if (!allowsPrivateOrVip && Pattern.compile("(?iU)\\bphòng\\s+(?:vip|riêng)\\b").matcher(trimmed).find()) {
+                return "";
+            }
+        }
+        return trimmed;
     }
 
     public static boolean isChallengeOrQuestionBotAssumption(String message) {
@@ -8103,6 +8527,13 @@ public class FanpageBotService {
         return HESITATION_OR_DEFERRAL_CLEAN_PATTERN.matcher(message.strip()).matches();
     }
 
+    public static boolean isPureBusyOrStopDeferralMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return PURE_BUSY_OR_STOP_DEFERRAL_PATTERN.matcher(message.strip()).matches();
+    }
+
     public static boolean isCleanPriceObjectionMessage(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -8114,8 +8545,14 @@ public class FanpageBotService {
         if (message == null || message.isBlank()) {
             return false;
         }
-        return SentimentIntentLayer.isExplicitDownsellRequest(message, convState)
-                || EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(message.strip()).matches();
+        String trimmed = message.strip();
+        if (PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches()
+                && !EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()
+                && !CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()) {
+            return false;
+        }
+        return SentimentIntentLayer.isExplicitDownsellRequest(trimmed, convState)
+                || EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches();
     }
 
     public static boolean isPositiveInterestForTrialInvite(String message) {
@@ -8123,6 +8560,515 @@ public class FanpageBotService {
             return false;
         }
         return POSITIVE_TRIAL_INTEREST_CLEAN_PATTERN.matcher(message.strip()).matches();
+    }
+
+    private static final Pattern BARE_ACKNOWLEDGMENT_CLEAN_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:ok|oke|okay|okie|okela|ừ|ừa|ừm|uk|uki|ukm|uh|uhm|vâng|dạ|cảm\\s+ơn|thanks|thank\\s+you|tks)"
+            + "(?:\\s+(?:em|chị|anh|bạn|shop|mình|nhé|nha|ạ|nhé\\s+em|nha\\s+em|rồi|được\\s+rồi|cảm\\s+ơn|cảm\\s+ơn\\s+em))*\\s*[.!~]*\\s*$"
+    );
+
+    private static final Pattern PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "hôm\\s+nay|ngày\\s+mai|chiều\\s+nay|tối\\s+nay|sáng\\s+mai|chiều\\s+mai|sáng\\s+nay|trưa\\s+nay|lát\\s+nữa|tí\\s+nữa|cuối\\s+tuần|thứ\\s+\\d|chủ\\s+nhật|\\d{1,2}\\s*(?:h|giờ|g\\b)|"
+            + "đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|book\\s+lịch|chốt\\s+(?:gói|lịch)|đăng\\s+ký\\s+(?:gói|lịch|thử)|"
+            + "thử\\s+(?:gói|1\\s+buổi|trước|xem|lần)|trải\\s+nghiệm\\s+(?:thử|gói|1\\s+buổi|trước)|"
+            + "cho\\s+(?:mình|chị|anh|tôi)\\s+(?:thử|đặt|lấy|chốt|đăng\\s+ký|làm\\s+gói)|"
+            + "(?:mình|chị|anh|tôi)\\s+(?:qua|ghé|đến|sang|chọn\\s+gói|lấy\\s+gói)|qua\\s+(?:làm|thử|trải\\s+nghiệm)|"
+            + "(?:ok|oke|okay|ừ|uk|vâng|dạ|vậy)\\b.*\\b(?:\\d{2,3}\\s*k\\b|\\d{2,3}\\s*phút\\b|ns0\\d|ds0\\d|gói\\s+(?:dưỡng\\s+sinh|massage|cơ\\s+bản|chuyên\\s+sâu))"
+            + ")\\b.*"
+    );
+
+    private static final Pattern PAUSE_OR_DEFERRAL_BOT_REPLY_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(khi\\s+nào\\s+(?:tiện|rảnh|thu\\s+xếp\\s+được)(?:\\s+mình|\\s+chị|\\s+anh|\\s+bạn)?\\s+cứ\\s+nhắn|"
+            + "cứ\\s+nhắn\\s+(?:lại\\s+)?(?:cho\\s+)?(?:em|bên\\s+em|shop)(?:\\s+nhé|\\s+nha|\\s+ạ|\\s+bất\\s+cứ\\s+lúc\\s+nào)?|"
+            + "thoải\\s+mái\\s+(?:tham\\s+khảo|cân\\s+nhắc|suy\\s+nghĩ)|"
+            + "thong\\s+thả\\s+(?:tham\\s+khảo|cân\\s+nhắc|suy\\s+nghĩ)|"
+            + "chưa\\s+cần\\s+vội\\s+đặt\\s+lịch|"
+            + "chúc\\s+(?:mình|chị|anh|bạn)\\s+một\\s+ngày)\\b.*"
+    );
+
+    private static final Pattern OFFER_PACKAGE_DETAILS_BOT_REPLY_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(muốn\\s+(?:nghe|xem|tìm\\s+hiểu)\\s+(?:thêm\\s+)?chi\\s+tiết|"
+            + "nghe\\s+chi\\s+tiết\\s+hơn|"
+            + "gửi\\s+chi\\s+tiết\\s+(?:quyền\\s+lợi|quy\\s+trình|gói)|"
+            + "tư\\s+vấn\\s+chi\\s+tiết\\s+hơn\\s+về\\s+gói)\\b.*"
+    );
+
+    private static final Pattern INVITE_TRIAL_OR_ASK_TIME_BOT_REPLY_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(thử\\s+trải\\s+nghiệm|trải\\s+nghiệm\\s+(?:trước|thử)\\s+1\\s+(?:buổi|lần)|"
+            + "khung\\s+giờ\\s+nào|mấy\\s+giờ|giờ\\s+nào\\s+(?:để\\s+em|tiện|ạ|nhỉ)|"
+            + "hôm\\s+nay\\s+(?:hay|hoặc)\\s+ngày\\s+mai|tiện\\s+ghé)\\b.*"
+    );
+
+    public static boolean isBareAcknowledgmentMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (isHesitationOrDeferralMessage(trimmed) || hasProactiveBookingOrPackageSelectionInMessage(trimmed)) {
+            return false;
+        }
+        return BARE_ACKNOWLEDGMENT_CLEAN_PATTERN.matcher(trimmed).matches();
+    }
+
+    public static boolean hasProactiveBookingOrPackageSelectionInMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (isHesitationOrDeferralMessage(trimmed)) {
+            return false;
+        }
+        return PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches();
+    }
+
+    public static boolean isPauseOrDeferralBotReply(String botText) {
+        if (botText == null || botText.isBlank()) {
+            return false;
+        }
+        String trimmed = botText.strip();
+        if (BOOKING_TIME_QUESTION_PHRASE_PATTERN.matcher(trimmed).matches()) {
+            return false;
+        }
+        return PAUSE_OR_DEFERRAL_BOT_REPLY_CLEAN_PATTERN.matcher(trimmed).matches();
+    }
+
+    public static boolean isOfferPackageDetailsBotReply(String botText) {
+        if (botText == null || botText.isBlank() || isPauseOrDeferralBotReply(botText)) {
+            return false;
+        }
+        return OFFER_PACKAGE_DETAILS_BOT_REPLY_CLEAN_PATTERN.matcher(botText.strip()).matches();
+    }
+
+    public static boolean isInviteTrialOrAskTimeBotReply(String botText) {
+        if (botText == null || botText.isBlank() || isPauseOrDeferralBotReply(botText)) {
+            return false;
+        }
+        return INVITE_TRIAL_OR_ASK_TIME_BOT_REPLY_CLEAN_PATTERN.matcher(botText.strip()).matches();
+    }
+
+    public static boolean wasPriorCustomerTurnHesitation(List<FanpageBotRequest.ConversationTurn> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            FanpageBotRequest.ConversationTurn t = history.get(i);
+            if (t == null || t.content() == null || t.content().isBlank()) continue;
+            if (!"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())) {
+                return isHesitationOrDeferralMessage(t.content());
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Xác thực hành động thực tế bot vừa gửi (Java Post-Send Verification) trước khi lưu vào CustomerBrainMemory.
+     * Không tin mù quáng vào {@code intendedSpeechAct} của LLM mà đối chiếu trực tiếp với stage và {@code finalBubbles}.
+     */
+    public static String resolveActualSentSpeechAct(
+            String turnStage,
+            List<FanpageBotResponse.ReplyBubble> finalBubbles,
+            String bookingStatus,
+            String llmIntendedSpeechAct
+    ) {
+        String combinedText = finalBubbles != null
+                ? String.join(" ", finalBubbles.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .map(FanpageBotResponse.ReplyBubble::text)
+                        .filter(java.util.Objects::nonNull)
+                        .toList()).strip()
+                : "";
+        if ("CONFIRMED".equalsIgnoreCase(bookingStatus)
+                && !"STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equalsIgnoreCase(turnStage)
+                && !"STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equalsIgnoreCase(turnStage)) {
+            return SPEECH_ACT_BOOKING_CONFIRMED;
+        }
+        if ("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equalsIgnoreCase(turnStage)
+                || "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equalsIgnoreCase(turnStage)
+                || isPauseOrDeferralBotReply(combinedText)) {
+            return SPEECH_ACT_RESPECTED_PAUSE;
+        }
+        if (isOfferPackageDetailsBotReply(combinedText)) {
+            return SPEECH_ACT_OFFERED_DETAILS;
+        }
+        if (isInviteTrialOrAskTimeBotReply(combinedText)
+                || "STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equalsIgnoreCase(turnStage)) {
+            return SPEECH_ACT_INVITED_TRIAL_OR_TIME;
+        }
+        if (llmIntendedSpeechAct != null && !llmIntendedSpeechAct.isBlank()) {
+            String upper = llmIntendedSpeechAct.strip().toUpperCase(Locale.ROOT);
+            if (Set.of(
+                    SPEECH_ACT_RESPECTED_PAUSE,
+                    SPEECH_ACT_OFFERED_DETAILS,
+                    SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                    SPEECH_ACT_BOOKING_CONFIRMED,
+                    SPEECH_ACT_GENERAL_CONSULTATION
+            ).contains(upper)) {
+                return upper;
+            }
+        }
+        return SPEECH_ACT_GENERAL_CONSULTATION;
+    }
+
+    public static String inferPrecedingBotSpeechAct(
+            CustomerInsightDto customerInsight,
+            String prevBotTurnText,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String bookingStatus
+    ) {
+        return inferPrecedingBotSpeechAct(customerInsight, prevBotTurnText, history, bookingStatus, null);
+    }
+
+    public static String inferPrecedingBotSpeechAct(
+            CustomerInsightDto customerInsight,
+            String prevBotTurnText,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String bookingStatus,
+            String recalledSpeechAct
+    ) {
+        if ("CONFIRMED".equalsIgnoreCase(bookingStatus)) {
+            return SPEECH_ACT_BOOKING_CONFIRMED;
+        }
+        if (customerInsight != null
+                && customerInsight.lastActualSentSpeechAct() != null
+                && !customerInsight.lastActualSentSpeechAct().isBlank()) {
+            return customerInsight.lastActualSentSpeechAct().strip();
+        }
+        if (recalledSpeechAct != null && !recalledSpeechAct.isBlank()) {
+            return recalledSpeechAct.strip();
+        }
+        String botText = (prevBotTurnText != null && !prevBotTurnText.isBlank())
+                ? prevBotTurnText
+                : resolveImmediatelyPrecedingBotText(history, null);
+        if (isPauseOrDeferralBotReply(botText) || wasPriorCustomerTurnHesitation(history)) {
+            return SPEECH_ACT_RESPECTED_PAUSE;
+        }
+        if (isOfferPackageDetailsBotReply(botText)) {
+            return SPEECH_ACT_OFFERED_DETAILS;
+        }
+        if (isInviteTrialOrAskTimeBotReply(botText)) {
+            return SPEECH_ACT_INVITED_TRIAL_OR_TIME;
+        }
+        return "";
+    }
+
+    public static String resolveCleanFunnelStage(
+            List<String> currentTurnSignals,
+            String customerMessage,
+            int priceObjectionCount,
+            boolean packageInterestAccepted,
+            TieredCatalogResult tieredCatalog,
+            List<FanpageBotRequest.ConversationTurn> history
+    ) {
+        List<String> safeSignals = currentTurnSignals != null ? currentTurnSignals : List.of();
+        boolean isMetaCommunicationTurn = (safeSignals.contains("STYLE_OR_REPETITION_FEEDBACK")
+                || safeSignals.contains("CHALLENGE_OR_QUESTION_BOT_ASSUMPTION"))
+                && !safeSignals.contains("ENTITY_MISMATCH_CORRECTION");
+        if (isMetaCommunicationTurn) {
+            return "STAGE_5_META_COMMUNICATION_REPAIR";
+        }
+        if (safeSignals.contains("POST_BOOKING_CLOSING_ACK")) {
+            return "STAGE_4B_POST_BOOKING_CONFIRMED_CLOSING";
+        }
+        if (safeSignals.contains("POLITE_CLOSING_ACKNOWLEDGMENT")) {
+            return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
+        }
+        boolean isServiceDetailQuestionTurn = safeSignals.contains("SERVICE_OR_UNIT_DETAIL_QUESTION")
+                && !safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS")
+                && !safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
+        boolean isExplicitDownsell = isExplicitDownsellOrLowBudgetRequest(customerMessage, null)
+                || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
+        boolean currentTurnHasPriceObjection = !isServiceDetailQuestionTurn
+                && (isExplicitDownsell
+                    || safeSignals.contains("PRICE_OBJECTION_FIRST_TIME")
+                    || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST"));
+        boolean isHesitationTurn = !currentTurnHasPriceObjection
+                && (safeSignals.contains("HESITATION_OR_DEFERRAL") || isHesitationOrDeferralMessage(customerMessage));
+        boolean isPureBusyOrStop = isHesitationTurn && isPureBusyOrStopDeferralMessage(customerMessage);
+        boolean hasEconomicalAlt = tieredCatalog != null
+                && tieredCatalog.economicalAlternatives() != null
+                && !tieredCatalog.economicalAlternatives().isEmpty();
+        boolean downsellAlreadyOfferedInHistory = hasEconomicalAlt
+                && hasPackageMentionedInBotHistory(history, tieredCatalog.economicalAlternatives());
+        if (isHesitationTurn) {
+            if (!isPureBusyOrStop
+                    && priceObjectionCount >= 1
+                    && priceObjectionCount < 2
+                    && !downsellAlreadyOfferedInHistory
+                    && hasEconomicalAlt) {
+                return "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL";
+            }
+            return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
+        }
+        if (isServiceDetailQuestionTurn) {
+            return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+        }
+        boolean isBookingOrPositiveTrialTurn = !currentTurnHasPriceObjection
+                && (packageInterestAccepted
+                    || safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE")
+                    || safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS"));
+        if (isBookingOrPositiveTrialTurn) {
+            return "STAGE_4_POSITIVE_TRIAL_OR_BOOKING";
+        }
+        if (safeSignals.contains("PRICE_OBJECTION_FIRST_TIME") && !isExplicitDownsell) {
+            return "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE";
+        }
+        if (safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST")
+                || isExplicitDownsell
+                || (currentTurnHasPriceObjection && priceObjectionCount >= 2)) {
+            return "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION";
+        }
+        return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+    }
+
+    public static String resolveCleanFunnelStage(
+            boolean isMetaCommunicationTurn,
+            boolean isPureDeferralOrBusyTurn,
+            boolean isPriceContextHesitationTurn,
+            boolean isBookingOrPositiveTrialTurn,
+            boolean isFirstPriceObjectionHoldTurn,
+            boolean isDownsellOrRepeatObjectionTurn
+    ) {
+        if (isMetaCommunicationTurn) {
+            return "STAGE_5_META_COMMUNICATION_REPAIR";
+        }
+        if (isPureDeferralOrBusyTurn) {
+            return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
+        }
+        if (isPriceContextHesitationTurn) {
+            return "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL";
+        }
+        if (isBookingOrPositiveTrialTurn) {
+            return "STAGE_4_POSITIVE_TRIAL_OR_BOOKING";
+        }
+        if (isFirstPriceObjectionHoldTurn) {
+            return "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE";
+        }
+        if (isDownsellOrRepeatObjectionTurn) {
+            return "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION";
+        }
+        return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+    }
+
+    private static boolean hasPackagePriceMentionedInText(
+            String message,
+            List<PackageCatalogService.PackageSummary> packages
+    ) {
+        if (message == null || message.isBlank() || packages == null || packages.isEmpty()) {
+            return false;
+        }
+        Matcher pm = com.docmind.guardrail.ReplyContractValidator.PRICE_PATTERN.matcher(message);
+        while (pm.find()) {
+            java.math.BigDecimal bd = ConversationState.parsePriceToBigDecimal(pm.group());
+            if (bd != null) {
+                long vnd = bd.longValue();
+                for (PackageCatalogService.PackageSummary p : packages) {
+                    if (p != null && p.priceVnd() == vnd) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Chuẩn hóa tên kỹ năng hiển thị trên UI tại một tầng duy nhất:
+     * Loại bỏ tiền tố emoji '🎯' lặp ở đầu chuỗi {@code skill.name()} vì giao diện UI đã tự động render icon '🎯'.
+     */
+    public static AgentSkillDto sanitizeSkillDisplayNameForUi(AgentSkillDto skill) {
+        if (skill == null || skill.name() == null) {
+            return skill;
+        }
+        String cleanedName = skill.name().replaceFirst("^(?:🎯\\s*)+", "").strip();
+        if (cleanedName.equals(skill.name())) {
+            return skill;
+        }
+        return new AgentSkillDto(
+                skill.id(),
+                skill.code(),
+                cleanedName,
+                skill.category(),
+                skill.description(),
+                skill.triggerSignals(),
+                skill.tacticalInstructions(),
+                skill.goodExample(),
+                skill.antiPattern(),
+                skill.priority(),
+                skill.active(),
+                skill.pageId(),
+                skill.appliedCount(),
+                skill.conversionCount(),
+                skill.confidenceScore(),
+                skill.createdAt(),
+                skill.updatedAt(),
+                skill.governanceAction(),
+                skill.governanceMessage(),
+                skill.conflictDetected(),
+                skill.conflictingSkill(),
+                skill.conflictReason(),
+                skill.recommendedAction()
+        );
+    }
+
+    public static boolean isBookingOrClosingSkill(AgentSkillDto skill) {
+        if (skill == null) {
+            return false;
+        }
+        if (skill.category() != null && "CLOSING".equalsIgnoreCase(skill.category().strip())) {
+            return true;
+        }
+        String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
+        if (Set.of(
+                "spa_trial_acceptance_booking",
+                "spa_booking_advance_after_ack",
+                "booking_soft_confirm",
+                "sales_micro_commitment_close",
+                "sales_appointment_hook_close"
+        ).contains(codeLower)
+                || codeLower.contains("booking")
+                || codeLower.contains("closing")) {
+            return true;
+        }
+        String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
+        return nameLower.contains("chốt khung giờ")
+                || nameLower.contains("đặt lịch")
+                || nameLower.contains("giữ lịch")
+                || nameLower.contains("trial acceptance");
+    }
+
+    private static boolean isLukewarmMoodBoostSkill(AgentSkillDto skill) {
+        if (skill == null) {
+            return false;
+        }
+        String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
+        String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
+        return "spa_lukewarm_mood_boost".equals(codeLower)
+                || "lukewarm_mood_boost".equals(codeLower)
+                || nameLower.contains("lukewarm");
+    }
+
+    private static boolean isGracefulExitSkill(AgentSkillDto skill) {
+        if (skill == null) {
+            return false;
+        }
+        String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
+        String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
+        return "spa_graceful_exit_after_rejection".equals(codeLower)
+                || "graceful_exit_after_rejection".equals(codeLower)
+                || "spa_stage3_graceful_exit".equals(codeLower)
+                || nameLower.contains("graceful exit");
+    }
+
+    public static List<AgentSkillDto> alignCleanAgentActiveSkills(
+            List<AgentSkillDto> activeSkills,
+            List<AgentSkillDto> candidateSkills,
+            boolean isHesitationOrPoliteClosing,
+            boolean isPostBookingClosingAck,
+            boolean isPureDetailOrFaqTurn
+    ) {
+        return alignCleanAgentActiveSkills(
+                activeSkills,
+                candidateSkills,
+                null,
+                isHesitationOrPoliteClosing,
+                isPostBookingClosingAck,
+                isPureDetailOrFaqTurn
+        );
+    }
+
+    public static List<AgentSkillDto> alignCleanAgentActiveSkills(
+            List<AgentSkillDto> activeSkills,
+            List<AgentSkillDto> candidateSkills,
+            String finalStage,
+            boolean isHesitationOrPoliteClosing,
+            boolean isPostBookingClosingAck,
+            boolean isPureDetailOrFaqTurn
+    ) {
+        List<AgentSkillDto> current = new ArrayList<>();
+        if (activeSkills != null) {
+            for (AgentSkillDto s : activeSkills) {
+                if (s != null) {
+                    current.add(sanitizeSkillDisplayNameForUi(s));
+                }
+            }
+        }
+        List<AgentSkillDto> sanitizedCandidates = new ArrayList<>();
+        if (candidateSkills != null) {
+            for (AgentSkillDto c : candidateSkills) {
+                if (c != null) {
+                    sanitizedCandidates.add(sanitizeSkillDisplayNameForUi(c));
+                }
+            }
+        }
+
+        boolean isPositiveBookingStage = "STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(finalStage);
+        if (isPositiveBookingStage) {
+            current.removeIf(s -> isGracefulExitSkill(s) || isLukewarmMoodBoostSkill(s));
+            if (current.stream().noneMatch(FanpageBotService::isBookingOrClosingSkill)) {
+                for (AgentSkillDto cand : sanitizedCandidates) {
+                    if (isBookingOrClosingSkill(cand)) {
+                        current.add(0, cand);
+                        break;
+                    }
+                }
+            }
+            if (current.size() > 3) {
+                return new ArrayList<>(current.subList(0, 3));
+            }
+            return current;
+        }
+
+        boolean isFinalHesitationOrPauseStage = (finalStage != null && !finalStage.isBlank())
+                ? ("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(finalStage)
+                    || "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(finalStage))
+                : isHesitationOrPoliteClosing;
+
+        if (!isFinalHesitationOrPauseStage && !isPostBookingClosingAck && !isPureDetailOrFaqTurn) {
+            if (current.size() > 3) {
+                return new ArrayList<>(current.subList(0, 3));
+            }
+            return current;
+        }
+
+        current.removeIf(s -> isBookingOrClosingSkill(s) || isLukewarmMoodBoostSkill(s));
+
+        if (isFinalHesitationOrPauseStage) {
+            for (AgentSkillDto cand : sanitizedCandidates) {
+                if (isGracefulExitSkill(cand)) {
+                    boolean alreadyIn = current.stream().anyMatch(s -> s != null && cand.code() != null && cand.code().equalsIgnoreCase(s.code()));
+                    if (!alreadyIn) {
+                        current.add(0, cand);
+                    }
+                    break;
+                }
+            }
+            if (current.stream().noneMatch(FanpageBotService::isGracefulExitSkill)) {
+                current.add(0, new AgentSkillDto(
+                        null,
+                        "spa_graceful_exit_after_rejection",
+                        "Tôn trọng quyết định cân nhắc & Giữ thiện cảm (Graceful Exit)",
+                        "OBJECTION",
+                        "Tôn trọng quyết định cân nhắc của khách, không thúc ép đặt lịch.",
+                        "xem đã, để suy nghĩ thêm, có gì nhắn sau",
+                        "Tôn trọng nhịp độ của khách, hẹn khi nào tiện nhắn lại.",
+                        "Dạ vâng ạ, em đã lưu lại thông tin gói cho mình rồi ạ.",
+                        "Cố ép chốt khung giờ đặt lịch khi khách xin tạm dừng.",
+                        95,
+                        true,
+                        null,
+                        null,
+                        null
+                ));
+            }
+            // Ở lượt cân nhắc / tạm biệt (STAGE_3B / STAGE_6), chỉ giữ kỹ năng Graceful Exit / xử lý phản đối, lọc bỏ skill chào giá/điều hướng dư thừa
+            current.removeIf(s -> !isGracefulExitSkill(s) && (s.category() == null || !"OBJECTION".equalsIgnoreCase(s.category())));
+        }
+
+        if (current.size() > 3) {
+            return new ArrayList<>(current.subList(0, 3));
+        }
+        return current;
     }
 
     public static List<String> classifyCleanCurrentTurnSignals(
@@ -8139,11 +9085,51 @@ public class FanpageBotService {
             List<String> knownBodyAreas,
             String statedContextOrTiming
     ) {
+        return classifyCleanCurrentTurnSignals(
+                mergedMessage,
+                isChallengeAssumption,
+                isStyleOrRepetitionComplaint,
+                isMismatch,
+                isDetailOrUnitQuestion,
+                hasPriceObjectionKeyword,
+                priceObjectionCount,
+                isAckOrAcceptNow,
+                packageInterestAccepted,
+                knownSymptoms,
+                knownBodyAreas,
+                statedContextOrTiming,
+                null,
+                "NONE",
+                List.of()
+        );
+    }
+
+    public static List<String> classifyCleanCurrentTurnSignals(
+            String mergedMessage,
+            boolean isChallengeAssumption,
+            boolean isStyleOrRepetitionComplaint,
+            boolean isMismatch,
+            boolean isDetailOrUnitQuestion,
+            boolean hasPriceObjectionKeyword,
+            int priceObjectionCount,
+            boolean isAckOrAcceptNow,
+            boolean packageInterestAccepted,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String statedContextOrTiming,
+            String precedingBotSpeechAct,
+            String bookingStatus,
+            List<FanpageBotRequest.ConversationTurn> history
+    ) {
         List<String> signals = new ArrayList<>();
         boolean isHesitation = isHesitationOrDeferralMessage(mergedMessage);
         boolean isExplicitDownsell = isExplicitDownsellOrLowBudgetRequest(mergedMessage, null);
         boolean isPriceObj = hasPriceObjectionKeyword || isCleanPriceObjectionMessage(mergedMessage);
-        boolean isPositiveInterest = !isPriceObj && !isHesitation && isPositiveInterestForTrialInvite(mergedMessage);
+        boolean isBareAck = !isPriceObj && !isHesitation && isBareAcknowledgmentMessage(mergedMessage);
+        boolean hasProactiveBookingInfo = !isPriceObj && !isHesitation && hasProactiveBookingOrPackageSelectionInMessage(mergedMessage);
+        String effectivePrecedingAct = (precedingBotSpeechAct != null && !precedingBotSpeechAct.isBlank())
+                ? precedingBotSpeechAct.strip()
+                : inferPrecedingBotSpeechAct(null, resolveImmediatelyPrecedingBotText(history, null), history, bookingStatus);
 
         if (isMismatch) {
             signals.add("ENTITY_MISMATCH_CORRECTION");
@@ -8163,23 +9149,50 @@ public class FanpageBotService {
         } else if (isHesitation) {
             signals.add("HESITATION_OR_DEFERRAL");
         }
+
+        // Giải mã phản hồi xác nhận ngắn ("Ok", "Ừ", "Vâng") dựa trên hành động vừa gửi ở lượt trước (actualSentSpeechAct)
+        if (!isPriceObj && !isHesitation && !isMetaSignalOnly(signals) && isBareAck) {
+            if ("CONFIRMED".equalsIgnoreCase(bookingStatus)
+                    || SPEECH_ACT_BOOKING_CONFIRMED.equalsIgnoreCase(effectivePrecedingAct)) {
+                signals.add("POST_BOOKING_CLOSING_ACK");
+                return signals;
+            }
+            if (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingAct)
+                    || wasPriorCustomerTurnHesitation(history)) {
+                signals.add("POLITE_CLOSING_ACKNOWLEDGMENT");
+                return signals;
+            }
+            if (SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingAct)) {
+                signals.add("SERVICE_OR_UNIT_DETAIL_QUESTION");
+                return signals;
+            }
+            if (SPEECH_ACT_INVITED_TRIAL_OR_TIME.equalsIgnoreCase(effectivePrecedingAct)) {
+                signals.add("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
+                return signals;
+            }
+        }
+
+        boolean isPositiveInterest = !isPriceObj
+                && !isHesitation
+                && isPositiveInterestForTrialInvite(mergedMessage);
         if (isDetailOrUnitQuestion) {
             signals.add("SERVICE_OR_UNIT_DETAIL_QUESTION");
         }
         if (!isPriceObj && !isHesitation && !isMetaSignalOnly(signals) && !isDetailOrUnitQuestion) {
             if (isPositiveInterest) {
                 signals.add("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
-            } else if (isAckOrAcceptNow || packageInterestAccepted) {
+            } else if (hasProactiveBookingInfo || isAckOrAcceptNow || packageInterestAccepted) {
                 signals.add("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS");
             }
         }
         boolean sharesSymptomOrContextNow = mergedMessage != null
                 && !isPriceObj
                 && !isHesitation
+                && !isBareAck
                 && (!ConversationState.extractAllNeeds(mergedMessage, List.of()).isEmpty()
                     || !ConversationState.extractTargetScopes(mergedMessage, List.of()).isEmpty()
                     || ConversationState.hasConditionTimeOrProgressionSignal(mergedMessage));
-        if (sharesSymptomOrContextNow || (signals.isEmpty() && (!knownSymptoms.isEmpty() || !knownBodyAreas.isEmpty() || !"chưa có".equals(statedContextOrTiming)))) {
+        if (sharesSymptomOrContextNow) {
             signals.add("SHARING_CONDITION_OR_CONTEXT");
         }
         if (signals.isEmpty()) {
@@ -8194,24 +9207,25 @@ public class FanpageBotService {
                 || signals.contains("STYLE_OR_REPETITION_FEEDBACK");
     }
 
-    private static ThinkingMode resolveCleanAgentThinkingMode(
+    public static ThinkingMode resolveCleanAgentThinkingMode(
             boolean isChallengeAssumption,
             boolean isStyleOrRepetitionComplaint,
             boolean isMismatch,
-            boolean hasPriceObjectionKeyword,
+            boolean hasPriceObjectionOrPriceHesitation,
+            boolean isPureDeferralOrBusyTurn,
             boolean conditionClarified,
             boolean packageInterestAccepted,
             boolean isDetailOrUnitQuestion,
             List<String> knownSymptoms
     ) {
-        if (hasPriceObjectionKeyword) {
+        if (isPureDeferralOrBusyTurn || packageInterestAccepted || isDetailOrUnitQuestion) {
+            return ThinkingMode.FAST_NO_THINK;
+        }
+        if (hasPriceObjectionOrPriceHesitation) {
             return ThinkingMode.OBJECTION_REFRAME_THINK;
         }
         if (isChallengeAssumption || isStyleOrRepetitionComplaint || isMismatch) {
             return ThinkingMode.EMOTIONAL_WARM_THINK;
-        }
-        if (packageInterestAccepted || isDetailOrUnitQuestion) {
-            return ThinkingMode.FAST_NO_THINK;
         }
         if (conditionClarified || (knownSymptoms != null && !knownSymptoms.isEmpty())) {
             return ThinkingMode.PRICE_ANCHOR_THINK;
@@ -8379,12 +9393,23 @@ public class FanpageBotService {
             return new TieredCatalogResult(List.of(), List.of(), outExcluded, true);
         }
 
-        // 3. Lọc các gói đạt độ bao phủ phạm vi tối đa đối với nhu cầu của khách; gói lệch vùng hoặc thiếu vùng -> outExcluded
+        // 3. Phân tách gói bao phủ toàn phần (hits == maxDirectHits) và gói bao phủ một phần (0 < hits < maxDirectHits);
+        // chỉ loại vào outExcluded các gói lệch vùng hoàn toàn (hits == 0) hoặc khi khách chỉ bị chuột rút chân không có cổ vai gáy.
+        boolean hasLimbCrampOnlyWithoutNeckShoulder = safeSymptoms.stream()
+                .anyMatch(s -> s != null && s.toLowerCase(Locale.ROOT).contains("chuột rút"))
+                && requestedScopes.stream().noneMatch(sc -> sc.contains("cổ") || sc.contains("vai") || sc.contains("gáy"));
         List<PackageCatalogService.PackageSummary> matchedPackages = new ArrayList<>();
+        List<PackageCatalogService.PackageSummary> partialScopePackages = new ArrayList<>();
         for (PackageCatalogService.PackageSummary pkg : candidates) {
             int hits = directHitsByPkgKey.getOrDefault(pkgUniqueKey(pkg), 0);
-            if (hasSpecificNeed && hits < maxDirectHits) {
+            if (hasSpecificNeed && hits <= 0) {
                 outExcluded.add(pkg);
+            } else if (hasSpecificNeed && hits < maxDirectHits) {
+                if (hasLimbCrampOnlyWithoutNeckShoulder) {
+                    outExcluded.add(pkg);
+                } else {
+                    partialScopePackages.add(pkg);
+                }
             } else {
                 matchedPackages.add(pkg);
             }
@@ -8419,6 +9444,7 @@ public class FanpageBotService {
             primaryGroup.addAll(matchedPackages);
             secondaryCandidates.clear();
         }
+        secondaryCandidates.addAll(partialScopePackages);
 
         // Sắp xếp Nhóm 1: Ưu tiên gói tiêu chuẩn 60 phút dễ tiếp cận nhất đứng Số 1 (vd NS01 60p 399k -> NS02 80p 530k -> NS03 100p 580k)
         primaryGroup.sort(
@@ -8486,7 +9512,8 @@ public class FanpageBotService {
                 || pkgAreas.contains("body")
                 || "body_therapy".equalsIgnoreCase(pkg.serviceFamily());
         Set<String> generalBodyScopes = Set.of(
-                "toàn thân", "body", "đầu", "cổ", "vai", "gáy", "lưng", "eo", "hông",
+                "toàn thân", "body", "đầu", "cổ", "vai", "gáy", "vai gáy", "cổ vai gáy", "bả vai",
+                "lưng", "thắt lưng", "eo", "hông", "mông",
                 "chân", "tay", "bắp chân", "gối", "đùi", "cánh tay", "bàn chân"
         );
 
@@ -8520,6 +9547,62 @@ public class FanpageBotService {
         }
 
         return 1;
+    }
+
+    public static String buildPartialScopeLimitationNote(
+            PackageCatalogService.PackageSummary pkg,
+            List<String> knownBodyAreas,
+            List<String> knownSymptoms
+    ) {
+        if (pkg == null) {
+            return "";
+        }
+        List<String> pkgAreas = pkg.bodyAreas() != null
+                ? pkg.bodyAreas().stream().filter(java.util.Objects::nonNull).map(s -> s.strip().toLowerCase(Locale.ROOT)).toList()
+                : List.of();
+        if (pkgAreas.contains("toàn thân") || pkgAreas.contains("body") || "body_therapy".equalsIgnoreCase(pkg.serviceFamily())) {
+            return "";
+        }
+        Set<String> requestedScopes = new LinkedHashSet<>();
+        if (knownBodyAreas != null) {
+            for (String area : knownBodyAreas) {
+                if (area != null && !area.isBlank()) {
+                    requestedScopes.add(area.strip().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        if (knownSymptoms != null) {
+            for (String sym : knownSymptoms) {
+                if (sym == null || sym.isBlank()) continue;
+                for (String extracted : ConversationState.extractTargetScopes(sym, List.of())) {
+                    if (extracted != null && !extracted.isBlank()) {
+                        requestedScopes.add(extracted.strip().toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+        }
+        if (requestedScopes.isEmpty()) {
+            return "";
+        }
+        List<String> uncoveredAreas = new ArrayList<>();
+        for (String req : requestedScopes) {
+            boolean matched = pkgAreas.stream().anyMatch(pa -> pa.equals(req) || pa.contains(req) || req.contains(pa));
+            if (!matched) {
+                uncoveredAreas.add(req);
+            }
+        }
+        if (uncoveredAreas.isEmpty()) {
+            return "";
+        }
+        boolean customerRequestedHair = requestedScopes.contains("tóc") || requestedScopes.contains("da đầu");
+        List<String> coveredDisplay = pkgAreas.stream()
+                .filter(pa -> customerRequestedHair || (!"tóc".equals(pa) && !"da đầu".equals(pa)))
+                .toList();
+        if (coveredDisplay.isEmpty()) {
+            coveredDisplay = pkgAreas;
+        }
+        return "(Phạm vi hẹp hơn: chỉ tập trung chăm sóc vùng " + coveredDisplay
+                + ", KHÔNG bao gồm vùng " + uncoveredAreas + ")";
     }
 
     private static boolean isPrimaryRecommendationCandidate(
@@ -8633,35 +9716,6 @@ public class FanpageBotService {
             List<FanpageBotRequest.ConversationTurn> history,
             String customerMessage
     ) {
-        TieredCatalogResult tiered = rankAndTierCatalogForCleanAgent(
-                scopeFilteredCatalog,
-                knownSymptoms,
-                knownBodyAreas,
-                Set.of(),
-                false
-        );
-        boolean msgHasPriceObjection = SentimentIntentLayer.isPriceObjection(customerMessage)
-                || isCleanPriceObjectionMessage(customerMessage)
-                || isExplicitDownsellOrLowBudgetRequest(customerMessage, null);
-        boolean isPositiveOrAccept = !msgHasPriceObjection
-                && (packageInterestAccepted || isPositiveInterestForTrialInvite(customerMessage));
-        boolean isPriceObj = msgHasPriceObjection || (priceObjectionCount > 0 && !isPositiveOrAccept);
-        List<String> signals = classifyCleanCurrentTurnSignals(
-                customerMessage,
-                isChallengeOrQuestionBotAssumption(customerMessage),
-                SentimentIntentLayer.isConversationStyleComplaint(customerMessage)
-                        || SentimentIntentLayer.isWordingOrExpressionFeedback(customerMessage),
-                SentimentIntentLayer.isEntityMismatchCorrection(customerMessage),
-                false,
-                isPriceObj,
-                priceObjectionCount,
-                isPositiveInterestForTrialInvite(customerMessage),
-                packageInterestAccepted,
-                knownSymptoms != null ? knownSymptoms : List.of(),
-                knownBodyAreas != null ? knownBodyAreas : List.of(),
-                frequency != null ? frequency : "chưa có"
-        );
-        String prevBot = resolveImmediatelyPrecedingBotText(history, null);
         return buildCleanAgentPrompt(
                 pagePersona,
                 customerPronoun,
@@ -8674,6 +9728,107 @@ public class FanpageBotService {
                 priceObjectionCount,
                 packageInterestAccepted,
                 bookingStatus,
+                scopeFilteredCatalog,
+                fusedChunks,
+                history,
+                customerMessage,
+                null
+        );
+    }
+
+    public static String buildCleanAgentPrompt(
+            PromptBuilder.PagePersona pagePersona,
+            String customerPronoun,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String frequency,
+            boolean conditionClarified,
+            String heldPackageDisplay,
+            String heldPriceDisplay,
+            int priceObjectionCount,
+            boolean packageInterestAccepted,
+            String bookingStatus,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String customerMessage,
+            CustomerInsightDto customerInsight
+    ) {
+        TieredCatalogResult tiered = rankAndTierCatalogForCleanAgent(
+                scopeFilteredCatalog,
+                knownSymptoms,
+                knownBodyAreas,
+                Set.of(),
+                false
+        );
+        String prevBot = resolveImmediatelyPrecedingBotText(history, null);
+        String precedingSpeechAct = inferPrecedingBotSpeechAct(customerInsight, prevBot, history, bookingStatus);
+        boolean msgHasPriceObjection = SentimentIntentLayer.isPriceObjection(customerMessage)
+                || isCleanPriceObjectionMessage(customerMessage)
+                || isExplicitDownsellOrLowBudgetRequest(customerMessage, null);
+        boolean isHesitation = isHesitationOrDeferralMessage(customerMessage);
+        boolean isBareAck = !msgHasPriceObjection && !isHesitation && isBareAcknowledgmentMessage(customerMessage);
+        boolean hasProactiveBookingInfo = !msgHasPriceObjection && !isHesitation
+                && hasProactiveBookingOrPackageSelectionInMessage(customerMessage);
+        boolean isBookingConfirmed = "CONFIRMED".equalsIgnoreCase(bookingStatus)
+                || SPEECH_ACT_BOOKING_CONFIRMED.equalsIgnoreCase(precedingSpeechAct);
+        boolean isPoliteClosingAck = isBareAck
+                && !isBookingConfirmed
+                && (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(precedingSpeechAct)
+                    || wasPriorCustomerTurnHesitation(history)
+                    || isPauseOrDeferralBotReply(prevBot));
+        boolean isAckForOfferedDetails = isBareAck
+                && !isBookingConfirmed
+                && !isPoliteClosingAck
+                && SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(precedingSpeechAct);
+        boolean isBareAckForInvitedTrial = isBareAck
+                && !isBookingConfirmed
+                && !isPoliteClosingAck
+                && !isAckForOfferedDetails
+                && SPEECH_ACT_INVITED_TRIAL_OR_TIME.equalsIgnoreCase(precedingSpeechAct);
+        boolean priorWasPause = SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(precedingSpeechAct)
+                || wasPriorCustomerTurnHesitation(history);
+
+        boolean effectivePackageInterestAccepted = !msgHasPriceObjection
+                && !isHesitation
+                && !isPoliteClosingAck
+                && !isBookingConfirmed
+                && !isAckForOfferedDetails
+                && (hasProactiveBookingInfo
+                    || isBareAckForInvitedTrial
+                    || isPositiveInterestForTrialInvite(customerMessage)
+                    || (packageInterestAccepted && !priorWasPause));
+        boolean isPriceObj = msgHasPriceObjection;
+        List<String> signals = classifyCleanCurrentTurnSignals(
+                customerMessage,
+                isChallengeOrQuestionBotAssumption(customerMessage),
+                SentimentIntentLayer.isConversationStyleComplaint(customerMessage)
+                        || SentimentIntentLayer.isWordingOrExpressionFeedback(customerMessage),
+                SentimentIntentLayer.isEntityMismatchCorrection(customerMessage),
+                isAckForOfferedDetails,
+                isPriceObj,
+                priceObjectionCount,
+                isPositiveInterestForTrialInvite(customerMessage) || isBareAckForInvitedTrial || hasProactiveBookingInfo,
+                effectivePackageInterestAccepted,
+                knownSymptoms != null ? knownSymptoms : List.of(),
+                knownBodyAreas != null ? knownBodyAreas : List.of(),
+                frequency != null ? frequency : "chưa có",
+                precedingSpeechAct,
+                bookingStatus,
+                history
+        );
+        return buildCleanAgentPrompt(
+                pagePersona,
+                customerPronoun,
+                knownSymptoms,
+                knownBodyAreas,
+                frequency,
+                conditionClarified,
+                heldPackageDisplay,
+                heldPriceDisplay,
+                priceObjectionCount,
+                effectivePackageInterestAccepted,
+                bookingStatus,
                 signals,
                 extractLastBotQuestion(prevBot, null),
                 conditionClarified ? 1 : 0,
@@ -8681,7 +9836,7 @@ public class FanpageBotService {
                 fusedChunks,
                 history,
                 customerMessage,
-                null,
+                customerInsight,
                 List.of(),
                 Map.of()
         );
@@ -8781,34 +9936,44 @@ public class FanpageBotService {
                 : "CHƯA HỎI TÌNH TRẠNG — ĐƯỢC PHÉP HỎI TỐI ĐA 1 CÂU NGẮN GỌN VỀ THỜI ĐIỂM XUẤT HIỆN";
 
         List<String> safeSignals = currentTurnSignals != null ? currentTurnSignals : List.of();
-        boolean isExplicitDownsell = isExplicitDownsellOrLowBudgetRequest(customerMessage, null)
-                || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
-        boolean currentTurnHasPriceObjection = isExplicitDownsell
-                || safeSignals.contains("PRICE_OBJECTION_FIRST_TIME")
-                || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
-        boolean isMetaCommunicationTurn = (safeSignals.contains("STYLE_OR_REPETITION_FEEDBACK")
-                || safeSignals.contains("CHALLENGE_OR_QUESTION_BOT_ASSUMPTION"))
-                && !safeSignals.contains("ENTITY_MISMATCH_CORRECTION");
-        boolean isBookingOrPositiveTrialTurn = !isMetaCommunicationTurn
-                && !currentTurnHasPriceObjection
-                && (packageInterestAccepted
-                    || safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE")
-                    || safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS"));
-        boolean isFirstPriceObjectionHoldTurn = !isMetaCommunicationTurn
-                && !isBookingOrPositiveTrialTurn
-                && priceObjectionCount == 1
-                && !isExplicitDownsell;
-        boolean isDownsellOrRepeatObjectionTurn = !isMetaCommunicationTurn
-                && !isBookingOrPositiveTrialTurn
-                && (priceObjectionCount >= 2 || isExplicitDownsell);
+        String resolvedStage = resolveCleanFunnelStage(
+                safeSignals,
+                customerMessage,
+                priceObjectionCount,
+                packageInterestAccepted,
+                tieredCatalog,
+                history
+        );
+        boolean isMetaCommunicationTurn = "STAGE_5_META_COMMUNICATION_REPAIR".equals(resolvedStage);
+        boolean isPostBookingClosingAckTurn = "STAGE_4B_POST_BOOKING_CONFIRMED_CLOSING".equals(resolvedStage);
+        boolean isPureDeferralOrBusyTurn = "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(resolvedStage);
+        boolean isPriceContextHesitationTurn = "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(resolvedStage);
+        boolean isBookingOrPositiveTrialTurn = "STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(resolvedStage);
+        boolean isFirstPriceObjectionHoldTurn = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(resolvedStage);
+        boolean isDownsellOrRepeatObjectionTurn = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(resolvedStage);
+        boolean isPoliteClosingAckTurn = safeSignals.contains("POLITE_CLOSING_ACKNOWLEDGMENT");
+        boolean isServiceDetailQuestionTurn = safeSignals.contains("SERVICE_OR_UNIT_DETAIL_QUESTION")
+                && !safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS")
+                && !safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
 
-        // Khi khách đã chê đắt lần 2 (hoặc xin gói rẻ hơn) và có gói Nhóm 2, cập nhật gói đang giữ sang gói Nhóm 2
+        boolean hasEconomicalAlt = tieredCatalog != null
+                && tieredCatalog.economicalAlternatives() != null
+                && !tieredCatalog.economicalAlternatives().isEmpty();
+        boolean downsellAlreadyOfferedInHistory = hasEconomicalAlt
+                && hasPackageMentionedInBotHistory(history, tieredCatalog.economicalAlternatives());
+        boolean customerExplicitlyChoseDownsellPkg = hasEconomicalAlt
+                && (customerExplicitlyAskedForEconomicalGroup(customerMessage, tieredCatalog.economicalAlternatives())
+                    || hasPackagePriceMentionedInText(customerMessage, tieredCatalog.economicalAlternatives()));
+
+        // Khi khách đã chê đắt lần 2 (hoặc xin gói rẻ hơn) hoặc chủ động chọn gói Nhóm 2, cập nhật gói đang giữ sang gói Nhóm 2
+        // (Tuyệt đối KHÔNG khóa gói 239k khi khách chỉ nhắn "Ok" khép lại ở isPoliteClosingAckTurn).
         String effectiveHeldPackageDisplay = heldPackageDisplay;
         String effectiveHeldPriceDisplay = heldPriceDisplay;
-        if ((isDownsellOrRepeatObjectionTurn || (isBookingOrPositiveTrialTurn && priceObjectionCount >= 2))
-                && tieredCatalog != null
-                && tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty()) {
+        if (!isPoliteClosingAckTurn
+                && (isDownsellOrRepeatObjectionTurn
+                    || (isBookingOrPositiveTrialTurn && (priceObjectionCount >= 2 || customerExplicitlyChoseDownsellPkg))
+                    || (isServiceDetailQuestionTurn && downsellAlreadyOfferedInHistory))
+                && hasEconomicalAlt) {
             PackageCatalogService.PackageSummary downsellPkg = tieredCatalog.economicalAlternatives().get(0);
             effectiveHeldPackageDisplay = downsellPkg.canonicalLabel();
             effectiveHeldPriceDisplay = downsellPkg.priceDisplay();
@@ -8822,14 +9987,20 @@ public class FanpageBotService {
                 : "KHÁCH MỚI CHIA SẺ NHU CẦU, CHƯA BIẾT TÊN GÓI — BẠN PHẢI CHỦ ĐỘNG ĐỀ XUẤT GÓI SỐ 1 (\"Với tình trạng này, "
                     + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói...\", CẤM viết \"" + custPronoun
                     + " đang quan tâm đến gói...\" và CẤM hỏi câu đối lập vô nghĩa \"thử 1 buổi lẻ trước hay đặt lịch ngay cho gói trọn vẹn\")";
-        String resolvedFunnelStatus = (bookingFunnelStatus != null && !bookingFunnelStatus.isBlank())
-                ? ("COLLECTING_INFO".equals(bookingFunnelStatus) ? "COLLECTING_VISIT_TIME" : bookingFunnelStatus)
-                : (packageInterestAccepted ? "COLLECTING_VISIT_TIME" : "NONE");
+        String resolvedFunnelStatus = isPostBookingClosingAckTurn
+                ? "CONFIRMED"
+                : (isPoliteClosingAckTurn
+                    ? "NONE"
+                    : ((bookingFunnelStatus != null && !bookingFunnelStatus.isBlank())
+                        ? ("COLLECTING_INFO".equals(bookingFunnelStatus) ? "COLLECTING_VISIT_TIME" : bookingFunnelStatus)
+                        : (isBookingOrPositiveTrialTurn ? "COLLECTING_VISIT_TIME" : "NONE")));
 
-        PackageCatalogService.PackageSummary activePkgForBrain = (isDownsellOrRepeatObjectionTurn
-                && tieredCatalog != null
-                && tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty())
+        PackageCatalogService.PackageSummary activePkgForBrain = (!isPoliteClosingAckTurn
+                && (isDownsellOrRepeatObjectionTurn
+                    || isPriceContextHesitationTurn
+                    || (isBookingOrPositiveTrialTurn && (priceObjectionCount >= 2 || customerExplicitlyChoseDownsellPkg))
+                    || (isServiceDetailQuestionTurn && downsellAlreadyOfferedInHistory))
+                && hasEconomicalAlt)
                 ? tieredCatalog.economicalAlternatives().get(0)
                 : findHeldOrTopPrimaryPackage(tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
 
@@ -8839,7 +10010,7 @@ public class FanpageBotService {
           .append("\n</CLEAN_AGENT_SYSTEM_PROMPT>\n")
           .append("<!-- SYSTEM_USER_SPLIT -->\n\n");
 
-        // Khối <AGENT_BRAIN_INSIGHT> tinh gọn 4 mục (dựng động 100% từ activePkgForBrain & activeSkills)
+        // Khối <AGENT_BRAIN_INSIGHT> tinh gọn 4 mục (dựng động 100% từ activePkgForBrain, customerInsight & activeSkills)
         appendCleanAgentBrainInsightBlock(
                 sb,
                 selfPronoun,
@@ -8851,10 +10022,8 @@ public class FanpageBotService {
                 activePackageInFocus,
                 activePkgForBrain,
                 priceObjectionCount,
-                isMetaCommunicationTurn,
-                isBookingOrPositiveTrialTurn,
-                isFirstPriceObjectionHoldTurn,
-                isDownsellOrRepeatObjectionTurn,
+                resolvedStage,
+                isServiceDetailQuestionTurn,
                 customerInsight,
                 activeSkills
         );
@@ -8879,12 +10048,18 @@ public class FanpageBotService {
         }
         sb.append("</STRUCTURED_CONVERSATION_STATE>\n\n");
 
-        // Stage-Gated Context theo 5 tình huống hội thoại + thu thập visiblePackages để lọc <DOCUMENT_CONTEXT>
+        // Stage-Gated Context theo các tình huống hội thoại + thu thập visiblePackages để lọc <DOCUMENT_CONTEXT>
         List<PackageCatalogService.PackageSummary> visiblePackagesForTurn = new ArrayList<>();
         sb.append("<SCOPE_FILTERED_CATALOG>\n");
         if (isMetaCommunicationTurn) {
             // Tình huống 5: Khách phàn nàn về cách nói chuyện / hỏi vặn suy đoán của bot -> tạm ẩn danh sách chào bán gói
             sb.append("(Tạm ẩn danh sách chào bán gói ở lượt này — Khách đang phản hồi/hỏi vặn về cách nói chuyện hoặc suy đoán của bot. Chỉ trả lời duyên dáng vào điều khách vừa nói và điều chỉnh cách giao tiếp.)\n");
+        } else if (isPureDeferralOrBusyTurn) {
+            // Tình huống 6B: Khách đang bận việc hoặc xin tạm dừng cân nhắc / nhắn "Ok" khép lại -> Tôn trọng nhịp độ của khách, tạm ẩn danh sách chào bán gói
+            sb.append("(Tạm ẩn danh sách chào bán gói ở lượt này — Khách đang bận hoặc xin tạm dừng để tự cân nhắc. Tuyệt đối tôn trọng nhịp độ của khách, tách thành 2 bong bóng ngắn ấm áp lịch sự: Bong bóng 1 xác nhận đã lưu thông tin & hẹn khi nào tiện nhắn lại; Bong bóng 2 tách riêng lời chúc tốt lành, KHÔNG chào mời thêm gói mới và KHÔNG hỏi ép giờ đặt lịch.)\n");
+        } else if (isPostBookingClosingAckTurn) {
+            // Tình huống 4B: Lịch hẹn đã xác nhận (CONFIRMED) và khách nhắn "Ok" khép lại
+            sb.append("(Lịch hẹn của khách đã được xác nhận thành công — Chỉ cảm ơn ấm áp và hẹn đón tiếp khách đúng khung giờ đã đặt, KHÔNG hỏi lại khung giờ đặt lịch.)\n");
         } else if (tieredCatalog == null
                 || (tieredCatalog.primaryRecommendations().isEmpty() && tieredCatalog.economicalAlternatives().isEmpty())) {
             if (tieredCatalog != null && tieredCatalog.noMatchingPackageForRequestedScope()) {
@@ -8892,13 +10067,33 @@ public class FanpageBotService {
             } else {
                 sb.append("NO_MATCHING_PACKAGE_FOR_REQUESTED_SCOPE: (Chưa có gói dịch vụ khớp trực tiếp trong danh mục)\n");
             }
+        } else if (isServiceDetailQuestionTurn && activePkgForBrain != null) {
+            // Tình huống hỏi/nhận chi tiết gói đang trao đổi: Hiển thị gói khách muốn nghe chi tiết, không thúc ép giờ đặt lịch
+            sb.append("[GÓI KHÁCH ĐANG MUỐN NGHE CHI TIẾT (CHIA SẺ RÕ QUYỀN LỢI & QUY TRÌNH, CHƯA ÉP GIỜ ĐẶT LỊCH)]:\n");
+            appendCatalogPackageLine(sb, 1, activePkgForBrain, knownBodyAreas, knownSymptoms);
+            visiblePackagesForTurn.add(activePkgForBrain);
+        } else if (isPriceContextHesitationTurn) {
+            // Tình huống 3B (Trường hợp A): Khách lưỡng lự ngay sau khi băn khoăn về giá -> Mở khóa nhẹ nhàng Nhóm 2 làm phương án tham khảo không áp lực
+            PackageCatalogService.PackageSummary heldPkg = findHeldOrTopPrimaryPackage(
+                    tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
+            if (heldPkg != null) {
+                sb.append("[GÓI CHỦ LỰC KHÁCH ĐANG CÂN NHẮC]:\n");
+                appendCatalogPackageLine(sb, 1, heldPkg, knownBodyAreas, knownSymptoms);
+                visiblePackagesForTurn.add(heldPkg);
+            }
+            sb.append("[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC (DÙNG ĐỂ GỢI Ý MỀM 1 LẦN KHÔNG ÉP BUỘC KHI KHÁCH LƯỠNG LỰ VÌ GIÁ)]:\n");
+            List<PackageCatalogService.PackageSummary> economicals = tieredCatalog.economicalAlternatives();
+            for (int i = 0; i < Math.min(2, economicals.size()); i++) {
+                appendCatalogPackageLine(sb, i + 1, economicals.get(i), knownBodyAreas, knownSymptoms);
+                visiblePackagesForTurn.add(economicals.get(i));
+            }
         } else if (isBookingOrPositiveTrialTurn) {
             // Tình huống 4: Khách bày tỏ thiện chí / đồng ý thử hoặc đang đặt lịch -> Chỉ giữ gói đã chọn và trạng thái đặt lịch
             PackageCatalogService.PackageSummary selectedPkg = findHeldOrTopPrimaryPackage(
                     tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
             sb.append("[GÓI KHÁCH ĐANG QUAN TÂM / ĐẶT LỊCH TRẢI NGHIỆM]:\n");
             if (selectedPkg != null) {
-                appendCatalogPackageLine(sb, 1, selectedPkg);
+                appendCatalogPackageLine(sb, 1, selectedPkg, knownBodyAreas, knownSymptoms);
                 visiblePackagesForTurn.add(selectedPkg);
             } else {
                 sb.append("1. ").append(activePackageInFocus).append('\n');
@@ -8908,12 +10103,12 @@ public class FanpageBotService {
                     : "chưa có khung giờ cụ thể — hãy mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai";
             sb.append("- Trạng thái khung giờ dự kiến ghé (pendingBookingSlots): ").append(visitTimeSlot).append('\n');
         } else if (isFirstPriceObjectionHoldTurn) {
-            // Tình huống 2: Khách vừa chê đắt LẦN ĐẦU TIÊN (priceObjectionCount == 1) và CHƯA yêu cầu gói rẻ hơn -> Chỉ truyền duy nhất heldPackage, ẨN HOÀN TOÀN NHÓM 2
+            // Tình huống 2: Khách vừa chê đắt LẦN ĐẦU TIÊN (PRICE_OBJECTION_FIRST_TIME) và CHƯA yêu cầu gói rẻ hơn -> Chỉ truyền duy nhất heldPackage, ẨN HOÀN TOÀN NHÓM 2
             PackageCatalogService.PackageSummary heldPkg = findHeldOrTopPrimaryPackage(
                     tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
             sb.append("[GÓI ĐANG CÂN NHẮC — GIỮ NGUYÊN GIÁ TRỊ Ở LẦN BĂN KHOĂN GIÁ ĐẦU TIÊN (TUYỆT ĐỐI CẤM HẠ GÓI / CẤM TỰ GẠ GÓI TIẾT KIỆM HƠN)]:\n");
             if (heldPkg != null) {
-                appendCatalogPackageLine(sb, 1, heldPkg);
+                appendCatalogPackageLine(sb, 1, heldPkg, knownBodyAreas, knownSymptoms);
                 visiblePackagesForTurn.add(heldPkg);
             } else {
                 sb.append("1. ").append(activePackageInFocus).append('\n');
@@ -8926,7 +10121,7 @@ public class FanpageBotService {
                 sb.append("[NHÓM 1 — GÓI CHỦ LỰC ĐỀ XUẤT CHÍNH (PRIMARY_RECOMMENDATIONS)]:\n");
                 int maxPrimary = Math.min(2, primaries.size());
                 for (int i = 0; i < maxPrimary; i++) {
-                    appendCatalogPackageLine(sb, i + 1, primaries.get(i));
+                    appendCatalogPackageLine(sb, i + 1, primaries.get(i), knownBodyAreas, knownSymptoms);
                     visiblePackagesForTurn.add(primaries.get(i));
                 }
                 sb.append("[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC (ECONOMICAL_DOWNSELL_OR_ALTERNATIVES)]:\n");
@@ -8940,7 +10135,7 @@ public class FanpageBotService {
                 sb.append("[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC (ECONOMICAL_DOWNSELL_OR_ALTERNATIVES)]:\n");
                 int maxEcon = Math.min(2, economicals.size());
                 for (int i = 0; i < maxEcon; i++) {
-                    appendCatalogPackageLine(sb, i + 1, economicals.get(i));
+                    appendCatalogPackageLine(sb, i + 1, economicals.get(i), knownBodyAreas, knownSymptoms);
                     visiblePackagesForTurn.add(economicals.get(i));
                 }
             }
@@ -8950,14 +10145,14 @@ public class FanpageBotService {
             List<PackageCatalogService.PackageSummary> primaries = tieredCatalog.primaryRecommendations();
             int maxPrimary = Math.min(2, primaries.size());
             for (int i = 0; i < maxPrimary; i++) {
-                appendCatalogPackageLine(sb, i + 1, primaries.get(i));
+                appendCatalogPackageLine(sb, i + 1, primaries.get(i), knownBodyAreas, knownSymptoms);
                 visiblePackagesForTurn.add(primaries.get(i));
             }
             if (customerExplicitlyAskedForEconomicalGroup(customerMessage, tieredCatalog.economicalAlternatives())) {
                 sb.append("[NHÓM 2 — PHƯƠNG ÁN TIẾT KIỆM / HẠ BẬC (ECONOMICAL_DOWNSELL_OR_ALTERNATIVES)]:\n");
                 List<PackageCatalogService.PackageSummary> economicals = tieredCatalog.economicalAlternatives();
                 for (int i = 0; i < Math.min(2, economicals.size()); i++) {
-                    appendCatalogPackageLine(sb, i + 1, economicals.get(i));
+                    appendCatalogPackageLine(sb, i + 1, economicals.get(i), knownBodyAreas, knownSymptoms);
                     visiblePackagesForTurn.add(economicals.get(i));
                 }
             }
@@ -9010,6 +10205,32 @@ public class FanpageBotService {
         return sb.toString();
     }
 
+    private static boolean hasPackageMentionedInBotHistory(
+            List<FanpageBotRequest.ConversationTurn> history,
+            List<PackageCatalogService.PackageSummary> packages
+    ) {
+        if (history == null || history.isEmpty() || packages == null || packages.isEmpty()) {
+            return false;
+        }
+        for (FanpageBotRequest.ConversationTurn t : history) {
+            if (t == null || t.content() == null || t.content().isBlank()) continue;
+            if (!"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())) continue;
+            String low = t.content().toLowerCase(Locale.ROOT);
+            for (PackageCatalogService.PackageSummary p : packages) {
+                if (p == null) continue;
+                if (p.displayName() != null && !p.displayName().isBlank()
+                        && low.contains(p.displayName().strip().toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+                if (p.priceDisplay() != null && !p.priceDisplay().isBlank()
+                        && low.contains(p.priceDisplay().strip().toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static String resolvePersonaStyleContext(PromptBuilder.PagePersona pagePersona) {
         if (pagePersona == null) {
             return "Thân thiện, chuyên nghiệp, tận tâm và thấu hiểu khách hàng.";
@@ -9037,6 +10258,7 @@ public class FanpageBotService {
      * Lọc <DOCUMENT_CONTEXT> theo đúng tập gói đang hiển thị trong <SCOPE_FILTERED_CATALOG> (Scope-Matched Chunk Filtering).
      * Nếu một chunk có gắn metadata matchCodes hoặc matchPrices cụ thể (khác rỗng), nhưng không có bất kỳ mã gói
      * hay mức giá nào giao thoa với visibleCodes / visiblePrices của lượt hiện tại -> loại bỏ chunk đó.
+     * Đồng thời nếu không có gói nào đang hiển thị có quyền lợi "buffet" trong includesSummary(), loại bỏ các chunk nhắc "buffet".
      */
     public static List<ReciprocalRankFusion.FusedChunk> filterChunksByVisibleCatalogScope(
             List<ReciprocalRankFusion.FusedChunk> fusedChunks,
@@ -9050,6 +10272,7 @@ public class FanpageBotService {
         }
         Set<String> visibleCodes = new LinkedHashSet<>();
         Set<Long> visiblePrices = new LinkedHashSet<>();
+        boolean anyVisibleHasBuffet = false;
         for (PackageCatalogService.PackageSummary p : visiblePackages) {
             if (p == null) continue;
             if (p.code() != null && !p.code().isBlank()) {
@@ -9058,9 +10281,10 @@ public class FanpageBotService {
             if (p.priceVnd() > 0L) {
                 visiblePrices.add(p.priceVnd());
             }
-        }
-        if (visibleCodes.isEmpty() && visiblePrices.isEmpty()) {
-            return fusedChunks;
+            if (p.includesSummary() != null
+                    && p.includesSummary().toLowerCase(Locale.ROOT).contains("buffet")) {
+                anyVisibleHasBuffet = true;
+            }
         }
 
         Pattern explicitPricesPat = Pattern.compile("(?i)match_prices\\s*=\\s*\\[([^\\]]+)\\]");
@@ -9074,44 +10298,49 @@ public class FanpageBotService {
             String text = fc.chunk().text();
             String headings = fc.chunk().headingPath() != null ? String.join(" ", fc.chunk().headingPath()) : "";
             String combined = headings + " " + text;
-
-            Set<String> chunkCodes = new LinkedHashSet<>();
-            for (String c : com.example.docmind.service.metadata.ChunkMetadataExtractor.extractServiceCodes(combined)) {
-                if (c != null && !c.isBlank()) {
-                    chunkCodes.add(c.strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", ""));
-                }
+            if (!anyVisibleHasBuffet && combined.toLowerCase(Locale.ROOT).contains("buffet")) {
+                continue;
             }
-            Matcher cm = explicitCodesPat.matcher(combined);
-            while (cm.find()) {
-                for (String part : cm.group(1).split("[,;\\s]+")) {
-                    if (!part.isBlank()) {
-                        chunkCodes.add(part.strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", ""));
+
+            if (!visibleCodes.isEmpty() || !visiblePrices.isEmpty()) {
+                Set<String> chunkCodes = new LinkedHashSet<>();
+                for (String c : com.example.docmind.service.metadata.ChunkMetadataExtractor.extractServiceCodes(combined)) {
+                    if (c != null && !c.isBlank()) {
+                        chunkCodes.add(c.strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", ""));
                     }
                 }
-            }
-
-            Set<Long> chunkPrices = new LinkedHashSet<>(
-                    com.example.docmind.service.metadata.ChunkMetadataExtractor.extractAllPrices(combined)
-            );
-            Matcher pm = explicitPricesPat.matcher(combined);
-            while (pm.find()) {
-                for (String part : pm.group(1).split("[,;\\s]+")) {
-                    try {
-                        long v = Long.parseLong(part.replaceAll("[^\\d]", ""));
-                        if (v > 0L) {
-                            chunkPrices.add(v);
+                Matcher cm = explicitCodesPat.matcher(combined);
+                while (cm.find()) {
+                    for (String part : cm.group(1).split("[,;\\s]+")) {
+                        if (!part.isBlank()) {
+                            chunkCodes.add(part.strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", ""));
                         }
-                    } catch (NumberFormatException ignored) {
                     }
                 }
-            }
 
-            boolean hasSpecificMeta = !chunkCodes.isEmpty() || !chunkPrices.isEmpty();
-            if (hasSpecificMeta) {
-                boolean codeMatch = chunkCodes.stream().anyMatch(visibleCodes::contains);
-                boolean priceMatch = chunkPrices.stream().anyMatch(visiblePrices::contains);
-                if (!codeMatch && !priceMatch) {
-                    continue;
+                Set<Long> chunkPrices = new LinkedHashSet<>(
+                        com.example.docmind.service.metadata.ChunkMetadataExtractor.extractAllPrices(combined)
+                );
+                Matcher pm = explicitPricesPat.matcher(combined);
+                while (pm.find()) {
+                    for (String part : pm.group(1).split("[,;\\s]+")) {
+                        try {
+                            long v = Long.parseLong(part.replaceAll("[^\\d]", ""));
+                            if (v > 0L) {
+                                chunkPrices.add(v);
+                            }
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+
+                boolean hasSpecificMeta = !chunkCodes.isEmpty() || !chunkPrices.isEmpty();
+                if (hasSpecificMeta) {
+                    boolean codeMatch = chunkCodes.stream().anyMatch(visibleCodes::contains);
+                    boolean priceMatch = chunkPrices.stream().anyMatch(visiblePrices::contains);
+                    if (!codeMatch && !priceMatch) {
+                        continue;
+                    }
                 }
             }
             filtered.add(fc);
@@ -9130,34 +10359,43 @@ public class FanpageBotService {
             String activePackageInFocus,
             PackageCatalogService.PackageSummary activePkg,
             int priceObjectionCount,
-            boolean isMetaCommunicationTurn,
-            boolean isBookingOrPositiveTrialTurn,
-            boolean isFirstPriceObjectionHoldTurn,
-            boolean isDownsellOrRepeatObjectionTurn,
+            String stageLabel,
+            boolean isServiceDetailQuestionTurn,
             CustomerInsightDto customerInsight,
             List<AgentSkillDto> activeSkills
     ) {
+        boolean isMetaCommunicationTurn = "STAGE_5_META_COMMUNICATION_REPAIR".equals(stageLabel);
+        boolean isPureDeferralOrBusyTurn = "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(stageLabel);
+        boolean isPostBookingClosingAckTurn = "STAGE_4B_POST_BOOKING_CONFIRMED_CLOSING".equals(stageLabel);
+        boolean isPriceContextHesitationTurn = "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(stageLabel);
+        boolean isBookingOrPositiveTrialTurn = "STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(stageLabel);
+        boolean isFirstPriceObjectionHoldTurn = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(stageLabel);
+        boolean isDownsellOrRepeatObjectionTurn = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(stageLabel);
+
         String verifiedFacts = "symptoms=" + (knownSymptoms != null ? knownSymptoms : List.of())
                 + ", areas=" + (knownBodyAreas != null ? knownBodyAreas : List.of())
                 + ", timing_or_context=\"" + safeTiming + "\"";
         if (customerInsight != null && customerInsight.extractedPains() != null && !customerInsight.extractedPains().isEmpty()) {
             verifiedFacts += ", pains=" + customerInsight.extractedPains();
         }
+        List<String> storedCareNotes = (customerInsight != null && customerInsight.careNotes() != null)
+                ? customerInsight.careNotes()
+                : List.of();
+        if (!storedCareNotes.isEmpty()) {
+            verifiedFacts += ", care_notes=" + storedCareNotes;
+        }
 
-        String stageLabel = isMetaCommunicationTurn
-                ? "STAGE_5_META_COMMUNICATION_REPAIR"
-                : (isBookingOrPositiveTrialTurn
-                    ? "STAGE_4_POSITIVE_TRIAL_OR_BOOKING"
-                    : (isFirstPriceObjectionHoldTurn
-                        ? "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE"
-                        : (isDownsellOrRepeatObjectionTurn
-                            ? "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION"
-                            : "STAGE_1_DISCOVERY_AND_FIRST_QUOTE")));
         String buyingState = customerInsight != null
                 ? ("stage=" + stageLabel + ", archetype=" + customerInsight.buyerArchetype()
                     + " (" + customerInsight.archetypeLabel() + "), buying_temp="
                     + customerInsight.buyingTemperature() + "/100 (" + customerInsight.temperatureLabel() + ")")
                 : ("stage=" + stageLabel + ", price_objection_count=" + priceObjectionCount);
+        if (customerInsight != null && customerInsight.workingHypothesis() != null && !customerInsight.workingHypothesis().isBlank()) {
+            buyingState += ", working_hypothesis=\"" + customerInsight.workingHypothesis().strip() + "\"";
+        }
+        if (customerInsight != null && customerInsight.lastActualSentSpeechAct() != null && !customerInsight.lastActualSentSpeechAct().isBlank()) {
+            buyingState += ", last_actual_sent_speech_act=\"" + customerInsight.lastActualSentSpeechAct().strip() + "\"";
+        }
 
         String pkgName = (activePkg != null && activePkg.displayName() != null && !activePkg.displayName().isBlank())
                 ? activePkg.displayName().strip()
@@ -9177,6 +10415,10 @@ public class FanpageBotService {
         String needLabel = (knownSymptoms != null && !knownSymptoms.isEmpty())
                 ? knownSymptoms.get(0)
                 : ((knownBodyAreas != null && !knownBodyAreas.isEmpty()) ? knownBodyAreas.get(0) : "nhu cầu hiện tại");
+        String partialScopeNote = buildPartialScopeLimitationNote(activePkg, knownBodyAreas, knownSymptoms);
+        String partialScopeHint = partialScopeNote.isEmpty()
+                ? ""
+                : (" " + partialScopeNote + " — nói rõ trung thực gói " + pkgPrice + " tập trung giải tỏa vùng cổ vai gáy trước, chưa bao gồm vùng ngoài phạm vi như gói toàn thân");
 
         String tacticalFocus;
         String goodExample;
@@ -9186,36 +10428,65 @@ public class FanpageBotService {
             tacticalFocus = "Nhận lỗi duyên dáng, hóm hỉnh đúng vào điều khách vừa nói/hỏi vặn; tạm dừng chào bán gói và hỏi thăm tự nhiên.";
             goodExample = "Dạ " + selfPronoun + " suy đoán hơi vội trước khi hỏi kỹ " + custPronoun + " rồi ạ. Không biết tình trạng " + needLabel + " của " + custPronoun + " là mới xuất hiện gần đây hay trong hoàn cảnh nào vậy ạ?";
             antiPattern = "Lờ đi lời phàn nàn/hỏi vặn của khách để đọc lại bảng giá hoặc hỏi lặp lại câu cũ.";
+        } else if (isPureDeferralOrBusyTurn) {
+            String savedCareSummary = !storedCareNotes.isEmpty()
+                    ? (" và các lưu ý chăm sóc (" + storedCareNotes.get(storedCareNotes.size() - 1) + ")")
+                    : " và các lưu ý chăm sóc";
+            tacticalFocus = "Tôn trọng hoàn toàn nhịp độ và thời gian của khách khi khách đang bận, xin tạm dừng cân nhắc hoặc nhắn lời xác nhận khép lại ('Ok', 'Ừ', 'Vâng'); tách lời chào tạm biệt thành 2 bong bóng ngắn gọn, giàu cảm xúc: Bong bóng 1 xác nhận " + selfPronoun + " đã lưu lại thông tin gói" + savedCareSummary + " của " + custPronoun + " để bất cứ khi nào " + custPronoun + " thu xếp được thời gian nhắn lại thì hỗ trợ ngay (kết thúc bằng dấu '.'); Bong bóng 2 tách riêng lời chúc " + custPronoun + " một ngày thật nhiều niềm vui và thư thái. TUYỆT ĐỐI KHÔNG chào mời thêm gói mới và CẤM hỏi ép giờ đặt lịch.";
+            goodExample = "Dạ vâng ạ, " + selfPronoun + " đã lưu lại thông tin gói cùng các lưu ý chăm sóc của " + custPronoun + " rồi ạ. Bất cứ khi nào " + custPronoun + " thu xếp được thời gian cần hỗ trợ thì cứ nhắn " + selfPronoun + " ngay nhé. | Chúc " + custPronoun + " một ngày thật nhiều niềm vui và thư thái ạ!";
+            antiPattern = "Cố nhồi thêm gói dịch vụ mới hoặc hỏi ép khách chốt giờ đặt lịch ngay khi khách đã báo bận/hẹn suy nghĩ thêm.";
+        } else if (isPostBookingClosingAckTurn) {
+            tacticalFocus = "Lịch hẹn của khách ĐÃ XÁC NHẬN (CONFIRMED). Khách vừa nhắn xác nhận ngắn ('Ok', 'Vâng') để khép lại cuộc trò chuyện — chỉ trả lời 1 bong bóng ngắn gọn, ấm áp cảm ơn và hẹn đón tiếp " + custPronoun + " đúng khung giờ đã đặt, TUYỆT ĐỐI CẤM hỏi lại khung giờ đặt lịch.";
+            goodExample = "Dạ vâng ạ, " + selfPronoun + " cảm ơn " + custPronoun + " nhiều ạ. Bên " + selfPronoun + " rất mong được đón tiếp và chăm sóc chu đáo cho " + custPronoun + " đúng khung giờ đã hẹn ạ.";
+            antiPattern = "Hỏi lặp lại 'Mình tiện ghé khung giờ nào?' khi lịch hẹn đã được xác nhận.";
+        } else if (isServiceDetailQuestionTurn) {
+            tacticalFocus = "Khách muốn nghe chi tiết về gói đang trao đổi (" + pkgName + pkgDur + " - " + pkgPrice + ") — chia sẻ rõ ràng quyền lợi (" + pkgIncludes + ") và không gian (" + pkgSpace + ") của gói, chưa thúc ép chốt giờ đặt lịch.";
+            goodExample = "Dạ gói " + pkgName + pkgDur + " (" + pkgPrice + " trọn gói) tập trung chăm sóc vùng " + needLabel + ", đã bao gồm " + pkgIncludes + " tại " + pkgSpace + " ạ.";
+            antiPattern = "Lờ đi câu hỏi chi tiết để hỏi ép giờ đặt lịch ngay lập tức.";
+        } else if (isPriceContextHesitationTurn) {
+            tacticalFocus = "Trả lời trong 2 bong bóng ngắn (20–32 từ/bong bóng): Bong bóng 1 giải tỏa áp lực (trấn an " + custPronoun + " cứ thoải mái tham khảo thêm, chưa cần vội đặt lịch ngay); Bong bóng 2 mở lối thoát mềm không ép buộc (nhắc nhẹ nếu muốn thử phương án tiết kiệm hơn cho " + needLabel + " thì bên Page cũng có gói " + pkgName + pkgDur + " - " + pkgPrice + partialScopeHint + ", khi nào tiện cứ nhắn để so sánh chi tiết).";
+            goodExample = "Dạ không sao đâu ạ, " + custPronoun + " cứ thoải mái tham khảo và cân nhắc thêm, chưa cần vội đặt lịch ngay đâu ạ. Nếu " + custPronoun + " muốn thử một phương án nhẹ nhàng, tiết kiệm hơn giải tỏa trước vùng cổ vai gáy thì bên " + selfPronoun + " cũng có gói " + pkgName + pkgDur + " (" + pkgPrice + " trọn gói), khi nào tiện " + custPronoun + " cứ nhắn " + selfPronoun + " nhé.";
+            antiPattern = "Hỏi ép khách chốt giờ ngay lập tức hoặc lặp lại nguyên văn đoạn quảng cáo của lượt trước.";
         } else if (isFirstPriceObjectionHoldTurn) {
-            tacticalFocus = "Giữ nguyên gói đang tư vấn (" + pkgName + pkgDur + " - " + pkgPrice + "), dùng [NEO CẢM XÚC -> TRAO NIỀM TIN -> KHƠI SỰ TÒ MÒ] qua 2 bong bóng dựa trên đúng không gian (" + pkgSpace + ") và quyền lợi (" + pkgIncludes + ") của gói; TUYỆT ĐỐI CẤM tự gạ gói tiết kiệm hơn.";
-            goodExample = "Giá trị của gói " + pkgName + pkgDur + " nằm ở trọn vẹn thời lượng chuyên viên lành nghề tập trung xử lý sâu từng điểm " + needLabel + " để mang lại cảm nhận cải thiện rõ rệt ngay từ lần đầu ạ. Mức giá " + pkgPrice + " đã bao gồm trọn gói (" + pkgIncludes + " | Không gian: " + pkgSpace + "), " + custPronoun + " thử trải nghiệm trước 1 lần để tự mình kiểm chứng chất lượng nhé?";
+            tacticalFocus = "Giữ nguyên gói đang tư vấn (" + pkgName + pkgDur + " - " + pkgPrice + "), dùng [NEO CẢM XÚC -> TRAO NIỀM TIN -> KHƠI SỰ TÒ MÒ] qua 2–3 bong bóng dựa trên đúng không gian (" + pkgSpace + ") và quyền lợi (" + pkgIncludes + ") của gói; tách câu hỏi mời trải nghiệm ở cuối thành 1 bong bóng riêng tự nhiên; TUYỆT ĐỐI CẤM tự gạ gói tiết kiệm hơn.";
+            goodExample = "Giá trị của gói " + pkgName + pkgDur + " nằm ở trọn vẹn thời lượng chuyên viên lành nghề tập trung xử lý sâu từng điểm " + needLabel + " để mang lại cảm nhận cải thiện rõ rệt ngay từ lần đầu ạ. Mức giá " + pkgPrice + " đã bao gồm trọn gói (" + pkgIncludes + " | Không gian: " + pkgSpace + "). " + BubbleCapHook.capitalizeFirstLetter(custPronoun) + " thử trải nghiệm trước 1 lần để tự mình kiểm chứng chất lượng nhé?";
             antiPattern = "Dạ em hiểu mình đang cân nhắc ạ, hay để em gợi ý gói tiết kiệm hơn cho mình nhé?";
         } else if (isDownsellOrRepeatObjectionTurn) {
-            tacticalFocus = "Giới thiệu phương án tiết kiệm trong [NHÓM 2] (" + pkgName + pkgDur + " - " + pkgPrice + ") kèm ĐÚNG không gian (" + pkgSpace + ") và quyền lợi (" + pkgIncludes + ") của riêng gói Nhóm 2 (hoặc giải thích chân thành nếu Nhóm 2 trống).";
+            tacticalFocus = "Giới thiệu phương án tiết kiệm trong [NHÓM 2] (" + pkgName + pkgDur + " - " + pkgPrice + ") kèm ĐÚNG không gian (" + pkgSpace + ") và quyền lợi (" + pkgIncludes + ") của riêng gói Nhóm 2" + partialScopeHint + " (hoặc giải thích chân thành nếu Nhóm 2 trống).";
             goodExample = "Dạ nếu " + custPronoun + " muốn trải nghiệm mức chi phí nhẹ nhàng hơn cho " + needLabel + " thì " + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói " + pkgName + pkgDur + " (" + pkgPrice + " trọn gói), bao gồm " + pkgIncludes + " tại " + pkgSpace + " ạ.";
             antiPattern = "Tư vấn gói lệch phạm vi nhu cầu của khách hoặc lấy không gian/quyền lợi của gói cao cấp đắp sang gói tiết kiệm.";
         } else if (isBookingOrPositiveTrialTurn) {
-            tacticalFocus = "Chốt thẳng vào gói vừa thống nhất (" + pkgName + pkgDur + " - " + pkgPrice + ") và mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai; tuyệt đối không hỏi ngược bắt khách chọn lại giữa các gói.";
-            goodExample = "Dạ vâng ạ, vậy " + selfPronoun + " giữ lịch gói " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " nha. Không biết hôm nay hay ngày mai " + custPronoun + " tiện ghé vào khung giờ nào để bên " + selfPronoun + " chuẩn bị đón tiếp chu đáo nhất ạ?";
-            antiPattern = "Hỏi ngược bắt khách chọn lại giữa 2 gói hoặc vừa hỏi giờ đặt lịch vừa gạ đổi sang gói tiết kiệm hơn.";
+            String careNoteHint = !storedCareNotes.isEmpty()
+                    ? (" đồng thời khéo léo nhắc lại lưu ý chăm sóc đã ghi nhận (" + storedCareNotes.get(storedCareNotes.size() - 1) + ") theo đúng trạng thái: \"" + selfPronoun + " lưu lại lưu ý này để khi " + custPronoun + " ghé, chuyên viên chuẩn bị chu đáo cho " + custPronoun + " nhé ạ\" (CẤM nói quá khứ \"" + selfPronoun + " đã dặn chuyên viên\" khi chưa có lịch hẹn)")
+                    : " (nói rõ \"" + selfPronoun + " lưu lại để khi " + custPronoun + " ghé sẽ dặn chuyên viên\", CẤM nói quá khứ \"" + selfPronoun + " đã dặn chuyên viên\" khi chưa có lịch hẹn)";
+            String careNoteExampleTail = !storedCareNotes.isEmpty()
+                    ? (" " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " lưu lại lưu ý \"" + storedCareNotes.get(storedCareNotes.size() - 1) + "\" này để khi " + custPronoun + " ghé, chuyên viên chuẩn bị chu đáo cho " + custPronoun + " nhé ạ.")
+                    : "";
+            tacticalFocus = "Chốt thẳng vào gói vừa thống nhất (" + pkgName + pkgDur + " - " + pkgPrice + ")" + careNoteHint + " và mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai; tuyệt đối không hỏi ngược bắt khách chọn lại giữa các gói.";
+            goodExample = "Dạ vâng ạ, vậy " + selfPronoun + " giữ lịch gói " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " nha." + careNoteExampleTail + " Không biết hôm nay hay ngày mai " + custPronoun + " tiện ghé vào khung giờ nào để bên " + selfPronoun + " chuẩn bị đón tiếp chu đáo nhất ạ?";
+            antiPattern = "Hỏi ngược bắt khách chọn lại giữa 2 gói, vừa hỏi giờ đặt lịch vừa gạ đổi sang gói tiết kiệm hơn, hoặc nói quá khứ 'Em đã dặn chuyên viên' khi chưa có lịch hẹn.";
         } else if (!discoveryCompleted) {
             tacticalFocus = "Chia sẻ tự nhiên với sự khó chịu/bất tiện của " + needLabel + " mà khách vừa nêu, không đoán mò nguyên nhân và chỉ hỏi 1 câu ngắn về thời gian xuất hiện.";
             goodExample = "Dạ gặp tình trạng " + needLabel + " như vậy chắc hẳn gây nhiều bất tiện và khó chịu trong sinh hoạt hàng ngày của " + custPronoun + " lắm ạ. Tình trạng này của " + custPronoun + " mới xuất hiện mấy hôm nay hay đã kéo dài lâu rồi ạ?";
             antiPattern = "Tự suy diễn nguyên nhân khi khách chưa kể hoặc nói trống không thiếu chủ ngữ.";
         } else {
-            tacticalFocus = "Chủ động đề xuất gói Số 1 trong [NHÓM 1] (" + pkgName + pkgDur + " - " + pkgPrice + ") ở bong bóng 1 và gợi cảm nhận trải nghiệm thực tế (" + pkgIncludes + " | Không gian: " + pkgSpace + ") ở bong bóng 2.";
-            goodExample = "Với tình trạng " + needLabel + ", " + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói " + pkgName + pkgDur + " (" + pkgPrice + " trọn gói) để chuyên viên chăm sóc chuyên sâu và mang lại hiệu quả tốt nhất ạ. Gói đã bao gồm " + pkgIncludes + " tại " + pkgSpace + ", " + custPronoun + " thấy phương án này thế nào ạ?";
+            tacticalFocus = "Chủ động đề xuất gói Số 1 trong [NHÓM 1] (" + pkgName + pkgDur + " - " + pkgPrice + ") ở bong bóng 1, gợi cảm nhận trải nghiệm thực tế (" + pkgIncludes + " | Không gian: " + pkgSpace + ") ở bong bóng 2, và tách câu hỏi mời trải nghiệm ở cuối thành 1 bong bóng riêng tự nhiên.";
+            goodExample = "Với tình trạng " + needLabel + ", " + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói " + pkgName + pkgDur + " (" + pkgPrice + " trọn gói) để chuyên viên chăm sóc chuyên sâu và mang lại hiệu quả tốt nhất ạ. Gói đã bao gồm " + pkgIncludes + " tại " + pkgSpace + ". " + BubbleCapHook.capitalizeFirstLetter(custPronoun) + " thấy phương án này thế nào ạ?";
             antiPattern = "Viết '" + custPronoun + " đang quan tâm đến gói...' khi khách chưa biết tên gói, hoặc hỏi câu vô nghĩa 'thử 1 buổi lẻ trước hay đặt lịch ngay cho gói trọn vẹn'.";
         }
 
         if (activeSkills != null && !activeSkills.isEmpty()) {
             AgentSkillDto topSkill = activeSkills.get(0);
             if (topSkill != null && topSkill.goodExample() != null && !topSkill.goodExample().isBlank()
-                    && !isFirstPriceObjectionHoldTurn && !isDownsellOrRepeatObjectionTurn) {
+                    && !isFirstPriceObjectionHoldTurn && !isDownsellOrRepeatObjectionTurn
+                    && !isPriceContextHesitationTurn && !isPureDeferralOrBusyTurn && !isBookingOrPositiveTrialTurn
+                    && !isPostBookingClosingAckTurn && !isServiceDetailQuestionTurn) {
                 goodExample = topSkill.goodExample().strip();
             }
             if (topSkill != null && topSkill.antiPattern() != null && !topSkill.antiPattern().isBlank()
-                    && !isFirstPriceObjectionHoldTurn && !isDownsellOrRepeatObjectionTurn) {
+                    && !isFirstPriceObjectionHoldTurn && !isDownsellOrRepeatObjectionTurn
+                    && !isPriceContextHesitationTurn && !isPureDeferralOrBusyTurn && !isBookingOrPositiveTrialTurn
+                    && !isPostBookingClosingAckTurn && !isServiceDetailQuestionTurn) {
                 antiPattern = topSkill.antiPattern().strip();
             }
         }
@@ -9306,13 +10577,21 @@ public class FanpageBotService {
         return priceHits >= 3 && !hasPolicyOrExperienceSignal;
     }
 
-    private static void appendCatalogPackageLine(StringBuilder sb, int index, PackageCatalogService.PackageSummary p) {
+    private static void appendCatalogPackageLine(
+            StringBuilder sb,
+            int index,
+            PackageCatalogService.PackageSummary p,
+            List<String> knownBodyAreas,
+            List<String> knownSymptoms
+    ) {
         if (p == null) return;
+        String partialScopeNote = buildPartialScopeLimitationNote(p, knownBodyAreas, knownSymptoms);
         sb.append(index).append(". ")
           .append(p.displayName() != null ? p.displayName() : "")
           .append(" — Thời lượng: ").append(p.durationLabel() != null ? p.durationLabel() : "")
           .append(" — Giá trọn gói: ").append(p.priceDisplay() != null ? p.priceDisplay() : "")
           .append(" — Vùng chăm sóc: ").append(p.bodyAreas() != null ? p.bodyAreas() : List.of())
+          .append(partialScopeNote.isEmpty() ? "" : " " + partialScopeNote)
           .append(" — Không gian/Hình thức: ").append(p.customerFacingSpaceNote())
           .append(" | Quyền lợi đi kèm: ").append(p.includesSummary() != null ? p.includesSummary() : "")
           .append(" (Chỉ được nêu đúng không gian và quyền lợi của gói này, cấm lấy tiện ích của gói khác đắp sang)")
@@ -9360,7 +10639,7 @@ public class FanpageBotService {
                 if (b != null && b.text() != null && !b.text().isBlank()) {
                     res.add(b);
                 }
-                if (res.size() >= 2) {
+                if (res.size() >= 3) {
                     break;
                 }
             }
@@ -9372,10 +10651,127 @@ public class FanpageBotService {
             return List.of();
         }
         List<FanpageBotResponse.ReplyBubble> split = splitIntoBubbles(sanitizedReply, true);
-        if (split.size() > 2) {
-            return new ArrayList<>(split.subList(0, 2));
+        if (split.size() > 3) {
+            return new ArrayList<>(split.subList(0, 3));
         }
         return new ArrayList<>(split);
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> splitNaturalTrialInviteBubbleIfApplicable(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String cleanStage,
+            int minDelayMs
+    ) {
+        if (bubbles == null || bubbles.isEmpty() || bubbles.size() >= 3) {
+            return bubbles != null ? bubbles : List.of();
+        }
+        boolean isStage1Or2 = "STAGE_1_DISCOVERY_AND_FIRST_QUOTE".equals(cleanStage)
+                || "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
+        if (!isStage1Or2) {
+            return bubbles;
+        }
+        FanpageBotResponse.ReplyBubble lastBubble = bubbles.get(bubbles.size() - 1);
+        if (lastBubble == null || lastBubble.text() == null) {
+            return bubbles;
+        }
+        String text = lastBubble.text().strip();
+        if (!text.endsWith("?")) {
+            return bubbles;
+        }
+        String[] totalWords = text.split("\\s+");
+        if (totalWords.length < 16) {
+            return bubbles;
+        }
+        int lastDotIdx = text.lastIndexOf(". ");
+        if (lastDotIdx <= 0) {
+            return bubbles;
+        }
+        String descPart = text.substring(0, lastDotIdx + 1).strip();
+        String questionPart = text.substring(lastDotIdx + 2).strip();
+        if (descPart.split("\\s+").length < 6 || questionPart.split("\\s+").length < 5) {
+            return bubbles;
+        }
+        String qLow = questionPart.toLowerCase(Locale.ROOT);
+        boolean isConditionalOrDependent = qLow.startsWith("nếu ")
+                || qLow.startsWith("không biết ")
+                || qLow.startsWith("trường hợp ")
+                || qLow.startsWith("vì ")
+                || qLow.startsWith("do ")
+                || (qLow.contains("không biết") && qLow.contains(" hay "));
+        if (isConditionalOrDependent) {
+            return bubbles;
+        }
+        boolean isTrialOrFeedbackInvite = qLow.contains("thử")
+                || qLow.contains("trải nghiệm")
+                || qLow.contains("cảm nhận")
+                || qLow.contains("kiểm chứng")
+                || qLow.contains("thế nào")
+                || qLow.contains("sao ạ")
+                || qLow.endsWith("nhé?")
+                || qLow.endsWith("nha?")
+                || qLow.endsWith("không ạ?")
+                || qLow.endsWith("chưa ạ?");
+        if (!isTrialOrFeedbackInvite) {
+            return bubbles;
+        }
+        List<FanpageBotResponse.ReplyBubble> updated = new ArrayList<>(bubbles.subList(0, bubbles.size() - 1));
+        updated.add(new FanpageBotResponse.ReplyBubble(descPart, lastBubble.typingDelayMs()));
+        updated.add(new FanpageBotResponse.ReplyBubble(questionPart, Math.max(minDelayMs, 1200)));
+        return updated;
+    }
+
+    private static final Pattern STAGE6_CLOSING_WISH_SPLIT_PATTERN = Pattern.compile(
+            "(?isU)^(.+[,.;])\\s*(chúc\\s+(?:mình|anh|chị|bạn)\\s+(?:một\\s+ngày|ngày\\s+mới|buổi\\s+tối|buổi\\s+chiều|buổi\\s+sáng|cuối\\s+tuần|luôn|thật\\s+nhiều)[^?!.]*[.!]?)\\s*$"
+    );
+
+    /**
+     * Tách mệnh đề lời chúc cuối ("Chúc mình/anh/chị/bạn...") thành bong bóng thứ 2 có kiểm soát
+     * khi và chỉ khi quyết định cuối cùng của lượt là {@code STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE}
+     * và câu trả lời hiện tại chỉ có 1 bong bóng gồm vế ghi nhận/hẹn hỗ trợ phía trước + lời chúc kết thúc ở cuối.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> splitClosingWishBubbleIfApplicable(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String cleanStage,
+            int minDelayMs
+    ) {
+        if (bubbles == null || bubbles.size() != 1) {
+            return bubbles != null ? bubbles : List.of();
+        }
+        if (!"STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)) {
+            return bubbles;
+        }
+        FanpageBotResponse.ReplyBubble onlyBubble = bubbles.get(0);
+        if (onlyBubble == null || onlyBubble.text() == null || onlyBubble.text().isBlank()) {
+            return bubbles;
+        }
+        String text = onlyBubble.text().strip();
+        Matcher m = STAGE6_CLOSING_WISH_SPLIT_PATTERN.matcher(text);
+        if (!m.matches()) {
+            return bubbles;
+        }
+        String rawFirstPart = m.group(1).strip();
+        String rawWishPart = m.group(2).strip();
+        String firstPartBody = rawFirstPart.replaceAll("[,.;]+\\s*$", "").strip();
+        if (firstPartBody.split("\\s+").length < 4 || rawWishPart.split("\\s+").length < 4) {
+            return bubbles;
+        }
+        // Bảo vệ biên: không tách nếu vế sau "chúc..." còn chứa nội dung tư vấn/hẹn nhắn/gói dịch vụ ở phía sau
+        String wishLower = rawWishPart.toLowerCase(Locale.ROOT);
+        if (wishLower.matches("(?isU).*\\b(đã\\s+lưu|cứ\\s+nhắn|liệu\\s+trình|gói\\s+dịch\\s+vụ|đặt\\s+lịch|tư\\s+vấn|hỗ\\s+trợ\\s+(?:mình|anh|chị|bạn))\\b.*")) {
+            return bubbles;
+        }
+        String firstBubbleText = (firstPartBody.endsWith(".") || firstPartBody.endsWith("!"))
+                ? firstPartBody
+                : (firstPartBody + ".");
+        String secondBubbleText = BubbleCapHook.capitalizeFirstLetter(rawWishPart);
+        if (!secondBubbleText.endsWith(".") && !secondBubbleText.endsWith("!")) {
+            secondBubbleText = secondBubbleText + ".";
+        }
+        int secondDelay = Math.max(minDelayMs > 0 ? minDelayMs : 1200, 1200);
+        return List.of(
+                new FanpageBotResponse.ReplyBubble(firstBubbleText, onlyBubble.typingDelayMs()),
+                new FanpageBotResponse.ReplyBubble(secondBubbleText, secondDelay)
+        );
     }
 
     public static List<String> checkCleanCatalogGrounding(
@@ -9392,7 +10788,8 @@ public class FanpageBotService {
                 0,
                 false,
                 null,
-                true
+                true,
+                "NONE"
         );
     }
 
@@ -9412,7 +10809,8 @@ public class FanpageBotService {
                 priceObjectionCount,
                 explicitDownsellRequested,
                 null,
-                true
+                true,
+                "NONE"
         );
     }
 
@@ -9425,6 +10823,30 @@ public class FanpageBotService {
             boolean explicitDownsellRequested,
             PackageCatalogService.PackageSummary activePackage,
             boolean heldPkgIsNull
+    ) {
+        return checkCleanCatalogGrounding(
+                bubbles,
+                allCatalog,
+                scopeFilteredCatalog,
+                excludedCatalog,
+                priceObjectionCount,
+                explicitDownsellRequested,
+                activePackage,
+                heldPkgIsNull,
+                "NONE"
+        );
+    }
+
+    public static List<String> checkCleanCatalogGrounding(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            int priceObjectionCount,
+            boolean explicitDownsellRequested,
+            PackageCatalogService.PackageSummary activePackage,
+            boolean heldPkgIsNull,
+            String bookingStatus
     ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of();
@@ -9455,6 +10877,10 @@ public class FanpageBotService {
         Pattern durPat = Pattern.compile("(?iU)\\b(\\d{2,3})\\s*phút\\b");
         Pattern privateOrVipRoomPat = Pattern.compile("(?iU)\\bphòng\\s+(?:vip|riêng)\\b");
         Pattern falsePriorPkgInterestPat = Pattern.compile("(?iU).*\\b(mình|anh|chị|bạn)\\s+đang\\s+quan\\s+tâm\\s+(?:đến\\s+|tới\\s+)?gói\\b.*");
+        Pattern pastTenseInstructStaffPat = Pattern.compile(
+                "(?iU)\\bem\\s+đã\\s+(?:dặn|báo|nhắc|yêu\\s+cầu)(?:\\s+trước)?\\s+(?:các\\s+|bên\\s+)?(?:chuyên\\s+viên|kỹ\\s+thuật\\s+viên|nhân\\s+viên)\\b"
+        );
+        boolean isBookingConfirmed = bookingStatus != null && "CONFIRMED".equalsIgnoreCase(bookingStatus.strip());
         StringBuilder combinedTurnSb = new StringBuilder();
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null) continue;
@@ -9519,7 +10945,7 @@ public class FanpageBotService {
                 violations.add("FORBIDDEN_INTERNAL_REPAIR_LEAK_SELF_CONFESSION");
             }
 
-            // 7. Kiểm tra chéo Tiện ích Phân hạng Gói (Cross-Tier Amenity Grounding)
+            // 7. Kiểm tra chéo Tiện ích Phân hạng Gói (Cross-Tier Amenity Grounding & includesSummary)
             PackageCatalogService.PackageSummary refPkg = resolveReferencedPackageForBubble(
                     text, activePackage, scopeFilteredCatalog, allCatalog);
             if (refPkg != null) {
@@ -9539,11 +10965,19 @@ public class FanpageBotService {
                 if (!incLower.contains("thực dưỡng") && lower.contains("thực dưỡng")) {
                     violations.add("CROSS_TIER_AMENITY_MISMATCH:" + refPkg.code());
                 }
+                if (!incLower.contains("buffet") && lower.contains("buffet")) {
+                    violations.add("UNGROUNDED_BUFFET_AMENITY:" + refPkg.code());
+                }
             }
 
             // 8. Chặn lỗi "Mình đang quan tâm đến gói..." khi khách mới chia sẻ nhu cầu (heldPkg == null)
             if (heldPkgIsNull && falsePriorPkgInterestPat.matcher(text).matches()) {
                 violations.add("FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION");
+            }
+
+            // 8B. Chặn nói quá khứ "Em đã dặn chuyên viên" khi bookingStatus != CONFIRMED
+            if (!isBookingConfirmed && pastTenseInstructStaffPat.matcher(text).find()) {
+                violations.add("UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION");
             }
         }
 
@@ -9668,12 +11102,16 @@ public class FanpageBotService {
             sb.append("- Bắt buộc tự xưng là \"").append(selfPronoun).append("\" và gọi khách là \"").append(customerPronoun)
               .append("\". Tuyệt đối KHÔNG viết \"Dạ mình hiểu\", \"Dạ mình đã hiểu rồi ạ\" hay \"Dạ hiểu rồi ạ\".\n");
         }
-        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRIVATE_ROOM") || v.startsWith("CROSS_TIER_AMENITY_MISMATCH"))) {
+        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRIVATE_ROOM") || v.startsWith("CROSS_TIER_AMENITY_MISMATCH") || v.startsWith("UNGROUNDED_BUFFET_AMENITY"))) {
             String spaceInfo = activePackage != null ? activePackage.customerFacingSpaceNote() : "đúng mục Không gian/Hình thức của gói";
             String incInfo = activePackage != null ? activePackage.includesSummary() : "đúng mục Quyền lợi đi kèm của gói";
             sb.append("- BẮT BUỘC chỉ nêu đúng Không gian/Hình thức (\"").append(spaceInfo)
               .append("\") và Quyền lợi đi kèm (\"").append(incInfo)
-              .append("\") của gói đang tư vấn; tuyệt đối KHÔNG bịa 'phòng riêng/VIP' hay tiện ích của gói khác.\n");
+              .append("\") của gói đang tư vấn; tuyệt đối KHÔNG bịa 'phòng riêng/VIP', 'buffet' hay tiện ích của gói khác.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION"))) {
+            sb.append("- Khi khách chưa chốt khung giờ đặt lịch (bookingStatus != CONFIRMED), TUYỆT ĐỐI CẤM nói quá khứ \"").append(selfPronoun)
+              .append(" đã dặn chuyên viên\". Hãy nói \"").append(selfPronoun).append(" lưu lại để khi mình ghé sẽ dặn chuyên viên\".\n");
         }
         if (violations.stream().anyMatch(v -> v.startsWith("FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION"))) {
             sb.append("- Khách chưa biết tên gói dịch vụ, tuyệt đối CẤM viết \"").append(customerPronoun)
@@ -9697,7 +11135,7 @@ public class FanpageBotService {
     }
 
     public static String sanitizeMinorCleanAgentWordingInPlace(String text, String selfPronoun) {
-        return sanitizeMinorCleanAgentWordingInPlace(text, selfPronoun, "mình", null, true);
+        return sanitizeMinorCleanAgentWordingInPlace(text, selfPronoun, "mình", null, true, "NONE");
     }
 
     public static String sanitizeMinorCleanAgentWordingInPlace(
@@ -9705,7 +11143,7 @@ public class FanpageBotService {
             String selfPronoun,
             PackageCatalogService.PackageSummary activePackage
     ) {
-        return sanitizeMinorCleanAgentWordingInPlace(text, selfPronoun, "mình", activePackage, true);
+        return sanitizeMinorCleanAgentWordingInPlace(text, selfPronoun, "mình", activePackage, true, "NONE");
     }
 
     public static String sanitizeMinorCleanAgentWordingInPlace(
@@ -9714,6 +11152,17 @@ public class FanpageBotService {
             String customerPronoun,
             PackageCatalogService.PackageSummary activePackage,
             boolean heldPkgIsNull
+    ) {
+        return sanitizeMinorCleanAgentWordingInPlace(text, selfPronoun, customerPronoun, activePackage, heldPkgIsNull, "NONE");
+    }
+
+    public static String sanitizeMinorCleanAgentWordingInPlace(
+            String text,
+            String selfPronoun,
+            String customerPronoun,
+            PackageCatalogService.PackageSummary activePackage,
+            boolean heldPkgIsNull,
+            String bookingStatus
     ) {
         if (text == null || text.isBlank()) {
             return text;
@@ -9743,7 +11192,24 @@ public class FanpageBotService {
             );
         }
 
-        // 3. Đối chiếu activePackage để sửa lỗi bịa "phòng riêng" hoặc lệch tiện ích ("thực dưỡng") giữa các phân hạng gói
+        // 2B. Khi bookingStatus != CONFIRMED, chuẩn hóa câu quá khứ "Em đã dặn chuyên viên" -> "em lưu lại để khi mình ghé sẽ dặn chuyên viên"
+        if (bookingStatus == null || !"CONFIRMED".equalsIgnoreCase(bookingStatus.strip())) {
+            Pattern pastStaffInstructPat = Pattern.compile(
+                    "(?iU)\\b(em)\\s+đã\\s+(?:dặn|báo|nhắc|yêu\\s+cầu)(?:\\s+trước)?\\s+(?:các\\s+|bên\\s+)?(?:chuyên\\s+viên|kỹ\\s+thuật\\s+viên|nhân\\s+viên)\\b"
+            );
+            Matcher mStaff = pastStaffInstructPat.matcher(out);
+            StringBuilder sbStaff = new StringBuilder();
+            while (mStaff.find()) {
+                String matchedEm = mStaff.group(1);
+                boolean isUpper = matchedEm != null && !matchedEm.isEmpty() && Character.isUpperCase(matchedEm.charAt(0));
+                String rep = (isUpper ? "Em" : "em") + " lưu lại để khi mình ghé sẽ dặn chuyên viên";
+                mStaff.appendReplacement(sbStaff, Matcher.quoteReplacement(rep));
+            }
+            mStaff.appendTail(sbStaff);
+            out = sbStaff.toString();
+        }
+
+        // 3. Đối chiếu activePackage để sửa lỗi bịa "phòng riêng" hoặc lệch tiện ích ("thực dưỡng" / "buffet") giữa các phân hạng gói
         if (activePackage != null) {
             String spaceNote = activePackage.customerFacingSpaceNote() != null
                     ? activePackage.customerFacingSpaceNote().strip()
@@ -9765,8 +11231,17 @@ public class FanpageBotService {
             String incLower = incSummary.toLowerCase(Locale.ROOT);
             if (!incSummary.isEmpty() && !incLower.contains("thực dưỡng") && out.toLowerCase(Locale.ROOT).contains("thực dưỡng")) {
                 out = out.replaceAll(
-                        "(?iU)\\b(?:bữa\\s+ăn\\s+nhẹ\\s+thực\\s+dưỡng|phần\\s+ăn\\s+nhẹ\\s+thực\\s+dưỡng|ăn\\s+nhẹ\\s+thực\\s+dưỡng|thực\\s+dưỡng)\\b",
+                        "(?iU)\\b(?:buffet\\s+thực\\s+dưỡng|buffet\\s+ăn\\s+nhẹ|bữa\\s+ăn\\s+nhẹ\\s+thực\\s+dưỡng|phần\\s+ăn\\s+nhẹ\\s+thực\\s+dưỡng|ăn\\s+nhẹ\\s+thực\\s+dưỡng|thực\\s+dưỡng)\\b",
                         Matcher.quoteReplacement(incSummary)
+                );
+            } else if (!incSummary.isEmpty() && !incLower.contains("buffet")
+                    && out.toLowerCase(Locale.ROOT).contains("buffet")) {
+                String catalogFoodWording = incLower.contains("ăn nhẹ thực dưỡng")
+                        ? "bữa ăn nhẹ thực dưỡng"
+                        : incSummary;
+                out = out.replaceAll(
+                        "(?iU)\\b(?:quầy\\s+|bữa\\s+|tiệc\\s+)?buffet(?:\\s+ăn\\s+nhẹ)?(?:\\s+thực\\s+dưỡng)?\\b",
+                        Matcher.quoteReplacement(catalogFoodWording)
                 );
             }
         }
@@ -9859,6 +11334,7 @@ public class FanpageBotService {
             boolean hasPriceObjectionKeyword,
             int priceObjectionCount,
             boolean isAckOrAcceptNow,
+            boolean isHesitationOrPoliteClosing,
             boolean conditionClarified,
             boolean replyHasPrice,
             boolean shouldHandoff
@@ -9905,6 +11381,16 @@ public class FanpageBotService {
                     2,
                     "PRICE_OBJECTION_2",
                     "spa_objection_dynamic_downsell"
+            );
+        }
+        if (isHesitationOrPoliteClosing) {
+            return new PrimaryActionRouter.RoutingDecision(
+                    PrimaryActionRouter.PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED,
+                    PrimaryActionRouter.PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED,
+                    false,
+                    2,
+                    "POLITE_DEFERRAL_EXIT",
+                    "spa_graceful_exit_after_rejection"
             );
         }
         if (isDetailOrUnitQuestion && !isAckOrAcceptNow) {

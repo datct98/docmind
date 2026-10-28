@@ -506,7 +506,9 @@ public class CustomerInsightEngine {
             return List.of();
         }
 
-        List<AgentSkillDto> pool = new ArrayList<>(base);
+        List<AgentSkillDto> pool = new ArrayList<>(
+                base.stream().map(FanpageBotService::sanitizeSkillDisplayNameForUi).toList()
+        );
         boolean hasPersuasion = pool.stream().anyMatch(s -> "PSYCH_ZERO_PRESSURE_TAKEAWAY".equalsIgnoreCase(s.code()));
         if (!hasPersuasion) {
             pool.addAll(COOLING_PERSUASION_SKILLS);
@@ -560,10 +562,20 @@ public class CustomerInsightEngine {
 
         record ScoredSkill(AgentSkillDto skill, int score) {}
         List<ScoredSkill> scored = new ArrayList<>(pool.size());
+        boolean isBareClosingAfterHesitation = FanpageBotService.isBareAcknowledgmentMessage(currentMessage)
+                && FanpageBotService.wasPriorCustomerTurnHesitation(history);
+        boolean isHesitationOrDeferralTurn = FanpageBotService.isHesitationOrDeferralMessage(currentMessage)
+                || isBareClosingAfterHesitation;
 
         for (AgentSkillDto skill : pool) {
             int score = skill.priority();
             String code = skill.code() != null ? skill.code().toUpperCase(Locale.ROOT) : "";
+            boolean isBookingAcceptanceSkill = "SPA_TRIAL_ACCEPTANCE_BOOKING".equals(code)
+                    || "SPA_BOOKING_ADVANCE_AFTER_ACK".equals(code)
+                    || "BOOKING_SOFT_CONFIRM".equals(code)
+                    || "SALES_MICRO_COMMITMENT_CLOSE".equals(code)
+                    || "SALES_APPOINTMENT_HOOK_CLOSE".equals(code)
+                    || (skill.category() != null && "CLOSING".equalsIgnoreCase(skill.category()));
             int matchedInCurrentMsg = 0;
             int matchedInHistory = 0;
 
@@ -573,6 +585,10 @@ public class CustomerInsightEngine {
                 for (String rawSig : signals) {
                     String sig = rawSig.strip().toLowerCase(Locale.ROOT);
                     if (sig.length() >= 2) {
+                        if (isHesitationOrDeferralTurn && isBookingAcceptanceSkill
+                                && (sig.equals("ok") || sig.equals("oke") || sig.equals("ừ") || sig.equals("uk") || sig.equals("vâng") || sig.equals("dạ"))) {
+                            continue;
+                        }
                         if (msg.contains(sig)) {
                             matchedInCurrentMsg++;
                         } else if (fullConvo.contains(sig)) {
@@ -582,6 +598,15 @@ public class CustomerInsightEngine {
                 }
                 score += Math.min(3, matchedInCurrentMsg) * 45;
                 score += Math.min(2, matchedInHistory) * 18;
+            }
+            if (isHesitationOrDeferralTurn) {
+                if (isBookingAcceptanceSkill || "SPA_LUKEWARM_MOOD_BOOST".equals(code) || "LUKEWARM_MOOD_BOOST".equals(code)) {
+                    score -= 350;
+                } else if ("SPA_GRACEFUL_EXIT_AFTER_REJECTION".equals(code)
+                        || "SPA_STAGE3_GRACEFUL_EXIT".equals(code)
+                        || "PSYCH_ZERO_PRESSURE_TAKEAWAY".equals(code)) {
+                    score += 180;
+                }
             }
 
             // 2. Điểm thưởng kích hoạt công bằng cho Kỹ năng Tùy chỉnh trên UI / Kỹ năng riêng của Page

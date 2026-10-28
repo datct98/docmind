@@ -678,6 +678,11 @@ public final class SentimentIntentLayer {
             return false;
         }
         if (isStrongRejection(message)
+                || isPoliteDeferralExit(message)
+                || FanpageBotService.isHesitationOrDeferralMessage(message)
+                || (priorState != null
+                    && FanpageBotService.isBareAcknowledgmentMessage(message)
+                    && FanpageBotService.isPauseOrDeferralBotReply(priorState.lastAssistantMessage()))
                 || isWordingOrExpressionFeedback(message)
                 || isConversationStyleComplaint(message)
                 || isAlreadyAnsweredSlotPushback(message)

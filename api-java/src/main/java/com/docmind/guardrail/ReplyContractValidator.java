@@ -119,10 +119,15 @@ public final class ReplyContractValidator {
     // v3.8: Java KHÔNG viết lại/cắt/ghép văn bản LLM. Mọi vi phạm hợp đồng được trả về dưới dạng lỗi BLOCKING
     // để FanpageBotService yêu cầu LLM regenerate tối đa 1 lần; sau đó dùng fallback/handoff đã phê duyệt.
 
-    /** Lỗi BLOCKING: chỉ giữ các lỗi nghiêm trọng về dữ kiện sự thật Catalog, y khoa và bảo mật. */
+    /** Lỗi BLOCKING: bong bóng vi phạm các lỗi này KHÔNG BAO GIỜ được đưa vào final_bubbles. */
     public static final java.util.Set<String> BLOCKING_ERRORS = java.util.Set.of(
-            "UNGROUNDED_CATALOG_PRICE", "UNGROUNDED_CATALOG_DURATION",
-            "MEDICAL_CLAIM", "INTERNAL_LEAK");
+            "UNGROUNDED_CATALOG_PRICE", "UNGROUNDED_CATALOG_DURATION", "UNGROUNDED_PACKAGE_BENEFIT", "VR_NO_UNGROUNDED_SERVICE_CLAIM",
+            "FORBIDDEN_NEGATED_SCOPE_USED", "MEDICAL_CLAIM", "INTERNAL_LEAK", "BODY_PART_MISMATCH_HALLUCINATION",
+            "VR-004A_NO_REJECTED_PACKAGE_REPEAT", "REPEATED_PRICE_AFTER_DISCUSSED", "NO_NUMERIC_PRICE_REPEAT_AFTER_DISCUSSED",
+            "FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION", "FORBIDDEN_AWKWARD_CLOSING_QUESTION", "FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK",
+            "FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK", "VR_EMOJI_WHITELIST", "VR-015A_FORBIDDEN_EMOJI", "EMPTY_TEMPLATE_APOLOGY",
+            "VR-007B_NO_FAKE_STATS_OR_ABSOLUTE_SOCIAL_PROOF", "VR-007D_UNGROUNDED_SOCIAL_PROOF",
+            "VR-007H_UNGROUNDED_PRIVATE_ROOM", "OPERATIONAL_PROMISE_WITHOUT_ARTIFACT", "PROMO_NOT_GROUNDED");
 
     public static boolean hasBlockingError(java.util.Collection<String> errs) {
         return errs != null && errs.stream().anyMatch(BLOCKING_ERRORS::contains);
@@ -354,16 +359,19 @@ public final class ReplyContractValidator {
         for (int i = 0; i < working.size(); i++) {
             ReplyBubble b = working.get(i);
             if (b == null || b.text() == null) continue;
-            String text = normalizeDeclarativeQuestionMarks(isLlmValidation ? b.text() : b.text().strip());
+            String text = isLlmValidation ? b.text() : normalizeDeclarativeQuestionMarks(b.text().strip());
             List<String> sents = splitIntoSentencesPreservingPunctuation(text);
-            if (sents.size() >= 2
+            if (!isLlmValidation
+                    && sents.size() >= 2
                     && sents.get(0).strip().endsWith("?")
                     && sents.get(sents.size() - 1).strip().endsWith("?")) {
                 sents = new ArrayList<>(sents);
                 sents.set(0, sents.get(0).strip().replaceFirst("\\?+$", "."));
                 text = String.join(" ", sents).strip();
             }
-            working.set(i, new ReplyBubble(text, b.typingDelayMs()));
+            if (isLlmValidation) {
+                working.set(i, new ReplyBubble(text, b.typingDelayMs()));
+            }
             String lower = text.toLowerCase(Locale.ROOT);
 
             String dynamicOptionPair = resolveDynamicOptionPair(safeState);
@@ -697,10 +705,22 @@ public final class ReplyContractValidator {
                     && (lower.contains("xin lỗi") || lower.contains("chuyển sang nhân viên") || lower.contains("chuyển nhân viên") || lower.contains("tóm tắt lại thông tin"))) {
                 errors.add("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK");
             }
+            boolean isStyleOrWordingRepairMsg = com.example.docmind.service.bot.SentimentIntentLayer.isWordingOrExpressionFeedback(customerMessage)
+                    || (effectiveAction == PrimaryAction.GENERIC_SHORT_DISCOVERY
+                        && com.example.docmind.service.bot.SentimentIntentLayer.isConversationStyleComplaint(customerMessage));
             boolean inBookingFunnelNow = safeState.packageInterestAccepted()
                     || enrichedState.packageInterestAccepted()
                     || "COLLECTING_INFO".equals(safeState.bookingStatus())
                     || "COLLECTING_INFO".equals(enrichedState.bookingStatus());
+            if (isLlmValidation && isStyleOrWordingRepairMsg) {
+                boolean hasSalesPitchContent = lower.matches("(?isU).*\\b(liệu\\s+trình|kỹ\\s+thuật\\s+viên|massage|dưỡng\\s+sinh|thảo\\s+dược|ngâm\\s+bồn|xông\\s+hơi|buffet|ấn\\s+huyệt|giãn\\s+cơ|thư\\s+giãn\\s+toàn\\s+thân|trải\\s+nghiệm\\s+(?:1|một)\\s+buổi)\\b.*")
+                        || PRICE_PATTERN.matcher(text).find();
+                boolean hasForbiddenQuestionOrApology = (!inBookingFunnelNow && lower.contains("?"))
+                        || (inBookingFunnelNow && lower.matches("(?isU).*(?:muốn\\s+(?:thử\\s+)?trải\\s+nghiệm|thử\\s+(?:1|một)\\s+buổi\\s+không|khó\\s+chịu\\s+ở\\s+.*\\s+phải\\s+không).*"));
+                if (hasSalesPitchContent || hasForbiddenQuestionOrApology) {
+                    errors.add("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK");
+                }
+            }
             // P0.1: Không nhắc lại toàn bộ danh sách triệu chứng ở đầu lượt khi triệu chứng đã được xác nhận ở lượt trước và không thay đổi
             if (isLlmValidation
                     && i == 0
@@ -802,12 +822,12 @@ public final class ReplyContractValidator {
                 text = text.replaceAll("(?iU)\\b(\\d{2,4}k)\\s*\\(\\s*\\d{1,3}(?:\\.\\d{3})+\\s*(?:đ|vnđ|vnd)?\\s*\\)", "$1");
                 text = text.replaceAll("(?iU)^\\s*Dạ\\s+em\\s+ghi\\s+nhận\\s+mình\\s+đang\\s+([^.,!?]+?)\\s+ạ\\.",
                         "Dạ tình trạng $1 chắc đang làm mình khá khó chịu ạ.");
+                text = normalizeDeclarativeQuestionMarks(text);
+                lower = text.toLowerCase(Locale.ROOT);
             }
-            text = normalizeDeclarativeQuestionMarks(text);
-            lower = text.toLowerCase(Locale.ROOT);
 
             // v3.5.0 Mục IV.2: Nếu trong 1 bong bóng có 2 câu cùng kết thúc bằng '?' (vd câu 1 kết bằng 'ạ?'), tự động đổi dấu '?' của câu 1 thành '.' trong 0ms
-            if (countQuestionMarks(text) > 1) {
+            if (!isLlmValidation && countQuestionMarks(text) > 1) {
                 text = text.replaceFirst("\\?(?=\\s+[^?]+\\?\\s*[^\\p{L}\\d]*$)", ".");
                 lower = text.toLowerCase(Locale.ROOT);
             }

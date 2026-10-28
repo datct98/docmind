@@ -42,7 +42,16 @@ public record CustomerInsightDto(
         List<String> hiddenConcerns,
 
         @JsonProperty("recommended_strategy")
-        String recommendedStrategy
+        String recommendedStrategy,
+
+        @JsonProperty("care_notes")
+        List<String> careNotes,
+
+        @JsonProperty("working_hypothesis")
+        String workingHypothesis,
+
+        @JsonProperty("last_actual_sent_speech_act")
+        String lastActualSentSpeechAct
 ) {
     public CustomerInsightDto {
         if (extractedPains == null) {
@@ -54,6 +63,89 @@ public record CustomerInsightDto(
         if (momentum == null || momentum.isBlank()) {
             momentum = "STABLE";
         }
+        if (careNotes == null) {
+            careNotes = List.of();
+        }
+        if (workingHypothesis == null) {
+            workingHypothesis = "";
+        }
+        if (lastActualSentSpeechAct == null) {
+            lastActualSentSpeechAct = "";
+        }
+    }
+
+    /**
+     * Constructor 14 tham số tương thích ngược.
+     */
+    public CustomerInsightDto(
+            String buyerArchetype,
+            String archetypeLabel,
+            int buyingTemperature,
+            Integer previousTemperature,
+            Integer temperatureDelta,
+            String momentum,
+            String temperatureLabel,
+            String decayReason,
+            String honorific,
+            List<String> extractedPains,
+            List<String> hiddenConcerns,
+            String recommendedStrategy,
+            List<String> careNotes,
+            String workingHypothesis
+    ) {
+        this(
+                buyerArchetype,
+                archetypeLabel,
+                buyingTemperature,
+                previousTemperature,
+                temperatureDelta,
+                momentum,
+                temperatureLabel,
+                decayReason,
+                honorific,
+                extractedPains,
+                hiddenConcerns,
+                recommendedStrategy,
+                careNotes,
+                workingHypothesis,
+                ""
+        );
+    }
+
+    /**
+     * Constructor 12 tham số tương thích ngược cho các caller hiện hữu.
+     */
+    public CustomerInsightDto(
+            String buyerArchetype,
+            String archetypeLabel,
+            int buyingTemperature,
+            Integer previousTemperature,
+            Integer temperatureDelta,
+            String momentum,
+            String temperatureLabel,
+            String decayReason,
+            String honorific,
+            List<String> extractedPains,
+            List<String> hiddenConcerns,
+            String recommendedStrategy
+    ) {
+        this(
+                buyerArchetype,
+                archetypeLabel,
+                buyingTemperature,
+                previousTemperature,
+                temperatureDelta,
+                momentum,
+                temperatureLabel,
+                decayReason,
+                honorific,
+                extractedPains,
+                hiddenConcerns,
+                recommendedStrategy,
+                List.of(),
+                "",
+                ""
+        );
     }
 
     /**
@@ -81,7 +173,10 @@ public record CustomerInsightDto(
                 honorific,
                 extractedPains,
                 hiddenConcerns,
-                recommendedStrategy
+                recommendedStrategy,
+                List.of(),
+                "",
+                ""
         );
     }
 }
