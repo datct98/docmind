@@ -130,9 +130,7 @@ services:
       - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-2048}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
     volumes:
-      # Mount trực tiếp ./api-java/.env (thư mục Spring Boot) vào /app/.env để khi sửa api-java/.env và bấm Restart container,
-      # DocmindApiApplication.loadDotenv() sẽ nạp ngay API key mới nhất!
-      - ./api-java/.env:/app/.env:ro
+      - ./.env:/app/.env:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

@@ -216,10 +216,16 @@ public final class SentimentIntentLayer {
     // 4. TRIAL_ACCEPTANCE
     private static final Pattern TRIAL_ACCEPTANCE_PATTERN = Pattern.compile(
             "(?isU).*\\b(thử\\s+xem\\s+sao|thử\\s+xem|làm\\s+thử|trải\\s+nghiệm\\s+thử|ok\\s+thử\\s+1\\s+buổi|"
-            + "thử\\s+1\\s+buổi|thử\\s+một\\s+buổi|đăng\\s+ký\\s+thử|trải\\s+nghiệm\\s+1\\s+buổi)\\b.*"
+            + "thử\\s+1\\s+buổi|thử\\s+một\\s+buổi|đăng\\s+ký\\s+thử|trải\\s+nghiệm\\s+1\\s+buổi|"
+            + "nghe\\s+(?:cũng\\s+)?(?:ổn|được|hợp\\s+lý|hay|thích)(?:\\s+hơn)?(?:\\s+(?:đó|đấy|nhỉ|ha|ạ|nhé|nha|rồi))?|"
+            + "(?:ổn|hợp\\s+lý|được)\\s+hơn\\s+(?:đó|đấy|rồi)|"
+            + "(?:cũng\\s+)?(?:ổn|hợp\\s+lý)\\s+(?:đó|đấy)(?:\\s+(?:em|ạ|nha|nhé))?)\\b.*"
     );
     private static final Pattern TRIAL_ACCEPTANCE_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(thu\\s+xem\\s+sao|lam\\s+thu|trai\\s+nghiem\\s+thu|ok\\s+thu\\s+1\\s+buoi|thu\\s+1\\s+buoi|dang\\s+ky\\s+thu)\\b.*"
+            "(?is).*\\b(thu\\s+xem\\s+sao|lam\\s+thu|trai\\s+nghiem\\s+thu|ok\\s+thu\\s+1\\s+buoi|thu\\s+1\\s+buoi|dang\\s+ky\\s+thu|"
+            + "nghe\\s+(?:cung\\s+)?(?:on|duoc|hop\\s+ly|hay|thich)(?:\\s+hon)?(?:\\s+(?:do|day|nhi|ha|a|nhe|nha|roi))?|"
+            + "(?:on|hop\\s+ly|duoc)\\s+hon\\s+(?:do|day|roi)|"
+            + "(?:cung\\s+)?(?:on|hop\\s+ly)\\s+(?:do|day)(?:\\s+(?:em|a|nha|nhe))?)\\b.*"
     );
 
     // 5. PACKAGE_REJECTION
@@ -637,9 +643,19 @@ public final class SentimentIntentLayer {
         if (isStrongRejection(message)) {
             return false;
         }
+        if (hasPositiveServiceInterestSignal(message)) {
+            return false;
+        }
         String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         if (MID_FUNNEL_HESITANT_PATTERN.matcher(norm).matches()) {
             return true;
+        }
+        if (state.trialInviteOffered()
+                || state.downsellOffered()
+                || state.packageInterestAccepted()
+                || state.objectionCount() >= 1
+                || "COLLECTING_INFO".equals(state.bookingStatus())) {
+            return false;
         }
         boolean botHasPendingDecisionQuestion = pendingQuestion != null && !"NONE".equals(pendingQuestion);
         return !botHasPendingDecisionQuestion && MID_FUNNEL_PLAIN_ACK_PATTERN.matcher(norm).matches();
@@ -666,6 +682,7 @@ public final class SentimentIntentLayer {
                 || isConversationStyleComplaint(message)
                 || isAlreadyAnsweredSlotPushback(message)
                 || isMetaConversationOnBotBehavior(message)
+                || isAntiApologyPushback(message)
                 || PrimaryActionRouter.isFrustrationMessage(message)) {
             return false;
         }
@@ -674,8 +691,19 @@ public final class SentimentIntentLayer {
             return false;
         }
         String ascii = removeDiacritics(message);
+        boolean hasOfferedOrDiscussedPkg = priorState != null
+                && (priorState.trialInviteOffered()
+                    || priorState.downsellOffered()
+                    || priorState.packageInterestAccepted()
+                    || priorState.objectionCount() >= 1
+                    || "COLLECTING_INFO".equals(priorState.bookingStatus())
+                    || "INVITE_ONE_SESSION_TRIAL".equals(priorState.lastQuestionIntent()));
+        boolean isAckAfterTrialOrDownsell = hasOfferedOrDiscussedPkg
+                && PrimaryActionRouter.isAcknowledgementMessage(message);
         boolean matchesTrial = TRIAL_ACCEPTANCE_PATTERN.matcher(norm).matches()
-                || TRIAL_ACCEPTANCE_ASCII_PATTERN.matcher(ascii).matches();
+                || TRIAL_ACCEPTANCE_ASCII_PATTERN.matcher(ascii).matches()
+                || (hasPositiveServiceInterestSignal(message) && (priorState == null || priorState.packageRecommended() || priorState.priceDiscussed() || hasOfferedOrDiscussedPkg))
+                || isAckAfterTrialOrDownsell;
         if (!matchesTrial) {
             return false;
         }
@@ -887,12 +915,14 @@ public final class SentimentIntentLayer {
     );
 
     private static final Pattern POSITIVE_SERVICE_INTEREST_SIGNAL_PATTERN = Pattern.compile(
-            "(?isU).*\\b(nghe\\s+(?:cũng\\s+)?(?:hay|thích|ổn|hấp\\s+dẫn|được|thú\\s+vị)\\s*(?:đấy|nhỉ|thế|vậy|ha|ạ)?|"
-            + "(?:cũng\\s+)?hay\\s+đấy|thú\\s+vị\\s+đấy|thích\\s+đấy)\\b.*"
+            "(?isU).*\\b(nghe\\s+(?:cũng\\s+)?(?:hay|thích|ổn|hợp\\s+lý|hấp\\s+dẫn|được|thú\\s+vị)(?:\\s+hơn)?\\s*(?:đó|đấy|nhỉ|thế|vậy|ha|ạ|rồi)?|"
+            + "(?:ổn|hợp\\s+lý|được)\\s+hơn\\s*(?:đó|đấy|rồi)|"
+            + "(?:cũng\\s+)?(?:hay|thú\\s+vị|thích|ổn|hợp\\s+lý|được)\\s+(?:đó|đấy))\\b.*"
     );
     private static final Pattern POSITIVE_SERVICE_INTEREST_SIGNAL_ASCII_PATTERN = Pattern.compile(
-            "(?is).*\\b(nghe\\s+(?:cung\\s+)?(?:hay|thich|on|hap\\s+dan|duoc|thu\\s+vi)\\s*(?:day|nhi|the|vay|ha|a)?|"
-            + "(?:cung\\s+)?hay\\s+day|thu\\s+vi\\s+day|thich\\s+day)\\b.*"
+            "(?is).*\\b(nghe\\s+(?:cung\\s+)?(?:hay|thich|on|hop\\s+ly|hap\\s+dan|duoc|thu\\s+vi)(?:\\s+hon)?\\s*(?:do|day|nhi|the|vay|ha|a|roi)?|"
+            + "(?:on|hop\\s+ly|duoc)\\s+hon\\s*(?:do|day|roi)|"
+            + "(?:cung\\s+)?(?:hay|thu\\s+vi|thich|on|hop\\s+ly|duoc)\\s+(?:do|day))\\b.*"
     );
 
     private static final Pattern CONFIRM_PREVIOUS_INFO_PATTERN = Pattern.compile(
@@ -945,8 +975,8 @@ public final class SentimentIntentLayer {
     }
 
     private static final Pattern CONVERSATION_STYLE_COMPLAINT_PATTERN = Pattern.compile(
-            "(?isU).*(?:(?:nói\\s+chuyện|trả\\s+lời|cách\\s+nói|cách\\s+trả\\s+lời|giọng\\s+(?:điệu|văn))[^.!?]{0,30}(?:kỳ|kì|lạ|dở|chán|máy\\s+móc|robot|cụt|lủng\\s+củng|vô\\s+duyên|khó\\s+chịu)"
-            + "|máy\\s+móc|như\\s+robot|như\\s+máy|văn\\s+mẫu|hỏi\\s+(?:ngược|lại)\\s+(?:vô\\s+duyên|hoài)|lặp\\s+đi\\s+lặp\\s+lại"
+            "(?isU).*(?:(?:nói\\s+chuyện|trả\\s+lời|cách\\s+nói|cách\\s+trả\\s+lời|giọng\\s+(?:điệu|văn)|tư\\s+vấn)[^.!?]{0,30}(?:kỳ|kì|lạ|dở|chán|máy\\s+móc|robot|cụt|cụt\\s+ngủn|khô\\s+khan|thiếu\\s+sức\\s+sống|nhạt\\s+nhẽo|vô\\s+hồn|lủng\\s+củng|vô\\s+duyên|khó\\s+chịu)"
+            + "|thiếu\\s+sức\\s+sống|khô\\s+khan|cụt\\s+ngủn|nhạt\\s+nhẽo|vô\\s+hồn|máy\\s+móc|như\\s+robot|như\\s+máy|văn\\s+mẫu|hỏi\\s+(?:ngược|lại)\\s+(?:vô\\s+duyên|hoài)|lặp\\s+đi\\s+lặp\\s+lại"
             + "|hỏi\\s+kiểu|ép\\s+khách|chèo\\s+kéo).*"
     );
 
@@ -959,7 +989,15 @@ public final class SentimentIntentLayer {
             return false;
         }
         String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        return CONVERSATION_STYLE_COMPLAINT_PATTERN.matcher(norm).matches();
+        if (CONVERSATION_STYLE_COMPLAINT_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        String normalizedMsg = com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification(message.strip());
+        if (normalizedMsg != null && !normalizedMsg.isBlank()) {
+            String normClass = Normalizer.normalize(normalizedMsg.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            return CONVERSATION_STYLE_COMPLAINT_PATTERN.matcher(normClass).matches();
+        }
+        return false;
     }
 
     public static boolean isMetaConversationOnBotBehavior(String message) {
@@ -1014,6 +1052,8 @@ public final class SentimentIntentLayer {
             + "|\\b(?:gói\\s+cơ\\s+bản|gói\\s+vip|gói\\s+trị\\s+liệu|gói\\s+chuyên\\s+sâu)\\s+khác\\s+(?:gì|j|sao|như\\s+thế\\s+nào)\\b"
             + "|\\b(?:giờ\\s+nào\\s+vắng|khung\\s+giờ\\s+nào\\s+vắng|làm\\s+xong\\s+có\\s+bị\\s+đau)\\b"
             + "|\\b(?:mở\\s+cửa|đóng\\s+cửa|giờ\\s+mở\\s+cửa|giờ\\s+làm\\s+việc|làm\\s+việc\\s+(?:tới|đến)\\s+mấy\\s+giờ|địa\\s+chỉ\\s+(?:ở\\s+đâu|bên\\s+mình|chi\\s+nhánh)|chi\\s+nhánh\\s+ở\\s+đâu)\\b"
+            + "|\\b(?:giá(?:\\s+đó|\\s+này|\\s+trên)?|\\d{2,4}\\s*k?)\\s+(?:đó\\s+|này\\s+)?(?:là\\s+)?(?:giá\\s+)?(?:cho\\s+|của\\s+|tính\\s+theo\\s+)?(?:\\d+|một|mấy)\\s*(?:buổi|lần|suất|người)\\b"
+            + "|\\b(?:\\d+|một|mấy)\\s*(?:buổi|lần|suất)\\s+(?:à|hả|vậy|sao|nhỉ|hay\\s+sao|đúng\\s+không|phải\\s+không)\\b"
             + ").*"
     );
     private static final Pattern DETAIL_OR_FAQ_QUESTION_ASCII_PATTERN = Pattern.compile(
@@ -1030,6 +1070,8 @@ public final class SentimentIntentLayer {
             + "|\\b(?:co\\s+(?:can\\s+|phai\\s+|bat\\s+buoc\\s+|phat\\s+sinh\\s+)?)?(?:nhan\\s+tip|tien\\s+tip|can\\s+tip|phu\\s+phi|phu\\s+thu|dat\\s+coc|coc\\s+truoc)\\b.*\\b(?:khong|k|ko|chua|sao|the\\s+nao|ntn)\\b"
             + "|\\b(?:goi\\s+co\\s+ban|goi\\s+vip|goi\\s+tri\\s+lieu|goi\\s+chuyen\\s+sau)\\s+khac\\s+(?:gi|j|sao)\\b"
             + "|\\b(?:gio\\s+nao\\s+vang|khung\\s+gio\\s+nao\\s+vang|lam\\s+xong\\s+co\\s+bi\\s+dau)\\b"
+            + "|\\b(?:gia(?:\\s+do|\\s+nay|\\s+tren)?|\\d{2,4}\\s*k?)\\s+(?:do\\s+|nay\\s+)?(?:la\\s+)?(?:gia\\s+)?(?:cho\\s+|cua\\s+|tinh\\s+theo\\s+)?(?:\\d+|mot|may)\\s*(?:buoi|lan|suat|nguoi)\\b"
+            + "|\\b(?:\\d+|mot|may)\\s*(?:buoi|lan|suat)\\s+(?:a|ha|vay|sao|nhi|hay\\s+sao|dung\\s+khong|phai\\s+khong)\\b"
             + ").*"
     );
 
@@ -1133,7 +1175,7 @@ public final class SentimentIntentLayer {
         }
         // Do not hijack explicit price inquiries ("Gói này giá bao nhiêu?", "Giá sao shop?")
         if (PrimaryActionRouter.matchesRawPriceInquiryPattern(trimmed)
-                && !norm.matches("(?isU).*\\b(thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|có\\s+món\\s+gì|là\\s+gì|là\\s+j|quyền\\s+lợi|thời\\s+lượng)\\b.*")) {
+                && !norm.matches("(?isU).*\\b(thực\\s+dưỡng|buffet|ăn\\s+nhẹ|điểm\\s+tâm|có\\s+món\\s+gì|là\\s+gì|là\\s+j|quyền\\s+lợi|thời\\s+lượng|(?:\\d+|một|mấy)\\s*(?:buổi|lần|suất)|tính\\s+theo\\s+buổi|trọn\\s+gói)\\b.*")) {
             return false;
         }
         if (DETAIL_OR_FAQ_QUESTION_PATTERN.matcher(norm).matches()
@@ -1187,6 +1229,12 @@ public final class SentimentIntentLayer {
         if (norm.matches("(?isU).*\\b(bao\\s+lâu|mấy\\s+phút|bao\\s+nhiêu\\s+phút|thời\\s+lượng|kéo\\s+dài|tưởng\\s+(?:là\\s+|gói\\s+)?\\d{2,3}\\s*(?:phút|p)\\b)\\b.*")
                 || ascii.matches("(?is).*\\b(bao\\s+lau|may\\s+phut|bao\\s+nhieu\\s+phut|thoi\\s+luong|tuong\\s+(?:la\\s+|goi\\s+)?\\d{2,3}\\s*(?:phut|p)\\b)\\b.*")) {
             return "thời lượng liệu trình";
+        }
+
+        // 3B. Check unit / session count questions ("239 là giá 1 buổi à", "giá đó là 1 lần làm hả")
+        if (norm.matches("(?isU).*\\b((?:\\d+|một|mấy)\\s*(?:buổi|lần|suất)|tính\\s+theo\\s+buổi)\\b.*")
+                || ascii.matches("(?is).*\\b((?:\\d+|mot|may)\\s*(?:buoi|lan|suat)|tinh\\s+theo\\s+buoi)\\b.*")) {
+            return "đơn vị tính theo buổi (giá trọn gói cho 1 buổi lẻ)";
         }
 
         // 4. Check specific service steps / modalities / policies

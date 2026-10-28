@@ -894,10 +894,10 @@ public record ConversationState(
             + "răng\\s+hàm|răng\\s+khôn|răng\\s+cửa|răng|nướu|(?<!quyền\\s|tiện\\s|thuận\\s|có\\s)lợi(?!\\s+ích)|tủy|hàm|"
             + "da\\s+mặt|da\\s+đầu|da|mụn|nám|tóc|sofa|ghế|đệm|nệm|giường|tủ)";
     private static final String ATOMIC_MODIFIER_REGEX =
-            "(?:đau\\s+mỏi|mỏi\\s+nhức|đau\\s+nhức|tê\\s+rần|tê\\s+bì|tê\\s+buốt|ê\\s+buốt|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|"
+            "(?:đau\\s+mỏi|mỏi\\s+nhức|đau\\s+nhức|tê\\s+rần|tê\\s+bì|tê\\s+buốt|ê\\s+buốt|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|chảy\\s+máu|ố\\s+vàng|xỉn\\s+màu|chuột\\s+rút|co\\s+rút|"
             + "đau|mỏi|nhức|nhói|tê|căng|cứng|sưng|viêm|buốt|ê|sâu|mẻ)";
     private static final Pattern SYMPTOM_TOKEN_PATTERN = Pattern.compile(
-            "(?iU)\\b(đau\\s+đầu\\s+dữ\\s+dội|đau\\s+đầu|đau\\s+cơ|"
+            "(?iU)\\b(đau\\s+đầu\\s+dữ\\s+dội|đau\\s+đầu|đau\\s+cơ|chuột\\s+rút(?:\\s+bắp\\s+chân|\\s+chân)?|co\\s+rút(?:\\s+cơ)?|"
             + "(?:đau|mỏi|nhức)\\s+(?:cổ\\s+vai\\s+" + "gáy|vai\\s+" + "gáy|cổ\\s+vai)|"
             + "đau|mỏi|nhức|nhói|tê\\s+chân\\s+tay|tê\\s+tay|tê\\s+chân|tê\\s+rần|tê\\s+bì|tê|"
             + "yếu\\s+tay|yếu\\s+chân|mất\\s+cảm\\s+giác|chóng\\s+mặt|ù\\s+tai|hoa\\s+mắt|"
@@ -913,7 +913,7 @@ public record ConversationState(
             + "(?:\\s*(?:,|và)\\s*(?:vùng\\s+|ở\\s+|phần\\s+|khớp\\s+|cả\\s+|hai\\s+|2\\s+|một\\s+|1\\s+|bên\\s+)*(?<fwdScopeChain>" + ATOMIC_SCOPE_REGEX + ")(?!\\s+(?:bị\\s+|đang\\s+|hơi\\s+|rất\\s+|hay\\s+)?" + ATOMIC_MODIFIER_REGEX + "))?"
             + "(?:\\s+(?<fwdSide>2\\s+bên|hai\\s+bên))?"
             + "|(?<invScope>" + ATOMIC_SCOPE_REGEX + ")\\s+(?:bị\\s+|đang\\s+|hơi\\s+|rất\\s+|hay\\s+)?(?<invMod>" + ATOMIC_MODIFIER_REGEX + ")(?!\\s+(?:vùng\\s+|ở\\s+|phần\\s+|khớp\\s+|cả\\s+|hai\\s+|2\\s+)?" + ATOMIC_SCOPE_REGEX + ")"
-            + "|(?<standalone>mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|ù\\s+tai|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|stress|tê\\s+rần|tê\\s+bì)"
+            + "|(?<standalone>chuột\\s+rút(?:\\s+bắp\\s+chân|\\s+chân)?|co\\s+rút(?:\\s+cơ)?|mất\\s+ngủ|khó\\s+ngủ|nặng\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|ù\\s+tai|căng\\s+cơ|căng\\s+thẳng|căng\\s+cứng|stress|tê\\s+rần|tê\\s+bì)"
             + ")\\b"
     );
     // v3.8: mỗi slot ngữ nghĩa có pattern riêng, KHÔNG lẫn tần suất / vị trí phân bổ vào mức độ nặng nhẹ hay thời gian khởi phát.
@@ -921,7 +921,7 @@ public record ConversationState(
             "(?iU)\\b(nhiều\\s+lắm|rất\\s+mỏi|rất\\s+đau|khá\\s+nặng|dữ\\s+dội|nhiều|nặng|nhẹ)\\b"
     );
     private static final Pattern PROBLEM_DURATION_TOKEN_PATTERN = Pattern.compile(
-            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|mới\\s+gần\\s+đây|mới\\s+bị|dạo\\s+này|mấy\\s+ngày|(?:từ\\s+)?(?:hôm\\s+qua|hôm\\s+kia|tuần\\s+trước|tháng\\s+trước|năm\\s+ngoái)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)\\d+\\s*(?:ngày|tuần|tháng|năm)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)(?:một|hai|ba|bốn|năm|vài|mấy)\\s+(?:ngày|tuần|tháng|năm))\\b"
+            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|cũng\\s+lâu|khá\\s+lâu|(?:cũng\\s+|được\\s+)*(?:một|1|vài)\\s+thời\\s+gian(?:\\s+rồi)?|thời\\s+gian\\s+rồi|mới\\s+gần\\s+đây|dạo\\s+gần\\s+đây|mới\\s+bị|dạo\\s+này|mấy\\s+ngày|mấy\\s+hôm|vài\\s+hôm|(?:từ\\s+)?(?:hôm\\s+qua|hôm\\s+kia|tuần\\s+trước|tháng\\s+trước|năm\\s+ngoái)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)\\d+\\s*(?:ngày|tuần|tháng|năm)|(?<!mỗi\\s+lần\\s|mỗi\\s+đợt\\s|mỗi\\s+cơn\\s|kéo\\s+dài\\s)(?:một|hai|ba|bốn|năm|vài|mấy)\\s+(?:ngày|tuần|tháng|năm))\\b"
     );
     private static final Pattern FREQUENCY_TOKEN_PATTERN = Pattern.compile(
             "(?iU)\\b(thi\\s+thoảng|thỉnh\\s+thoảng|thi\\s+thoải|thi\\s+thoảmg|thỉnh\\s+thoảmg|lâu\\s+lâu|đôi\\s+khi|đôi\\s+lúc|thường\\s+xuyên|liên\\s+tục|hay\\s+bị|mỗi\\s+ngày|hằng\\s+ngày|hàng\\s+ngày|suốt\\s+ngày)\\b"
@@ -987,9 +987,10 @@ public record ConversationState(
             "(?iU)\\b(ngồi\\s+lâu|ngồi\\s+máy\\s+tính|máy\\s+tính|văn\\s+phòng|vận\\s+động|sai\\s+tư\\s+thế|mang\\s+vác|tập\\s+gym|chơi\\s+thể\\s+thao)\\b"
     );
     private static final Pattern CONDITION_TIME_FREQUENCY_PROGRESSION_PATTERN = Pattern.compile(
-            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|lâu\\s+lắm|khá\\s+lâu|hơi\\s+lâu|(?:bị|đau|mỏi|nhức|tê)\\s+lâu|"
+            "(?iU)\\b(lâu\\s+rồi|lâu\\s+năm|lâu\\s+lắm|khá\\s+lâu|cũng\\s+lâu|hơi\\s+lâu|(?:bị|đau|mỏi|nhức|tê)\\s+lâu|"
+            + "(?:cũng\\s+|được\\s+)*(?:một|1|vài)\\s+thời\\s+gian(?:\\s+rồi)?|thời\\s+gian\\s+rồi|"
             + "(?<!bao\\s|ngồi\\s|đứng\\s)lâu(?!\\s+chưa)|"
-            + "mới\\s+gần\\s+đây|mới\\s+bị|mới\\s+đây|vừa\\s+mới|mới|dạo\\s+này|gần\\s+đây|"
+            + "mới\\s+gần\\s+đây|dạo\\s+gần\\s+đây|mới\\s+bị|mới\\s+đây|vừa\\s+mới|mới|dạo\\s+này|gần\\s+đây|"
             + "hôm\\s+qua|hôm\\s+kia|hôm\\s+nay|mấy\\s+hôm|vài\\s+hôm|"
             + "mấy\\s+ngày|vài\\s+ngày|mấy\\s+tuần|vài\\s+tuần|mấy\\s+tháng|vài\\s+tháng|mấy\\s+năm|vài\\s+năm|"
             + "\\d+\\s*(?:hôm|ngày|tuần|tháng|năm)|(?:hôm|ngày|tuần|tháng|năm)\\s+(?:nay|trước|rồi|qua)|"
@@ -1732,6 +1733,9 @@ public record ConversationState(
 
                 if (lower.contains("lâu chưa") || lower.contains("mới gần đây")
                         || lower.contains("gần đây hay") || lower.contains("hay đã kéo dài")
+                        || lower.contains("mới xuất hiện") || lower.contains("mấy hôm nay")
+                        || lower.contains("thời điểm nào") || lower.contains("vận động/tập luyện")
+                        || lower.contains("tự nhiên bị mỏi hay")
                         || lower.contains("ngồi lâu hay vận động")
                         || lower.contains("lâu rồi") || lower.contains("mới bị")
                         || lower.contains("máy tính") || lower.contains("bao lâu")
@@ -1911,33 +1915,30 @@ public record ConversationState(
 
                 if (isMismatchHere) {
                     customerCorrectionDetected = true;
-                    boolean keepFullBodyHeldPkg = !SentimentIntentLayer.hasHarshPronouns(content)
-                            && heldPackage != null
-                            && (heldPackage.contains("co_ban") || heldPackage.contains("nang_cao") || heldPackage.contains("phuc_hoi"));
-                    // Xóa ngay gói tư vấn sai khỏi heldPackage / lastQuotedPackage / knownRecommendedPackage (trừ khi gói đang giữ là gói toàn thân đúng phạm vi mà bot chỉ lỡ lời nhắc nhầm vùng cơ thể)
-                    if (!keepFullBodyHeldPkg) {
-                        if (heldPackage != null) rejectedPackages.add(heldPackage);
-                        if (lastQuotedPackage != null) rejectedPackages.add(lastQuotedPackage);
-                    }
+                    if (heldPackage != null) rejectedPackages.add(heldPackage);
+                    if (downsellPackage != null) rejectedPackages.add(downsellPackage);
+                    if (lastQuotedPackage != null) rejectedPackages.add(lastQuotedPackage);
                     String wrongOffer = SentimentIntentLayer.extractRejectedWrongOffer(content);
                     if (wrongOffer != null && !wrongOffer.isBlank()) {
                         rejectedWrongOffer = wrongOffer.toLowerCase(Locale.ROOT).strip();
                         rejectedPackages.add(rejectedWrongOffer);
                         String canonicalWrong = toCanonicalPackageCode(wrongOffer, null);
-                        if (canonicalWrong != null && (!keepFullBodyHeldPkg || !canonicalWrong.equals(heldPackage))) {
+                        if (canonicalWrong != null) {
                             rejectedPackages.add(canonicalWrong);
                         }
                     }
-                    if (!keepFullBodyHeldPkg) {
-                        heldPackage = null;
-                        heldDuration = null;
-                        lastQuotedPackage = null;
-                        lastQuotedDuration = null;
-                        lastQuotedPrice = null;
-                        knownRecommendedPackage = null;
-                        lastQuotePackage = null;
-                        knownServiceFamily = null;
-                    }
+                    heldPackage = null;
+                    heldDuration = null;
+                    downsellPackage = null;
+                    downsellDuration = null;
+                    downsellPrice = null;
+                    downsellOffered = false;
+                    lastQuotedPackage = null;
+                    lastQuotedDuration = null;
+                    lastQuotedPrice = null;
+                    knownRecommendedPackage = null;
+                    lastQuotePackage = null;
+                    knownServiceFamily = null;
                     lastIntent = "ENTITY_MISMATCH_CORRECTION";
                     if (SentimentIntentLayer.hasHarshPronouns(content) || PrimaryActionRouter.isFrustrationMessage(content)) {
                         frustrationCount++;
@@ -1971,14 +1972,18 @@ public record ConversationState(
                     explicitDownsellRequest = true;
                 }
 
-                // Rule: extract_objection_history_corrected
-                if (!isMismatchHere && downsellOffered
+                boolean isStyleComplaintHere = SentimentIntentLayer.isConversationStyleComplaint(content)
+                        || SentimentIntentLayer.isWordingOrExpressionFeedback(content)
+                        || (PrimaryActionRouter.isFrustrationMessage(content) && !isPriceObjHere && !isExplicitDownsellHere);
+
+                // Rule: extract_objection_history_corrected (chỉ tăng khi có từ khóa chê giá đắt/cao, cấm tăng khi phàn nàn cách nói chuyện/lặp lời)
+                if (!isMismatchHere && !isStyleComplaintHere && downsellOffered
                         && (isPriceObjHere || isHesitationAfterObjHere || SentimentIntentLayer.isStrongRejection(content))
                         && !isAltReqHere && !isDetailFaqHere) {
                     objectionCount++;
                     lastIntent = "STAGE_3_GRACEFUL_EXIT";
                     objectionStage = "STAGE_3_GRACEFUL_EXIT";
-                } else if (!isMismatchHere && (isPriceObjHere || isExplicitDownsellHere || isPkgRejectHere
+                } else if (!isMismatchHere && !isStyleComplaintHere && (isPriceObjHere || isExplicitDownsellHere || isPkgRejectHere
                         || (objectionCount >= 1 && !downsellOffered && isHesitationAfterObjHere))
                         && (!pricesShown.isEmpty() || (cached != null && cached.priceDiscussed()))) {
                     objectionCount++;
@@ -2436,6 +2441,10 @@ public record ConversationState(
         String emotion = "NONE";
         String nextHeldPkg = this.heldPackage;
         String nextHeldDur = this.heldDuration;
+        String nextDownsellPkg = this.downsellPackage;
+        String nextDownsellDur = this.downsellDuration;
+        BigDecimal nextDownsellPrice = this.downsellPrice;
+        boolean nextDownsellOffered = this.downsellOffered;
         String nextLastQuotedPkg = this.lastQuotedPackage;
         String nextLastQuotedDur = this.lastQuotedDuration;
         BigDecimal nextLastQuotedPrice = this.lastQuotedPrice;
@@ -2465,32 +2474,30 @@ public record ConversationState(
 
         if (isMismatch) {
             nextCorrectionDetected = true;
-            boolean keepFullBodyHeldPkg = !SentimentIntentLayer.hasHarshPronouns(content)
-                    && nextHeldPkg != null
-                    && (nextHeldPkg.contains("co_ban") || nextHeldPkg.contains("nang_cao") || nextHeldPkg.contains("phuc_hoi"));
-            if (!keepFullBodyHeldPkg) {
-                if (nextHeldPkg != null) nextRejectedPkgs.add(nextHeldPkg);
-                if (nextLastQuotedPkg != null) nextRejectedPkgs.add(nextLastQuotedPkg);
-            }
+            if (nextHeldPkg != null) nextRejectedPkgs.add(nextHeldPkg);
+            if (nextDownsellPkg != null) nextRejectedPkgs.add(nextDownsellPkg);
+            if (nextLastQuotedPkg != null) nextRejectedPkgs.add(nextLastQuotedPkg);
             String wrongOffer = SentimentIntentLayer.extractRejectedWrongOffer(content);
             if (wrongOffer != null && !wrongOffer.isBlank()) {
                 nextRejectedWrongOffer = wrongOffer.toLowerCase(Locale.ROOT).strip();
                 nextRejectedPkgs.add(nextRejectedWrongOffer);
                 String canonicalWrong = toCanonicalPackageCode(wrongOffer, null);
-                if (canonicalWrong != null && (!keepFullBodyHeldPkg || !canonicalWrong.equals(nextHeldPkg))) {
+                if (canonicalWrong != null) {
                     nextRejectedPkgs.add(canonicalWrong);
                 }
             }
-            if (!keepFullBodyHeldPkg) {
-                nextHeldPkg = null;
-                nextHeldDur = null;
-                nextLastQuotedPkg = null;
-                nextLastQuotedDur = null;
-                nextLastQuotedPrice = null;
-                recPkg = null;
-                nextLastQuotePkg = null;
-                serviceFam = null;
-            }
+            nextHeldPkg = null;
+            nextHeldDur = null;
+            nextDownsellPkg = null;
+            nextDownsellDur = null;
+            nextDownsellPrice = null;
+            nextDownsellOffered = false;
+            nextLastQuotedPkg = null;
+            nextLastQuotedDur = null;
+            nextLastQuotedPrice = null;
+            recPkg = null;
+            nextLastQuotePkg = null;
+            serviceFam = null;
             if (SentimentIntentLayer.hasHarshPronouns(content) || PrimaryActionRouter.isFrustrationMessage(content)) {
                 sentiment = "NEGATIVE";
                 emotion = "ANGER";
@@ -2637,7 +2644,16 @@ public record ConversationState(
         boolean isPushbackCurrent = SentimentIntentLayer.isNegationOrPushbackOnAssumption(content)
                 || scopeSignal.explicitCorrectionGroupD()
                 || scopeSignal.possibleCorrection();
+        boolean isNormalAnswerAfterConditionAsk = (this.conditionAskedCount >= 1
+                || "ASK_CONDITION_ONCE".equals(this.lastIntent)
+                || SLOT_ONSET.equals(this.pendingQuestionSlot))
+                && !isPushbackCurrent
+                && !SentimentIntentLayer.isConversationStyleComplaint(content)
+                && !SentimentIntentLayer.isWordingOrExpressionFeedback(content)
+                && !PrimaryActionRouter.isFrustrationMessage(content)
+                && !SentimentIntentLayer.isDetailOrFaqQuestion(content, this);
         boolean condClarified = this.conditionClarified
+                || isNormalAnswerAfterConditionAsk
                 || (!isPushbackCurrent && hasConditionTimeOrProgressionSignal(cleanContent));
 
         // v3.7: packageExplicitlySelected chỉ bật khi KHÁCH chủ động chọn/chấp nhận gói bot đã đề xuất (kể cả nói quy chiếu).
@@ -2779,7 +2795,7 @@ public record ConversationState(
                 this.usedTemplates,
                 this.humanTakeover,
                 this.optedOut,
-                this.downsellOffered,
+                nextDownsellOffered,
                 this.trialInviteOffered,
                 expDownsell,
                 pkgReject,
@@ -2788,9 +2804,9 @@ public record ConversationState(
                 nextLastQuotedPrice,
                 nextHeldPkg,
                 nextHeldDur,
-                this.downsellPackage,
-                this.downsellDuration,
-                this.downsellPrice,
+                nextDownsellPkg,
+                nextDownsellDur,
+                nextDownsellPrice,
                 this.rejectedDurations,
                 Collections.unmodifiableSet(nextRejectedPkgs),
                 this.objectionStage,
@@ -3124,6 +3140,12 @@ public record ConversationState(
         int nextAckCount = base.ackCount();
         if (decision != null && decision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.ADVANCE_AFTER_ACK) {
             nextAckCount++;
+            if (base.packageRecommended() || base.priceDiscussed() || base.downsellOffered() || base.trialInviteOffered()) {
+                nextPkgInterestAccepted = true;
+                if ("NONE".equals(nextBookingStatus)) {
+                    nextBookingStatus = "COLLECTING_INFO";
+                }
+            }
         }
 
         int nextCondAsked = base.conditionAskedCount();
@@ -3145,7 +3167,13 @@ public record ConversationState(
         if ("spa_condition_first_discovery".equalsIgnoreCase(skillCode)
                 || "spa_cautious_symptom_clarification".equalsIgnoreCase(skillCode)
                 || "CAUTIOUS_SYMPTOM_CLARIFICATION".equalsIgnoreCase(detectedIntent)
+                || "ASK_CONDITION_ONCE".equalsIgnoreCase(detectedIntent)
                 || combinedBotReplyLower.contains("bị lâu chưa")
+                || combinedBotReplyLower.contains("mới xuất hiện")
+                || combinedBotReplyLower.contains("hay đã kéo dài")
+                || combinedBotReplyLower.contains("thời điểm nào")
+                || combinedBotReplyLower.contains("vận động/tập luyện")
+                || combinedBotReplyLower.contains("tự nhiên bị mỏi hay")
                 || combinedBotReplyLower.contains("bắt đầu từ khi nào")
                 || combinedBotReplyLower.contains("từ khi nào")
                 || combinedBotReplyLower.contains("thường xảy ra")
@@ -4013,6 +4041,7 @@ public record ConversationState(
             String fwdScope = needM.group("fwdScope");
             String fwdScopeChain = needM.group("fwdScopeChain");
             String invScope = needM.group("invScope");
+            String standalone = needM.group("standalone");
             if (fwdScope != null && !fwdScope.isBlank()) {
                 addNormalizedAtomicScopes(scopes, fwdScope);
             }
@@ -4021,6 +4050,9 @@ public record ConversationState(
             }
             if (invScope != null && !invScope.isBlank()) {
                 addNormalizedAtomicScopes(scopes, invScope);
+            }
+            if (standalone != null && standalone.toLowerCase(Locale.ROOT).contains("chuột")) {
+                scopes.add("chân");
             }
         }
         String maskedText = cleanText.replaceAll("(?iU)\\bchân\\s+răng\\b", "răng")

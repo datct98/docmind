@@ -637,11 +637,28 @@ public final class PrimaryActionRouter {
             );
         }
 
-        // R00W-WORDING-FEEDBACK-REPAIR (v3.3.4 / v3.9 Priority 2: Style/Wording Repair):
-        // Khách bắt bẻ cách dùng từ hoặc phê bình bot nhại lời/lặp câu ("Đau lưng chứ đau lòng đâu mà nhẹ nhõm",
-        // "Nhại đi nhạu lại câu này k biết chán à", "Ai nói là 'em vui mừng khi…' nghe gà vậy").
-        // Đứng ngay sau Safety/Opt-Out/Complaint và TRƯỚC mọi nhánh bán hàng/báo giá.
-        if (SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
+        // R00W-WORDING-FEEDBACK-REPAIR (Soft Signal):
+        // Chỉ định tuyến sang nhánh điều chỉnh giao tiếp khi tin nhắn của khách KHÔNG chứa câu hỏi nghiệp vụ,
+        // câu hỏi chi tiết/giá/đơn vị tính/quyền lợi, câu hỏi chưa được giải đáp, hoặc tín hiệu quan tâm tới gói đang trao đổi.
+        String activePkgForSoftCheck = priorState.downsellPackage() != null
+                ? priorState.downsellPackage()
+                : (priorState.heldPackage() != null ? priorState.heldPackage() : priorState.knownRecommendedPackage());
+        boolean hasActivePackageOrQuoteContext = activePkgForSoftCheck != null
+                || priorState.packageRecommended()
+                || priorState.priceDiscussed();
+        boolean hasServiceQuestionOrInterestSignal = classified == DetectedIntent.DETAIL_OR_FAQ_QUESTION
+                || classified == DetectedIntent.ALTERNATIVE_PACKAGE_REQUEST
+                || classified == DetectedIntent.TRIAL_ACCEPTANCE
+                || SentimentIntentLayer.isDetailOrFaqQuestion(msg, priorState.lastAssistantMessage(), activePkgForSoftCheck)
+                || isPriceInquiryMessage(msg)
+                || isServiceFamilySelectionMessage(msg)
+                || hasExplicitDurationInMessage(lower)
+                || SentimentIntentLayer.isAlternativePackageRequest(msg)
+                || SentimentIntentLayer.hasPositiveServiceInterestSignal(msg)
+                || (enriched.mostRecentUnresolvedRequest() != null)
+                || (hasActivePackageOrQuoteContext && msg.contains("?"));
+
+        if (!hasServiceQuestionOrInterestSignal && SentimentIntentLayer.isWordingOrExpressionFeedback(msg)) {
             boolean preserveBookingFunnel = (priorState.packageInterestAccepted() || enriched.packageInterestAccepted())
                     && "COLLECTING_INFO".equals(priorState.bookingStatus() != null && !"NONE".equals(priorState.bookingStatus()) ? priorState.bookingStatus() : enriched.bookingStatus())
                     && !SentimentIntentLayer.isStrongRejection(msg)
@@ -650,30 +667,32 @@ public final class PrimaryActionRouter {
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     false,
-                    1,
+                    2,
                     preserveBookingFunnel ? "WORDING_FEEDBACK_PRESERVE_BOOKING_FUNNEL" : "WORDING_FEEDBACK_REPAIR",
                     preserveBookingFunnel ? "spa_trial_acceptance_booking" : "greeting_warm_intro"
             );
         }
-        if (SentimentIntentLayer.isConversationStyleComplaint(msg)
+        if (!hasServiceQuestionOrInterestSignal
+                && SentimentIntentLayer.isConversationStyleComplaint(msg)
                 && !SentimentIntentLayer.isStrongRejection(msg)) {
             return new RoutingDecision(
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     PrimaryAction.GENERIC_SHORT_DISCOVERY,
                     false,
-                    1,
+                    2,
                     "CONVERSATION_STYLE_REPAIR",
                     "spa_frustration_rescue"
             );
         }
-        if (SentimentIntentLayer.isAlreadyAnsweredSlotPushback(msg)
+        if (!hasServiceQuestionOrInterestSignal
+                && SentimentIntentLayer.isAlreadyAnsweredSlotPushback(msg)
                 && !SentimentIntentLayer.isStrongRejection(msg)) {
             if (priorState.packageRecommended() || priorState.priceDiscussed()) {
                 return new RoutingDecision(
                         PrimaryAction.GENERIC_SHORT_DISCOVERY,
                         PrimaryAction.GENERIC_SHORT_DISCOVERY,
                         false,
-                        1,
+                        2,
                         "WORDING_FEEDBACK_REPAIR",
                         "greeting_warm_intro"
                 );
@@ -943,10 +962,11 @@ public final class PrimaryActionRouter {
             intent = "COMPREHENSION_RECOVERY_SIMPLIFY_FAQ";
             skillCode = "spa_frustration_rescue";
         }
-        // R00-CONVERSATION-STYLE-REPAIR: Sau ASK_CONDITION_ONCE, nếu khách chưa trả lời thời gian (conditionClarified == false)
-        // và không chủ động hỏi giá/gói ở lượt này -> CẤM nhảy sang ANSWER_PRICE_ONCE và CẤM nhảy sang DIRECT_CONCRETE_SOLUTION!
+        // R00-CONVERSATION-STYLE-REPAIR: Sau ASK_CONDITION_ONCE, chỉ kích hoạt sửa văn phong khi khách THỰC SỰ góp ý/phàn nàn về cách nói chuyện;
+        // nếu khách chỉ đang trả lời bình thường câu hỏi khám phá tình trạng -> để đi tiếp xuống R03 (RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED) hoặc R04!
         else if (afterAskConditionWithoutTimeAnswer && !customerActivelyAsksPriceOrPackageNow
                 && !priorState.priceDiscussed()
+                && (SentimentIntentLayer.isConversationStyleComplaint(msg) || SentimentIntentLayer.isWordingOrExpressionFeedback(msg))
                 && classified != DetectedIntent.PRICE_OBJECTION
                 && !isPriceObjectionMessage(msg)
                 && !(isFrustrationMessage(msg) && priorState.priceRequestedInSession() && !priorState.priceDiscussed()
@@ -1052,7 +1072,9 @@ public final class PrimaryActionRouter {
                 coreAction = PrimaryAction.ANSWER_PRICE_ONCE;
                 intent = "FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE";
                 skillCode = "spa_recommend_and_quote_if_requested";
-            } else if (priorState.frustrationCount() >= 1 || (!hasKnownContext && !priorState.priceRequestedInSession())) {
+            } else if ((priorState.frustrationCount() >= 1 && !priorState.packageRecommended() && !priorState.priceDiscussed() && !priorState.packageInterestAccepted())
+                    || priorState.frustrationCount() >= 2
+                    || (!hasKnownContext && !priorState.priceRequestedInSession())) {
                 return new RoutingDecision(
                         PrimaryAction.HARD_HANDOFF_COMPLAINT,
                         PrimaryAction.HARD_HANDOFF_COMPLAINT,
@@ -1078,9 +1100,22 @@ public final class PrimaryActionRouter {
         // R12-ACK-ADVANCE
         else if ((classified == DetectedIntent.ACK || isAcknowledgementMessage(msg))
                 && !isPriceInquiryMessage(msg)) {
-            coreAction = PrimaryAction.ADVANCE_AFTER_ACK;
-            intent = "ACKNOWLEDGEMENT";
-            skillCode = "spa_booking_advance_after_ack";
+            if (priorState.trialInviteOffered()
+                    || priorState.downsellOffered()
+                    || priorState.packageInterestAccepted()
+                    || priorState.objectionCount() >= 1
+                    || "COLLECTING_INFO".equals(priorState.bookingStatus())
+                    || "INVITE_ONE_SESSION_TRIAL".equals(priorState.lastQuestionIntent())
+                    || "CONFIRM_BOOKING_TIME".equals(priorState.lastQuestionIntent())
+                    || "ASK_BOOKING_TIME".equals(priorState.lastQuestionIntent())) {
+                coreAction = PrimaryAction.CONFIRM_BOOKING_DETAILS;
+                intent = "TRIAL_ACCEPTANCE";
+                skillCode = "spa_trial_acceptance_booking";
+            } else {
+                coreAction = PrimaryAction.ADVANCE_AFTER_ACK;
+                intent = "ACKNOWLEDGEMENT";
+                skillCode = "spa_booking_advance_after_ack";
+            }
         }
         // R10B-STYLE-COMPLAINT-FIRST (v3.8): góp ý văn phong (kể cả kèm chê đắt trong cùng lượt) -> xử lý giao tiếp trước,
         // KHÔNG hạ gói; chỉ quay lại thương lượng giá khi lượt sau khách vẫn bàn về giá.
@@ -1210,7 +1245,7 @@ public final class PrimaryActionRouter {
                     || (!ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty()
                         && !priorState.knownBodyAreas().containsAll(ConversationState.extractTargetScopes(lower, domainKeywords))))
                 && !isPriceInquiryMessage(msg)
-                && enriched.conditionClarified()
+                && (enriched.conditionClarified() || priorState.conditionAskedCount() >= 1)
                 && hasKnownContext) {
             CatalogOption grounded = selectBestSingleCatalogOption(msg, enriched, fusedChunks);
             if (grounded == null) {
@@ -1230,7 +1265,7 @@ public final class PrimaryActionRouter {
         // R04-RECOMMEND-AFTER-CONDITION-ONCE (Priority 40 — Scope-Grounded!)
         else if (!isPriceInquiryMessage(msg)
                 && !isServiceFamilySelectionMessage(msg)
-                && (enriched.conditionClarified() || PREFERENCE_ANSWER_PATTERN.matcher(lower).matches())
+                && (enriched.conditionClarified() || priorState.conditionAskedCount() >= 1 || PREFERENCE_ANSWER_PATTERN.matcher(lower).matches())
                 && (!priorState.packageRecommended()
                     || (!ConversationState.extractTargetScopes(lower, domainKeywords).isEmpty()
                         && !priorState.knownBodyAreas().containsAll(ConversationState.extractTargetScopes(lower, domainKeywords))))
@@ -1960,8 +1995,8 @@ public final class PrimaryActionRouter {
                                 ? "gói " + ConversationState.toDisplayPackageName(priorState.heldPackage(), priorState.heldDuration())
                                 : "gói " + resolveServiceFamilyDisplay(enriched, fusedChunks));
                     optLabel = optLabel.replaceAll("(?iU)^gói\\s+gói\\s+", "gói ");
-                    ackReply = "Dạ vâng " + h + ", với " + optLabel + " này " + h
-                            + " muốn " + selfP + " giới thiệu thêm về không gian phòng hay " + h + " muốn tham khảo khung giờ trống để ghé trải nghiệm ạ?";
+                    ackReply = "Dạ vâng " + h + ", vậy " + selfP + " chuẩn bị " + optLabel + " cho " + h
+                            + " nhé. " + capH + " tiện ghé bên " + selfP + " vào khung giờ nào hôm nay hay ngày mai để " + selfP + " giữ lịch trước cho " + h + " ạ?";
                 } else {
                     String unitPair = extractTwoPrimaryUnitLabels(fusedChunks, null, null);
                     ackReply = "Dạ " + h + " đang nghiêng về gói " + unitPair.replace(" hoặc ", " hay ")
@@ -4348,9 +4383,9 @@ public final class PrimaryActionRouter {
         return false;
     }
 
-    // v3.3.4 RC-04: Thuộc tính gói mà catalog (bảng giá đã trích xuất) THỰC SỰ chứa: thời lượng, quyền lợi/bao gồm, không gian phòng.
+    // v3.3.4 RC-04: Thuộc tính gói mà catalog (bảng giá đã trích xuất) THỰC SỰ chứa: thời lượng, đơn vị buổi/lần, quyền lợi/bao gồm, không gian phòng.
     private static final Pattern HELD_PACKAGE_ATTRIBUTE_QUESTION_PATTERN = Pattern.compile(
-            "(?isU).*\\b(thời\\s+lượng|bao\\s+lâu|mấy\\s+phút|\\d{2,3}\\s*(?:p|phút)|quyền\\s+lợi|bao\\s+gồm|"
+            "(?isU).*\\b(thời\\s+lượng|bao\\s+lâu|mấy\\s+phút|\\d{2,3}\\s*(?:p|phút)|(?:\\d+|một|mấy)\\s*(?:buổi|lần|suất)|tính\\s+theo\\s+buổi|trọn\\s+gói|quyền\\s+lợi|bao\\s+gồm|"
             + "gồm\\s+(?:những\\s+)?(?:gì|j)|phòng|không\\s+gian|rèm)\\b.*"
     );
     // Câu hỏi về món ăn / thực đơn KHÔNG được trả lời từ catalog (catalog không liệt kê món) -> tránh bịa đặt.

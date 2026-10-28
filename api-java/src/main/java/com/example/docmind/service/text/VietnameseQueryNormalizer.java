@@ -91,6 +91,8 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "thử\\s+(\\d+)\\s*b", "thử $1 buổi");
         addBoundaryPattern(phrases, "trải\\s+nghiệm\\s+(\\d+)\\s*b", "trải nghiệm $1 buổi");
         addBoundaryPattern(phrases, "lẻ\\s+(\\d+)\\s*b", "lẻ $1 buổi");
+        addBoundaryPattern(phrases, "(\\d+)\\s*b\\b", "$1 buổi");
+        addBoundaryPattern(phrases, "(\\d+)\\s*buoi\\b", "$1 buổi");
         addBoundaryPattern(phrases, "đưng\\s+lưng", "đau lưng");
         addBoundaryPattern(phrases, "dưng\\s+lưng", "đau lưng");
         addBoundaryPattern(phrases, "đưng\\s+gối", "đau gối");
@@ -125,6 +127,14 @@ public final class VietnameseQueryNormalizer {
         addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tỉnh", "linh ta linh tinh");
         addBoundaryPattern(phrases, "linh\\s+ta\\s+linh\\s+tinh", "linh ta linh tinh");
         addBoundaryPattern(phrases, "linh\\s+tỉnh", "linh tinh");
+        addBoundaryPattern(phrases, "theieus\\s+sức\\s+sống", "thiếu sức sống");
+        addBoundaryPattern(phrases, "thieus\\s+sức\\s+sống", "thiếu sức sống");
+        addBoundaryPattern(phrases, "thieu\\s+suc\\s+song", "thiếu sức sống");
+        addBoundaryPattern(phrases, "kho\\s+khan", "khô khan");
+        addBoundaryPattern(phrases, "cut\\s+ngun", "cụt ngủn");
+        addBoundaryPattern(phrases, "nhat\\s+nheo", "nhạt nhẽo");
+        addBoundaryPattern(phrases, "vo\\s+hon", "vô hồn");
+        addBoundaryPattern(phrases, "chuot\\s+rut", "chuột rút");
         // Contextual "ns" -> "nói" ONLY before speech/complaint words (preserves standalone "NS" and package codes "NS01".."NS07")
         addBoundaryPattern(
                 phrases,
@@ -137,6 +147,8 @@ public final class VietnameseQueryNormalizer {
 
         // 1. Messenger slang & abbreviations
         addWord(words, "trc", "trước");
+        addWord(words, "theieus", "thiếu");
+        addWord(words, "thieus", "thiếu");
         addBoundaryPattern(words, "km(?!/h)", "khuyến mãi");
         addWord(words, "kmai", "khuyến mãi");
         addWord(words, "hya", "hay");

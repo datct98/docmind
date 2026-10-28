@@ -354,19 +354,16 @@ public final class ReplyContractValidator {
         for (int i = 0; i < working.size(); i++) {
             ReplyBubble b = working.get(i);
             if (b == null || b.text() == null) continue;
-            String text = isLlmValidation ? b.text() : b.text().strip();
+            String text = normalizeDeclarativeQuestionMarks(isLlmValidation ? b.text() : b.text().strip());
             List<String> sents = splitIntoSentencesPreservingPunctuation(text);
-            if (!isLlmValidation
-                    && sents.size() >= 2
+            if (sents.size() >= 2
                     && sents.get(0).strip().endsWith("?")
                     && sents.get(sents.size() - 1).strip().endsWith("?")) {
                 sents = new ArrayList<>(sents);
                 sents.set(0, sents.get(0).strip().replaceFirst("\\?+$", "."));
                 text = String.join(" ", sents).strip();
             }
-            if (isLlmValidation) {
-                working.set(i, new ReplyBubble(text, b.typingDelayMs()));
-            }
+            working.set(i, new ReplyBubble(text, b.typingDelayMs()));
             String lower = text.toLowerCase(Locale.ROOT);
 
             String dynamicOptionPair = resolveDynamicOptionPair(safeState);
@@ -669,8 +666,10 @@ public final class ReplyContractValidator {
             }
             if (isLlmValidation
                     && i == 0
-                    && effectiveAction == PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE
-                    && text.matches("(?isU)^\\s*(?:dạ[,\\s]+)?em\\s+(?:rất\\s+)?hiểu\\s+(?:mình|anh|chị|bạn)\\s+đang\\s+.*")) {
+                    && (effectiveAction == PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE
+                        || effectiveAction == PrimaryAction.ANSWER_PRICE_ONCE
+                        || effectiveAction == PrimaryAction.RECOMMEND_ONE_PACKAGE)
+                    && text.matches("(?isU)^\\s*(?:dạ[,\\s]+)?em\\s+(?:rất\\s+)?hiểu\\s+(?:mình|anh|chị|bạn)\\s+(?:đang|thường\\s+xuyên|hay|ít\\s+vận\\s+động|ngồi)\\s+.*")) {
                 errors.add("FORBIDDEN_MECHANICAL_OPENER");
                 hasMechanicalOpenerHere = true;
             }
@@ -698,22 +697,10 @@ public final class ReplyContractValidator {
                     && (lower.contains("xin lỗi") || lower.contains("chuyển sang nhân viên") || lower.contains("chuyển nhân viên") || lower.contains("tóm tắt lại thông tin"))) {
                 errors.add("FORBIDDEN_APOLOGY_ON_ANTI_APOLOGY_PUSHBACK");
             }
-            boolean isStyleOrWordingRepairMsg = com.example.docmind.service.bot.SentimentIntentLayer.isWordingOrExpressionFeedback(customerMessage)
-                    || (effectiveAction == PrimaryAction.GENERIC_SHORT_DISCOVERY
-                        && com.example.docmind.service.bot.SentimentIntentLayer.isConversationStyleComplaint(customerMessage));
             boolean inBookingFunnelNow = safeState.packageInterestAccepted()
                     || enrichedState.packageInterestAccepted()
                     || "COLLECTING_INFO".equals(safeState.bookingStatus())
                     || "COLLECTING_INFO".equals(enrichedState.bookingStatus());
-            if (isLlmValidation && isStyleOrWordingRepairMsg) {
-                boolean hasSalesPitchContent = lower.matches("(?isU).*\\b(liệu\\s+trình|kỹ\\s+thuật\\s+viên|massage|dưỡng\\s+sinh|thảo\\s+dược|ngâm\\s+bồn|xông\\s+hơi|buffet|ấn\\s+huyệt|giãn\\s+cơ|thư\\s+giãn\\s+toàn\\s+thân|trải\\s+nghiệm\\s+(?:1|một)\\s+buổi)\\b.*")
-                        || PRICE_PATTERN.matcher(text).find();
-                boolean hasForbiddenQuestionOrApology = (!inBookingFunnelNow && lower.contains("?"))
-                        || (inBookingFunnelNow && lower.matches("(?isU).*(?:muốn\\s+(?:thử\\s+)?trải\\s+nghiệm|thử\\s+(?:1|một)\\s+buổi\\s+không|khó\\s+chịu\\s+ở\\s+.*\\s+phải\\s+không).*"));
-                if (hasSalesPitchContent || hasForbiddenQuestionOrApology) {
-                    errors.add("FORBIDDEN_SALES_PITCH_ON_WORDING_FEEDBACK");
-                }
-            }
             // P0.1: Không nhắc lại toàn bộ danh sách triệu chứng ở đầu lượt khi triệu chứng đã được xác nhận ở lượt trước và không thay đổi
             if (isLlmValidation
                     && i == 0
@@ -816,9 +803,11 @@ public final class ReplyContractValidator {
                 text = text.replaceAll("(?iU)^\\s*Dạ\\s+em\\s+ghi\\s+nhận\\s+mình\\s+đang\\s+([^.,!?]+?)\\s+ạ\\.",
                         "Dạ tình trạng $1 chắc đang làm mình khá khó chịu ạ.");
             }
+            text = normalizeDeclarativeQuestionMarks(text);
+            lower = text.toLowerCase(Locale.ROOT);
 
             // v3.5.0 Mục IV.2: Nếu trong 1 bong bóng có 2 câu cùng kết thúc bằng '?' (vd câu 1 kết bằng 'ạ?'), tự động đổi dấu '?' của câu 1 thành '.' trong 0ms
-            if (!isLlmValidation && countQuestionMarks(text) > 1) {
+            if (countQuestionMarks(text) > 1) {
                 text = text.replaceFirst("\\?(?=\\s+[^?]+\\?\\s*[^\\p{L}\\d]*$)", ".");
                 lower = text.toLowerCase(Locale.ROOT);
             }
@@ -926,7 +915,7 @@ public final class ReplyContractValidator {
             if (lower.matches("(?isU).*\\bchăm\\s+sóc\\s+(?:kỹ\\s+hơn\\s+)?cho\\s+(?:mình|chị|anh)\\s+ngay\\s+(?:ạ|bây\\s+giờ)\\b.*")) {
                 errors.add("FORBIDDEN_OUT_OF_SPACE_PROMISE");
             }
-            if (lower.matches("(?isU).*(?:liệu\\s+trình\\s+này\\s+hợp\\s+nhu\\s+cầu\\s+không\\s+ạ|(?:mình|chị|anh)\\s+thấy\\s+thế\\s+nào\\s+ạ|đang\\s+quan\\s+tâm\\s+[^?]+\\s+hay\\s+[^?]+\\s+không\\s+ạ\\?).*")
+            if (lower.matches("(?isU).*(?:(?:mình|chị|anh)\\s+thấy\\s+thế\\s+nào\\s+ạ|đang\\s+quan\\s+tâm\\s+[^?]+\\s+hay\\s+[^?]+\\s+không\\s+ạ\\?).*")
                     || isParrotingOrRepeatedConfirmationQuestion(text, customerMessage, safeState)) {
                 errors.add("FORBIDDEN_AWKWARD_CLOSING_QUESTION");
             }
@@ -1714,5 +1703,53 @@ public final class ReplyContractValidator {
             }
         }
         return false;
+    }
+
+    /**
+     * Đổi dấu chấm hỏi '?' ở cuối câu trần thuật (ví dụ câu báo giá, mô tả công dụng kết thúc bằng 'ạ?') thành dấu chấm '.'.
+     * Kiểm tra theo ranh giới khoảng trắng/dấu câu tiếng Việt (?iu)(?:^|[\s,;.!])(...) thay vì \b ASCII để tránh khớp nhầm chữ 'à' bên trong từ 'và'.
+     */
+    public static String normalizeDeclarativeQuestionMarks(String text) {
+        if (text == null || !text.contains("?")) {
+            return text;
+        }
+        List<String> sents = splitIntoSentencesPreservingPunctuation(text);
+        boolean changed = false;
+        for (int i = 0; i < sents.size(); i++) {
+            String sItem = sents.get(i).strip();
+            if (sItem.endsWith("?") && !isGenuineInterrogativeSentence(sItem)) {
+                sents.set(i, sItem.replaceFirst("\\?+$", "."));
+                changed = true;
+            }
+        }
+        return changed ? String.join(" ", sents).strip() : text;
+    }
+
+    public static boolean isGenuineInterrogativeSentence(String sentence) {
+        if (sentence == null) {
+            return false;
+        }
+        String s = sentence.strip();
+        if (!s.endsWith("?")) {
+            return false;
+        }
+        // 1. Cấu trúc nghi vấn rõ ràng với ranh giới khoảng trắng/dấu câu tiếng Việt
+        boolean hasInterrogativeStructure = s.matches("(?iu).*(?:^|[\\s,;.!])(?:"
+                + "phải\\s+không|đúng\\s+không|được\\s+không|hợp\\s+[^?]*\\s+(?:không|chưa)|"
+                + "có\\s+[^?]*\\s+(?:không|chưa)|"
+                + "không\\s+ạ|chưa\\s+ạ|sao\\s+ạ|thế\\s+nào|như\\s+nào|nào|"
+                + "mấy\\s+giờ|mấy\\s+buổi|mấy\\s+lần|mấy\\s+phút|bao\\s+lâu|bao\\s+nhiêu|khi\\s+nào|ở\\s+đâu|"
+                + "là\\s+gì|là\\s+j|món\\s+gì|những\\s+gì|gì\\s+ạ|hả|nhỉ|sao"
+                + ")(?:[\\s,;.!?]|$).*");
+        if (hasInterrogativeStructure) {
+            return true;
+        }
+        // 2. Câu hỏi lựa chọn A hay B (không khớp nhầm "hay bị", "hay đau", "hay mỏi", "hay nhức", "hay tê", "hay căng", "hay ngồi", "hay chuột rút")
+        boolean hasChoiceHay = s.matches("(?iu).*(?:^|[\\s,;.!])hay\\s+(?!bị(?:[\\s,;.!?]|$)|đau(?:[\\s,;.!?]|$)|mỏi(?:[\\s,;.!?]|$)|nhức(?:[\\s,;.!?]|$)|tê(?:[\\s,;.!?]|$)|căng(?:[\\s,;.!?]|$)|ngồi(?:[\\s,;.!?]|$)|mất\\s+ngủ|khó\\s+ngủ|chuột\\s+rút)(?:là|mình|chị|anh|bạn|em|mới|đã|lâu|gần\\s+đây|sáng|chiều|tối|hôm\\s+nay|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|buổi|gói|\\d+)(?:[\\s,;.!?]|$).*");
+        if (hasChoiceHay) {
+            return true;
+        }
+        // 3. Từ nghi vấn đứng độc lập ở cuối mệnh đề trước dấu '?' (từ 'à' bắt buộc có khoảng trắng phía trước, không bao giờ khớp vào 'và')
+        return s.matches("(?iu).*(?:^|[\\s,;.!])(?:không|chưa|nhé|nha|hả|nhỉ|sao|đâu|gì|nào|à|ư|hở|chứ|ha)(?:\\s+(?:ạ|nhé|nha|ha|em|mình|chị|anh|shop))*\\s*\\?+$");
     }
 }

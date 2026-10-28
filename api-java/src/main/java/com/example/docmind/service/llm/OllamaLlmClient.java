@@ -254,12 +254,18 @@ public class OllamaLlmClient implements LlmClient {
 
         int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 550;
         int numPredict;
+        boolean isCleanAgentPrompt = prompt != null && prompt.contains("<CLEAN_AGENT_SYSTEM_PROMPT>");
         boolean forceFullThinkingPredict = Boolean.TRUE.equals(thinkFlag)
+                && !isCleanAgentPrompt
                 && (configuredPredict >= 2048
                     || (prompt != null && (prompt.contains("<AUTHENTIC_EMOTIONAL_COMPASS>")
                         || prompt.contains("<QWEN3_SELECTIVE_THINKING_PROTOCOL>"))));
         boolean isTargetedRepairCall = prompt != null && prompt.contains("FAST_TARGETED_REPAIR_HINT");
-        if (suppressModelThinkForGroundedTurn && !isTargetedRepairCall) {
+        if (isCleanAgentPrompt) {
+            // Giới hạn ngân sách suy luận hợp lý (960 tokens khi think=true, 450 khi think=false)
+            // giúp đủ không gian cho <think> ngắn gọn + JSON 2 bong bóng mà không kéo dài evalMs tới 70-80s.
+            numPredict = (Boolean.TRUE.equals(thinkFlag) && !isTargetedRepairCall) ? 960 : 450;
+        } else if (suppressModelThinkForGroundedTurn && !isTargetedRepairCall) {
             numPredict = 750;
         } else if (thinkingMode != null) {
             int modeBudget = (budget != null && budget.maxTokens() > 0)
