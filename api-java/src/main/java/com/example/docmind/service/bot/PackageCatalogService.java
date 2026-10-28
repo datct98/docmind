@@ -431,7 +431,7 @@ public final class PackageCatalogService {
     private static List<String> extractBodyAreasFromRow(String lowerText, List<String> domainKeywords) {
         Set<String> areas = new LinkedHashSet<>();
         List<String> anatomicalCandidates = List.of(
-                "cổ", "vai", "gáy", "lưng", "thắt lưng", "eo", "chân", "gối", "tay", "đầu", "da đầu", "tóc", "tai", "da mặt", "toàn thân", "body", "răng", "nướu"
+                "đầu", "cổ", "vai", "gáy", "lưng", "thắt lưng", "eo", "chân", "gối", "tay", "da đầu", "tóc", "tai", "da mặt", "toàn thân", "body", "răng", "nướu"
         );
         for (String token : anatomicalCandidates) {
             if (lowerText.contains(token)) {
@@ -440,6 +440,9 @@ public final class PackageCatalogService {
         }
         if (lowerText.contains("toàn thân") || lowerText.contains("full body")) {
             areas.addAll(List.of("toàn thân", "body", "cổ", "vai", "gáy", "lưng", "chân", "tay"));
+        }
+        if (areas.contains("cổ") && areas.contains("vai")) {
+            areas.add("gáy");
         }
         if (domainKeywords != null) {
             for (String kw : domainKeywords) {

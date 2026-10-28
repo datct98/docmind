@@ -51,7 +51,16 @@ public record CustomerInsightDto(
         String workingHypothesis,
 
         @JsonProperty("last_actual_sent_speech_act")
-        String lastActualSentSpeechAct
+        String lastActualSentSpeechAct,
+
+        @JsonProperty("price_objection_count")
+        int priceObjectionCount,
+
+        @JsonProperty("in_price_objection_context")
+        boolean inPriceObjectionContext,
+
+        @JsonProperty("has_presented_downsell")
+        boolean hasPresentedDownsell
 ) {
     public CustomerInsightDto {
         if (extractedPains == null) {
@@ -72,6 +81,51 @@ public record CustomerInsightDto(
         if (lastActualSentSpeechAct == null) {
             lastActualSentSpeechAct = "";
         }
+        if (priceObjectionCount < 0) {
+            priceObjectionCount = 0;
+        }
+    }
+
+    /**
+     * Constructor 15 tham số tương thích ngược.
+     */
+    public CustomerInsightDto(
+            String buyerArchetype,
+            String archetypeLabel,
+            int buyingTemperature,
+            Integer previousTemperature,
+            Integer temperatureDelta,
+            String momentum,
+            String temperatureLabel,
+            String decayReason,
+            String honorific,
+            List<String> extractedPains,
+            List<String> hiddenConcerns,
+            String recommendedStrategy,
+            List<String> careNotes,
+            String workingHypothesis,
+            String lastActualSentSpeechAct
+    ) {
+        this(
+                buyerArchetype,
+                archetypeLabel,
+                buyingTemperature,
+                previousTemperature,
+                temperatureDelta,
+                momentum,
+                temperatureLabel,
+                decayReason,
+                honorific,
+                extractedPains,
+                hiddenConcerns,
+                recommendedStrategy,
+                careNotes,
+                workingHypothesis,
+                lastActualSentSpeechAct,
+                0,
+                false,
+                false
+        );
     }
 
     /**
@@ -108,7 +162,10 @@ public record CustomerInsightDto(
                 recommendedStrategy,
                 careNotes,
                 workingHypothesis,
-                ""
+                "",
+                0,
+                false,
+                false
         );
     }
 
@@ -144,7 +201,10 @@ public record CustomerInsightDto(
                 recommendedStrategy,
                 List.of(),
                 "",
-                ""
+                "",
+                0,
+                false,
+                false
         );
     }
 
@@ -176,7 +236,10 @@ public record CustomerInsightDto(
                 recommendedStrategy,
                 List.of(),
                 "",
-                ""
+                "",
+                0,
+                false,
+                false
         );
     }
 }

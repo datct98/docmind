@@ -130,6 +130,19 @@ public record ConversationState(
         String bookingStatus
 ) {
 
+    public boolean inPriceObjectionContext() {
+        return this.objectionCount >= 1
+                && !"BOOKED".equalsIgnoreCase(this.objectionStage)
+                && !this.packageInterestAccepted
+                && !"COLLECTING_INFO".equalsIgnoreCase(this.bookingStatus)
+                && !"COLLECTING_VISIT_TIME".equalsIgnoreCase(this.bookingStatus)
+                && !"CONFIRMED".equalsIgnoreCase(this.bookingStatus);
+    }
+
+    public boolean hasPresentedDownsell() {
+        return this.downsellOffered;
+    }
+
     /** Tương thích ngược: chữ ký canonical v3.8. */
     public ConversationState(
             boolean greetingSent,
@@ -557,6 +570,54 @@ public record ConversationState(
 
     public int priceObjectionCount() {
         return objectionCount;
+    }
+
+    /**
+     * Danh sách các gói đã thực sự được bot giới thiệu/nhắc tên trong văn bản gửi cho khách (`finalBubbles`).
+     */
+    public Set<String> presentedPackages() {
+        if (mentionedPackages == null || mentionedPackages.isEmpty()) {
+            return quotedPackages != null ? Collections.unmodifiableSet(new LinkedHashSet<>(quotedPackages)) : Set.of();
+        }
+        return Collections.unmodifiableSet(new LinkedHashSet<>(mentionedPackages));
+    }
+
+    /**
+     * Gói gần nhất đã thực sự được bot giới thiệu kèm giá trong văn bản gửi cho khách.
+     */
+    public String lastPresentedPackage() {
+        if (lastQuotedPackage != null && !lastQuotedPackage.isBlank()) {
+            return lastQuotedPackage;
+        }
+        if (mentionedPackages != null && !mentionedPackages.isEmpty()) {
+            String last = null;
+            for (String p : mentionedPackages) {
+                if (p != null && !p.isBlank()) {
+                    last = p;
+                }
+            }
+            return last;
+        }
+        return null;
+    }
+
+    /**
+     * Gói mà khách hàng đã thực sự đồng thuận chọn/đặt lịch (chỉ khác null khi gói đó đã được giới thiệu
+     * VÀ khách hàng đã thể hiện ý định đồng thuận thử/đặt lịch).
+     */
+    public String acceptedPackage() {
+        if (!packageInterestAccepted && !bookingIntentConfirmed) {
+            return null;
+        }
+        String candidate = heldPackage != null && !heldPackage.isBlank() ? heldPackage : lastQuotedPackage;
+        if (candidate == null || candidate.isBlank()) {
+            return null;
+        }
+        boolean wasPresented = (mentionedPackages != null && mentionedPackages.contains(candidate))
+                || (quotedPackages != null && quotedPackages.contains(candidate))
+                || candidate.equalsIgnoreCase(lastQuotedPackage)
+                || candidate.equalsIgnoreCase(knownRecommendedPackage);
+        return wasPresented ? candidate : null;
     }
 
     public boolean hasUnresolvedCustomerRequest() {
@@ -1868,7 +1929,8 @@ public record ConversationState(
 
                 boolean isPkgRejectHere = SentimentIntentLayer.isPackageRejection(content);
                 boolean isExplicitDownsellHere = SentimentIntentLayer.isExplicitDownsellRequest(content, null);
-                boolean isPriceObjHere = SentimentIntentLayer.isPriceObjection(content);
+                boolean isPriceObjHere = SentimentIntentLayer.isPriceObjection(content)
+                        || CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(content, !pricesShown.isEmpty() || (cached != null && cached.priceDiscussed()));
                 boolean isHesitationAfterObjHere = SentimentIntentLayer.isHesitationAfterObjection(content);
                 boolean isAltReqHere = SentimentIntentLayer.isAlternativePackageRequest(content);
                 boolean isDetailFaqHere = SentimentIntentLayer.isDetailOrFaqQuestion(content, lastAssistantMessage, activePkgForContext);
@@ -2169,6 +2231,7 @@ public record ConversationState(
 
         if (cached != null) {
             objectionCount = Math.max(objectionCount, cached.objectionCount());
+            downsellOffered = downsellOffered || cached.downsellOffered();
             ackCount = Math.max(ackCount, cached.ackCount());
             conditionAskedCount = Math.max(conditionAskedCount, cached.conditionAskedCount());
             preferenceAskedCount = Math.max(preferenceAskedCount, cached.preferenceAskedCount());
@@ -3070,37 +3133,66 @@ public record ConversationState(
             if (finalBubbles != null && !finalBubbles.isEmpty()) {
                 templates.add("VALUE_ANGLE_2");
             }
+        } else if ("spa_price_hesitation_soft_downsell".equalsIgnoreCase(skillCode)
+                || "PRICE_HESITATION_SOFT_DOWNSELL".equalsIgnoreCase(detectedIntent)) {
+            nextObjectionCount = Math.max(1, base.objectionCount());
+            boolean hasPresentedDownsellInBubbles = (replyPkgCanonical != null
+                    && (base.heldPackage() == null || !replyPkgCanonical.equalsIgnoreCase(base.heldPackage())))
+                    || (replyPriceVal != null
+                    && (base.lastQuotedPrice() == null || replyPriceVal.compareTo(base.lastQuotedPrice()) != 0));
+            if (hasPresentedDownsellInBubbles) {
+                nextDownsellOffered = true;
+                nextObjectionStage = "DOWNSELL_OFFERED";
+                if (replyDuration != null) {
+                    nextDownsellDur = replyDuration;
+                    nextLastQuotedDur = replyDuration;
+                }
+                if (replyPkgCanonical != null) {
+                    nextDownsellPkg = replyPkgCanonical;
+                    nextLastQuotedPkg = replyPkgCanonical;
+                }
+                if (replyPriceVal != null) {
+                    nextDownsellPrice = replyPriceVal;
+                    nextLastQuotedPrice = replyPriceVal;
+                }
+            }
         } else if ("spa_objection_explicit_downsell".equalsIgnoreCase(skillCode)
                 || "spa_objection_dynamic_downsell".equalsIgnoreCase(skillCode)
                 || "EXPLICIT_DOWNSELL_WITH_PACKAGE".equalsIgnoreCase(detectedIntent)
                 || "SECOND_OBJECTION_DOWNSELL".equalsIgnoreCase(detectedIntent)) {
             nextObjectionCount = base.objectionCount() + 1;
-            nextDownsellOffered = true;
             nextPkgRejectionDetected = true;
-            nextObjectionStage = "DOWNSELL_OFFERED";
             String prevDurToReject = base.heldDuration() != null ? base.heldDuration() : base.lastQuotedDuration();
             String prevPkgToReject = base.heldPackage() != null ? base.heldPackage() : base.lastQuotedPackage();
-            if (prevDurToReject != null
-                    && !prevDurToReject.equals(replyDuration)
-                    && !hasAlternativePackageWithSameDuration(base.availablePackageCatalog(), prevDurToReject, prevPkgToReject)) {
-                nextRejectedDurations.add(prevDurToReject);
-            }
-            if (prevPkgToReject != null) {
-                nextRejectedPackages.add(prevPkgToReject);
-            }
-            if (replyDuration != null) {
-                nextDownsellDur = replyDuration;
-                nextHeldDur = replyDuration;
-                nextLastQuotedDur = replyDuration;
-            }
-            if (replyPkgCanonical != null) {
-                nextDownsellPkg = replyPkgCanonical;
-                nextHeldPkg = replyPkgCanonical;
-                nextLastQuotedPkg = replyPkgCanonical;
-            }
-            if (replyPriceVal != null) {
-                nextDownsellPrice = replyPriceVal;
-                nextLastQuotedPrice = replyPriceVal;
+            boolean hasPresentedDownsellInBubbles = (replyPkgCanonical != null
+                    && (prevPkgToReject == null || !replyPkgCanonical.equalsIgnoreCase(prevPkgToReject)))
+                    || (replyPriceVal != null
+                    && (base.lastQuotedPrice() == null || replyPriceVal.compareTo(base.lastQuotedPrice()) != 0));
+            if (hasPresentedDownsellInBubbles) {
+                nextDownsellOffered = true;
+                nextObjectionStage = "DOWNSELL_OFFERED";
+                if (prevDurToReject != null
+                        && !prevDurToReject.equals(replyDuration)
+                        && !hasAlternativePackageWithSameDuration(base.availablePackageCatalog(), prevDurToReject, prevPkgToReject)) {
+                    nextRejectedDurations.add(prevDurToReject);
+                }
+                if (prevPkgToReject != null) {
+                    nextRejectedPackages.add(prevPkgToReject);
+                }
+                if (replyDuration != null) {
+                    nextDownsellDur = replyDuration;
+                    nextHeldDur = replyDuration;
+                    nextLastQuotedDur = replyDuration;
+                }
+                if (replyPkgCanonical != null) {
+                    nextDownsellPkg = replyPkgCanonical;
+                    nextHeldPkg = replyPkgCanonical;
+                    nextLastQuotedPkg = replyPkgCanonical;
+                }
+                if (replyPriceVal != null) {
+                    nextDownsellPrice = replyPriceVal;
+                    nextLastQuotedPrice = replyPriceVal;
+                }
             }
             templates.add("PRICE_OBJECTION_REPEAT");
         } else if ("spa_objection_no_lower_package_handoff".equalsIgnoreCase(skillCode)

@@ -63,13 +63,14 @@ public class CustomerInsightEngine {
     );
 
     private static final Pattern HALF_HEARTED_OR_COOLING_PATTERN = Pattern.compile(
-            "(?iU)^\\s*(ừ|uk|uh|uhm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)(?:\\s+(?:em|shop|ad|bạn|nhé|nha|ạ))?\\s*[.!,~?]*$"
-            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|uh|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:để\\s+(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác)\\b"
+            "(?iU)^\\s*(ừ|uk|ukm|uh|uhm|ừm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)(?:\\s+(?:em|shop|ad|bạn|nhé|nha|ạ))?\\s*[.!,~?]*$"
+            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|ukm|uh|uhm|ừm|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:(?:để\\s+)?(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)(?:\\s+(?:nhé|nha|ạ))?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác)\\b"
     );
 
     private static final Pattern PRICE_HESITATION_PATTERN = Pattern.compile(
-            "(?iU)\\b(hơi\\s+đắt|đắt\\s+quá|đắt\\s+thế|đắt\\s+vậy|giá\\s+cao|cao\\s+thế|cao\\s+quá|cao\\s+vậy|hơi\\s+cao|"
-            + "chát\\s+quá|cao\\s+hơn|đắt|mắc|hơi\\s+mắc|vượt\\s+ngân\\s+sách|rẻ\\s+hơn|rẻ\\s+nhất|mềm\\s+hơn|thấp\\s+hơn|thấp\\s+nhất|gói\\s+nào\\s+rẻ|gói\\s+nhỏ)\\b"
+            "(?iU)\\b(hơi\\s+đắt|đắt\\s+nhỉ|đắt\\s+quá|đắt\\s+thế|đắt\\s+vậy|giá\\s+cao|giá\\s+căng|cao\\s+nhỉ|cao\\s+thế|cao\\s+quá|cao\\s+vậy|cao\\s+ghê|cao\\s+dữ|cao\\s+phết|hơi\\s+cao|"
+            + "căng\\s+nhỉ|căng\\s+thế|chát\\s+nhỉ|chát\\s+thế|hơi\\s+chát|chát\\s+quá|cao\\s+hơn|đắt|mắc\\s+nhỉ|mắc\\s+thế|mắc|hơi\\s+mắc|đau\\s+ví|quá\\s+sức|nhiều\\s+tiền\\s+quá|"
+            + "vượt\\s+ngân\\s+sách|rẻ\\s+hơn|rẻ\\s+nhất|mềm\\s+hơn|thấp\\s+hơn|thấp\\s+nhất|gói\\s+nào\\s+rẻ|gói\\s+nhỏ)\\b"
     );
 
     private static final List<AgentSkillDto> DEFAULT_BUILT_IN_SKILLS = createDefaultBuiltInSkills();
@@ -175,11 +176,13 @@ public class CustomerInsightEngine {
                 || lowerCombined.contains("nhăn") || lowerCombined.contains("da khô") || lowerCombined.contains("meso")) {
             pains.add("Quan tâm phục hồi, căng bóng & chống lão hóa da");
         }
-        if (lowerCombined.contains("gội đầu") || lowerCombined.contains("cổ") || lowerCombined.contains("thư giãn") || lowerCombined.contains("mỏi")) {
+        if (lowerCombined.contains("gội đầu") || lowerCombined.contains("cổ") || lowerCombined.contains("thư giãn")
+                || lowerCombined.contains("mỏi") || lowerCombined.contains("đau") || lowerCombined.contains("nhức") || lowerCombined.contains("tê")) {
             Set<String> wellnessScopes = new LinkedHashSet<>();
             for (String uMsg : allUserMessages) {
                 String uLower = uMsg.toLowerCase(Locale.ROOT);
-                if (uLower.contains("gội đầu") || uLower.contains("cổ") || uLower.contains("thư giãn") || uLower.contains("mỏi")) {
+                if (uLower.contains("gội đầu") || uLower.contains("cổ") || uLower.contains("thư giãn")
+                        || uLower.contains("mỏi") || uLower.contains("đau") || uLower.contains("nhức") || uLower.contains("tê")) {
                     for (String sc : ConversationState.extractTargetScopes(uLower, List.of())) {
                         if (!Set.of("da", "mụn", "nám", "sẹo").contains(sc)) {
                             wellnessScopes.add(sc);
@@ -255,7 +258,8 @@ public class CustomerInsightEngine {
         boolean currentIsChronic = CHRONIC_PAIN_PATTERN.matcher(msg).find() || currentIsComplexSymptom;
         boolean historyIsChronic = CHRONIC_PAIN_PATTERN.matcher(combinedUserText).find() || currentIsComplexSymptom;
         boolean currentIsMaleOrDiscreet = MALE_OR_DISCREetCheck(msg, honorific, allUserMessages.size());
-        boolean currentIsPrice = PRICE_OBJECTION_PATTERN.matcher(msg).find() && !hasBookingLead;
+        boolean currentIsPrice = (PRICE_OBJECTION_PATTERN.matcher(msg).find()
+                || CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true)) && !hasBookingLead;
         boolean currentIsFearOrTime = FEAR_OR_RISK_PATTERN.matcher(msg).find() || TIME_TO_RESULT_PATTERN.matcher(msg).find();
 
         String archetype;
@@ -301,7 +305,8 @@ public class CustomerInsightEngine {
         boolean isIdleDecay = (idleSeconds != null && idleSeconds >= 300)
                 || (replyDelaySeconds != null && replyDelaySeconds >= 300);
         boolean isHalfHearted = HALF_HEARTED_OR_COOLING_PATTERN.matcher(msg).find();
-        boolean isPriceHesitation = PRICE_HESITATION_PATTERN.matcher(msg).find();
+        boolean isPriceHesitation = PRICE_HESITATION_PATTERN.matcher(msg).find()
+                || CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true);
         boolean isCoolingBrushOff = isHalfHearted && !isPriceHesitation && !hasBookingLead;
 
         if (isPriceHesitation && !hasBookingLead) {
@@ -507,7 +512,7 @@ public class CustomerInsightEngine {
         }
 
         List<AgentSkillDto> pool = new ArrayList<>(
-                base.stream().map(FanpageBotService::sanitizeSkillDisplayNameForUi).toList()
+                base.stream().map(CleanAgentOrchestratorService::sanitizeSkillDisplayNameForUi).toList()
         );
         boolean hasPersuasion = pool.stream().anyMatch(s -> "PSYCH_ZERO_PRESSURE_TAKEAWAY".equalsIgnoreCase(s.code()));
         if (!hasPersuasion) {
@@ -562,9 +567,9 @@ public class CustomerInsightEngine {
 
         record ScoredSkill(AgentSkillDto skill, int score) {}
         List<ScoredSkill> scored = new ArrayList<>(pool.size());
-        boolean isBareClosingAfterHesitation = FanpageBotService.isBareAcknowledgmentMessage(currentMessage)
-                && FanpageBotService.wasPriorCustomerTurnHesitation(history);
-        boolean isHesitationOrDeferralTurn = FanpageBotService.isHesitationOrDeferralMessage(currentMessage)
+        boolean isBareClosingAfterHesitation = CleanAgentOrchestratorService.isBareAcknowledgmentMessage(currentMessage)
+                && CleanAgentOrchestratorService.wasPriorCustomerTurnHesitation(history);
+        boolean isHesitationOrDeferralTurn = CleanAgentOrchestratorService.isHesitationOrDeferralMessage(currentMessage)
                 || isBareClosingAfterHesitation;
 
         for (AgentSkillDto skill : pool) {
@@ -754,8 +759,10 @@ public class CustomerInsightEngine {
             targetCode = "complaint_immediate_handoff";
         } else if (hasHighRiskHealthSignal(lowerMsg)) {
             targetCode = "safety_handoff_high_risk";
-        } else if (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(rawMessage)
-                || lowerMsg.matches("(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+thế|cao\\s+vậy|đắt\\s+vậy|rẻ\\s+hơn|mềm\\s+hơn|vượt\\s+ngân\\s+sách)\\b.*")) {
+        } else if (CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(rawMessage, true)
+                || (!CleanAgentOrchestratorService.isNormalPriceOrDetailInquiryMessage(rawMessage)
+                    && (FanpageBotPromptBuilder.isPriceObjectionOrDownsellMessage(rawMessage)
+                        || lowerMsg.matches("(?isU).*\\b(đắt|hơi\\s+cao|cao\\s+nhỉ|cao\\s+thế|cao\\s+quá|cao\\s+vậy|đắt\\s+vậy|rẻ\\s+hơn|mềm\\s+hơn|vượt\\s+ngân\\s+sách)\\b.*")))) {
             targetCode = "price_objection_soft_anchor";
         } else if (isBroadUnspecifiedPrice
                 || (lowerMsg.matches("(?isU).*\\b(giá|bảng\\s+giá|bao\\s+nhiêu|chi\\s+phí|rổ\\s+giá|mấy\\s+tiền)\\b.*")

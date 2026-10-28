@@ -113,7 +113,7 @@ class CleanAgentArchitectureVerificationTest {
     void testTieredCatalogRanking_NeckPain_Primary399kFirst_Downsell239kSecond_EarExcluded() {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
 
-        FanpageBotService.TieredCatalogResult result = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult result = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog,
                 List.of("đau mỏi cổ", "nhức vai", "nhức đầu"),
                 List.of("cổ", "vai", "gáy", "đầu"),
@@ -154,7 +154,7 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(extractedScopes.contains("chân"), "Triệu chứng chuột rút phải ánh xạ ra phạm vi 'chân'");
         assertTrue(extractedScopes.contains("đầu"), "Triệu chứng nhức đầu phải ánh xạ ra phạm vi 'đầu'");
 
-        FanpageBotService.TieredCatalogResult result = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult result = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog,
                 List.of("chuột rút", "nhức đầu"),
                 extractedScopes,
@@ -191,7 +191,7 @@ class CleanAgentArchitectureVerificationTest {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
 
         // 1. Tình huống 1 (priceObjectionCount == 0): Nhóm 1 ưu tiên 60p 399k đứng số 1, ẩn Nhóm 2
-        String promptStage1 = FanpageBotService.buildCleanAgentPrompt(
+        String promptStage1 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ", "nhức gáy"),
@@ -225,7 +225,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Tình huống 1 (báo giá lần đầu) không được hiển thị gói 239k của Nhóm 2");
 
         // 2. Tình huống 2 (priceObjectionCount == 1 và khách chưa xin gói rẻ hơn): Chỉ truyền heldPackage, ẨN HOÀN TOÀN Nhóm 2
-        String promptStage2 = FanpageBotService.buildCleanAgentPrompt(
+        String promptStage2 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ", "nhức gáy"),
@@ -251,7 +251,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Tình huống 2 (chê đắt lần 1) không được lộ giá gói hạ bậc 239k trong Prompt");
 
         // 3. Tình huống 3 (khách chủ động xin gói rẻ hơn HOẶC priceObjectionCount >= 2): Mở khóa Nhóm 2 (DS02 - 239k)
-        String promptStage3 = FanpageBotService.buildCleanAgentPrompt(
+        String promptStage3 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ", "nhức gáy"),
@@ -273,7 +273,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Tình huống 3 phải mở khóa Nhóm 2 (DS02 - 239k)");
 
         // 4. Tình huống 5 (khách hỏi vặn suy đoán của bot): Tạm ẩn danh sách chào bán gói
-        String promptStage5 = FanpageBotService.buildCleanAgentPrompt(
+        String promptStage5 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ"),
@@ -297,7 +297,7 @@ class CleanAgentArchitectureVerificationTest {
     @Test
     void testEmotionalLanguageAllowed_ClinicalClaimsBlocked_PronounsAndRepairIsolated() {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
-        FanpageBotService.TieredCatalogResult tiered = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog,
                 List.of("đau mỏi cổ"),
                 List.of("cổ", "vai", "gáy"),
@@ -306,7 +306,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 1. CHO PHÉP HOÀN TOÀN ngôn từ cảm xúc dịch vụ: "giảm đau mỏi hiệu quả", "mở từng điểm cơ căng cứng", "đào thải độc tố", "nhẹ nhõm từ bên trong"
-        List<String> emotionalOk = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> emotionalOk = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ gói Massage cơ bản 60 phút (399k) giúp kỹ thuật viên ấn miết mở từng điểm cơ căng cứng, đào thải độc tố và giảm đau mỏi hiệu quả để cơ thể nhẹ nhõm từ bên trong ạ.",
                         0
@@ -321,7 +321,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 2. CHỈ CHẶN khi cam kết chữa khỏi bệnh lý y khoa lâm sàng ("chữa khỏi hẳn bệnh", "điều trị dứt điểm bệnh")
-        List<String> clinicalViolations = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> clinicalViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ liệu trình bên em cam kết chữa khỏi hẳn bệnh thoái hóa đốt sống cổ ạ.", 0)),
                 allCatalog,
                 tiered.allAllowedPackages(),
@@ -333,7 +333,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 3. Bắt mọi biến thể đại từ sai vai ("Dạ mình đã hiểu rồi ạ", "Dạ mình hiểu ạ", "Dạ hiểu rồi ạ") và chuẩn hóa thành "Dạ em hiểu ạ"
-        List<String> pronounViolations1 = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> pronounViolations1 = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ mình đã hiểu rồi ạ, để em kiểm tra cho chị nhé.", 0)),
                 allCatalog,
                 tiered.allAllowedPackages(),
@@ -343,15 +343,15 @@ class CleanAgentArchitectureVerificationTest {
 
         assertEquals(
                 "Dạ em hiểu ạ, tình trạng này chắc làm chị mỏi lắm.",
-                FanpageBotService.sanitizeMinorCleanAgentWordingInPlace("Dạ mình đã hiểu rồi ạ, tình trạng này chắc làm chị mỏi lắm.", "em")
+                CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace("Dạ mình đã hiểu rồi ạ, tình trạng này chắc làm chị mỏi lắm.", "em")
         );
         assertEquals(
                 "Dạ em hiểu ạ.",
-                FanpageBotService.sanitizeMinorCleanAgentWordingInPlace("Dạ hiểu rồi ạ.", "em")
+                CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace("Dạ hiểu rồi ạ.", "em")
         );
 
         // 4. Chặn tự ý gạ gói rẻ hơn ở lần chê đắt đầu tiên (PREMATURE_DOWNSELL_ON_FIRST_OBJECTION) và chặn tự mâu thuẫn (vừa gạ gói rẻ vừa hỏi giờ đặt lịch)
-        List<String> prematureDownsellViolations = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> prematureDownsellViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ hay để em gợi ý gói tiết kiệm hơn cho mình trải nghiệm thử nhé?", 0)),
                 allCatalog,
                 tiered.primaryRecommendations(),
@@ -362,7 +362,7 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(prematureDownsellViolations.contains("PREMATURE_DOWNSELL_ON_FIRST_OBJECTION"),
                 "Phải chặn tự gạ gói tiết kiệm hơn ở lần chê đắt đầu tiên: " + prematureDownsellViolations);
 
-        List<String> contradictoryViolations = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> contradictoryViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(
                         new FanpageBotResponse.ReplyBubble("Dạ để em gợi ý gói tiết kiệm hơn cho mình nhé.", 0),
                         new FanpageBotResponse.ReplyBubble("Hôm nay chị tiện ghé vào khung giờ nào ạ?", 2000)
@@ -375,7 +375,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Phải chặn lỗi tự mâu thuẫn vừa gạ gói tiết kiệm hơn vừa hỏi khung giờ đặt lịch: " + contradictoryViolations);
 
         // 5. Chặn câu tự thú lặp lời ("tại em lỡ miệng nhắc lại thông tin cũ") và kiểm tra <REPAIR_INSTRUCTION>
-        List<String> selfConfessionViolations = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> selfConfessionViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ tại em lỡ miệng nhắc lại thông tin cũ nên mong chị thông cảm ạ.", 0)),
                 allCatalog,
                 tiered.allAllowedPackages(),
@@ -383,14 +383,14 @@ class CleanAgentArchitectureVerificationTest {
         );
         assertTrue(selfConfessionViolations.contains("FORBIDDEN_INTERNAL_REPAIR_LEAK_SELF_CONFESSION"));
 
-        String repairPrompt = FanpageBotService.buildCleanRepairPrompt("PROMPT_GỐC", List.of("CROSS_TURN_REPETITION"), "em", "chị");
+        String repairPrompt = CleanAgentOutputRefereeAndSanitizer.buildCleanRepairPrompt("PROMPT_GỐC", List.of("CROSS_TURN_REPETITION"), "em", "chị");
         assertTrue(repairPrompt.contains("CHỈ DẪN KỸ THUẬT NỘI BỘ: Khách hàng KHÔNG phàn nàn về việc lặp lời. Tuyệt đối CẤM viết câu xin lỗi kiểu 'tại em lỡ miệng nhắc lại thông tin cũ'."));
 
         // 6. Kiểm tra phân loại tín hiệu: "Đắt nhỉ", "Hơi cao", "Để xem đã", "Để tính đã", "Chưa biết" KHÔNG bị gán vào PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS
         for (String msg : List.of("Đắt nhỉ", "Hơi cao", "Để xem đã", "Để tính đã", "Chưa biết")) {
-            List<String> sigs = FanpageBotService.classifyCleanCurrentTurnSignals(
+            List<String> sigs = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                     msg, false, false, false, false,
-                    FanpageBotService.isCleanPriceObjectionMessage(msg),
+                    CleanAgentOrchestratorService.isCleanPriceObjectionMessage(msg),
                     1, false, false, List.of("đau gáy"), List.of("gáy"), "mới bị"
             );
             assertFalse(sigs.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS"),
@@ -399,7 +399,7 @@ class CleanAgentArchitectureVerificationTest {
 
         // "Ừ, nghe ổn", "Nghe ổn hơn đó" -> POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE
         for (String posMsg : List.of("Ừ, nghe ổn", "Nghe ổn hơn đó")) {
-            List<String> sigs = FanpageBotService.classifyCleanCurrentTurnSignals(
+            List<String> sigs = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                     posMsg, false, false, false, false,
                     false, 0, true, true, List.of("đau gáy"), List.of("gáy"), "mới bị"
             );
@@ -418,7 +418,7 @@ class CleanAgentArchitectureVerificationTest {
                 )
         );
 
-        boolean repeated = FanpageBotService.detectCleanCrossTurnRepetition(
+        boolean repeated = CleanAgentOutputRefereeAndSanitizer.detectCleanCrossTurnRepetition(
                 singleBubbleCandidate,
                 prevBotTurn,
                 List.of(new FanpageBotRequest.ConversationTurn("assistant", prevBotTurn))
@@ -455,7 +455,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         for (int objectionCount : List.of(0, 1)) {
-            String dentalPrompt = FanpageBotService.buildCleanAgentPrompt(
+            String dentalPrompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                     dentalPersona,
                     "anh",
                     List.of("ê buốt răng", "ố vàng"),
@@ -524,7 +524,7 @@ class CleanAgentArchitectureVerificationTest {
                 0.88
         );
 
-        String promptStandard = FanpageBotService.buildCleanAgentPrompt(
+        String promptStandard = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ"),
@@ -565,7 +565,7 @@ class CleanAgentArchitectureVerificationTest {
                 .orElseThrow();
 
         // 1. Chặn bịa "phòng riêng" trên gói 399k (vốn là Phòng chung (có rèm riêng)) và gói 239k (Khu gội chung)
-        List<String> privateRoomOn399k = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> privateRoomOn399k = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ gói Massage cơ bản 60 phút (399k) bên em sẽ chuẩn bị phòng riêng kín đáo cho chị ạ.",
                         0
@@ -583,7 +583,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Phải bắt lỗi UNGROUNDED_PRIVATE_ROOM khi bịa 'phòng riêng' cho gói 399k: " + privateRoomOn399k
         );
 
-        String sanitized399k = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitized399k = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Em sẽ chuẩn bị phòng riêng kín đáo cho mình ạ.",
                 "em",
                 "chị",
@@ -595,7 +595,7 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(sanitized399k.contains(ns01Standard399k.customerFacingSpaceNote()));
 
         // 2. Chặn bịa "thực dưỡng" và "phòng riêng" trên gói 239k (DS02 chỉ có ăn nhẹ & trái cây theo mùa, Khu gội chung)
-        List<String> mismatchOn239k = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> mismatchOn239k = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ Gói dưỡng sinh cơ bản 60 phút (239k) có phòng riêng kín đáo và bữa ăn nhẹ thực dưỡng sau liệu trình ạ.",
                         0
@@ -617,7 +617,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Phải bắt lỗi CROSS_TIER_AMENITY_MISMATCH khi gán 'thực dưỡng' vào gói 239k: " + mismatchOn239k
         );
 
-        String sanitized239k = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitized239k = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Em sẽ chuẩn bị phòng riêng kín đáo và bữa ăn nhẹ thực dưỡng cho mình ạ.",
                 "em",
                 "chị",
@@ -641,7 +641,7 @@ class CleanAgentArchitectureVerificationTest {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
 
         // 1. Khi heldPkg == null ("null"), <STRUCTURED_CONVERSATION_STATE> phải ghi rõ chỉ thị chủ động đề xuất gói số 1
-        String promptTurn2 = FanpageBotService.buildCleanAgentPrompt(
+        String promptTurn2 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau nhức gáy"),
@@ -664,7 +664,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 2. Trọng tài checkCleanCatalogGrounding bắt lỗi FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION khi heldPkg == null
-        List<String> violations = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ mình đang quan tâm đến gói Massage cơ bản 60 phút (399k) đúng không ạ?",
                         0
@@ -679,7 +679,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 3. sanitizeMinorCleanAgentWordingInPlace tự động đổi thành "em gợi ý mình tham khảo gói"
-        String rewritten = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String rewritten = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Dạ mình đang quan tâm đến gói Massage cơ bản 60 phút (399k) ạ.",
                 "em"
         );
@@ -690,7 +690,7 @@ class CleanAgentArchitectureVerificationTest {
 
         // 4. Khi khách đã hạ bậc sang gói Nhóm 2 (priceObjectionCount == 2) rồi đồng thuận ("Ừ, nghe ổn hơn đó"):
         // Turn 5 phải vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING và khóa chặt vào gói Nhóm 2 (DS02 - 239k)
-        String promptTurn5AfterDownsell = FanpageBotService.buildCleanAgentPrompt(
+        String promptTurn5AfterDownsell = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau nhức gáy"),
@@ -716,7 +716,7 @@ class CleanAgentArchitectureVerificationTest {
     @Test
     void testBrainReflectionParser_FaultTolerant_WhenMissingOrMalformed() {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
-        FanpageBotService.TieredCatalogResult tiered = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog,
                 List.of("đau mỏi cổ"),
                 List.of("cổ", "vai", "gáy"),
@@ -739,7 +739,7 @@ class CleanAgentArchitectureVerificationTest {
                   "should_handoff": false
                 }
                 """;
-        FanpageBotService.StructuredLlmOutput parsedValid = FanpageBotService.parseStructuredLlmJsonOutput(validJsonWithReflection, 10_000);
+        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput parsedValid = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(validJsonWithReflection, 10_000);
         assertTrue(parsedValid.parsedFromJson());
         assertEquals(2, parsedValid.bubbles().size());
         assertNotNull(parsedValid.brainReflection());
@@ -755,7 +755,7 @@ class CleanAgentArchitectureVerificationTest {
                 "{\"reply_bubbles\": [{\"text\": \"Dạ em chào chị ạ.\", \"typing_delay_ms\": 0}], \"brain_reflection\": [1, 2, 3], \"should_handoff\": false}",
                 "{\"reply_bubbles\": [{\"text\": \"Dạ em chào chị ạ.\", \"typing_delay_ms\": 0}], \"brain_reflection\": {\"observed_fact\": [\"mang_loi\"], \"care_note_delta\": 12345}}"
         )) {
-            FanpageBotService.StructuredLlmOutput out = FanpageBotService.parseStructuredLlmJsonOutput(variant, 10_000);
+            CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput out = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(variant, 10_000);
             assertTrue(out.parsedFromJson(), "Parser phải chịu lỗi với biến thể: " + variant);
             assertEquals(1, out.bubbles().size());
             assertEquals("Dạ em chào chị ạ.", out.bubbles().get(0).text());
@@ -764,7 +764,7 @@ class CleanAgentArchitectureVerificationTest {
 
         // 3. Khi phần "brain_reflection" ở cuối JSON bị cắt cụt do maxTokens -> vẫn cứu được nguyên vẹn "reply_bubbles"!
         String truncatedReflectionJson = "{\"reply_bubbles\": [{\"text\": \"Dạ gói Massage cơ bản 60 phút có giá 399k trọn gói ạ.\", \"typing_delay_ms\": 0}], \"brain_reflection\": {\"observed_fact\": \"Khách hỏi giá";
-        FanpageBotService.StructuredLlmOutput salvaged = FanpageBotService.parseStructuredLlmJsonOutput(truncatedReflectionJson, 10_000);
+        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput salvaged = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(truncatedReflectionJson, 10_000);
         assertTrue(salvaged.parsedFromJson(), "Khi brain_reflection bị cắt cụt ở cuối, parser phải cứu được reply_bubbles");
         assertEquals(1, salvaged.bubbles().size());
         assertEquals("Dạ gói Massage cơ bản 60 phút có giá 399k trọn gói ạ.", salvaged.bubbles().get(0).text());
@@ -772,15 +772,15 @@ class CleanAgentArchitectureVerificationTest {
         // 4. Kiểm tra xác thực care_note_delta: chặn cam kết y khoa lâm sàng và tên gói bị loại (excludedCatalog)
         assertEquals(
                 "",
-                FanpageBotService.validateCleanCareNoteDelta("Cam kết chữa khỏi hẳn bệnh thoái hóa đốt sống cổ cho khách", tiered.excludedCatalog()),
+                CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta("Cam kết chữa khỏi hẳn bệnh thoái hóa đốt sống cổ cho khách", tiered.excludedCatalog()),
                 "Phải loại bỏ care_note_delta chứa cam kết chữa khỏi bệnh lý y khoa"
         );
         assertEquals(
                 "",
-                FanpageBotService.validateCleanCareNoteDelta("Khách hợp với gói Lấy ráy tai cơ bản DS01", tiered.excludedCatalog()),
+                CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta("Khách hợp với gói Lấy ráy tai cơ bản DS01", tiered.excludedCatalog()),
                 "Phải loại bỏ care_note_delta chứa tên/mã gói nằm trong excludedCatalog"
         );
-        String validCareNote = FanpageBotService.validateCleanCareNoteDelta(
+        String validCareNote = CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta(
                 "Khách ngồi máy tính nhiều, khó ngủ — ưu tiên không gian yên tĩnh, thao tác nhẹ nhàng",
                 tiered.excludedCatalog()
         );
@@ -912,7 +912,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Khách đau mỏi cổ vai gáy",
                 "Tinh tế, chu đáo"
         );
-        String bookingPromptWithRecalledMemory = FanpageBotService.buildCleanAgentPrompt(
+        String bookingPromptWithRecalledMemory = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ vai gáy"),
@@ -949,7 +949,7 @@ class CleanAgentArchitectureVerificationTest {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
 
         // 1. Trường hợp A: Khách lưỡng lự trong ngữ cảnh ĐÃ băn khoăn về giá (priceObjectionCount == 1) và Nhóm 2 có gói 239k chưa được giới thiệu
-        String promptCaseA = FanpageBotService.buildCleanAgentPrompt(
+        String promptCaseA = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ vai gáy"),
@@ -974,12 +974,12 @@ class CleanAgentArchitectureVerificationTest {
                 "Trường hợp A phải hiển thị gói DS02 (239k) để gợi ý mềm không áp lực");
         assertEquals(
                 ThinkingMode.OBJECTION_REFRAME_THINK,
-                FanpageBotService.resolveCleanAgentThinkingMode(false, false, false, true, false, true, false, false, List.of("đau cổ")),
+                CleanAgentOrchestratorService.resolveCleanAgentThinkingMode(false, false, false, true, false, true, false, false, List.of("đau cổ")),
                 "Trường hợp A (lưỡng lự vì giá) phải dùng OBJECTION_REFRAME_THINK"
         );
 
         // 2. Trường hợp B1: Khách báo bận / hẹn tối xem lại ("Chị đang bận chút, để tối xem lại nhé") ngay cả khi priceObjectionCount == 1
-        String promptCaseBBusy = FanpageBotService.buildCleanAgentPrompt(
+        String promptCaseBBusy = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1005,12 +1005,12 @@ class CleanAgentArchitectureVerificationTest {
                 "Trường hợp B tuyệt đối không được tung gói hạ bậc 239k khi khách đã báo bận");
         assertEquals(
                 ThinkingMode.FAST_NO_THINK,
-                FanpageBotService.resolveCleanAgentThinkingMode(false, false, false, false, true, true, false, false, List.of("đau cổ")),
+                CleanAgentOrchestratorService.resolveCleanAgentThinkingMode(false, false, false, false, true, true, false, false, List.of("đau cổ")),
                 "Trường hợp B (khách bận / tạm dừng thuần túy) phải dùng FAST_NO_THINK để phản hồi nhanh, nhẹ nhàng"
         );
 
         // 3. Trường hợp B2: Khách nói "Để xem đã" khi chưa từng chê đắt (priceObjectionCount == 0) -> Tôn trọng nhịp độ của khách (STAGE_6)
-        String promptCaseBNoPriceObj = FanpageBotService.buildCleanAgentPrompt(
+        String promptCaseBNoPriceObj = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "chị",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1035,7 +1035,7 @@ class CleanAgentArchitectureVerificationTest {
                 .filter(p -> "NS01".equals(p.code()))
                 .findFirst()
                 .orElseThrow();
-        String normalizedBuffet = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String normalizedBuffet = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Gói Massage cơ bản 60 phút (399k) đã bao gồm buffet thực dưỡng ấm bụng sau buổi làm ạ.",
                 "em",
                 "chị",
@@ -1122,14 +1122,14 @@ class CleanAgentArchitectureVerificationTest {
                 new FanpageBotResponse.ReplyBubble("Dạ không sao đâu ạ, mình cứ thoải mái tham khảo và cân nhắc thêm, chưa cần vội đặt lịch ngay đâu ạ.", 0),
                 new FanpageBotResponse.ReplyBubble("Nếu mình muốn thử một phương án tiết kiệm hơn thì bên em cũng có gói dưỡng sinh cơ bản 60 phút (239k trọn gói), khi nào tiện mình cứ nhắn em nhé.", 2000)
         );
-        String verifiedSpeechActTurn5 = FanpageBotService.resolveActualSentSpeechAct(
+        String verifiedSpeechActTurn5 = CleanAgentOutputRefereeAndSanitizer.resolveActualSentSpeechAct(
                 "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL",
                 turn5Bubbles,
                 "NONE",
                 "INVITED_TRIAL_OR_ASKED_TIME"
         );
         assertEquals(
-                FanpageBotService.SPEECH_ACT_RESPECTED_PAUSE,
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
                 verifiedSpeechActTurn5,
                 "Java Post-Send Verification phải ghi đè speech act thành RESPECTED_PAUSE_WITH_SOFT_OPTION"
         );
@@ -1148,13 +1148,13 @@ class CleanAgentArchitectureVerificationTest {
                 List.of("cổ", "vai", "gáy")
         );
         CustomerInsightDto insightForTurn6 = brainService.enrichCustomerInsight(pageId, senderId, dummyInsight, null);
-        assertEquals(FanpageBotService.SPEECH_ACT_RESPECTED_PAUSE, insightForTurn6.lastActualSentSpeechAct());
+        assertEquals(CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE, insightForTurn6.lastActualSentSpeechAct());
 
         List<FanpageBotRequest.ConversationTurn> historyAfterTurn5 = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Ok để nghĩ thêm"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ không sao đâu ạ, mình cứ thoải mái tham khảo và cân nhắc thêm, chưa cần vội đặt lịch ngay đâu ạ. Nếu mình muốn thử một phương án tiết kiệm hơn thì bên em cũng có gói dưỡng sinh cơ bản 60 phút (239k trọn gói), khi nào tiện mình cứ nhắn em nhé.")
         );
-        String promptCase1 = FanpageBotService.buildCleanAgentPrompt(
+        String promptCase1 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1196,13 +1196,13 @@ class CleanAgentArchitectureVerificationTest {
                 List.of("đau mỏi cổ vai gáy"), List.of("giá"), "Tôn trọng nhịp độ",
                 List.of("Khách ngồi máy tính nhiều"),
                 "Khách quan tâm gói 399k",
-                FanpageBotService.SPEECH_ACT_INVITED_TRIAL_OR_TIME
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME
         );
         List<FanpageBotRequest.ConversationTurn> historyAfterTrialInvite = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Giá 399k hơi cao nhỉ"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút (399k) tập trung xử lý sâu vùng cổ vai gáy, mình thử trải nghiệm trước 1 lần để cảm nhận nhé?")
         );
-        String promptCase2 = FanpageBotService.buildCleanAgentPrompt(
+        String promptCase2 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1232,12 +1232,12 @@ class CleanAgentArchitectureVerificationTest {
                 List.of("đau mỏi cổ vai gáy"), List.of("giá"), "Tôn trọng nhịp độ",
                 List.of("Khách ngồi máy tính nhiều"),
                 "Khách muốn tìm hiểu chi tiết gói 239k",
-                FanpageBotService.SPEECH_ACT_OFFERED_DETAILS
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_OFFERED_DETAILS
         );
         List<FanpageBotRequest.ConversationTurn> historyAfterOfferDetails = List.of(
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em có Gói dưỡng sinh cơ bản 60 phút (239k trọn gói), mình có muốn nghe thêm chi tiết về gói này không ạ?")
         );
-        String promptCase3 = FanpageBotService.buildCleanAgentPrompt(
+        String promptCase3 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1269,9 +1269,9 @@ class CleanAgentArchitectureVerificationTest {
                 List.of("đau mỏi cổ vai gáy"), List.of(), "Xác nhận lịch hẹn",
                 List.of("Khách ngồi máy tính nhiều"),
                 "Khách đã đặt lịch 17h chiều nay",
-                FanpageBotService.SPEECH_ACT_BOOKING_CONFIRMED
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_BOOKING_CONFIRMED
         );
-        String promptCase4 = FanpageBotService.buildCleanAgentPrompt(
+        String promptCase4 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1298,7 +1298,7 @@ class CleanAgentArchitectureVerificationTest {
         // =====================================================================
         // Case 5 (Phản chứng): "Ok, chiều nay mình qua" hoặc "Ok cho mình thử gói 239k nhé" ngay sau khi hẹn nghĩ thêm
         // =====================================================================
-        String promptCase5Proactive = FanpageBotService.buildCleanAgentPrompt(
+        String promptCase5Proactive = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 List.of("đau mỏi cổ vai gáy"),
@@ -1335,7 +1335,7 @@ class CleanAgentArchitectureVerificationTest {
 
         // 1. Khi bookingStatus != CONFIRMED ("NONE" hoặc "COLLECTING_VISIT_TIME"):
         // checkCleanCatalogGrounding phải bắt lỗi UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION
-        List<String> violationsWhenUnconfirmed = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> violationsWhenUnconfirmed = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ vâng ạ, em đã dặn chuyên viên chuẩn bị lực ấn vừa phải vùng cổ vai gáy cho mình rồi ạ. Mình tiện ghé khung giờ nào ạ?",
                         0
@@ -1355,7 +1355,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 2. sanitizeMinorCleanAgentWordingInPlace tự động chuẩn hóa về "em lưu lại để khi mình ghé sẽ dặn chuyên viên"
-        String sanitizedMidSentence = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitizedMidSentence = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Dạ vâng ạ, em đã dặn chuyên viên lưu ý vùng cổ vai gáy cho mình rồi ạ.",
                 "em",
                 "mình",
@@ -1369,7 +1369,7 @@ class CleanAgentArchitectureVerificationTest {
         );
         assertFalse(sanitizedMidSentence.toLowerCase().contains("em đã dặn chuyên viên"));
 
-        String sanitizedStartSentence = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitizedStartSentence = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Em đã báo kỹ thuật viên chuẩn bị chu đáo cho chị ạ.",
                 "em",
                 "chị",
@@ -1383,7 +1383,7 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // 3. Khi bookingStatus == "CONFIRMED": Cho phép giữ nguyên vì lịch hẹn đã thực sự được chốt
-        String sanitizedWhenConfirmed = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitizedWhenConfirmed = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Dạ em đã dặn chuyên viên chuẩn bị phòng đón mình lúc 17h chiều nay rồi ạ.",
                 "em",
                 "mình",
@@ -1403,7 +1403,7 @@ class CleanAgentArchitectureVerificationTest {
                 .orElseThrow();
 
         // 1. Gói NS01 có includesSummary = "Trà thảo mộc, ăn nhẹ thực dưỡng" (không chứa từ "buffet")
-        List<String> violationsOnNs01 = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> violationsOnNs01 = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Gói Massage cơ bản 60 phút (399k) đã bao gồm trà thảo mộc và buffet ăn nhẹ sau liệu trình ạ.",
                         0
@@ -1421,7 +1421,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Khi includesSummary không có từ 'buffet', phải bắt lỗi UNGROUNDED_BUFFET_AMENITY: " + violationsOnNs01
         );
 
-        String sanitizedBuffetAnNhe = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String sanitizedBuffetAnNhe = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Gói 399k đã bao gồm trà thảo mộc và buffet ăn nhẹ ấm bụng ạ.",
                 "em",
                 "chị",
@@ -1449,7 +1449,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Trị liệu chuyên sâu toàn thân",
                 false
         );
-        List<String> violationsOnRealBuffetPkg = FanpageBotService.checkCleanCatalogGrounding(
+        List<String> violationsOnRealBuffetPkg = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                 List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ Gói Hoàng Gia Toàn Diện 120 phút (990k) có phòng VIP riêng và buffet thực dưỡng 15 món ạ.",
                         0
@@ -1464,7 +1464,7 @@ class CleanAgentArchitectureVerificationTest {
         );
         assertTrue(violationsOnRealBuffetPkg.isEmpty(), "Khi includesSummary thực sự có 'buffet', không được báo lỗi: " + violationsOnRealBuffetPkg);
 
-        String preservedBuffet = FanpageBotService.sanitizeMinorCleanAgentWordingInPlace(
+        String preservedBuffet = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
                 "Dạ gói này có buffet thực dưỡng 15 món ạ.",
                 "em",
                 "chị",
@@ -1488,7 +1488,7 @@ class CleanAgentArchitectureVerificationTest {
 
         // 1. Kiểm tra phân tầng Catalog với khách đau ["vai gáy", "mông", "chân"]:
         // Nhóm 1 là NS01 (399k), Nhóm 2 mở khóa DS02 (239k) với ghi chú giới hạn phạm vi rõ ràng
-        FanpageBotService.TieredCatalogResult tiered = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog,
                 knownSymptoms,
                 knownBodyAreas,
@@ -1503,7 +1503,7 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(tiered.excludedCatalog().stream().anyMatch(p -> "DS01".equals(p.code())),
                 "Gói ráy tai DS01 (129k, hits==0) vẫn phải bị loại vào outExcluded");
 
-        String scopeLimitationNote = FanpageBotService.buildPartialScopeLimitationNote(
+        String scopeLimitationNote = CleanAgentCatalogAndPromptBuilder.buildPartialScopeLimitationNote(
                 tiered.economicalAlternatives().get(0),
                 knownBodyAreas,
                 knownSymptoms
@@ -1516,12 +1516,12 @@ class CleanAgentArchitectureVerificationTest {
         // 2. Turn 5: Khách nhắn "Xem đã" sau khi đã chê đắt ở Turn 4 ("Cao thế", priceObjectionCount == 1)
         for (String shortDeferral : List.of("Xem đã", "Nghĩ đã", "Tính đã", "Cân nhắc đã", "Xem thêm đã", "Nghĩ thêm đã", "Tham khảo thêm", "Chưa quyết", "Từ từ đã")) {
             assertTrue(
-                    FanpageBotService.isHesitationOrDeferralMessage(shortDeferral),
+                    CleanAgentOrchestratorService.isHesitationOrDeferralMessage(shortDeferral),
                     "Phải nhận diện '" + shortDeferral + "' là lời lưỡng lự/tạm hoãn"
             );
         }
 
-        List<String> turn5Signals = FanpageBotService.classifyCleanCurrentTurnSignals(
+        List<String> turn5Signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                 "Xem đã",
                 false,
                 false,
@@ -1534,7 +1534,7 @@ class CleanAgentArchitectureVerificationTest {
                 knownSymptoms,
                 knownBodyAreas,
                 "ngồi nhiều",
-                FanpageBotService.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
                 "NONE",
                 List.of(
                         new FanpageBotRequest.ConversationTurn("user", "Cao thế"),
@@ -1544,7 +1544,7 @@ class CleanAgentArchitectureVerificationTest {
         assertEquals(List.of("HESITATION_OR_DEFERRAL"), turn5Signals,
                 "Turn 5 ('Xem đã') chỉ được mang tín hiệu HESITATION_OR_DEFERRAL, KHÔNG được tự động gán SHARING_CONDITION_OR_CONTEXT");
 
-        String turn5Stage = FanpageBotService.resolveCleanFunnelStage(
+        String turn5Stage = CleanAgentOrchestratorService.resolveCleanFunnelStage(
                 turn5Signals,
                 "Xem đã",
                 1,
@@ -1606,7 +1606,7 @@ class CleanAgentArchitectureVerificationTest {
                 selectedSkillsTurn5.stream().anyMatch(s -> "spa_lukewarm_mood_boost".equalsIgnoreCase(s.code())),
                 "CustomerInsightEngine tuyệt đối không được chọn skill 'spa_lukewarm_mood_boost' khi khách nhắn 'Xem đã'"
         );
-        List<com.example.docmind.dto.bot.AgentSkillDto> alignedSkillsTurn5 = FanpageBotService.alignCleanAgentActiveSkills(
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedSkillsTurn5 = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
                 candidateSkills,
                 candidateSkills,
                 true,
@@ -1618,7 +1618,7 @@ class CleanAgentArchitectureVerificationTest {
                 "alignCleanAgentActiveSkills phải loại bỏ hoàn toàn 'spa_lukewarm_mood_boost' ở lượt lưỡng lự"
         );
 
-        String promptTurn5 = FanpageBotService.buildCleanAgentPrompt(
+        String promptTurn5 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 knownSymptoms,
@@ -1651,13 +1651,13 @@ class CleanAgentArchitectureVerificationTest {
                 knownSymptoms, List.of("giá"), "Tôn trọng nhịp độ",
                 List.of("Khách ngồi nhiều"),
                 "Khách tạm dừng cân nhắc giữa gói 399k và gói 239k",
-                FanpageBotService.SPEECH_ACT_RESPECTED_PAUSE
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE
         );
         List<FanpageBotRequest.ConversationTurn> historyAfterTurn5 = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Xem đã"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ không sao đâu ạ, mình cứ thoải mái tham khảo thêm, chưa cần vội đặt lịch ngay đâu ạ. Nếu mình muốn thử phương án tiết kiệm hơn giải tỏa trước vùng cổ vai gáy (chưa bao gồm vùng mông, chân) thì bên em cũng có Gói dưỡng sinh cơ bản 60 phút (239k trọn gói), khi nào tiện mình cứ nhắn em nhé.")
         );
-        String promptTurn6 = FanpageBotService.buildCleanAgentPrompt(
+        String promptTurn6 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
                 spaPersona,
                 "mình",
                 knownSymptoms,
@@ -1743,14 +1743,14 @@ class CleanAgentArchitectureVerificationTest {
                 ),
                 0.89
         );
-        List<ReciprocalRankFusion.FusedChunk> filteredForNs01 = FanpageBotService.filterChunksByVisibleCatalogScope(
+        List<ReciprocalRankFusion.FusedChunk> filteredForNs01 = CleanAgentCatalogAndPromptBuilder.filterChunksByVisibleCatalogScope(
                 List.of(buffetFaqChunk),
                 List.of(ns01)
         );
         assertTrue(filteredForNs01.isEmpty(),
                 "Chunk giới thiệu Buffet thực dưỡng phải bị loại khỏi <DOCUMENT_CONTEXT> khi chỉ hiển thị gói tiêu chuẩn NS01");
 
-        List<ReciprocalRankFusion.FusedChunk> filteredForNs04 = FanpageBotService.filterChunksByVisibleCatalogScope(
+        List<ReciprocalRankFusion.FusedChunk> filteredForNs04 = CleanAgentCatalogAndPromptBuilder.filterChunksByVisibleCatalogScope(
                 List.of(buffetFaqChunk),
                 List.of(ns04)
         );
@@ -1771,7 +1771,7 @@ class CleanAgentArchitectureVerificationTest {
                         2000
                 )
         );
-        List<FanpageBotResponse.ReplyBubble> splitStage2 = FanpageBotService.splitNaturalTrialInviteBubbleIfApplicable(
+        List<FanpageBotResponse.ReplyBubble> splitStage2 = CleanAgentOutputRefereeAndSanitizer.splitNaturalTrialInviteBubbleIfApplicable(
                 twoBubblesStage2,
                 "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE",
                 1200
@@ -1791,7 +1791,7 @@ class CleanAgentArchitectureVerificationTest {
         List<FanpageBotResponse.ReplyBubble> shortBubble = List.of(
                 new FanpageBotResponse.ReplyBubble("Gói này 399k trọn gói ạ. Mình thử 1 buổi nhé?", 0)
         );
-        assertEquals(1, FanpageBotService.splitNaturalTrialInviteBubbleIfApplicable(
+        assertEquals(1, CleanAgentOutputRefereeAndSanitizer.splitNaturalTrialInviteBubbleIfApplicable(
                 shortBubble,
                 "STAGE_1_DISCOVERY_AND_FIRST_QUOTE",
                 1200
@@ -1804,7 +1804,7 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        assertEquals(1, FanpageBotService.splitNaturalTrialInviteBubbleIfApplicable(
+        assertEquals(1, CleanAgentOutputRefereeAndSanitizer.splitNaturalTrialInviteBubbleIfApplicable(
                 conditionalBubble,
                 "STAGE_1_DISCOVERY_AND_FIRST_QUOTE",
                 1200
@@ -1820,7 +1820,7 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        List<FanpageBotResponse.ReplyBubble> splitComma = FanpageBotService.splitClosingWishBubbleIfApplicable(
+        List<FanpageBotResponse.ReplyBubble> splitComma = CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 commaWishMình,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
@@ -1842,7 +1842,7 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        List<FanpageBotResponse.ReplyBubble> splitDotAnh = FanpageBotService.splitClosingWishBubbleIfApplicable(
+        List<FanpageBotResponse.ReplyBubble> splitDotAnh = CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 dotWishAnh,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
@@ -1857,7 +1857,7 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        List<FanpageBotResponse.ReplyBubble> splitSemiChi = FanpageBotService.splitClosingWishBubbleIfApplicable(
+        List<FanpageBotResponse.ReplyBubble> splitSemiChi = CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 semicolonWishChi,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
@@ -1873,7 +1873,7 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        assertEquals(1, FanpageBotService.splitClosingWishBubbleIfApplicable(
+        assertEquals(1, CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 midConsultWish,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
@@ -1886,21 +1886,21 @@ class CleanAgentArchitectureVerificationTest {
                         0
                 )
         );
-        assertEquals(1, FanpageBotService.splitClosingWishBubbleIfApplicable(
+        assertEquals(1, CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 wishNotAtEnd,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
         ).size(), "Không được tách khi sau lời chúc vẫn còn mệnh đề lưu thông tin/tư vấn");
 
         // 5. Bảo vệ biên: Không tách lặp khi phản hồi đã có sẵn từ 2 bong bóng trở lên
-        assertEquals(2, FanpageBotService.splitClosingWishBubbleIfApplicable(
+        assertEquals(2, CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 splitComma,
                 "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
                 1200
         ).size(), "Không được tách lặp khi đã có sẵn 2 bong bóng");
 
         // 6. Bảo vệ biên: Không tách ở các stage khác ngoài STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE
-        assertEquals(1, FanpageBotService.splitClosingWishBubbleIfApplicable(
+        assertEquals(1, CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
                 commaWishMình,
                 "STAGE_1_DISCOVERY_AND_FIRST_QUOTE",
                 1200
@@ -1912,7 +1912,7 @@ class CleanAgentArchitectureVerificationTest {
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
         List<String> knownSymptoms = List.of("mỏi vai gáy", "mỏi chân");
         List<String> knownBodyAreas = List.of("vai", "gáy", "mông", "chân");
-        FanpageBotService.TieredCatalogResult tiered = FanpageBotService.rankAndTierCatalogForCleanAgent(
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                 allCatalog, knownSymptoms, knownBodyAreas, java.util.Set.of(), false
         );
 
@@ -1971,21 +1971,21 @@ class CleanAgentArchitectureVerificationTest {
         );
 
         // Tình huống 1: "Xem đã nha" (sau khi chê đắt) -> STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL
-        List<String> signalsXemDaNha = FanpageBotService.classifyCleanCurrentTurnSignals(
+        List<String> signalsXemDaNha = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                 "Xem đã nha",
                 false, false, false, false,
                 false, 1, false, false,
                 knownSymptoms, knownBodyAreas, "ngồi nhiều",
-                FanpageBotService.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
                 "NONE",
                 List.of(new FanpageBotRequest.ConversationTurn("user", "Cao thế"))
         );
-        String stageXemDaNha = FanpageBotService.resolveCleanFunnelStage(
+        String stageXemDaNha = CleanAgentOrchestratorService.resolveCleanFunnelStage(
                 signalsXemDaNha, "Xem đã nha", 1, false, tiered, List.of()
         );
         assertEquals("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL", stageXemDaNha);
 
-        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn5 = FanpageBotService.alignCleanAgentActiveSkills(
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn5 = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
                 List.of(bookingAdvanceSkill, closingCategorySkill),
                 allCandidateSkills,
                 stageXemDaNha,
@@ -2004,22 +2004,22 @@ class CleanAgentArchitectureVerificationTest {
                 new FanpageBotRequest.ConversationTurn("user", "Xem đã nha"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ không sao đâu ạ, mình cứ thoải mái tham khảo thêm, chưa cần vội đặt lịch ngay đâu ạ. Nếu mình muốn thử phương án tiết kiệm hơn thì bên em cũng có Gói dưỡng sinh cơ bản 60 phút (239k trọn gói), khi nào tiện mình cứ nhắn em nhé.")
         );
-        List<String> signalsBareOk = FanpageBotService.classifyCleanCurrentTurnSignals(
+        List<String> signalsBareOk = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                 "Ok",
                 false, false, false, false,
                 false, 1, false, false,
                 knownSymptoms, knownBodyAreas, "ngồi nhiều",
-                FanpageBotService.SPEECH_ACT_RESPECTED_PAUSE,
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
                 "NONE",
                 historyAfterXemDaNha
         );
-        String stageBareOk = FanpageBotService.resolveCleanFunnelStage(
+        String stageBareOk = CleanAgentOrchestratorService.resolveCleanFunnelStage(
                 signalsBareOk, "Ok", 1, false, tiered, historyAfterXemDaNha
         );
         assertEquals("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE", stageBareOk,
                 "'Ok' đơn lẻ sau 'Xem đã nha' phải là STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE");
 
-        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn6BareOk = FanpageBotService.alignCleanAgentActiveSkills(
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn6BareOk = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
                 List.of(bookingAdvanceSkill, closingCategorySkill),
                 allCandidateSkills,
                 stageBareOk,
@@ -2030,20 +2030,20 @@ class CleanAgentArchitectureVerificationTest {
         assertEquals(1, alignedTurn6BareOk.size(),
                 "Ở Turn 6 ('Ok' sau 'Xem đã nha'), phải lọc bỏ hoàn toàn 'spa_booking_advance_after_ack' và chỉ giữ Graceful Exit");
         assertEquals("spa_graceful_exit_after_rejection", alignedTurn6BareOk.get(0).code());
-        assertFalse(alignedTurn6BareOk.stream().anyMatch(FanpageBotService::isBookingOrClosingSkill));
+        assertFalse(alignedTurn6BareOk.stream().anyMatch(CleanAgentOrchestratorService::isBookingOrClosingSkill));
 
         // Tình huống 3 (Test đối chứng): "Ok, đặt lịch cho mình lúc 19h" ngay sau khi cân nhắc ("Xem đã nha")
         // -> Nhận diện chính xác ý định đặt lịch (PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS -> STAGE_4_POSITIVE_TRIAL_OR_BOOKING) & giữ đầy đủ skill chốt lịch
         String proactiveBookingMsg = "Ok, đặt lịch cho mình lúc 19h";
-        assertTrue(FanpageBotService.hasProactiveBookingOrPackageSelectionInMessage(proactiveBookingMsg));
-        assertFalse(FanpageBotService.isBareAcknowledgmentMessage(proactiveBookingMsg));
+        assertTrue(CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(proactiveBookingMsg));
+        assertFalse(CleanAgentOrchestratorService.isBareAcknowledgmentMessage(proactiveBookingMsg));
 
-        List<String> signalsProactiveBooking = FanpageBotService.classifyCleanCurrentTurnSignals(
+        List<String> signalsProactiveBooking = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
                 proactiveBookingMsg,
                 false, false, false, false,
                 false, 1, true, true,
                 knownSymptoms, knownBodyAreas, "ngồi nhiều",
-                FanpageBotService.SPEECH_ACT_RESPECTED_PAUSE,
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
                 "COLLECTING_VISIT_TIME",
                 historyAfterXemDaNha
         );
@@ -2051,13 +2051,13 @@ class CleanAgentArchitectureVerificationTest {
                 "Khách chủ động nhắn 'Ok, đặt lịch cho mình lúc 19h' phải nhận diện là PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS");
         assertFalse(signalsProactiveBooking.contains("POLITE_CLOSING_ACKNOWLEDGMENT"));
 
-        String stageProactiveBooking = FanpageBotService.resolveCleanFunnelStage(
+        String stageProactiveBooking = CleanAgentOrchestratorService.resolveCleanFunnelStage(
                 signalsProactiveBooking, proactiveBookingMsg, 1, true, tiered, historyAfterXemDaNha
         );
         assertEquals("STAGE_4_POSITIVE_TRIAL_OR_BOOKING", stageProactiveBooking,
                 "Khách chủ động nhắn 'Ok, đặt lịch cho mình lúc 19h' phải chuyển sang STAGE_4_POSITIVE_TRIAL_OR_BOOKING");
 
-        List<com.example.docmind.dto.bot.AgentSkillDto> alignedProactiveBooking = FanpageBotService.alignCleanAgentActiveSkills(
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedProactiveBooking = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
                 List.of(gracefulExitWithDupEmoji, bookingAdvanceSkill),
                 allCandidateSkills,
                 stageProactiveBooking,
@@ -2069,5 +2069,1079 @@ class CleanAgentArchitectureVerificationTest {
                 "Khi finalStage == STAGE_4_POSITIVE_TRIAL_OR_BOOKING, phải giữ đầy đủ kỹ năng chốt lịch phù hợp");
         assertFalse(alignedProactiveBooking.stream().anyMatch(s -> "spa_graceful_exit_after_rejection".equals(s.code())),
                 "Khi khách đã chuyển sang đặt lịch (STAGE_4), không giữ lại skill Graceful Exit của lượt trước");
+    }
+
+    @Test
+    void testBrainToStateSynchronization_AndPartialScopeDownsell_FourTurnFlow() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy và toàn thân",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        UUID pageId = UUID.randomUUID();
+        String senderId = "cust_brain_to_state_flow_01";
+        brainService.clearCustomerMemory(pageId, senderId);
+
+        // =====================================================================
+        // 1. Turn 2 ("Đau đầu, mỏi gối tê tay"):
+        //    - Chuẩn hóa vùng cơ thể chính xác thành ["đầu", "gối", "tay"]
+        //    - [NHÓM 1] = NS01 (399k), [NHÓM 2] = DS02 (239k) kèm ghi chú giới hạn phạm vi
+        // =====================================================================
+        String turn2Msg = "Đau đầu, mỏi gối tê tay";
+        List<String> turn2Areas = CleanAgentOrchestratorService.extractCanonicalBodyAreas(turn2Msg, List.of(), List.of());
+        assertEquals(List.of("đầu", "gối", "tay"), turn2Areas,
+                "Phải trích xuất chính xác ['đầu', 'gối', 'tay'], không gộp sai gối/tay thành vai gáy và không làm rơi 'đầu'");
+
+        List<String> turn2Symptoms = List.of("đau đầu", "mỏi gối", "tê tay");
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredTurn2 = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                allCatalog, turn2Symptoms, turn2Areas, Set.of(), false
+        );
+        assertFalse(tieredTurn2.primaryRecommendations().isEmpty());
+        assertEquals("NS01", tieredTurn2.primaryRecommendations().get(0).code(),
+                "[NHÓM 1] phải chọn gói toàn thân NS01 (399k) bao phủ cả đầu, gối, tay");
+        assertEquals(1, tieredTurn2.economicalAlternatives().size(),
+                "[NHÓM 2] phải giữ lại DS02 (239k) vì giao thoa 1 phần ở vùng 'đầu'");
+        PackageCatalogService.PackageSummary ds02 = tieredTurn2.economicalAlternatives().get(0);
+        assertEquals("DS02", ds02.code());
+        String partialScopeNote = CleanAgentCatalogAndPromptBuilder.buildPartialScopeLimitationNote(ds02, turn2Areas, turn2Symptoms);
+        assertEquals(
+                "(Phạm vi hẹp hơn: chỉ tập trung chăm sóc vùng [đầu, cổ, vai, gáy], KHÔNG bao gồm vùng [gối, tay])",
+                partialScopeNote
+        );
+
+        // =====================================================================
+        // 2. Turn 4 ("Cao nhỉ" + câu cảm thán ẩn dụ qua detected_customer_intent):
+        //    - Tầng 1 Pre-LLM: "Cao nhỉ" -> confirmedPriceObjectionThisTurn = true, priceObjectionCount = 1,
+        //      inPriceObjectionContext = true, STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE,
+        //      alignedActiveSkills = price_objection_soft_anchor ("Đồng cảm chi phí"), loại bỏ discovery_ask_one_need
+        // =====================================================================
+        String turn4Msg = "Cao nhỉ";
+        assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(turn4Msg, true),
+                "'Cao nhỉ' sau khi đã báo giá phải được nhận diện là phản đối giá");
+        for (String naturalExclamation : List.of(
+                "Cao nhỉ", "Cao thế", "Cao quá", "Cao vậy", "Cao ghê", "Cao dữ", "Cao phết",
+                "Hơi cao", "Giá cao", "Giá căng", "Căng nhỉ", "Căng thế", "Chát nhỉ", "Chát thế",
+                "Hơi chát", "Mắc nhỉ", "Mắc thế", "Hơi mắc", "Đắt nhỉ", "Hơi đắt", "Đắt thế",
+                "Đắt quá", "Đau ví quá", "Quá sức với mình", "Nhiều tiền quá"
+        )) {
+            assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(naturalExclamation, true),
+                    "Phải nhận diện câu cảm thán giá tự nhiên: " + naturalExclamation);
+        }
+
+        List<FanpageBotRequest.ConversationTurn> historyBeforeTurn4 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", turn2Msg),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng đau đầu, mỏi gối tê tay, em gợi ý mình tham khảo gói Massage cơ bản 60 phút (399k trọn gói) ạ.")
+        );
+        List<String> signalsTurn4 = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                turn4Msg,
+                false, false, false, false,
+                true, 1, false, false,
+                turn2Symptoms, turn2Areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_GENERAL_CONSULTATION,
+                "NONE",
+                historyBeforeTurn4
+        );
+        assertTrue(signalsTurn4.contains("PRICE_OBJECTION_FIRST_TIME"));
+        String stageTurn4 = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsTurn4, turn4Msg, 1, true, false, false, tieredTurn2, historyBeforeTurn4
+        );
+        assertEquals("STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE", stageTurn4);
+
+        com.example.docmind.dto.bot.AgentSkillDto discoverySkill = new com.example.docmind.dto.bot.AgentSkillDto(
+                UUID.randomUUID(),
+                "discovery_ask_one_need",
+                "Khám phá nhu cầu 1 câu hỏi",
+                "DISCOVERY",
+                "Hỏi khám phá nhu cầu",
+                "đau mỏi",
+                "Hỏi 1 câu",
+                "Mình đau lâu chưa ạ?",
+                "",
+                80,
+                true,
+                null,
+                null,
+                null
+        );
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn4Skills = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
+                List.of(discoverySkill),
+                List.of(discoverySkill),
+                stageTurn4,
+                false,
+                false,
+                false
+        );
+        assertFalse(alignedTurn4Skills.isEmpty());
+        assertEquals("price_objection_soft_anchor", alignedTurn4Skills.get(0).code(),
+                "Ở STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE phải đồng bộ sang skill 'price_objection_soft_anchor'");
+        assertTrue(alignedTurn4Skills.get(0).name().contains("Đồng cảm chi phí"));
+        assertFalse(alignedTurn4Skills.stream().anyMatch(s -> "discovery_ask_one_need".equals(s.code())),
+                "Không được giữ lại skill 'discovery_ask_one_need' ở lượt khách chê đắt");
+
+        // Kiểm tra Tầng 2 (Post-LLM Brain-to-State Reconciliation) cho câu cảm thán ẩn dụ ngoài Regex
+        String metaphoricalPriceMsg = "Ui gần bằng ngày công của mình rồi";
+        boolean preLlmMatched = CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(metaphoricalPriceMsg, true);
+        assertFalse(preLlmMatched, "Câu ẩn dụ ngoài Regex ban đầu chưa khớp Pre-LLM");
+
+        String llmJsonWithPriceObjectionIntent = """
+                {
+                  "reply_bubbles": [
+                    {"text": "Dạ mức giá 399k đã bao gồm trọn gói 60 phút chăm sóc toàn thân và ăn nhẹ thực dưỡng ạ.", "typing_delay_ms": 0},
+                    {"text": "Mình thử trải nghiệm trước 1 buổi để cảm nhận sự nhẹ nhõm nhé?", "typing_delay_ms": 1200}
+                  ],
+                  "brain_reflection": {
+                    "observed_fact": "Khách so sánh giá gói 399k với ngày công",
+                    "care_note_delta": "Khách cân nhắc kỹ chi phí, đau đầu mỏi gối tê tay",
+                    "working_hypothesis": "Khách thấy mức giá 399k hơi cao so với ngân sách",
+                    "intended_speech_act": "INVITED_TRIAL_OR_ASKED_TIME",
+                    "detected_customer_intent": "PRICE_OBJECTION"
+                  },
+                  "should_handoff": false
+                }
+                """;
+        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput parsedMeta = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(llmJsonWithPriceObjectionIntent, 10_000);
+        assertEquals("PRICE_OBJECTION", parsedMeta.brainReflection().detectedCustomerIntent());
+        assertTrue(
+                CleanAgentOrchestratorService.shouldReconcilePostLlmPriceObjection(
+                        preLlmMatched,
+                        parsedMeta.brainReflection().detectedCustomerIntent(),
+                        true,
+                        metaphoricalPriceMsg
+                ),
+                "Post-LLM Brain-to-State Reconciliation phải xác nhận phản đối giá khi detected_customer_intent == PRICE_OBJECTION và đã có báo giá"
+        );
+
+        // Lưu trạng thái sau Turn 4 vào AgentBrainService
+        brainService.recordCommercialFunnelState(pageId, senderId, 1, true, false);
+        assertEquals(1, brainService.getRecalledPriceObjectionCount(pageId, senderId));
+        assertTrue(brainService.isRecalledInPriceObjectionContext(pageId, senderId));
+        assertFalse(brainService.hasRecalledPresentedDownsell(pageId, senderId));
+
+        // =====================================================================
+        // 3. Turn 5 ("Ukm xem đã nha"):
+        //    - Không để từ đệm "Ukm" ở đầu câu làm mất tín hiệu "xem đã nha"
+        //    - Vì inPriceObjectionContext == true && hasPresentedDownsell == false -> STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL
+        //    - Prompt gợi ý mềm DS02 (239k) kèm đúng giới hạn phạm vi [đầu, cổ, vai, gáy], KHÔNG bao gồm [gối, tay]
+        //    - Sau khi gửi xong, cập nhật hasPresentedDownsell = true
+        // =====================================================================
+        String turn5Msg = "Ukm xem đã nha";
+        assertTrue(CleanAgentOrchestratorService.isHesitationOrDeferralMessage(turn5Msg),
+                "Phải nhận diện 'Ukm xem đã nha' là HESITATION_OR_DEFERRAL, không bị từ đệm 'Ukm' ghi đè");
+        assertFalse(CleanAgentOrchestratorService.isBareAcknowledgmentMessage(turn5Msg));
+
+        List<FanpageBotRequest.ConversationTurn> historyBeforeTurn5 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", turn2Msg),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng đau đầu, mỏi gối tê tay, em gợi ý mình tham khảo gói Massage cơ bản 60 phút (399k trọn gói) ạ."),
+                new FanpageBotRequest.ConversationTurn("user", turn4Msg),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ mức giá 399k đã bao gồm trọn gói 60 phút chăm sóc toàn thân và ăn nhẹ thực dưỡng ạ. Mình thử trải nghiệm trước 1 buổi nhé?")
+        );
+        List<String> signalsTurn5 = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                turn5Msg,
+                false, false, false, false,
+                false,
+                brainService.getRecalledPriceObjectionCount(pageId, senderId),
+                false, false,
+                turn2Symptoms, turn2Areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                "NONE",
+                historyBeforeTurn5
+        );
+        assertTrue(signalsTurn5.contains("HESITATION_OR_DEFERRAL"));
+        String stageTurn5 = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsTurn5,
+                turn5Msg,
+                brainService.getRecalledPriceObjectionCount(pageId, senderId),
+                brainService.isRecalledInPriceObjectionContext(pageId, senderId),
+                brainService.hasRecalledPresentedDownsell(pageId, senderId),
+                false,
+                tieredTurn2,
+                historyBeforeTurn5
+        );
+        assertEquals("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL", stageTurn5,
+                "Ở Turn 5 ('Ukm xem đã nha' sau khi chê đắt ở Turn 4), phải vào STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL");
+
+        String promptTurn5 = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "mình",
+                turn2Symptoms,
+                turn2Areas,
+                "mấy hôm nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                1,
+                false,
+                "NONE",
+                allCatalog,
+                List.of(),
+                historyBeforeTurn5,
+                turn5Msg
+        );
+        assertTrue(promptTurn5.contains("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL"));
+        assertTrue(promptTurn5.contains("Gói dưỡng sinh cơ bản — Thời lượng: 60 phút — Giá trọn gói: 239k"));
+        assertTrue(promptTurn5.contains("(Phạm vi hẹp hơn: chỉ tập trung chăm sóc vùng [đầu, cổ, vai, gáy], KHÔNG bao gồm vùng [gối, tay])"),
+                "Prompt Turn 5 phải đính kèm ghi chú giới hạn phạm vi chính xác của DS02 (239k)");
+
+        // Sau khi gửi Turn 5 (STAGE_3B), cập nhật hasPresentedDownsell = true
+        brainService.recordCommercialFunnelState(pageId, senderId, 1, true, true);
+        assertTrue(brainService.hasRecalledPresentedDownsell(pageId, senderId));
+
+        // =====================================================================
+        // 4. Turn 6 ("Ok"):
+        //    - Phân tuyến vào STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE (không lặp lại gói 239k)
+        //    - Tách lời chúc thành bong bóng thứ 2
+        //    - Chỉ hiển thị kỹ năng Graceful Exit
+        // =====================================================================
+        String turn6Msg = "Ok";
+        List<FanpageBotRequest.ConversationTurn> historyBeforeTurn6 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", turn5Msg),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ không sao đâu ạ, mình cứ thoải mái tham khảo thêm, chưa cần vội đặt lịch ngay đâu ạ. Nếu mình muốn thử phương án tiết kiệm hơn tập trung chăm sóc vùng đầu, cổ, vai, gáy trước thì bên em cũng có Gói dưỡng sinh cơ bản 60 phút (239k trọn gói), khi nào tiện mình cứ nhắn em nhé.")
+        );
+        List<String> signalsTurn6 = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                turn6Msg,
+                false, false, false, false,
+                false,
+                brainService.getRecalledPriceObjectionCount(pageId, senderId),
+                false, false,
+                turn2Symptoms, turn2Areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
+                "NONE",
+                historyBeforeTurn6
+        );
+        assertTrue(signalsTurn6.contains("POLITE_CLOSING_ACKNOWLEDGMENT"));
+        String stageTurn6 = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsTurn6,
+                turn6Msg,
+                brainService.getRecalledPriceObjectionCount(pageId, senderId),
+                brainService.isRecalledInPriceObjectionContext(pageId, senderId),
+                brainService.hasRecalledPresentedDownsell(pageId, senderId),
+                false,
+                tieredTurn2,
+                historyBeforeTurn6
+        );
+        assertEquals("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE", stageTurn6);
+
+        List<FanpageBotResponse.ReplyBubble> turn6SplitBubbles = CleanAgentOutputRefereeAndSanitizer.splitClosingWishBubbleIfApplicable(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ vâng ạ, em đã lưu lại thông tin gói cùng lưu ý chăm sóc của mình rồi ạ. Bất cứ khi nào thu xếp được thời gian cần hỗ trợ thì cứ nhắn em ngay nhé, chúc mình một ngày thật nhiều niềm vui và thư thái ạ.",
+                        0
+                )),
+                stageTurn6,
+                1200
+        );
+        assertEquals(2, turn6SplitBubbles.size(), "Turn 6 ở STAGE_6 phải tách lời chúc thành bong bóng thứ 2");
+        assertTrue(turn6SplitBubbles.get(1).text().startsWith("Chúc mình"));
+
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedTurn6Skills = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
+                List.of(discoverySkill),
+                List.of(discoverySkill),
+                stageTurn6,
+                true,
+                false,
+                false
+        );
+        assertEquals(1, alignedTurn6Skills.size());
+        assertEquals("spa_graceful_exit_after_rejection", alignedTurn6Skills.get(0).code());
+    }
+
+    @Test
+    void testContrastiveGuardrails_NoFalsePositive_NoPrematureDownsell_NoRepeatDownsell_AndBookingTransition() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        List<String> symptoms = List.of("đau đầu", "mỏi gối", "tê tay");
+        List<String> areas = List.of("đầu", "gối", "tay");
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                allCatalog, symptoms, areas, Set.of(), false
+        );
+
+        // =====================================================================
+        // Đối chứng 1 (Câu hỏi giá thông thường — Không dương tính giả):
+        // Khách hỏi "Giá sao", "Gói 399k là mấy phút?", "399k là 1 buổi à" hoặc nói "Mình bị huyết áp cao"
+        // -> priceObjectionCount == 0, inPriceObjectionContext == false
+        // =====================================================================
+        for (String normalInquiry : List.of(
+                "Giá sao",
+                "Giá thế nào shop",
+                "Bao nhiêu tiền ạ",
+                "Gói 399k là mấy phút?",
+                "399k là 1 buổi à",
+                "Gói 399k gồm những gì vậy em?"
+        )) {
+            assertTrue(CleanAgentOrchestratorService.isNormalPriceOrDetailInquiryMessage(normalInquiry),
+                    "Phải nhận diện là câu hỏi giá/thủ tục thông thường: " + normalInquiry);
+            assertFalse(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(normalInquiry, true),
+                    "Câu hỏi giá thông thường TUYỆT ĐỐI KHÔNG được tính là phản đối giá: " + normalInquiry);
+            assertFalse(CleanAgentOrchestratorService.shouldReconcilePostLlmPriceObjection(
+                    false, "PRICE_OBJECTION", true, normalInquiry
+            ), "Post-LLM reconciliation phải chặn dương tính giả trên câu hỏi giá thông thường: " + normalInquiry);
+        }
+        assertFalse(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Mình bị huyết áp cao và đau mỏi cổ", true),
+                "Câu mô tả bệnh lý 'huyết áp cao' không được tính là chê giá cao");
+
+        // =====================================================================
+        // Đối chứng 2 (Xin tạm dừng khi chưa từng chê đắt):
+        // priceObjectionCount == 0, inPriceObjectionContext == false -> khách nhắn "Ukm để mình xem đã"
+        // -> Phải vào STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE (không tự động hạ giá 239k)
+        // =====================================================================
+        String pauseWithoutPriceObjMsg = "Ukm để mình xem đã";
+        List<String> signalsNoPriceObj = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                pauseWithoutPriceObjMsg,
+                false, false, false, false,
+                false, 0, false, false,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_GENERAL_CONSULTATION,
+                "NONE",
+                List.of(new FanpageBotRequest.ConversationTurn("assistant", "Dạ em gợi ý mình gói Massage cơ bản 60 phút (399k) ạ."))
+        );
+        String stageNoPriceObj = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsNoPriceObj,
+                pauseWithoutPriceObjMsg,
+                0,
+                false,
+                false,
+                false,
+                tiered,
+                List.of()
+        );
+        assertEquals("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE", stageNoPriceObj,
+                "Khi khách chưa từng chê đắt (inPriceObjectionContext == false), 'Ukm để mình xem đã' phải vào STAGE_6, không tự động gạ gói 239k");
+
+        // =====================================================================
+        // Đối chứng 3 (Không lặp lại downsell ở lượt tạm dừng thứ 2):
+        // Khách đã được gợi ý gói 239k ở lượt trước (hasPresentedDownsell == true), nhắn tiếp "Để xem thêm đã"
+        // -> Phải vào STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE (không lặp lại lời chào gói 239k)
+        // =====================================================================
+        String secondPauseMsg = "Để xem thêm đã";
+        List<String> signalsSecondPause = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                secondPauseMsg,
+                false, false, false, false,
+                false, 1, false, false,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
+                "NONE",
+                List.of()
+        );
+        String stageSecondPause = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsSecondPause,
+                secondPauseMsg,
+                1,
+                true,
+                true,
+                false,
+                tiered,
+                List.of()
+        );
+        assertEquals("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE", stageSecondPause,
+                "Khi hasPresentedDownsell == true, khách nhắn 'Để xem thêm đã' phải vào STAGE_6, không lặp lại gói 239k");
+
+        // =====================================================================
+        // Đối chứng 4 (Chuyển sang đặt lịch sau khi cân nhắc):
+        // Sau "Ukm xem đã nha", khách nhắn "Ok, đặt lịch cho mình lúc 19h"
+        // -> Phải vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING, inPriceObjectionContext chuyển về false
+        // =====================================================================
+        String bookingAfterPauseMsg = "Ok, đặt lịch cho mình lúc 19h";
+        List<String> signalsBookingAfterPause = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                bookingAfterPauseMsg,
+                false, false, false, false,
+                false, 1, true, true,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE,
+                "COLLECTING_VISIT_TIME",
+                List.of()
+        );
+        String stageBookingAfterPause = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsBookingAfterPause,
+                bookingAfterPauseMsg,
+                1,
+                false,
+                true,
+                true,
+                tiered,
+                List.of()
+        );
+        assertEquals("STAGE_4_POSITIVE_TRIAL_OR_BOOKING", stageBookingAfterPause,
+                "Sau khi cân nhắc, khách nhắn 'Ok, đặt lịch cho mình lúc 19h' phải vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING");
+
+        // Kiểm tra thêm: Khi khách CHỈ bị "mỏi gối tê tay" (không có vùng đầu/cổ/vai/gáy), DS02 (239k) có hits == 0 nên phải bị loại (outExcluded)
+        List<String> limbOnlyAreas = CleanAgentOrchestratorService.extractCanonicalBodyAreas("Mỏi gối tê tay", List.of(), List.of());
+        assertEquals(List.of("gối", "tay"), limbOnlyAreas);
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult limbOnlyTiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                allCatalog, List.of("mỏi gối", "tê tay"), limbOnlyAreas, Set.of(), false
+        );
+        assertTrue(limbOnlyTiered.economicalAlternatives().isEmpty(),
+                "Khi khách chỉ mỏi gối tê tay (hits == 0 với [đầu, cổ, vai, gáy]), không được xếp DS02 vào [NHÓM 2]");
+        assertTrue(limbOnlyTiered.excludedCatalog().stream().anyMatch(p -> "DS02".equals(p.code())),
+                "DS02 phải nằm trong outExcluded khi khách chỉ mỏi gối tê tay");
+    }
+
+    @Test
+    void testCheckpointA_SixTurnSplitBrainLock_ChatThe_Dat_Ukm_BiLoanA_AndContrastiveSpeechActs() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        List<String> symptoms = List.of("đau mỏi vai gáy");
+        List<String> areas = List.of("vai", "gáy");
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered = CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                allCatalog, symptoms, areas, Set.of(), false
+        );
+        assertFalse(tiered.economicalAlternatives().isEmpty(),
+                "Với khách đau mỏi vai gáy, [NHÓM 2] phải có sẵn DS02 (239k)");
+        PackageCatalogService.PackageSummary ds02 = tiered.economicalAlternatives().get(0);
+        assertEquals("DS02", ds02.code());
+
+        // =====================================================================
+        // 1. Kiểm thử chuỗi 6 lượt: Đau mỏi vai gáy -> Gần đây -> Chát thế -> Đắt -> Ukm -> Bị loạn à
+        // =====================================================================
+        // Turn 3 ("Chát thế"): Phản đối giá lần 1 -> STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE
+        assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Chát thế", true));
+        // Turn 4 ("Đắt"): Phản đối giá lần 2 -> Phải nhận diện "Đắt" đơn từ là phản đối giá xác thực
+        assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Đắt", true),
+                "Từ đơn 'Đắt' sau khi đã báo giá phải được nhận diện là phản đối giá");
+        List<String> turn4Signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                "Đắt",
+                false, false, false, false,
+                true, 2, false, false,
+                symptoms, areas, "gần đây",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                "NONE",
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Chát thế"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút (399k) tập trung ấn huyệt sâu vùng vai gáy ạ. Mình thử trải nghiệm 1 buổi nhé?")
+                )
+        );
+        String turn4Stage = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                turn4Signals, "Đắt", 2, true, false, false, tiered, List.of()
+        );
+        assertEquals("STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION", turn4Stage,
+                "Turn 4 ('Đắt' - phản đối giá lần 2) phải vào STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION");
+
+        // Kiểm tra Prompt & Trọng tài ở Turn 4 ("Đắt"):
+        // - Phải mở khóa DS02 (239k) trong [NHÓM 2]
+        // - Phải bắt lỗi nếu câu trả lời nói "399k là mức thấp nhất bên em có" hoặc "dưới mức này chỉ làm được thư giãn hời hợt"
+        // - Phải bắt lỗi nếu câu trả lời ở STAGE_3 không giới thiệu gói tiết kiệm DS02 (239k)
+        String turn4Prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona, "mình", symptoms, areas, "gần đây", true,
+                "Massage cơ bản 60 phút", "399k", 2, false, "NONE",
+                turn4Signals, "Mình thử trải nghiệm 1 buổi nhé?", 1,
+                tiered, List.of(),
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Chát thế"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút (399k) tập trung ấn huyệt sâu vùng vai gáy ạ.")
+                ),
+                "Đắt"
+        );
+        assertTrue(turn4Prompt.contains("Gói dưỡng sinh cơ bản") && turn4Prompt.contains("239k"),
+                "Prompt ở STAGE_3 ('Đắt') bắt buộc phải hiển thị gói DS02 (239k) trong [NHÓM 2]");
+        assertTrue(turn4Prompt.contains("TUYỆT ĐỐI CẤM nói gói Nhóm 1 là 'mức thấp nhất bên em có'"),
+                "Prompt ở STAGE_3 phải cấm khẳng định gói Nhóm 1 là mức giá thấp nhất khi [NHÓM 2] có sẵn DS02 (239k)");
+
+        List<String> turn4ContradictionViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ 399k là mức thấp nhất bên em có cho trị liệu đau mỏi vai gáy rồi ạ, vì dưới mức này chỉ làm được thư giãn hời hợt không giải quyết được điểm đau của mình.",
+                        0
+                )),
+                allCatalog,
+                tiered.allAllowedPackages(),
+                tiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE"
+        );
+        assertTrue(
+                turn4ContradictionViolations.contains("CONTRADICTORY_LOWEST_PRICE_CLAIM_WHEN_DOWNSELL_EXISTS"),
+                "Trọng tài phải bắt lỗi khi nói '399k là mức thấp nhất' / 'dưới mức này chỉ làm thư giãn hời hợt' trong khi có gói 239k: " + turn4ContradictionViolations
+        );
+        assertTrue(
+                turn4ContradictionViolations.stream().anyMatch(v -> v.startsWith("MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL")),
+                "Trọng tài phải bắt lỗi khi ở STAGE_3 (priceObjectionCount >= 2) mà bot bỏ quên không giới thiệu gói tiết kiệm 239k: " + turn4ContradictionViolations
+        );
+
+        String sanitizedFalseLowest = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
+                "Dạ 399k là mức thấp nhất bên em có cho trị liệu đau mỏi vai gáy rồi ạ, vì dưới mức này chỉ làm được thư giãn hời hợt. Mình cứ cân nhắc thêm nhé ạ.",
+                "em",
+                "mình",
+                ds02,
+                false,
+                "NONE"
+        );
+        assertFalse(sanitizedFalseLowest.toLowerCase().contains("mức thấp nhất"),
+                "Hậu xử lý phải loại bỏ câu khẳng định sai '399k là mức thấp nhất': " + sanitizedFalseLowest);
+        assertTrue(sanitizedFalseLowest.contains("Gói dưỡng sinh cơ bản") && sanitizedFalseLowest.contains("239k"),
+                "Hậu xử lý phải thay thế bằng câu giới thiệu trung thực gói DS02 (239k): " + sanitizedFalseLowest);
+
+        // Kiểm tra Grounding trạng thái gói (Fix #1):
+        // Nếu ở Turn 4 bot CHƯA nhắc tới 239k trong finalBubbles -> presentedDownsellThisTurn phải là false!
+        String turn4BotReplyWithout239k = "Dạ gói 399k là trị liệu chuyên sâu toàn thân ạ. Mình cứ cân nhắc thêm, khi nào sẵn sàng thì nhắn em để mình đặt lịch nhé ạ.";
+        assertFalse(
+                CleanAgentCatalogAndPromptBuilder.isAnyPackagePresentedInBotText(turn4BotReplyWithout239k, tiered.economicalAlternatives()),
+                "Khi finalBubbles không nhắc tới tên/mã/giá gói 239k, gói 239k tuyệt đối chưa được coi là đã giới thiệu"
+        );
+
+        // =====================================================================
+        // 2. Kiểm thử Đối chứng 3 trường hợp Speech Act (Fix #3): (a), (b), (c)
+        // =====================================================================
+        // Trường hợp (a): Bot nói "Mình cứ cân nhắc thêm, khi nào sẵn sàng thì nhắn em để mình đặt lịch nhé ạ" -> Khách đáp "Ukm"
+        // -> Phải phân loại speech act của bot là RESPECTED_PAUSE_WITH_SOFT_OPTION và định tuyến vào STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE
+        String botPauseWithBookingTail = "Mình cứ cân nhắc thêm, khi nào sẵn sàng thì nhắn em để mình đặt lịch nhé ạ.";
+        assertTrue(CleanAgentOrchestratorService.isPauseOrDeferralBotReply(botPauseWithBookingTail),
+                "Câu bot chủ đạo khuyên 'cứ cân nhắc thêm, khi nào sẵn sàng thì nhắn em để mình đặt lịch' phải được nhận diện là câu tôn trọng tạm dừng");
+        String resolvedActCaseA = CleanAgentOutputRefereeAndSanitizer.resolveActualSentSpeechAct(
+                "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION",
+                List.of(new FanpageBotResponse.ReplyBubble(botPauseWithBookingTail, 0)),
+                "NONE",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME // kể cả khi LLM gán nhầm INVITED_TRIAL_OR_ASKED_TIME
+        );
+        assertEquals(CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE, resolvedActCaseA,
+                "Post-send verification phải ghi đè về RESPECTED_PAUSE_WITH_SOFT_OPTION khi câu bot khuyên khách cân nhắc thêm");
+
+        List<FanpageBotRequest.ConversationTurn> historyCaseA = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Đắt"),
+                new FanpageBotRequest.ConversationTurn("assistant", botPauseWithBookingTail)
+        );
+        String inferredActCaseA = CleanAgentOrchestratorService.inferPrecedingBotSpeechAct(
+                null, botPauseWithBookingTail, historyCaseA, "NONE", CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME
+        );
+        assertEquals(CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE, inferredActCaseA);
+        List<String> signalsCaseA = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                "Ukm",
+                false, false, false, false,
+                false, 2, false, false,
+                symptoms, areas, "gần đây",
+                inferredActCaseA, "NONE", historyCaseA
+        );
+        assertTrue(signalsCaseA.contains("POLITE_CLOSING_ACKNOWLEDGMENT"),
+                "Trường hợp (a): Khách đáp 'Ukm' sau câu bot khuyên cân nhắc thêm phải mang tín hiệu POLITE_CLOSING_ACKNOWLEDGMENT: " + signalsCaseA);
+        String stageCaseA = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsCaseA, "Ukm", 2, true, false, false, tiered, historyCaseA
+        );
+        assertEquals("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE", stageCaseA,
+                "Trường hợp (a): Khách đáp 'Ukm' sau câu bot khuyên cân nhắc thêm phải vào STAGE_6, tuyệt đối không tự chốt gói 239k hay hỏi giờ đặt lịch");
+
+        // Trường hợp (b): Bot nói "Em mời mình trải nghiệm thử 1 buổi trước nhé, hôm nay hay ngày mai mình tiện ghé khung giờ nào ạ?" -> Khách đáp "Ukm"
+        // -> Phải phân loại speech act của bot là INVITED_TRIAL_OR_ASKED_TIME và định tuyến vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING
+        String botDirectTrialInvite = "Em mời mình trải nghiệm thử 1 buổi trước nhé, hôm nay hay ngày mai mình tiện ghé khung giờ nào ạ?";
+        assertFalse(CleanAgentOrchestratorService.isPauseOrDeferralBotReply(botDirectTrialInvite));
+        String inferredActCaseB = CleanAgentOrchestratorService.inferPrecedingBotSpeechAct(
+                null, botDirectTrialInvite,
+                List.of(new FanpageBotRequest.ConversationTurn("assistant", botDirectTrialInvite)),
+                "NONE", null
+        );
+        assertEquals(CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME, inferredActCaseB);
+        List<String> signalsCaseB = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                "Ukm",
+                false, false, false, false,
+                false, 1, true, true,
+                symptoms, areas, "gần đây",
+                inferredActCaseB, "COLLECTING_VISIT_TIME",
+                List.of(new FanpageBotRequest.ConversationTurn("assistant", botDirectTrialInvite))
+        );
+        String stageCaseB = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsCaseB, "Ukm", 1, false, false, true, tiered,
+                List.of(new FanpageBotRequest.ConversationTurn("assistant", botDirectTrialInvite))
+        );
+        assertEquals("STAGE_4_POSITIVE_TRIAL_OR_BOOKING", stageCaseB,
+                "Trường hợp (b): Khách đáp 'Ukm' sau câu mời thử/hỏi giờ trực tiếp phải vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING");
+
+        // Trường hợp (c): Khách chủ động nói "Khi nào tiện thì đặt giúp mình lúc 19h nhé"
+        // -> Phải phân loại là yêu cầu đặt lịch (PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS -> STAGE_4_POSITIVE_TRIAL_OR_BOOKING)
+        String customerProactiveBookingMsg = "Khi nào tiện thì đặt giúp mình lúc 19h nhé";
+        assertFalse(CleanAgentOrchestratorService.isHesitationOrDeferralMessage(customerProactiveBookingMsg),
+                "Câu khách chủ động nhờ đặt lịch lúc 19h không được nhận nhầm là lưỡng lự/tạm dừng");
+        assertTrue(CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(customerProactiveBookingMsg),
+                "Câu khách 'Khi nào tiện thì đặt giúp mình lúc 19h nhé' phải được nhận diện là yêu cầu đặt lịch chủ động");
+        List<String> signalsCaseC = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                customerProactiveBookingMsg,
+                false, false, false, false,
+                false, 1, true, true,
+                symptoms, areas, "gần đây",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE, "COLLECTING_VISIT_TIME", historyCaseA
+        );
+        assertTrue(signalsCaseC.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS"),
+                "Trường hợp (c): Khách chủ động đặt lịch lúc 19h phải có tín hiệu PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS: " + signalsCaseC);
+        String stageCaseC = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsCaseC, customerProactiveBookingMsg, 1, false, false, true, tiered, historyCaseA
+        );
+        assertEquals("STAGE_4_POSITIVE_TRIAL_OR_BOOKING", stageCaseC,
+                "Trường hợp (c): Khách chủ động đặt lịch lúc 19h phải định tuyến vào STAGE_4_POSITIVE_TRIAL_OR_BOOKING");
+
+        // Kiểm tra thêm ở STAGE_4 khi gói 239k CHƯA TỪNG được giới thiệu trong lịch sử (downsellAlreadyOfferedInHistory == false):
+        // Prompt ở STAGE_4 vẫn phải giữ gói 399k (NS01), tuyệt đối không tự nhảy sang gói 239k (DS02)!
+        String stage4PromptWithoutPrior239k = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona, "mình", symptoms, areas, "gần đây", true,
+                "Massage cơ bản 60 phút", "399k", 2, true, "COLLECTING_VISIT_TIME",
+                signalsCaseC, botPauseWithBookingTail, 1,
+                tiered, List.of(), historyCaseA, customerProactiveBookingMsg
+        );
+        assertTrue(stage4PromptWithoutPrior239k.contains("Massage cơ bản") && stage4PromptWithoutPrior239k.contains("399k"),
+                "Khi gói 239k chưa từng được giới thiệu trong lịch sử, STAGE_4 phải giữ nguyên gói 399k đã báo cho khách");
+        assertFalse(stage4PromptWithoutPrior239k.contains("239k"),
+                "Khi gói 239k chưa từng được giới thiệu và khách không tự chọn 239k, STAGE_4 tuyệt đối không được tự gán gói 239k");
+
+        // =====================================================================
+        // 3. Kiểm soát nguồn gốc careNotes & Active Skills khi Handoff ("Bị loạn à") (Fix #4)
+        // =====================================================================
+        // 3a. careNotes chỉ giữ thông tin triệu chứng/thời gian từ phía khách, cắt bỏ lời khuyên/quảng cáo của bot ("xử lý sớm sẽ hiệu quả nhanh")
+        String mixedCareNote = "Đau mỏi vai gáy mới xuất hiện gần đây, xử lý sớm sẽ hiệu quả nhanh";
+        String cleanedCareNote = CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta(
+                mixedCareNote,
+                tiered.excludedCatalog(),
+                tiered.primaryRecommendations().get(0),
+                "Gần đây",
+                "Tình trạng mới xuất hiện gần đây nếu xử lý sớm sẽ hiệu quả nhanh lắm ạ."
+        );
+        assertEquals("Đau mỏi vai gáy mới xuất hiện gần đây", cleanedCareNote,
+                "Phải giữ thông tin của khách ('Đau mỏi vai gáy mới xuất hiện gần đây') và cắt bỏ mệnh đề nhận định của bot ('xử lý sớm sẽ hiệu quả nhanh')");
+
+        String pureBotPromoNote = "Chuyên viên lành nghề ấn miết sâu, không làm qua loa bề mặt, xử lý sớm sẽ hiệu quả nhanh";
+        assertEquals("", CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta(pureBotPromoNote, "Gần đây", pureBotPromoNote),
+                "Câu thuần quảng cáo/nhận định của bot phải bị loại bỏ hoàn toàn khỏi careNotes");
+
+        // 3b. Ở Turn 6 ("Bị loạn à" -> HUMAN_HANDOFF / STAGE_5_META_COMMUNICATION_REPAIR):
+        // Tuyệt đối không hiển thị các skill chốt đơn/khám phá lệch ngữ cảnh như "Trial Acceptance" hay "Condition-First"
+        List<com.example.docmind.dto.bot.AgentSkillDto> rawSkillsBeforeHandoff = List.of(
+                new com.example.docmind.dto.bot.AgentSkillDto(
+                        null, "spa_trial_acceptance_booking", "🎯 Chốt Khung Giờ Khi Khách Đồng Thuận Thử (Trial Acceptance)",
+                        "CLOSING", "", "", "", "", "", 95, true, null, null, null
+                ),
+                new com.example.docmind.dto.bot.AgentSkillDto(
+                        null, "spa_condition_first_discovery", "🎯 Khám Phá Tình Trạng Trước Khi Báo Giá (Condition-First)",
+                        "DISCOVERY", "", "", "", "", "", 90, true, null, null, null
+                )
+        );
+        List<com.example.docmind.dto.bot.AgentSkillDto> handoffAlignedSkills = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
+                rawSkillsBeforeHandoff,
+                rawSkillsBeforeHandoff,
+                "HUMAN_HANDOFF",
+                false,
+                false,
+                false
+        );
+        assertTrue(handoffAlignedSkills.isEmpty(),
+                "Khi chuyển sang HUMAN_HANDOFF / COMPLAINT_OR_DISTRESS ('Bị loạn à'), phải lọc sạch các skill Trial Acceptance và Condition-First: " + handoffAlignedSkills);
+
+        List<com.example.docmind.dto.bot.AgentSkillDto> stage5AlignedSkills = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
+                rawSkillsBeforeHandoff,
+                rawSkillsBeforeHandoff,
+                "STAGE_5_META_COMMUNICATION_REPAIR",
+                false,
+                false,
+                false
+        );
+        assertTrue(stage5AlignedSkills.isEmpty(),
+                "Khi ở STAGE_5_META_COMMUNICATION_REPAIR, phải lọc sạch các skill Trial Acceptance và Condition-First: " + stage5AlignedSkills);
+    }
+
+    @Test
+    void testSemanticPriceGrounding_SevenMandatoryRegressionCases() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult neckShoulderTiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        PackageCatalogService.PackageSummary ds02 = neckShoulderTiered.economicalAlternatives().get(0);
+        assertEquals("DS02", ds02.code());
+        assertEquals(239_000L, ds02.priceVnd());
+
+        // =====================================================================
+        // Case 1: Khách hỏi 100k (kể cả biến thể 100.000đ, 100 nghìn);
+        //         bot phủ định không có gói 100k và giới thiệu gói phù hợp 239k có trong Catalog -> PASS
+        // =====================================================================
+        List<String> case1Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(
+                        new FanpageBotResponse.ReplyBubble(
+                                "Dạ hiện bên em chưa có gói chăm sóc cổ vai gáy ở mức 100k ạ. Trong nhóm dịch vụ chăm sóc đầu – cổ – vai – gáy phù hợp với tình trạng của mình, lựa chọn tiết kiệm nhất hiện tại là Gói dưỡng sinh cơ bản 60 phút (239k trọn gói) tại khu gội chung ạ.",
+                                0
+                        ),
+                        new FanpageBotResponse.ReplyBubble(
+                                "Mình cứ thoải mái tham khảo thêm, khi nào tiện nhắn em hỗ trợ nhé ạ.",
+                                1200
+                        )
+                ),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(case1Violations.isEmpty(),
+                "Case 1 (Khách hỏi 100k, bot phủ định 100k và đối chiếu gói 239k hợp lệ) phải PASS grounding: " + case1Violations);
+
+        List<String> case1NghinViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ bên em không có gói 100 nghìn ạ, lựa chọn tiết kiệm nhất trong nhóm chăm sóc đầu – cổ – vai – gáy là Gói dưỡng sinh cơ bản 60 phút (239k trọn gói) ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Bên mình có gói 100 nghìn không?"
+        );
+        assertTrue(case1NghinViolations.isEmpty(),
+                "Case 1b (Biến thể '100 nghìn' được phủ định rõ và đối chiếu gói 239k) phải PASS grounding: " + case1NghinViolations);
+
+        // =====================================================================
+        // Case 2: Khách hỏi 150k / 150.000đ; bot phủ định mức 150k và nêu giá Catalog đã xác minh -> PASS
+        // =====================================================================
+        List<String> case2Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ ở mức 150.000đ hiện bên em chưa có gói chăm sóc cổ vai gáy ạ. Trong nhóm dịch vụ chăm sóc đầu – cổ – vai – gáy phù hợp với mình, gói tiết kiệm nhất là Gói dưỡng sinh cơ bản 60 phút (239k trọn gói) ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Tầm 150k hay 150.000đ có gói nào không em?"
+        );
+        assertTrue(case2Violations.isEmpty(),
+                "Case 2 (Khách hỏi 150k / 150.000đ, bot phủ định 150.000đ và nêu gói 239k) phải PASS grounding: " + case2Violations);
+
+        // =====================================================================
+        // Case 3: Bot khẳng định tồn tại gói 100k không có trong Catalog -> FAIL grounding
+        // =====================================================================
+        List<String> case3Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ bên em có gói 100k chăm sóc cổ vai gáy nhẹ nhàng cho mình ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                1,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(
+                case3Violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")),
+                "Case 3 (Bot khẳng định tồn tại gói 100k không có trong Catalog) bắt buộc phải FAIL grounding: " + case3Violations
+        );
+
+        // =====================================================================
+        // Case 4: Bot bịa thời lượng hoặc quyền lợi của gói 100k (VD: "Gói 100k có thời lượng 60 phút") -> FAIL grounding
+        // =====================================================================
+        List<String> case4Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ Gói 100k có thời lượng 60 phút hiện bên em chưa áp dụng, mình tham khảo Gói dưỡng sinh cơ bản 239k (60 phút) nhé ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(
+                case4Violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")),
+                "Case 4 (Bot bịa thời lượng/quyền lợi cho gói 100k) bắt buộc phải FAIL grounding: " + case4Violations
+        );
+
+        // =====================================================================
+        // Case 5: Bot nhắc 100k trong ngữ cảnh phủ định nhưng đưa ra một mức giá đề xuất khác không có trong Catalog -> FAIL grounding
+        // =====================================================================
+        List<String> case5Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ hiện bên em chưa có gói ở mức 100k ạ, nhưng mình có thể tham khảo gói chăm sóc cổ vai gáy 180k bên em nhé.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(
+                case5Violations.stream().anyMatch(v -> v.equals("UNGROUNDED_OR_EXCLUDED_PRICE:180k")),
+                "Case 5 (Bot phủ định 100k nhưng đề xuất giá 180k ngoài Catalog) bắt buộc phải FAIL grounding ở mức 180k: " + case5Violations
+        );
+
+        // =====================================================================
+        // Case 6: Bot nhắc giá 100k trong câu khẳng định/mơ hồ không rõ nghĩa phủ định -> FAIL grounding
+        // =====================================================================
+        List<String> case6Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ với mức 100k mình đang quan tâm thì bên em có Gói dưỡng sinh cơ bản 239k (60 phút) chăm sóc cổ vai gáy rất tốt ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(
+                case6Violations.stream().anyMatch(v -> v.equals("UNGROUNDED_OR_EXCLUDED_PRICE:100k")),
+                "Case 6 (Bot nhắc 100k trong câu mơ hồ không rõ nghĩa phủ định) bắt buộc phải FAIL grounding: " + case6Violations
+        );
+
+        // =====================================================================
+        // Case 7: Khách đau cổ vai gáy, Catalog có gói 129k (Lấy ráy tai) không khớp vùng đau -> Không đề xuất gói 129k
+        // =====================================================================
+        assertFalse(
+                neckShoulderTiered.allAllowedPackages().stream().anyMatch(p -> p.priceVnd() == 129_000L || "DS01".equals(p.code())),
+                "Case 7a: Gói 129k (Lấy ráy tai) phải bị loại khỏi danh sách gói hợp lệ khi khách đau cổ vai gáy"
+        );
+        List<String> case7Violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ hiện bên em chưa có gói 100k ạ, nếu mình muốn gói rẻ nhất thì có gói Lấy ráy tai cơ bản 129k (30 phút) ạ.",
+                        0
+                )),
+                allCatalog,
+                neckShoulderTiered.allAllowedPackages(),
+                neckShoulderTiered.excludedCatalog(),
+                2,
+                true,
+                ds02,
+                false,
+                "NONE",
+                "Có gói 100k không shop?"
+        );
+        assertTrue(
+                case7Violations.stream().anyMatch(v -> v.equals("UNGROUNDED_OR_EXCLUDED_PRICE:129k")),
+                "Case 7b (Đề xuất gói 129k Lấy ráy tai cho khách đau cổ vai gáy) bắt buộc phải FAIL grounding: " + case7Violations
+        );
+        assertTrue(
+                case7Violations.stream().anyMatch(v -> v.startsWith("EXCLUDED_PACKAGE_MENTIONED:")),
+                "Case 7c (Nhắc tên gói Lấy ráy tai cơ bản đã bị loại theo vùng đau) bắt buộc phải FAIL grounding: " + case7Violations
+        );
+    }
+
+    @Test
+    void testSkillLabelCleanup_AndMetaphoricalWageComparisonObjection_WithNegativeControlsAndTwoTurnFlow() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        List<String> symptoms = List.of("đau mỏi cổ vai gáy");
+        List<String> areas = List.of("cổ", "vai", "gáy");
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog, symptoms, areas, Set.of(), false
+                );
+
+        // =====================================================================
+        // Phần II.1: Làm sạch Skill Label & Loại bỏ "Khám phá tình trạng đau mỏi (Condition-First)" ở STAGE_2
+        // =====================================================================
+        com.example.docmind.dto.bot.AgentSkillDto dbFirstPriceObjectionSkill = new com.example.docmind.dto.bot.AgentSkillDto(
+                UUID.randomUUID(),
+                "spa_objection_value_trial",
+                "🎯 Xử lý phản đối giá lần 1 bám sát Catalog đã xác minh (Tối đa 2 bong bóng)",
+                "OBJECTION",
+                "Xử lý phản đối giá lần 1",
+                "đắt, cao nhỉ",
+                "Giữ nguyên gói đang tư vấn",
+                "Dạ mức giá 399k đã bao gồm trọn gói 60 phút ạ.",
+                "Tự động hạ giá ngay lần đầu",
+                95,
+                true,
+                null,
+                null,
+                null
+        );
+        com.example.docmind.dto.bot.AgentSkillDto leftoverConditionFirstSkill = new com.example.docmind.dto.bot.AgentSkillDto(
+                UUID.randomUUID(),
+                "spa_condition_first_discovery",
+                "Khám phá tình trạng đau mỏi (Condition-First)",
+                "DISCOVERY",
+                "Khám phá tình trạng đau mỏi trước khi báo giá",
+                "đau cổ vai gáy",
+                "Hỏi thời gian đau mỏi",
+                "Mình bị đau mỏi lâu chưa ạ?",
+                "",
+                90,
+                true,
+                null,
+                null,
+                null
+        );
+
+        com.example.docmind.dto.bot.AgentSkillDto sanitizedSkill =
+                CleanAgentOrchestratorService.sanitizeSkillDisplayNameForUi(dbFirstPriceObjectionSkill);
+        assertEquals(
+                "Đồng cảm chi phí & bảo vệ giá trị liệu trình (Value Hold)",
+                sanitizedSkill.name(),
+                "Phải đổi nhãn hiển thị của skill phản đối giá lần 1 thành 'Đồng cảm chi phí & bảo vệ giá trị liệu trình (Value Hold)'"
+        );
+
+        List<com.example.docmind.dto.bot.AgentSkillDto> alignedStage2Skills =
+                CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
+                        List.of(leftoverConditionFirstSkill, dbFirstPriceObjectionSkill),
+                        List.of(leftoverConditionFirstSkill, dbFirstPriceObjectionSkill),
+                        "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE",
+                        false,
+                        false,
+                        false
+                );
+        assertEquals(1, alignedStage2Skills.size(),
+                "Ở STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE, phải loại bỏ 'Khám phá tình trạng đau mỏi (Condition-First)' còn sót từ lượt trước");
+        assertEquals(
+                "Đồng cảm chi phí & bảo vệ giá trị liệu trình (Value Hold)",
+                alignedStage2Skills.get(0).name()
+        );
+        assertFalse(
+                alignedStage2Skills.stream().anyMatch(s -> s.name().contains("Condition-First") || "spa_condition_first_discovery".equals(s.code())),
+                "Tuyệt đối không còn nhãn 'Khám phá tình trạng đau mỏi (Condition-First)' trong danh sách hiển thị của STAGE_2"
+        );
+
+        // =====================================================================
+        // Phần II.2a: Nhận diện phản đối giá ẩn dụ ("ngày công", "lương") sau khi đã báo giá
+        // =====================================================================
+        for (String metaphoricalPositive : List.of(
+                "Ui gần 1 ngày công của t",
+                "Gần một ngày công của em rồi",
+                "Gần một ngày lương",
+                "Bằng cả tháng lương"
+        )) {
+            assertTrue(
+                    CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(metaphoricalPositive, true),
+                    "Phải nhận diện câu phản đối giá ẩn dụ sau khi đã báo giá: " + metaphoricalPositive
+            );
+        }
+
+        // =====================================================================
+        // Phần II.2b: Chặn dương tính giả (Negative cases)
+        // =====================================================================
+        assertFalse(
+                CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Em đi làm cả ngày, tối mới rảnh", true),
+                "Negative case 1: 'Em đi làm cả ngày, tối mới rảnh' TUYỆT ĐỐI KHÔNG phải phản đối giá"
+        );
+        assertFalse(
+                CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Em đi làm cả ngày, tối mới rảnh", false),
+                "Negative case 1b: 'Em đi làm cả ngày, tối mới rảnh' khi chưa báo giá cũng KHÔNG phải phản đối giá"
+        );
+        assertFalse(
+                CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Tháng lương này em chưa nhận", false),
+                "Negative case 2a: 'Tháng lương này em chưa nhận' khi chưa báo giá KHÔNG mặc định là phản đối giá"
+        );
+        assertFalse(
+                CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection("Tháng lương này em chưa nhận", true),
+                "Negative case 2b: 'Tháng lương này em chưa nhận' (chia sẻ bối cảnh chưa nhận lương, không phải cấu trúc so sánh đắt/cao) KHÔNG mặc định là phản đối giá"
+        );
+
+        // =====================================================================
+        // Phần II.2c: Giữ mạch ngữ cảnh qua 2 lượt ("Ui gần 1 ngày công của t" -> "Ok để tối về t xem nhé")
+        // =====================================================================
+        String turn1MetaphorMsg = "Ui gần 1 ngày công của t";
+        List<FanpageBotRequest.ConversationTurn> historyBeforeMetaphor = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Mình bị đau mỏi cổ vai gáy mấy hôm nay"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng đau mỏi cổ vai gáy mới xuất hiện mấy hôm nay, em gợi ý mình tham khảo gói Massage cơ bản 60 phút (399k trọn gói) ạ.")
+        );
+        boolean confirmedObjTurn1 = CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(turn1MetaphorMsg, true);
+        assertTrue(confirmedObjTurn1);
+
+        List<String> signalsTurn1Metaphor = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                turn1MetaphorMsg,
+                false, false, false, false,
+                confirmedObjTurn1, 1, false, false,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                "NONE",
+                historyBeforeMetaphor
+        );
+        assertTrue(signalsTurn1Metaphor.contains("PRICE_OBJECTION_FIRST_TIME"));
+        String stageTurn1Metaphor = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsTurn1Metaphor, turn1MetaphorMsg, 1, true, false, false, tiered, historyBeforeMetaphor
+        );
+        assertEquals("STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE", stageTurn1Metaphor);
+
+        // Lượt kế tiếp: Khách nhắn "Ok để tối về t xem nhé"
+        String turn2HesitationMsg = "Ok để tối về t xem nhé";
+        List<FanpageBotRequest.ConversationTurn> historyAfterMetaphor = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Mình bị đau mỏi cổ vai gáy mấy hôm nay"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ với tình trạng đau mỏi cổ vai gáy mới xuất hiện mấy hôm nay, em gợi ý mình tham khảo gói Massage cơ bản 60 phút (399k trọn gói) ạ."),
+                new FanpageBotRequest.ConversationTurn("user", turn1MetaphorMsg),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ giá trị của gói Massage cơ bản 60 phút (399k) nằm ở trọn vẹn thời lượng chuyên viên tập trung làm mềm sâu vùng cơ cổ vai gáy và đã bao gồm bữa ăn nhẹ thực dưỡng ạ. Mình thử trải nghiệm trước 1 buổi nhé?")
+        );
+
+        int historyPriceObjCount = CleanAgentOrchestratorService.countConfirmedCustomerPriceObjectionsInHistory(historyAfterMetaphor);
+        assertEquals(1, historyPriceObjCount,
+                "Lịch sử hội thoại phải bảo toàn tín hiệu phản đối giá của lượt 'Ui gần 1 ngày công của t' (count == 1)");
+        assertTrue(CleanAgentOrchestratorService.isHesitationOrDeferralMessage(turn2HesitationMsg),
+                "'Ok để tối về t xem nhé' phải được nhận diện là lượt lưỡng lự / hẹn xem lại");
+        assertFalse(CleanAgentOrchestratorService.isPureBusyOrStopDeferralMessage(turn2HesitationMsg),
+                "'Ok để tối về t xem nhé' sau phản đối giá là tâm lý lưỡng lự vì giá, KHÔNG phải báo bận việc cá nhân thuần túy");
+
+        List<String> signalsTurn2Hesitation = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                turn2HesitationMsg,
+                false, false, false, false,
+                false, historyPriceObjCount, false, false,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                "NONE",
+                historyAfterMetaphor
+        );
+        assertTrue(signalsTurn2Hesitation.contains("HESITATION_OR_DEFERRAL"));
+        String stageTurn2Hesitation = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsTurn2Hesitation,
+                turn2HesitationMsg,
+                historyPriceObjCount,
+                true,
+                false,
+                false,
+                tiered,
+                historyAfterMetaphor
+        );
+        assertEquals(
+                "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL",
+                stageTurn2Hesitation,
+                "Lượt 'Ok để tối về t xem nhé' ngay sau 'Ui gần 1 ngày công của t' phải kích hoạt STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL"
+        );
+
+        // Đối chứng: Khi khách báo bận việc cá nhân thuần túy ("Em đang bận việc chút, để tối nhắn lại nhé") -> STAGE_6
+        String pureBusyMsg = "Em đang bận việc chút, để tối nhắn lại nhé";
+        assertTrue(CleanAgentOrchestratorService.isPureBusyOrStopDeferralMessage(pureBusyMsg));
+        List<String> signalsPureBusy = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                pureBusyMsg,
+                false, false, false, false,
+                false, historyPriceObjCount, false, false,
+                symptoms, areas, "mấy hôm nay",
+                CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                "NONE",
+                historyAfterMetaphor
+        );
+        String stagePureBusy = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signalsPureBusy, pureBusyMsg, historyPriceObjCount, true, false, false, tiered, historyAfterMetaphor
+        );
+        assertEquals(
+                "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE",
+                stagePureBusy,
+                "Khi khách báo bận việc cá nhân thuần túy ('Em đang bận việc chút...'), phải tôn trọng tạm dừng ở STAGE_6"
+        );
     }
 }

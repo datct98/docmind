@@ -679,10 +679,10 @@ public final class SentimentIntentLayer {
         }
         if (isStrongRejection(message)
                 || isPoliteDeferralExit(message)
-                || FanpageBotService.isHesitationOrDeferralMessage(message)
+                || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(message)
                 || (priorState != null
-                    && FanpageBotService.isBareAcknowledgmentMessage(message)
-                    && FanpageBotService.isPauseOrDeferralBotReply(priorState.lastAssistantMessage()))
+                    && CleanAgentOrchestratorService.isBareAcknowledgmentMessage(message)
+                    && CleanAgentOrchestratorService.isPauseOrDeferralBotReply(priorState.lastAssistantMessage()))
                 || isWordingOrExpressionFeedback(message)
                 || isConversationStyleComplaint(message)
                 || isAlreadyAnsweredSlotPushback(message)

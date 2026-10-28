@@ -168,6 +168,9 @@ public class AgentBrainService {
         private final List<ConversationState.CustomerCareNoteArtifact> careNoteArtifacts = new ArrayList<>();
         private String workingHypothesis = "";
         private String lastActualSentSpeechAct = "";
+        private int priceObjectionCount = 0;
+        private boolean inPriceObjectionContext = false;
+        private boolean hasPresentedDownsell = false;
 
         public synchronized List<String> verifiedFactsSnapshot() {
             return List.copyOf(verifiedFacts);
@@ -187,6 +190,18 @@ public class AgentBrainService {
 
         public synchronized String lastActualSentSpeechActSnapshot() {
             return lastActualSentSpeechAct;
+        }
+
+        public synchronized int priceObjectionCountSnapshot() {
+            return priceObjectionCount;
+        }
+
+        public synchronized boolean inPriceObjectionContextSnapshot() {
+            return inPriceObjectionContext;
+        }
+
+        public synchronized boolean hasPresentedDownsellSnapshot() {
+            return hasPresentedDownsell;
         }
     }
 
@@ -222,6 +237,38 @@ public class AgentBrainService {
     public String getRecalledActualSentSpeechAct(UUID pageId, String senderId) {
         CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
         return mem != null ? mem.lastActualSentSpeechActSnapshot() : "";
+    }
+
+    public int getRecalledPriceObjectionCount(UUID pageId, String senderId) {
+        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        return mem != null ? mem.priceObjectionCountSnapshot() : 0;
+    }
+
+    public boolean isRecalledInPriceObjectionContext(UUID pageId, String senderId) {
+        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        return mem != null && mem.inPriceObjectionContextSnapshot();
+    }
+
+    public boolean hasRecalledPresentedDownsell(UUID pageId, String senderId) {
+        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        return mem != null && mem.hasPresentedDownsellSnapshot();
+    }
+
+    public void recordCommercialFunnelState(
+            UUID pageId,
+            String senderId,
+            int priceObjectionCount,
+            boolean inPriceObjectionContext,
+            boolean hasPresentedDownsell) {
+        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(
+                toConversationMemoryKey(pageId, senderId),
+                k -> new CustomerBrainMemory()
+        );
+        synchronized (mem) {
+            mem.priceObjectionCount = Math.max(0, priceObjectionCount);
+            mem.inPriceObjectionContext = inPriceObjectionContext;
+            mem.hasPresentedDownsell = hasPresentedDownsell;
+        }
     }
 
     public void clearCustomerMemory(UUID pageId, String senderId) {
@@ -444,10 +491,11 @@ public class AgentBrainService {
             if (observedFact != null && !observedFact.isBlank()) {
                 addBoundedAndDeduplicated(mem.verifiedFacts, observedFact, MAX_VERIFIED_FACTS_PER_CUSTOMER);
             }
-            if (careNoteDelta != null && !careNoteDelta.isBlank()) {
+            String sanitizedCareDelta = CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta(careNoteDelta, userMessage, assistantReply);
+            if (sanitizedCareDelta != null && !sanitizedCareDelta.isBlank()) {
                 int beforeSize = mem.careNotes.size();
                 List<String> prevNotes = new ArrayList<>(mem.careNotes);
-                addBoundedAndDeduplicated(mem.careNotes, careNoteDelta, MAX_CARE_NOTES_PER_CUSTOMER);
+                addBoundedAndDeduplicated(mem.careNotes, sanitizedCareDelta, MAX_CARE_NOTES_PER_CUSTOMER);
                 if (!mem.careNotes.equals(prevNotes)) {
                     rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes);
                 } else if (beforeSize == 0 && !mem.careNotes.isEmpty()) {
@@ -457,7 +505,10 @@ public class AgentBrainService {
             if (customerCareNotes != null && !customerCareNotes.isEmpty()) {
                 for (ConversationState.CustomerCareNoteArtifact art : customerCareNotes) {
                     if (art != null && art.noteText() != null && !art.noteText().isBlank()) {
-                        addBoundedAndDeduplicated(mem.careNotes, art.noteText(), MAX_CARE_NOTES_PER_CUSTOMER);
+                        String sanitizedArtifactNote = CleanAgentOutputRefereeAndSanitizer.validateCleanCareNoteDelta(art.noteText(), userMessage, assistantReply);
+                        if (sanitizedArtifactNote != null && !sanitizedArtifactNote.isBlank()) {
+                            addBoundedAndDeduplicated(mem.careNotes, sanitizedArtifactNote, MAX_CARE_NOTES_PER_CUSTOMER);
+                        }
                     }
                 }
                 rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes);
@@ -711,6 +762,18 @@ public class AgentBrainService {
         String resolvedSpeechAct = !localSpeechAct.isBlank()
                 ? localSpeechAct
                 : base.lastActualSentSpeechAct();
+        CustomerBrainMemory storedMem = (pageId != null || senderId != null)
+                ? customerMemoryStore.get(toConversationMemoryKey(pageId, senderId))
+                : null;
+        int resolvedPriceObjectionCount = storedMem != null
+                ? Math.max(base.priceObjectionCount(), storedMem.priceObjectionCountSnapshot())
+                : base.priceObjectionCount();
+        boolean resolvedInPriceObjectionContext = storedMem != null
+                ? storedMem.inPriceObjectionContextSnapshot()
+                : base.inPriceObjectionContext();
+        boolean resolvedHasPresentedDownsell = storedMem != null
+                ? (base.hasPresentedDownsell() || storedMem.hasPresentedDownsellSnapshot())
+                : base.hasPresentedDownsell();
 
         return new CustomerInsightDto(
                 base.buyerArchetype(),
@@ -727,7 +790,10 @@ public class AgentBrainService {
                 enrichedStrategy,
                 mergedCareNotes,
                 resolvedHypothesis,
-                resolvedSpeechAct
+                resolvedSpeechAct,
+                resolvedPriceObjectionCount,
+                resolvedInPriceObjectionContext,
+                resolvedHasPresentedDownsell
         );
     }
 }
