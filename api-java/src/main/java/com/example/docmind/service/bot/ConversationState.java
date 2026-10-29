@@ -3124,8 +3124,8 @@ public record ConversationState(
             int parsedReplyDur = parseDurationInt(replyDuration);
             for (PackageCatalogService.PackageSummary s : base.availablePackageCatalog()) {
                 if (s != null && s.priceVnd() == targetVnd
-                        && (parsedReplyDur <= 0 || s.durationMinutes() == parsedReplyDur)) {
-                    if (replyDuration == null && s.durationMinutes() > 0) {
+                        && (parsedReplyDur <= 0 || (s.durationMinutes() != null && s.durationMinutes() == parsedReplyDur))) {
+                    if (replyDuration == null && s.durationMinutes() != null && s.durationMinutes() > 0) {
                         replyDuration = String.valueOf(s.durationMinutes());
                     }
                     if (replyPkgDisplay == null && s.displayName() != null && !s.displayName().isBlank()) {
@@ -3854,7 +3854,7 @@ public record ConversationState(
         }
         int matchCount = 0;
         for (PackageCatalogService.PackageSummary pkg : catalog) {
-            if (pkg == null || pkg.durationMinutes() != targetDur) {
+            if (pkg == null || pkg.durationMinutes() == null || pkg.durationMinutes() != targetDur) {
                 continue;
             }
             String pkgCanon = toCanonicalPackageCode(pkg.displayName(), String.valueOf(pkg.durationMinutes()));

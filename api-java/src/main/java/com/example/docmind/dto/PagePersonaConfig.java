@@ -61,9 +61,44 @@ public record PagePersonaConfig(
         @JsonProperty("scope_taxonomy")
         List<String> scopeTaxonomy,
         @JsonProperty("safety_red_flags")
-        List<String> safetyRedFlags
+        List<String> safetyRedFlags,
+        @JsonProperty("query_synonyms")
+        Map<String, List<String>> querySynonyms
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    public PagePersonaConfig(
+            String industryCode,
+            String botName,
+            String selfPronoun,
+            String defaultCustomerPronoun,
+            String toneStyle,
+            String emojiLevel,
+            List<String> forbiddenWords,
+            List<String> domainKeywords,
+            String closingAction,
+            String ctaTemplate,
+            List<String> openingBubbles,
+            Integer postPriceDelayMs,
+            String preferenceDiscoveryPrompt,
+            String conditionDiscoveryPrompt,
+            String conditionDiscoveryPromptAlt,
+            String activePromptCompact,
+            List<String> symptomKeywords,
+            List<String> bodyAreaKeywords,
+            Map<String, List<String>> serviceFamilyKeywords,
+            Map<String, Object> emotionSignals,
+            String careActor,
+            List<String> scopeTaxonomy,
+            List<String> safetyRedFlags
+    ) {
+        this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
+                openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
+                conditionDiscoveryPrompt, conditionDiscoveryPromptAlt, activePromptCompact,
+                symptomKeywords, bodyAreaKeywords, serviceFamilyKeywords, emotionSignals,
+                careActor, scopeTaxonomy, safetyRedFlags, Map.of());
+    }
 
     public PagePersonaConfig(
             String industryCode,
@@ -92,7 +127,7 @@ public record PagePersonaConfig(
                 openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
                 conditionDiscoveryPrompt, conditionDiscoveryPromptAlt, activePromptCompact,
                 symptomKeywords, bodyAreaKeywords, serviceFamilyKeywords, emotionSignals,
-                null, List.of(), List.of());
+                null, List.of(), List.of(), Map.of());
     }
 
     public PagePersonaConfig(
@@ -107,7 +142,7 @@ public record PagePersonaConfig(
     ) {
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, null, null, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of(), Map.of());
     }
 
     public PagePersonaConfig(
@@ -124,7 +159,7 @@ public record PagePersonaConfig(
     ) {
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of(), Map.of());
     }
 
     public PagePersonaConfig(
@@ -145,7 +180,7 @@ public record PagePersonaConfig(
         this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
                 toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
                 openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of(), Map.of());
     }
 
     public static PagePersonaConfig defaults() {
@@ -155,7 +190,7 @@ public record PagePersonaConfig(
     public static PagePersonaConfig empty() {
         return new PagePersonaConfig(
                 null, null, null, null, null, null, List.of(), List.of(), null, null, List.of(), null, null,
-                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of()
+                null, null, null, List.of(), List.of(), Map.of(), Map.of(), null, List.of(), List.of(), Map.of()
         );
     }
 
@@ -174,7 +209,11 @@ public record PagePersonaConfig(
                 || postPriceDelayMs != null
                 || (preferenceDiscoveryPrompt != null && !preferenceDiscoveryPrompt.isBlank())
                 || (conditionDiscoveryPrompt != null && !conditionDiscoveryPrompt.isBlank())
-                || (activePromptCompact != null && !activePromptCompact.isBlank());
+                || (activePromptCompact != null && !activePromptCompact.isBlank())
+                || (careActor != null && !careActor.isBlank())
+                || (scopeTaxonomy != null && !scopeTaxonomy.isEmpty())
+                || (safetyRedFlags != null && !safetyRedFlags.isEmpty())
+                || (querySynonyms != null && !querySynonyms.isEmpty());
     }
 
     public int resolvedPostPriceDelayMs() {
@@ -397,6 +436,39 @@ public record PagePersonaConfig(
             return List.copyOf(safetyRedFlags);
         }
         return Collections.emptyList();
+    }
+
+    public Map<String, List<String>> resolvedQuerySynonyms() {
+        if (querySynonyms == null || querySynonyms.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        java.util.Map<String, List<String>> clean = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> e : querySynonyms.entrySet()) {
+            if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null || e.getValue().isEmpty()) {
+                continue;
+            }
+            List<String> vals = e.getValue().stream()
+                    .filter(v -> v != null && !v.isBlank())
+                    .map(String::strip)
+                    .toList();
+            if (!vals.isEmpty()) {
+                clean.put(e.getKey().strip(), vals);
+            }
+        }
+        return clean.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(clean);
+    }
+
+    public boolean isMedicalOrBodySafetyIndustry() {
+        String ind = industryCode != null ? industryCode.strip().toLowerCase(Locale.ROOT) : "";
+        return ind.contains("spa")
+                || ind.contains("wellness")
+                || ind.contains("beauty")
+                || ind.contains("medical")
+                || ind.contains("clinic")
+                || ind.contains("health")
+                || ind.contains("dental")
+                || ind.contains("nha_khoa")
+                || ind.contains("pharma");
     }
 
     public boolean matchesDomainKeyword(String text) {

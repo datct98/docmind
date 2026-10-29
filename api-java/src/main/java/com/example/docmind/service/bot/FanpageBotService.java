@@ -88,7 +88,12 @@ public class FanpageBotService {
             + "hôm\\s+qua[\\p{L}\\s,]*làm[\\p{L}\\s,]*\\bđau\\b)"
     );
 
-    /** Mẫu phát hiện chống chỉ định an toàn sức khỏe / thai kỳ / tai đau ù theo PB-SPA-SAFETY-RULE. */
+    /** Mẫu phát hiện cấp cứu y tế cấp tính phổ quát (luôn giữ hiệu lực ở mọi ngành). */
+    private static final Pattern UNIVERSAL_ACUTE_MEDICAL_EMERGENCY_PATTERN = Pattern.compile(
+            "(?iU)\\b(tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|sốt\\s+cao|vết\\s+thương\\s+hở|gãy\\s+xương|trật\\s+khớp)\\b"
+    );
+
+    /** Mẫu phát hiện chống chỉ định thể chất đặc thù ngành Spa / Y tế / Thẩm mỹ (thai kỳ, tai đau/ù, hậu phẫu...). */
     private static final Pattern HIGH_RISK_SAFETY_CONTRAINDICATION_PATTERN = Pattern.compile(
             "(?iU)(?:\\b(mang\\s+thai|đang\\s+bầu|có\\s+bầu|bầu\\s+\\d+\\s*(?:tháng|tuần)?|thai\\s+kỳ|mới\\s+sinh|"
             + "mới\\s+phẫu\\s+thuật|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|nhiễm\\s+trùng\\s+da|sốt\\s+cao|"
@@ -98,6 +103,82 @@ public class FanpageBotService {
             + "đau\\s+tai|ù\\s+tai|viêm\\s+tai|chảy\\s+dịch\\s+tai|chảy\\s+mủ\\s+tai|nghe\\s+kém)\\b|"
             + "\\btai\\b[^.!?\\n]{0,30}\\b(đau|ù|chảy\\s+dịch|chảy\\s+mủ|viêm)\\b)"
     );
+
+    public static boolean isUniversalAcuteMedicalEmergency(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return UNIVERSAL_ACUTE_MEDICAL_EMERGENCY_PATTERN.matcher(message).find()
+                || SentimentIntentLayer.isNeurologicalRiskMessage(message);
+    }
+
+    public static boolean isDomainPhysicalContraindicationGateEnabled(PromptBuilder.PagePersona pagePersona) {
+        if (pagePersona == null || !pagePersona.hasContent()) {
+            return true;
+        }
+        com.example.docmind.dto.PagePersonaConfig explicit = pagePersona.personaConfig();
+        if (explicit != null && explicit.industryCode() != null && !explicit.industryCode().isBlank()
+                && !"GENERAL_SERVICE".equalsIgnoreCase(explicit.industryCode().strip())) {
+            return explicit.isMedicalOrBodySafetyIndustry();
+        }
+        com.example.docmind.dto.PagePersonaConfig resolved = pagePersona.resolvedConfig();
+        if (resolved != null && resolved.industryCode() != null
+                && !"GENERAL_SERVICE".equalsIgnoreCase(resolved.industryCode().strip())) {
+            return resolved.isMedicalOrBodySafetyIndustry();
+        }
+        String combined = ((pagePersona.name() != null ? pagePersona.name() : "") + " "
+                + (pagePersona.industry() != null ? pagePersona.industry() : "")).toLowerCase(Locale.ROOT);
+        return combined.contains("spa")
+                || combined.contains("dưỡng sinh")
+                || combined.contains("massage")
+                || combined.contains("thẩm mỹ")
+                || combined.contains("làm đẹp")
+                || combined.contains("nha khoa")
+                || combined.contains("phòng khám")
+                || combined.contains("y khoa")
+                || combined.contains("y tế")
+                || combined.contains("bệnh viện")
+                || combined.contains("dược")
+                || combined.contains("clinic")
+                || combined.contains("medical")
+                || combined.contains("dental")
+                || combined.contains("wellness")
+                || combined.contains("healthcare");
+    }
+
+    public static String findMatchedPageSafetyRedFlag(String message, PromptBuilder.PagePersona pagePersona) {
+        if (message == null || message.isBlank() || pagePersona == null || pagePersona.resolvedConfig() == null) {
+            return null;
+        }
+        List<String> redFlags = pagePersona.resolvedConfig().resolvedSafetyRedFlags();
+        if (redFlags == null || redFlags.isEmpty()) {
+            return null;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        for (String flag : redFlags) {
+            if (flag != null && !flag.isBlank() && lower.contains(flag.strip().toLowerCase(Locale.ROOT))) {
+                return flag.strip();
+            }
+        }
+        return null;
+    }
+
+    public static boolean shouldTriggerSafetyContraindicationHandoff(
+            String message,
+            PromptBuilder.PagePersona pagePersona
+    ) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isUniversalAcuteMedicalEmergency(message)) {
+            return true;
+        }
+        if (findMatchedPageSafetyRedFlag(message, pagePersona) != null) {
+            return true;
+        }
+        return isDomainPhysicalContraindicationGateEnabled(pagePersona)
+                && HIGH_RISK_SAFETY_CONTRAINDICATION_PATTERN.matcher(message).find();
+    }
 
     /** Mẫu phát hiện khách hàng chủ động yêu cầu gặp nhân viên thật / quản lý / bác sĩ. */
     private static final Pattern EXPLICIT_HUMAN_REQUEST_PATTERN = Pattern.compile(
@@ -691,11 +772,22 @@ public class FanpageBotService {
             );
         }
 
+        boolean domainHealthSafetyEnabled = isDomainPhysicalContraindicationGateEnabled(pagePersona);
+        String matchedCustomRedFlag = findMatchedPageSafetyRedFlag(mergedMessage, pagePersona);
+        boolean allowDomainHealthForTurn = domainHealthSafetyEnabled || matchedCustomRedFlag != null;
+
         List<AgentSkillDto> candidateSkills = agentSkillService != null
                 ? agentSkillService.getActiveSkillsForPage(pageId)
                 : CustomerInsightEngine.builtInDefaultSkills();
         List<AgentSkillDto> activeSkills = customerInsightEngine.selectActiveSkills(
                 customerInsight, mergedMessage, request.history(), initialStage, candidateSkills);
+        if (!allowDomainHealthForTurn && !isUniversalAcuteMedicalEmergency(mergedMessage) && activeSkills != null) {
+            activeSkills = activeSkills.stream()
+                    .filter(s -> s != null
+                            && !"safety_handoff_high_risk".equalsIgnoreCase(s.code())
+                            && !"spa_neurological_safety_handoff".equalsIgnoreCase(s.code()))
+                    .toList();
+        }
 
         // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION TRỰC TIẾP
         if (PromptSecurityGuard.isDirectJailbreakAttempt(mergedMessage)) {
@@ -778,8 +870,7 @@ public class FanpageBotService {
             );
         }
 
-        if (HIGH_RISK_SAFETY_CONTRAINDICATION_PATTERN.matcher(mergedMessage).find()
-                || SentimentIntentLayer.isNeurologicalRiskMessage(mergedMessage)) {
+        if (shouldTriggerSafetyContraindicationHandoff(mergedMessage, pagePersona)) {
             boolean isNeurological = SentimentIntentLayer.isNeurologicalRiskMessage(mergedMessage);
             if (candidateSkills != null) {
                 String targetSkillCode = isNeurological ? "spa_neurological_safety_handoff" : "safety_handoff_high_risk";
@@ -1178,7 +1269,8 @@ public class FanpageBotService {
                 preRetrievalState,
                 preEnrichedState, // enrich đúng 1 lần/lượt: không để Router enrich lại
                 null,
-                safeDomainKeywords
+                safeDomainKeywords,
+                allowDomainHealthForTurn
         );
         boolean isPreRoutedDetailOrFaq = preRetrievalDecision != null
                 && (preRetrievalDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
@@ -1475,7 +1567,8 @@ public class FanpageBotService {
                                 priorStateWithChunks,
                                 convState,
                                 fused,
-                                safeDomainKeywords
+                                safeDomainKeywords,
+                                allowDomainHealthForTurn
                         )
                         : new PrimaryActionRouter.RoutingDecision(
                                 PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,

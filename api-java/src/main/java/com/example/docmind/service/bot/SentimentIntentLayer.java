@@ -1348,6 +1348,14 @@ public final class SentimentIntentLayer {
     }
 
     public static DetectedIntent classify(String message, ConversationState priorState) {
+        return classify(message, priorState, true);
+    }
+
+    public static DetectedIntent classify(
+            String message,
+            ConversationState priorState,
+            boolean allowDomainHealthContraindications
+    ) {
         if (message == null || message.isBlank()) {
             return DetectedIntent.AMBIGUOUS;
         }
@@ -1359,20 +1367,21 @@ public final class SentimentIntentLayer {
         String trimmed = (normalizedMsg != null && !normalizedMsg.isBlank()) ? normalizedMsg.strip() : rawTrimmed;
         String lower = Normalizer.normalize(trimmed, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         String ascii = removeDiacritics(trimmed);
-        // 1. SAFETY_RISK
-        if (CustomerInsightEngine.hasHighRiskHealthSignal(lower)) {
+        // 1. SAFETY_RISK (chỉ kích hoạt nhóm chống chỉ định thể chất đặc thù ngành khi Page bật cổng này)
+        if (allowDomainHealthContraindications && CustomerInsightEngine.hasHighRiskHealthSignal(lower)) {
             return DetectedIntent.SAFETY_RISK;
         }
         // 2. OPT_OUT
         if (OPT_OUT_PATTERN.matcher(lower).matches() || OPT_OUT_ASCII_PATTERN.matcher(ascii).matches()) {
             return DetectedIntent.OPT_OUT;
         }
-        // 3. NEUROLOGICAL_RISK
+        // 3. NEUROLOGICAL_RISK (cấp cứu y tế phổ quát — luôn giữ hiệu lực)
         if (hasNeurologicalRisk(trimmed, priorState)) {
             return DetectedIntent.NEUROLOGICAL_RISK;
         }
         // 3-bis. CAUTIOUS_SYMPTOM_CLARIFICATION (tầng 2): tê/chóng mặt... chưa có dấu hiệu cấp tính
-        if (hasCautiousNeuroSymptom(trimmed, priorState)
+        if (allowDomainHealthContraindications
+                && hasCautiousNeuroSymptom(trimmed, priorState)
                 && !isStrongRejection(trimmed)
                 && !isEntityMismatchCorrection(trimmed)
                 && !hasHarshPronouns(trimmed)) {

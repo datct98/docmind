@@ -473,7 +473,10 @@ public final class PrimaryActionRouter {
             com.example.docmind.dto.PagePersonaConfig personaConfig
     ) {
         List<String> keywords = personaConfig != null ? personaConfig.resolvedScopeTaxonomy() : List.of();
-        return route(message, state, fusedChunks, keywords);
+        boolean allowDomainHealth = personaConfig == null || personaConfig.isMedicalOrBodySafetyIndustry();
+        ConversationState base = state != null ? state : ConversationState.initial();
+        ConversationState enriched = base.ensureTurnEnriched(message, keywords);
+        return route(message, enriched.priorTurnState(), enriched, fusedChunks, keywords, allowDomainHealth);
     }
 
     /**
@@ -487,7 +490,7 @@ public final class PrimaryActionRouter {
     ) {
         ConversationState base = state != null ? state : ConversationState.initial();
         ConversationState enriched = base.ensureTurnEnriched(message, domainKeywords);
-        return route(message, enriched.priorTurnState(), enriched, fusedChunks, domainKeywords);
+        return route(message, enriched.priorTurnState(), enriched, fusedChunks, domainKeywords, true);
     }
 
     /**
@@ -502,7 +505,25 @@ public final class PrimaryActionRouter {
             List<ReciprocalRankFusion.FusedChunk> fusedChunks,
             List<String> domainKeywords
     ) {
-        RoutingDecision d = routeInternal(message, priorStateIn, enrichedForThisTurn, fusedChunks, domainKeywords);
+        return route(message, priorStateIn, enrichedForThisTurn, fusedChunks, domainKeywords, true);
+    }
+
+    public static RoutingDecision route(
+            String message,
+            ConversationState priorStateIn,
+            ConversationState enrichedForThisTurn,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<String> domainKeywords,
+            boolean allowDomainHealthContraindications
+    ) {
+        RoutingDecision d = routeInternal(
+                message,
+                priorStateIn,
+                enrichedForThisTurn,
+                fusedChunks,
+                domainKeywords,
+                allowDomainHealthContraindications
+        );
         boolean firstTurn = priorStateIn == null || !priorStateIn.greetingSent();
         if (d != null && firstTurn && d.openingPolicy() == OpeningPolicy.NONE
                 && (d.effectiveResponseAction() == PrimaryAction.HARD_HANDOFF_SAFETY
@@ -519,7 +540,8 @@ public final class PrimaryActionRouter {
             ConversationState priorStateIn,
             ConversationState enrichedForThisTurn,
             List<ReciprocalRankFusion.FusedChunk> fusedChunks,
-            List<String> domainKeywords
+            List<String> domainKeywords,
+            boolean allowDomainHealthContraindications
     ) {
         ConversationState enriched = enrichedForThisTurn != null
                 ? enrichedForThisTurn
@@ -527,7 +549,7 @@ public final class PrimaryActionRouter {
         ConversationState priorState = priorStateIn != null ? priorStateIn : enriched.priorTurnState();
         String msg = message != null ? message.strip() : "";
         String lower = Normalizer.normalize(msg, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        DetectedIntent classified = SentimentIntentLayer.classify(msg, priorState);
+        DetectedIntent classified = SentimentIntentLayer.classify(msg, priorState, allowDomainHealthContraindications);
 
         // PRE-01-BOT-MUTED
         if (priorState.humanTakeover() || priorState.optedOut()) {
@@ -553,16 +575,16 @@ public final class PrimaryActionRouter {
         }
 
         // PRE-02-HIGH-RISK-HEALTH-UPDATED (Includes NEUROLOGICAL_RISK!)
-        if (classified == DetectedIntent.SAFETY_RISK
-                || classified == DetectedIntent.NEUROLOGICAL_RISK
-                || CustomerInsightEngine.hasHighRiskHealthSignal(lower)
-                || enriched.neurologicalRisk()) {
+        boolean isUniversalNeuroEmergency = classified == DetectedIntent.NEUROLOGICAL_RISK || enriched.neurologicalRisk();
+        boolean isDomainSafetyRisk = allowDomainHealthContraindications
+                && (classified == DetectedIntent.SAFETY_RISK || CustomerInsightEngine.hasHighRiskHealthSignal(lower));
+        if (isUniversalNeuroEmergency || isDomainSafetyRisk) {
             return new RoutingDecision(
                     PrimaryAction.HARD_HANDOFF_SAFETY,
                     PrimaryAction.HARD_HANDOFF_SAFETY,
                     false,
                     1,
-                    classified == DetectedIntent.NEUROLOGICAL_RISK || enriched.neurologicalRisk()
+                    isUniversalNeuroEmergency
                             ? "NEUROLOGICAL_RISK"
                             : "HIGH_RISK_SAFETY",
                     "safety_handoff_high_risk"
@@ -571,7 +593,7 @@ public final class PrimaryActionRouter {
 
         // PRE-02B-CAUTIOUS-SYMPTOM-CLARIFICATION (Safety tầng 2): tê/chóng mặt... CHƯA có dấu hiệu cấp tính.
         // Ưu tiên hơn mọi nhánh bán hàng/báo giá: trấn an + hỏi khởi phát/bên ảnh hưởng/diễn biến, không chào gói.
-        if (classified == DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION) {
+        if (allowDomainHealthContraindications && classified == DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION) {
             return new RoutingDecision(
                     PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
                     PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
@@ -585,7 +607,8 @@ public final class PrimaryActionRouter {
         // PRE-02C-CAUTIOUS-MEDICAL-RECOMMENDATION (v3.8): sau lượt CAUTIOUS_SYMPTOM_CLARIFICATION, khi khách trả lời kèm dữ kiện
         // kéo dài / hai bên (slot khởi phát, phân bổ) -> khuyến nghị đánh giá y tế + chuyển chuyên viên, KHÔNG bán gói.
         // pendingQuestionSlot chỉ là ngữ cảnh định tuyến; căn cứ chính là nhóm triệu chứng thận trọng đã phân loại ở lượt trước.
-        if ("CAUTIOUS_SYMPTOM_CLARIFICATION".equals(priorState.lastIntent())
+        if (allowDomainHealthContraindications
+                && "CAUTIOUS_SYMPTOM_CLARIFICATION".equals(priorState.lastIntent())
                 && classified != DetectedIntent.CAUTIOUS_SYMPTOM_CLARIFICATION) {
             String onset = enriched.knownOnsetDuration() != null ? enriched.knownOnsetDuration().toLowerCase(Locale.ROOT) : "";
             String dist = enriched.knownSymptomDistribution() != null ? enriched.knownSymptomDistribution().toLowerCase(Locale.ROOT) : "";
@@ -2361,8 +2384,11 @@ public final class PrimaryActionRouter {
                     .filter(p -> p != null)
                     .map(p -> new CatalogOption(
                             p.displayName(),
-                            p.durationLabel() != null ? p.durationLabel() : (p.durationMinutes() + " phút"),
-                            p.durationMinutes(),
+                            p.durationLabel() != null ? p.durationLabel()
+                                    : (p.durationMinutes() != null && p.durationMinutes() > 0
+                                        ? (p.durationMinutes() + " phút")
+                                        : (p.formattedSpecsSummary() != null ? p.formattedSpecsSummary() : "")),
+                            p.durationMinutes() != null ? p.durationMinutes() : 0,
                             p.priceDisplay(),
                             p.priceVnd(),
                             p.includesSummary() != null ? p.includesSummary() : "",
@@ -3278,8 +3304,14 @@ public final class PrimaryActionRouter {
                 if (name.isBlank()) {
                     continue;
                 }
-                int unitNum = pkg.durationMinutes() > 0 ? pkg.durationMinutes() : 60;
-                String unitLabel = unitNum + " phút";
+                int unitNum = (pkg.durationMinutes() != null && pkg.durationMinutes() > 0) ? pkg.durationMinutes() : 0;
+                String unitLabel = unitNum > 0
+                        ? (unitNum + " phút")
+                        : (pkg.durationLabel() != null && !pkg.durationLabel().isBlank()
+                            ? pkg.durationLabel()
+                            : (pkg.formattedSpecsSummary() != null && !pkg.formattedSpecsSummary().isBlank()
+                                ? pkg.formattedSpecsSummary()
+                                : ""));
                 String priceDisp = (pkg.priceDisplay() != null && !pkg.priceDisplay().isBlank())
                         ? pkg.priceDisplay()
                         : formatPriceK(pkg.priceVnd() / 1000L);
@@ -4190,7 +4222,7 @@ public final class PrimaryActionRouter {
             boolean isDurationPushback = normDurMsg.contains("tưởng")
                     || normDurMsg.contains("thời lượng gì nữa")
                     || normDurMsg.contains("thời lượng nào nữa");
-            if (pkgSummary != null && pkgSummary.durationMinutes() > 0) {
+            if (pkgSummary != null && pkgSummary.durationMinutes() != null && pkgSummary.durationMinutes() > 0) {
                 String pkgName = pkgSummary.displayName().toLowerCase(Locale.ROOT);
                 String body;
                 if (isDurationPushback) {
@@ -4324,7 +4356,7 @@ public final class PrimaryActionRouter {
         // 2. Secondary Duration question
         boolean asksDuration = normMsg.matches("(?isU).*\\b(bao\\s+lâu|mấy\\s+phút|bao\\s+nhiêu\\s+phút|thời\\s+lượng)\\b.*");
         if (asksDuration && !primaryLower.contains("phút")) {
-            if (pkgSummary != null && pkgSummary.durationMinutes() > 0) {
+            if (pkgSummary != null && pkgSummary.durationMinutes() != null && pkgSummary.durationMinutes() > 0) {
                 String sec = "Gói " + pkgSummary.displayName().toLowerCase(Locale.ROOT) + " có tổng thời gian thực hiện là "
                         + pkgSummary.durationMinutes() + " phút ạ.";
                 return List.of(primaryBubble, new ReplyBubble(sec, 2000));
@@ -4485,7 +4517,7 @@ public final class PrimaryActionRouter {
         }
         for (PackageCatalogService.PackageSummary s : all) {
             String nameLower = s.displayName().toLowerCase(Locale.ROOT);
-            if (normMsg.contains(nameLower) && (msgDur <= 0 || s.durationMinutes() == msgDur)) {
+            if (normMsg.contains(nameLower) && (msgDur <= 0 || (s.durationMinutes() != null && s.durationMinutes() == msgDur))) {
                 return s;
             }
         }
@@ -4500,7 +4532,7 @@ public final class PrimaryActionRouter {
                     .toLowerCase(Locale.ROOT);
             for (PackageCatalogService.PackageSummary s : all) {
                 String nameLower = s.displayName().toLowerCase(Locale.ROOT);
-                if (heldDisp.contains(nameLower) && (heldDur <= 0 || s.durationMinutes() == heldDur)) {
+                if (heldDisp.contains(nameLower) && (heldDur <= 0 || (s.durationMinutes() != null && s.durationMinutes() == heldDur))) {
                     return s;
                 }
             }

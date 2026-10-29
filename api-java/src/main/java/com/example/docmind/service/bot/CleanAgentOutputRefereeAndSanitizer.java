@@ -62,15 +62,22 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     private static final Pattern BOT_PROMOTIONAL_OR_EFFICACY_CARE_NOTE_CLAUSE_PATTERN = Pattern.compile(
             "(?iU)\\b(xử\\s+lý\\s+sớm\\s+sẽ|sẽ\\s+hiệu\\s+quả\\s+nhanh|hiệu\\s+quả\\s+nhanh|cải\\s+thiện\\s+rõ\\s+rệt|"
             + "nhẹ\\s+người\\s+rõ\\s+rệt|không\\s+(?:chỉ\\s+)?làm\\s+qua\\s+loa|qua\\s+loa\\s+bề\\s+mặt|thư\\s+giãn\\s+hời\\s+hợt|"
-            + "chuyên\\s+viên\\s+lành\\s+nghề|ấn\\s+miết\\s+sâu|mang\\s+lại\\s+cảm\\s+nhận|em\\s+gợi\\s+ý|bên\\s+em\\s+có|"
-            + "mức\\s+giá\\s+đã\\s+bao\\s+gồm|đã\\s+lưu\\s+lại\\s+thông\\s+tin|cứ\\s+cân\\s+nhắc\\s+thêm)\\b"
+            + "chuyên\\s+viên\\s+lành\\s+nghề|ấn\\s+miết\\s+sâu|mang\\s+lại\\s+cảm\\s+nhận|em\\s+gợi\\s+ý|bên\\s+em\\s+(?:có|cam\\s+kết)|"
+            + "mức\\s+giá\\s+đã\\s+bao\\s+gồm|đã\\s+lưu\\s+lại\\s+thông\\s+tin|cứ\\s+cân\\s+nhắc\\s+thêm|"
+            + "cam\\s+kết\\s+chính\\s+hãng|chính\\s+hãng\\s+loại\\s+1|độ\\s+bền\\s+vượt\\s+trội|chống\\s+thấm\\s+tuyệt\\s+đối|"
+            + "cam\\s+kết\\s+đầu\\s+ra|lộ\\s+trình\\s+chuẩn\\s+quốc\\s+tế|giao\\s+hàng\\s+nhanh(?:\\s+toàn\\s+quốc)?|"
+            + "giá\\s+tốt\\s+nhất\\s+thị\\s+trường|chất\\s+lượng\\s+hàng\\s+đầu|ưu\\s+đãi\\s+hấp\\s+dẫn|nâng\\s+tầm\\s+đẳng\\s+cấp)\\b"
     );
 
-    private static final Pattern CUSTOMER_CARE_PROVENANCE_SIGNAL_PATTERN = Pattern.compile(
-            "(?iU)\\b(đau|mỏi|nhức|tê|căng|cứng|buốt|rát|ngứa|sưng|khó\\s+chịu|mất\\s+ngủ|nặng\\s+đầu|chóng\\s+mặt|chuột\\s+rút|"
-            + "đầu|cổ|vai|gáy|lưng|thắt\\s+lưng|eo|chân|tay|bắp\\s+chân|da\\s+đầu|tai|da\\s+mặt|toàn\\s+thân|"
-            + "gần\\s+đây|mới\\s+bị|mấy\\s+hôm|lâu\\s+rồi|kéo\\s+dài|ngồi\\s+nhiều|văn\\s+phòng|vận\\s+động|"
-            + "lực\\s+nhẹ|lực\\s+vừa|lực\\s+mạnh|kín\\s+đáo|yên\\s+tĩnh|dị\\s+ứng|nhạy\\s+cảm|lưu\\s+ý|tránh)\\b"
+    private static final Pattern UNCONFIRMED_BOT_SPECULATION_CARE_NOTE_PATTERN = Pattern.compile(
+            "(?iU)\\b(có\\s+thể\\s+khách|chắc\\s+(?:là\\s+)?khách|suy\\s+đoán\\s+khách|đoán\\s+(?:là\\s+)?khách|khả\\s+năng\\s+cao\\s+khách|nghi\\s+ngờ\\s+khách)\\b"
+    );
+
+    private static final Pattern PROVENANCE_TOKEN_SPLIT_PATTERN = Pattern.compile("[^\\p{L}\\p{N}xX.]+");
+
+    private static final Set<String> PROVENANCE_STOPWORDS = Set.of(
+            "khách", "hàng", "cần", "muốn", "đang", "được", "cho", "với", "của", "và", "là", "có", "không",
+            "này", "đó", "các", "những", "một", "bên", "shop", "mình", "anh", "chị", "bạn", "em", "rất", "hơn"
     );
 
     private static final Pattern STAGE6_CLOSING_WISH_SPLIT_PATTERN = Pattern.compile(
@@ -2086,25 +2093,41 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (FORBIDDEN_MEDICAL_CLAIM_CLEAN_PATTERN.matcher(trimmed).find()) {
             return "";
         }
-        String[] clauses = trimmed.split("\\s*[,;.–—]\\s*");
+        String[] clauses = trimmed.split("\\s*(?:(?<!\\d)[,;.]+|[,;.]+(?!\\d)|[–—])\\s*");
         List<String> keptClauses = new ArrayList<>();
         boolean anyClauseRemoved = false;
         String custLower = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
         String botLower = botReply != null ? botReply.toLowerCase(Locale.ROOT) : "";
+        Set<String> custTokens = extractProvenanceContentTokens(custLower);
+        Set<String> botTokens = extractProvenanceContentTokens(botLower);
         for (String clause : clauses) {
             if (clause == null || clause.isBlank()) continue;
             String c = clause.strip();
             String cLow = c.toLowerCase(Locale.ROOT);
+            if (UNCONFIRMED_BOT_SPECULATION_CARE_NOTE_PATTERN.matcher(c).find()) {
+                if (custLower.isEmpty() || !custLower.contains(cLow)) {
+                    anyClauseRemoved = true;
+                    continue;
+                }
+            }
             if (BOT_PROMOTIONAL_OR_EFFICACY_CARE_NOTE_CLAUSE_PATTERN.matcher(c).find()) {
                 if (custLower.isEmpty() || !custLower.contains(cLow)) {
                     anyClauseRemoved = true;
                     continue;
                 }
             }
-            if (!botLower.isEmpty() && botLower.contains(cLow) && !custLower.contains(cLow)
-                    && !CUSTOMER_CARE_PROVENANCE_SIGNAL_PATTERN.matcher(c).find()) {
-                anyClauseRemoved = true;
-                continue;
+            if (!botLower.isEmpty()) {
+                Set<String> cTokens = extractProvenanceContentTokens(cLow);
+                int custOverlap = countTokenOverlap(cTokens, custTokens);
+                int botOverlap = countTokenOverlap(cTokens, botTokens);
+                boolean echoedFromBotOnly = (botLower.contains(cLow)
+                        || (cTokens.size() >= 3 && botOverlap >= Math.ceil(cTokens.size() * 0.75)))
+                        && custOverlap == 0
+                        && !custLower.contains(cLow);
+                if (echoedFromBotOnly) {
+                    anyClauseRemoved = true;
+                    continue;
+                }
             }
             keptClauses.add(c);
         }
@@ -2114,8 +2137,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (anyClauseRemoved) {
             trimmed = String.join(", ", keptClauses).strip();
         }
-        if (!CUSTOMER_CARE_PROVENANCE_SIGNAL_PATTERN.matcher(trimmed).find()) {
+        Set<String> remainingTokens = extractProvenanceContentTokens(trimmed.toLowerCase(Locale.ROOT));
+        if (remainingTokens.isEmpty()) {
             return "";
+        }
+        if (!custTokens.isEmpty() && !custLower.startsWith("tin nhắn bổ sung thứ")) {
+            if (countTokenOverlap(remainingTokens, custTokens) <= 0) {
+                return "";
+            }
         }
         String lower = trimmed.toLowerCase(Locale.ROOT);
         if (excludedCatalog != null) {
@@ -2143,6 +2172,43 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
         return trimmed;
+    }
+
+    private static Set<String> extractProvenanceContentTokens(String lowerText) {
+        if (lowerText == null || lowerText.isBlank()) {
+            return Set.of();
+        }
+        Set<String> tokens = new LinkedHashSet<>();
+        for (String raw : PROVENANCE_TOKEN_SPLIT_PATTERN.split(lowerText)) {
+            if (raw == null || raw.isBlank()) continue;
+            String tok = raw.strip().replaceAll("^\\.+|\\.+$", "");
+            if (tok.length() < 2) continue;
+            if (PROVENANCE_STOPWORDS.contains(tok)) continue;
+            tokens.add(tok);
+        }
+        return tokens;
+    }
+
+    private static int countTokenOverlap(Set<String> noteTokens, Set<String> referenceTokens) {
+        if (noteTokens == null || noteTokens.isEmpty() || referenceTokens == null || referenceTokens.isEmpty()) {
+            return 0;
+        }
+        int overlap = 0;
+        for (String nt : noteTokens) {
+            if (referenceTokens.contains(nt)) {
+                overlap++;
+                continue;
+            }
+            if (nt.length() >= 3) {
+                for (String rt : referenceTokens) {
+                    if (rt.length() >= 3 && (nt.contains(rt) || rt.contains(nt))) {
+                        overlap++;
+                        break;
+                    }
+                }
+            }
+        }
+        return overlap;
     }
 
     public static String resolveActualSentSpeechAct(

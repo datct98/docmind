@@ -1921,7 +1921,7 @@ public final class FanpageBotPromptBuilder {
                 String msgLower = customerMessage != null ? customerMessage.toLowerCase(Locale.ROOT) : "";
                 boolean massageOnly = msgLower.contains("massage") && !msgLower.contains("dưỡng sinh") && !msgLower.contains("gội");
                 for (PackageCatalogService.PackageSummary pkg : convState.availablePackageCatalog()) {
-                    if (pkg == null || pkg.durationMinutes() <= 0) continue;
+                    if (pkg == null || pkg.durationMinutes() == null || pkg.durationMinutes() <= 0) continue;
                     String codeU = pkg.code() != null ? pkg.code().toUpperCase(Locale.ROOT) : "";
                     String nameL = pkg.displayName() != null ? pkg.displayName().toLowerCase(Locale.ROOT) : "";
                     if (massageOnly && !codeU.startsWith("NS") && !nameL.contains("massage")) {
@@ -2141,7 +2141,7 @@ public final class FanpageBotPromptBuilder {
             }
             appendVerifiedPackageBenefitsAndForbiddenPerks(sb, convState, null, heldVnd, chunks);
             boolean alreadyAcceptedPkg = (enriched != null && enriched.packageInterestAccepted()) || convState.packageInterestAccepted();
-            String heldDurLabel = heldPkg != null && heldPkg.durationMinutes() > 0 ? heldPkg.durationMinutes() + " phút" : "trọn vẹn thời lượng gói";
+            String heldDurLabel = heldPkg != null && heldPkg.durationMinutes() != null && heldPkg.durationMinutes() > 0 ? heldPkg.durationMinutes() + " phút" : "trọn vẹn thời lượng gói";
             String step1Invite = alreadyAcceptedPkg
                     ? "và hỏi nhẹ xem khách dự kiến ghé vào khung giờ nào hôm nay hay ngày mai (vì khách đã đồng ý thử gói trước đó nên TUYỆT ĐỐI CẤM lùi phễu hỏi lại 'Mình muốn thử trải nghiệm 1 buổi không ạ?')"
                     : "và mời ngắn gọn khách thử trải nghiệm lẻ 1 buổi trước để cảm nhận trực tiếp tay nghề";

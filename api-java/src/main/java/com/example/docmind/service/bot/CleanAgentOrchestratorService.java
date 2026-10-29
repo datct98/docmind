@@ -738,7 +738,9 @@ public class CleanAgentOrchestratorService {
                 safeConv.visitTime() != null && !safeConv.visitTime().isBlank()
                         ? Map.of("visit_time", safeConv.visitTime().strip())
                         : Map.of(),
-                quotedReplyResolution
+                quotedReplyResolution,
+                pageId,
+                appliedRules
         );
 
         ThinkingMode selectedThinkingMode = resolveCleanAgentThinkingMode(
@@ -1279,7 +1281,8 @@ public class CleanAgentOrchestratorService {
                             validatedCareNoteDelta,
                             validatedWorkingHypothesis,
                             actualSentSpeechAct,
-                            knownBodyAreas
+                            knownBodyAreas,
+                            CleanAgentCatalogAndPromptBuilder.resolveCareActor(pagePersona)
                     );
                 }
                 enrichedTurnInsight = agentBrainService.enrichCustomerInsight(pageId, request.senderId(), enrichedTurnInsight, null);

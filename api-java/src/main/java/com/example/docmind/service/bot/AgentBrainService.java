@@ -481,9 +481,39 @@ public class AgentBrainService {
             String workingHypothesis,
             String actualSentSpeechAct,
             Collection<String> confirmedScopes) {
+        retainTurnWithReflection(
+                pageId,
+                senderId,
+                customerName,
+                userMessage,
+                assistantReply,
+                customerCareNotes,
+                observedFact,
+                careNoteDelta,
+                workingHypothesis,
+                actualSentSpeechAct,
+                confirmedScopes,
+                "chuyên viên phụ trách"
+        );
+    }
+
+    public void retainTurnWithReflection(
+            UUID pageId,
+            String senderId,
+            String customerName,
+            String userMessage,
+            String assistantReply,
+            List<ConversationState.CustomerCareNoteArtifact> customerCareNotes,
+            String observedFact,
+            String careNoteDelta,
+            String workingHypothesis,
+            String actualSentSpeechAct,
+            Collection<String> confirmedScopes,
+            String careActor) {
         String tenantId = pageId != null ? pageId.toString() : "global";
         String customerId = (senderId != null && !senderId.isBlank()) ? senderId.strip() : "anonymous_customer";
         String conversationId = tenantId + ":" + customerId;
+        String resolvedActor = (careActor != null && !careActor.isBlank()) ? careActor.strip() : "chuyên viên phụ trách";
 
         CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(conversationId, k -> new CustomerBrainMemory());
         List<ConversationState.CustomerCareNoteArtifact> effectiveArtifacts;
@@ -497,9 +527,9 @@ public class AgentBrainService {
                 List<String> prevNotes = new ArrayList<>(mem.careNotes);
                 addBoundedAndDeduplicated(mem.careNotes, sanitizedCareDelta, MAX_CARE_NOTES_PER_CUSTOMER);
                 if (!mem.careNotes.equals(prevNotes)) {
-                    rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes);
+                    rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes, resolvedActor);
                 } else if (beforeSize == 0 && !mem.careNotes.isEmpty()) {
-                    rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes);
+                    rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes, resolvedActor);
                 }
             }
             if (customerCareNotes != null && !customerCareNotes.isEmpty()) {
@@ -511,7 +541,7 @@ public class AgentBrainService {
                         }
                     }
                 }
-                rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes);
+                rebuildArtifactsFromCareNotes(mem, tenantId, conversationId, confirmedScopes, resolvedActor);
             }
             if (workingHypothesis != null && !workingHypothesis.isBlank()) {
                 mem.workingHypothesis = workingHypothesis.strip();
@@ -590,12 +620,14 @@ public class AgentBrainService {
             CustomerBrainMemory mem,
             String tenantId,
             String conversationId,
-            Collection<String> confirmedScopes
+            Collection<String> confirmedScopes,
+            String careActor
     ) {
         mem.careNoteArtifacts.clear();
         Set<String> safeScopes = confirmedScopes != null && !confirmedScopes.isEmpty()
                 ? Collections.unmodifiableSet(new LinkedHashSet<>(confirmedScopes))
                 : Set.of("general_care");
+        String safeActor = (careActor != null && !careActor.isBlank()) ? careActor.strip() : "chuyên viên phụ trách";
         int idx = 1;
         for (String note : mem.careNotes) {
             mem.careNoteArtifacts.add(new ConversationState.CustomerCareNoteArtifact(
@@ -603,7 +635,7 @@ public class AgentBrainService {
                     conversationId,
                     "turn-" + idx++,
                     safeScopes,
-                    "chuyên viên chăm sóc",
+                    safeActor,
                     note,
                     java.time.Instant.now()
             ));

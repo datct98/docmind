@@ -576,7 +576,7 @@ public final class ReplyContractValidator {
                         boolean isStepDur = !massageOnlyClarify && (mentionedMin == 5 || mentionedMin == 10 || mentionedMin == 15 || mentionedMin == 20 || mentionedMin == 30);
                         boolean groundedDur = safeState.availablePackageCatalog().stream()
                                 .anyMatch(pkg -> {
-                                    if (pkg == null || pkg.durationMinutes() != mentionedMin) return false;
+                                    if (pkg == null || pkg.durationMinutes() == null || pkg.durationMinutes() != mentionedMin) return false;
                                     if (massageOnlyClarify) {
                                         String c = pkg.code() != null ? pkg.code().toUpperCase(Locale.ROOT) : "";
                                         String n = pkg.displayName() != null ? pkg.displayName().toLowerCase(Locale.ROOT) : "";
@@ -1341,7 +1341,7 @@ public final class ReplyContractValidator {
                 ? safeState.rejectedPackages()
                 : java.util.Set.of();
         for (com.example.docmind.service.bot.PackageCatalogService.PackageSummary pkg : safeState.availablePackageCatalog()) {
-            if (pkg == null || pkg.durationMinutes() != dur) {
+            if (pkg == null || pkg.durationMinutes() == null || pkg.durationMinutes() != dur) {
                 continue;
             }
             String disp = pkg.displayName().toLowerCase(Locale.ROOT);

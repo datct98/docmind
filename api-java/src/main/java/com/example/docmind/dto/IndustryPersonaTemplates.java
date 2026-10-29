@@ -227,7 +227,19 @@ public final class IndustryPersonaTemplates {
                             : baseCfg.serviceFamilyKeywords(),
                     explicitConfig.emotionSignals() != null && !explicitConfig.emotionSignals().isEmpty()
                             ? explicitConfig.emotionSignals()
-                            : baseCfg.emotionSignals()
+                            : baseCfg.emotionSignals(),
+                    explicitConfig.careActor() != null && !explicitConfig.careActor().isBlank()
+                            ? explicitConfig.careActor().strip()
+                            : baseCfg.careActor(),
+                    explicitConfig.scopeTaxonomy() != null && !explicitConfig.scopeTaxonomy().isEmpty()
+                            ? explicitConfig.scopeTaxonomy()
+                            : baseCfg.scopeTaxonomy(),
+                    explicitConfig.safetyRedFlags() != null && !explicitConfig.safetyRedFlags().isEmpty()
+                            ? explicitConfig.safetyRedFlags()
+                            : baseCfg.safetyRedFlags(),
+                    explicitConfig.querySynonyms() != null && !explicitConfig.querySynonyms().isEmpty()
+                            ? explicitConfig.querySynonyms()
+                            : baseCfg.querySynonyms()
             );
         }
 
@@ -251,6 +263,10 @@ public final class IndustryPersonaTemplates {
         if (combined.contains("b2b") || combined.contains("saas") || combined.contains("phần mềm")
                 || combined.contains("doanh nghiệp") || combined.contains("công nghệ")) {
             return TECH_B2B.personaConfig();
+        }
+        if (combined.contains("nha khoa") || combined.contains("dental")
+                || combined.contains("trồng răng") || combined.contains("niềng răng")) {
+            return GENERAL_SERVICE.personaConfig();
         }
         if (combined.contains("spa") || combined.contains("làm đẹp") || combined.contains("thẩm mỹ")
                 || combined.contains("dưỡng sinh") || combined.contains("massage") || combined.contains("mụn")) {
