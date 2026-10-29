@@ -6,6 +6,8 @@ import com.example.docmind.service.bot.ConversationInboxService;
 import com.example.docmind.service.bot.FanpageBotService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -16,13 +18,21 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,15 +56,77 @@ import java.util.Map;
 @RequestMapping("/api/bot/fanpage")
 public class FanpageBotController {
 
+    private static final Logger log = LoggerFactory.getLogger(FanpageBotController.class);
+
+    public static final String DEFAULT_NANG_SEN_PAGE_ID = "b23cd382-4f7a-4829-8c54-1d410da14bf8";
+    public static final String FB_GRAPH_MESSAGES_API_URL = "https://graph.facebook.com/v21.0/me/messages";
+    public static final String FB_GRAPH_MESSAGE_LOOKUP_BASE_URL = "https://graph.facebook.com/v21.0/";
+    public static final long GRAPH_API_LOOKUP_TIMEOUT_MS = 1200L;
+    public static final long MID_DEDUP_TTL_MS = 10 * 60 * 1000L; // 10 phút
+
+    @FunctionalInterface
+    public interface FacebookGraphApiSender {
+        HttpResponseResult postJson(String url, String jsonBody) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface FacebookGraphApiGetter {
+        HttpResponseResult getJson(String url, long timeoutMs) throws Exception;
+    }
+
+    public record HttpResponseResult(int statusCode, String body) {}
+
+    private static final class SenderBatchCoordinator {
+        final Object lock = new Object();
+        final List<String> pendingTexts = new ArrayList<>();
+        final List<String> pendingDedupKeys = new ArrayList<>();
+        String latestReplyToMid;
+        String latestQuotedMessageText;
+        long firstMessageArrivedAtMs;
+        long debounceDeadlineMs;
+        boolean debounceLeaderActive;
+        boolean batchCurrentlyExecuting;
+        boolean runningLlmCanSupersede;
+        boolean sendingBubblesCanInterrupt;
+        List<String> inFlightTexts = new ArrayList<>();
+        String inFlightReplyToMid;
+        String inFlightQuotedMessageText;
+        FanpageBotResponse lastCompletedResponse;
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<String, SenderBatchCoordinator> senderCoordinators =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private final FanpageBotService fanpageBotService;
     private final ConversationInboxService conversationInboxService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    private FacebookGraphApiSender graphApiSender = this::defaultPostJsonToGraphApi;
+    private FacebookGraphApiGetter graphApiGetter = this::defaultGetJsonFromGraphApi;
+
+    @Value("${docmind.fanpage.bubble-delay-ms:2500}")
+    private long interBubbleDelayMs = 0L;
+
+    @Value("${docmind.fanpage.burst-debounce-ms:1800}")
+    private long burstDebounceMs = 0L;
+
+    @Value("${docmind.fanpage.max-burst-wait-ms:3000}")
+    private long maxBurstWaitMs = 3000L;
 
     @Value("${docmind.fanpage.verify-token:docmind-fb-verify-token}")
     private String verifyToken = "docmind-fb-verify-token";
 
     @Value("${docmind.fanpage.app-secret:}")
     private String appSecret = "";
+
+    @Value("${docmind.fanpage.page-access-token:}")
+    private String pageAccessToken = "";
+
+    @Value("${docmind.fanpage.default-page-id:b23cd382-4f7a-4829-8c54-1d410da14bf8}")
+    private String defaultPageId = DEFAULT_NANG_SEN_PAGE_ID;
 
     public FanpageBotController(FanpageBotService fanpageBotService) {
         this(fanpageBotService, null);
@@ -64,6 +136,80 @@ public class FanpageBotController {
     public FanpageBotController(FanpageBotService fanpageBotService, ConversationInboxService conversationInboxService) {
         this.fanpageBotService = fanpageBotService;
         this.conversationInboxService = conversationInboxService;
+    }
+
+    public void setPageAccessToken(String pageAccessToken) {
+        this.pageAccessToken = pageAccessToken != null ? pageAccessToken : "";
+    }
+
+    public String getPageAccessToken() {
+        return this.pageAccessToken;
+    }
+
+    public void setDefaultPageId(String defaultPageId) {
+        this.defaultPageId = (defaultPageId != null && !defaultPageId.isBlank())
+                ? defaultPageId.strip()
+                : DEFAULT_NANG_SEN_PAGE_ID;
+    }
+
+    public String getDefaultPageId() {
+        return this.defaultPageId;
+    }
+
+    public void setGraphApiSender(FacebookGraphApiSender graphApiSender) {
+        this.graphApiSender = graphApiSender != null ? graphApiSender : this::defaultPostJsonToGraphApi;
+    }
+
+    public void setGraphApiGetter(FacebookGraphApiGetter graphApiGetter) {
+        this.graphApiGetter = graphApiGetter != null ? graphApiGetter : this::defaultGetJsonFromGraphApi;
+    }
+
+    public void setInterBubbleDelayMs(long interBubbleDelayMs) {
+        this.interBubbleDelayMs = Math.max(0L, interBubbleDelayMs);
+    }
+
+    public long getInterBubbleDelayMs() {
+        return this.interBubbleDelayMs;
+    }
+
+    public void setBubbleDelayMs(long bubbleDelayMs) {
+        this.interBubbleDelayMs = Math.max(0L, bubbleDelayMs);
+    }
+
+    public long getBubbleDelayMs() {
+        return this.interBubbleDelayMs;
+    }
+
+    public void setBurstDebounceMs(long burstDebounceMs) {
+        this.burstDebounceMs = Math.max(0L, burstDebounceMs);
+    }
+
+    public long getBurstDebounceMs() {
+        return this.burstDebounceMs;
+    }
+
+    public void setMaxBurstWaitMs(long maxBurstWaitMs) {
+        this.maxBurstWaitMs = Math.max(200L, maxBurstWaitMs);
+    }
+
+    /**
+     * Tự động ánh xạ {@code page_id} từ URL hoặc {@code entry[].id} dạng số của Facebook
+     * sang UUID nội bộ của Nàng Sen Spa ({@code b23cd382-4f7a-4829-8c54-1d410da14bf8}).
+     */
+    public String resolveEffectivePageId(String queryPageId, String fbEntryPageId) {
+        java.util.UUID parsedQueryUuid = parseSafeUuid(queryPageId);
+        if (parsedQueryUuid != null) {
+            return parsedQueryUuid.toString();
+        }
+        java.util.UUID parsedEntryUuid = parseSafeUuid(fbEntryPageId);
+        if (parsedEntryUuid != null) {
+            return parsedEntryUuid.toString();
+        }
+        java.util.UUID parsedDefaultUuid = parseSafeUuid(defaultPageId);
+        if (parsedDefaultUuid != null) {
+            return parsedDefaultUuid.toString();
+        }
+        return DEFAULT_NANG_SEN_PAGE_ID;
     }
 
     @PostMapping("/message")
@@ -123,6 +269,20 @@ public class FanpageBotController {
     }
 
     /**
+     * Endpoint Chính sách quyền riêng tư & Hướng dẫn xóa dữ liệu chuẩn Meta (GET/HEAD /api/bot/fanpage/privacy-policy).
+     */
+    @RequestMapping(
+            value = "/privacy-policy",
+            method = {RequestMethod.GET, RequestMethod.HEAD},
+            produces = "text/html;charset=UTF-8"
+    )
+    public ResponseEntity<String> getPrivacyPolicyHtml() {
+        return ResponseEntity.ok()
+                .header("Content-Type", "text/html;charset=UTF-8")
+                .body(NANG_SEN_PRIVACY_POLICY_HTML);
+    }
+
+    /**
      * Endpoint nhận sự kiện trực tiếp từ Meta Messenger Platform (POST /api/bot/fanpage/webhook).
      * Học hỏi từ PR #1: Kiểm tra chữ ký HmacSHA256 constant-time và lọc bỏ sự kiện delivery, read, is_echo.
      */
@@ -148,10 +308,15 @@ public class FanpageBotController {
             }
 
             FanpageBotResponse lastBotResponse = null;
+            String lastResolvedPageId = null;
             int processedCount = 0;
             int deduplicatedCount = 0;
-            java.util.UUID parsedQueryPageId = parseSafeUuid(queryPageId);
             for (JsonNode entry : entries) {
+                String fbNumericPageId = entry.path("id").asText("").strip();
+                String effectivePageId = resolveEffectivePageId(queryPageId, fbNumericPageId);
+                java.util.UUID effectivePageUuid = parseSafeUuid(effectivePageId);
+                lastResolvedPageId = effectivePageId;
+
                 JsonNode messagingArr = entry.path("messaging");
                 if (!messagingArr.isArray()) continue;
 
@@ -162,64 +327,103 @@ public class FanpageBotController {
                         continue;
                     }
                     String senderId = event.path("sender").path("id").asText(null);
+                    if (senderId == null || senderId.isBlank()) {
+                        continue;
+                    }
+                    String normalizedSenderId = senderId.strip();
+                    // Đối chiếu chống lặp is_echo theo PAGE_ID số của Facebook (nếu sender.id == entry[].id thì bỏ qua tuyệt đối)
+                    if (!fbNumericPageId.isEmpty() && fbNumericPageId.equals(normalizedSenderId)) {
+                        continue;
+                    }
+
                     String text = event.path("message").path("text").asText(null);
                     if (text == null || text.isBlank()) {
                         text = event.path("postback").path("payload").asText(null);
                     }
-                    if (senderId == null || text == null || text.isBlank()) {
+                    if (text == null || text.isBlank()) {
+                        text = event.path("postback").path("title").asText(null);
+                    }
+                    if (text == null || text.isBlank()) {
                         continue;
                     }
+
                     String mid = event.path("message").path("mid").asText(null);
+                    String rawReplyToMid = event.path("message").path("reply_to").path("mid").asText("");
+                    String replyToMid = (rawReplyToMid != null && !rawReplyToMid.isBlank()) ? rawReplyToMid.strip() : null;
                     String eventTimestamp = event.path("timestamp").asText("");
                     String explicitEventId = (mid != null && !mid.isBlank())
                             ? mid.strip()
-                            : (entry.path("id").asText("") + ":" + eventTimestamp + ":" + text.strip());
-                    String stableWebhookConvId = "fb_webhook_" + senderId.strip();
+                            : (fbNumericPageId + ":" + eventTimestamp + ":" + text.strip());
+                    String stableWebhookConvId = "fb_webhook_" + normalizedSenderId;
                     String dedupKey = com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
-                            parsedQueryPageId,
-                            senderId,
+                            effectivePageUuid,
+                            normalizedSenderId,
                             stableWebhookConvId,
                             false,
                             text,
                             List.of(),
                             explicitEventId
                     );
+
+                    // Chống trùng lặp Webhook Retry theo mid (TTL 10 phút) & cache phản hồi
+                    if (mid != null && !mid.isBlank()
+                            && !com.example.docmind.service.bot.ConversationState.tryAcquireWebhookMid(mid, MID_DEDUP_TTL_MS)) {
+                        FanpageBotResponse cachedWebhookResp = com.example.docmind.service.bot.ConversationState.getCachedWebhookResponse(dedupKey);
+                        if (cachedWebhookResp != null) {
+                            lastBotResponse = cachedWebhookResp;
+                        }
+                        deduplicatedCount++;
+                        log.info("[FB_WEBHOOK] Ignored duplicate message mid={} sender={}", mid.strip(), normalizedSenderId);
+                        continue;
+                    }
+
                     FanpageBotResponse cachedWebhookResp = com.example.docmind.service.bot.ConversationState.getCachedWebhookResponse(dedupKey);
                     if (cachedWebhookResp != null) {
                         lastBotResponse = cachedWebhookResp;
                         deduplicatedCount++;
                         continue;
                     }
-                    FanpageBotRequest webhookReq = new FanpageBotRequest(
-                            queryPageId,
-                            senderId,
-                            null,
-                            text,
-                            List.of(),
-                            List.of(),
-                            List.of(),
-                            5,
-                            null,
-                            null,
-                            null,
-                            null,
-                            false,
-                            null,
-                            null,
-                            stableWebhookConvId,
-                            false
-                    );
-                    lastBotResponse = fanpageBotService.handleCustomerMessage(webhookReq);
-                    if (dedupKey != null && lastBotResponse != null) {
-                        com.example.docmind.service.bot.ConversationState.cacheWebhookResponse(dedupKey, lastBotResponse);
+
+                    // Lưu ánh xạ mid của tin nhắn khách gửi đến vào kho bền vững + bounded cache
+                    if (mid != null && !mid.isBlank()) {
+                        com.example.docmind.service.bot.SentBubbleLedger.recordMessageId(
+                                effectivePageId, normalizedSenderId, mid.strip(), "user", text);
                     }
-                    if (conversationInboxService != null) {
-                        try {
-                            conversationInboxService.recordCustomerAndBotTurn(webhookReq, lastBotResponse);
-                        } catch (Exception ignored) {
-                            // Non-blocking sync to inbox
+
+                    String prevMdcCorrId = org.slf4j.MDC.get("correlation_id");
+                    boolean generatedCorrId = (prevMdcCorrId == null || prevMdcCorrId.isBlank());
+                    if (generatedCorrId) {
+                        org.slf4j.MDC.put("correlation_id", java.util.UUID.randomUUID().toString());
+                    }
+                    org.slf4j.MDC.put("fb_message_id", explicitEventId);
+                    try {
+                        // Tra cứu nội dung bong bóng gốc nếu khách dùng tính năng Quote-Reply (message.reply_to.mid)
+                        String quotedMessageText = null;
+                        if (replyToMid != null) {
+                            quotedMessageText = resolveQuotedMessageTextForWebhook(
+                                    effectivePageId, normalizedSenderId, replyToMid);
+                        }
+
+                        // 1. Bật hiệu ứng đang gõ (typing_on) ngay khi nhận tin từ khách (nếu đã cấu hình page-access-token)
+                        sendFacebookSenderAction(normalizedSenderId, "typing_on");
+
+                        // 2. Điều phối hàng đợi theo Sender (Debounce + Lifecycle Epoch + Sequential Send)
+                        lastBotResponse = processCoordinatedSenderEvent(
+                                effectivePageId,
+                                normalizedSenderId,
+                                stableWebhookConvId,
+                                text,
+                                replyToMid,
+                                quotedMessageText,
+                                dedupKey
+                        );
+                    } finally {
+                        org.slf4j.MDC.remove("fb_message_id");
+                        if (generatedCorrId) {
+                            org.slf4j.MDC.remove("correlation_id");
                         }
                     }
+
                     processedCount++;
                 }
             }
@@ -230,6 +434,9 @@ public class FanpageBotController {
             if (deduplicatedCount > 0) {
                 out.put("deduplicated_events", deduplicatedCount);
             }
+            if (lastResolvedPageId != null) {
+                out.put("resolved_page_id", lastResolvedPageId);
+            }
             if (lastBotResponse != null) {
                 out.put("bot_response", lastBotResponse);
             }
@@ -238,6 +445,531 @@ public class FanpageBotController {
             return ResponseEntity.badRequest()
                     .body(Map.of("status", "error", "message", e.getMessage() != null ? e.getMessage() : "Invalid payload"));
         }
+    }
+
+    /**
+     * Tra cứu nội dung tin nhắn gốc của {@code reply_to.mid} theo 2 tầng:
+     * <ol>
+     *   <li>Tầng 1: {@link com.example.docmind.service.bot.SentBubbleLedger#lookupMessageByMid} (Cache + PostgreSQL).</li>
+     *   <li>Tầng 2: Nếu {@code found=false} và có {@code pageAccessToken}, gọi fallback có kiểm soát tới
+     *       Facebook Graph API ({@code timeout <= 1200ms}, không retry).</li>
+     * </ol>
+     */
+    public String resolveQuotedMessageTextForWebhook(
+            String effectivePageId,
+            String normalizedSenderId,
+            String replyToMid
+    ) {
+        if (replyToMid == null || replyToMid.isBlank()) {
+            return null;
+        }
+        String cleanMid = replyToMid.strip();
+        String quotedMessageText = com.example.docmind.service.bot.SentBubbleLedger.lookupMessageByMid(
+                effectivePageId, normalizedSenderId, cleanMid);
+        String source = quotedMessageText != null ? "ledger" : "none";
+        if (quotedMessageText == null && pageAccessToken != null && !pageAccessToken.isBlank()) {
+            String fetched = fetchMessageTextFromGraphApi(cleanMid);
+            if (fetched != null && !fetched.isBlank()) {
+                quotedMessageText = fetched.strip();
+                source = "graph_api";
+                com.example.docmind.service.bot.SentBubbleLedger.recordMessageId(
+                        effectivePageId, normalizedSenderId, cleanMid, "assistant", quotedMessageText);
+            }
+        }
+        log.info("[FB_WEBHOOK] Resolved reply_to.mid={} sender={} found={} source={}",
+                cleanMid, normalizedSenderId, quotedMessageText != null, source);
+        return quotedMessageText;
+    }
+
+    public String fetchMessageTextFromGraphApi(String mid) {
+        if (mid == null || mid.isBlank() || pageAccessToken == null || pageAccessToken.isBlank()) {
+            return null;
+        }
+        try {
+            String url = FB_GRAPH_MESSAGE_LOOKUP_BASE_URL
+                    + URLEncoder.encode(mid.strip(), StandardCharsets.UTF_8)
+                    + "?fields=message&access_token="
+                    + URLEncoder.encode(pageAccessToken.strip(), StandardCharsets.UTF_8);
+            HttpResponseResult resp = graphApiGetter.getJson(url, GRAPH_API_LOOKUP_TIMEOUT_MS);
+            if (resp != null && resp.statusCode() >= 200 && resp.statusCode() < 300
+                    && resp.body() != null && !resp.body().isBlank()) {
+                JsonNode node = objectMapper.readTree(resp.body());
+                String msg = node.path("message").asText("");
+                if (msg != null && !msg.isBlank()) {
+                    return msg.strip();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[FB_WEBHOOK] Graph API reply_to.mid fallback missed for mid={}: {}", mid, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Điều phối hàng đợi theo từng {@code (pageId, senderPsid)} theo chính sách nhắn chen thống nhất (Checkpoint E):
+     * <ul>
+     *   <li>Trường hợp 1 (Tin nhắn B đến trước khi bong bóng 1 của lượt A được gửi — trong debounce hoặc lúc LLM đang chạy):
+     *       tăng {@code generationEpoch}, hủy lượt A ({@code supersede}), gộp {@code A + B} thành lượt mới.</li>
+     *   <li>Trường hợp 2 (Tin nhắn B đến giữa khoảng nghỉ {@code bubbleDelayMs} sau khi bong bóng {@code 1..i} của lượt A đã gửi,
+     *       trước khi bong bóng {@code i+1} được gửi): tăng {@code generationEpoch} để đánh thức ngay luồng đang chờ {@code bubbleDelayMs},
+     *       dừng gửi ngay toàn bộ các bong bóng còn lại ({@code i+1..N}) của lượt A (trừ cảnh báo khẩn cấp an toàn y tế),
+     *       giữ nguyên đúng các bong bóng {@code 1..i} đã gửi trong {@link com.example.docmind.service.bot.SentBubbleLedger},
+     *       và chuyển sang xử lý ngay tin nhắn B.</li>
+     * </ul>
+     */
+    private FanpageBotResponse processCoordinatedSenderEvent(
+            String effectivePageId,
+            String normalizedSenderId,
+            String stableWebhookConvId,
+            String text,
+            String replyToMid,
+            String quotedMessageText,
+            String dedupKey
+    ) {
+        String coordKey = (effectivePageId != null ? effectivePageId.strip() : "")
+                + "|"
+                + (normalizedSenderId != null ? normalizedSenderId.strip() : "");
+        SenderBatchCoordinator coord = senderCoordinators.computeIfAbsent(coordKey, k -> new SenderBatchCoordinator());
+        boolean isLeader = false;
+
+        synchronized (coord.lock) {
+            long now = System.currentTimeMillis();
+            if (coord.batchCurrentlyExecuting && coord.runningLlmCanSupersede) {
+                // Trường hợp 1b: Batch A đang chạy LLM nhưng CHƯA gửi bong bóng đầu tiên ra Facebook -> Supersede & gộp A + B
+                long newEpoch = com.example.docmind.service.bot.SenderEpochRegistry.supersedeCurrentEpoch(
+                        effectivePageId, normalizedSenderId);
+                if (!coord.inFlightTexts.isEmpty()) {
+                    List<String> combined = new ArrayList<>(coord.inFlightTexts);
+                    combined.addAll(coord.pendingTexts);
+                    coord.pendingTexts.clear();
+                    coord.pendingTexts.addAll(combined);
+                    coord.inFlightTexts.clear();
+                }
+                if (coord.latestReplyToMid == null && coord.inFlightReplyToMid != null) {
+                    coord.latestReplyToMid = coord.inFlightReplyToMid;
+                    coord.latestQuotedMessageText = coord.inFlightQuotedMessageText;
+                } else if ((coord.latestQuotedMessageText == null || coord.latestQuotedMessageText.isBlank())
+                        && coord.inFlightQuotedMessageText != null
+                        && java.util.Objects.equals(coord.latestReplyToMid, coord.inFlightReplyToMid)) {
+                    coord.latestQuotedMessageText = coord.inFlightQuotedMessageText;
+                }
+                log.info("[FB_WEBHOOK_EPOCH] Superseded in-flight LLM batch for sender={} -> newEpoch={}",
+                        normalizedSenderId, newEpoch);
+            } else if (coord.batchCurrentlyExecuting && coord.sendingBubblesCanInterrupt) {
+                // Trường hợp 2: Batch A đang trong khoảng nghỉ bubbleDelayMs giữa các bong bóng -> đánh thức ngay để hủy bong bóng i+1..N
+                long newEpoch = com.example.docmind.service.bot.SenderEpochRegistry.supersedeCurrentEpoch(
+                        effectivePageId, normalizedSenderId);
+                coord.sendingBubblesCanInterrupt = false;
+                log.info("[FB_WEBHOOK_EPOCH] Interrupted mid-send bubble delay for sender={} -> newEpoch={}",
+                        normalizedSenderId, newEpoch);
+            }
+            coord.pendingTexts.add(text);
+            if (dedupKey != null) {
+                coord.pendingDedupKeys.add(dedupKey);
+            }
+            if (replyToMid != null) {
+                String prevLatestMid = coord.latestReplyToMid;
+                coord.latestReplyToMid = replyToMid;
+                if (quotedMessageText != null && !quotedMessageText.isBlank()) {
+                    coord.latestQuotedMessageText = quotedMessageText;
+                } else if (!replyToMid.equals(prevLatestMid) && !replyToMid.equals(coord.inFlightReplyToMid)) {
+                    coord.latestQuotedMessageText = null;
+                }
+            }
+
+            if (!coord.debounceLeaderActive && !coord.batchCurrentlyExecuting) {
+                isLeader = true;
+                coord.debounceLeaderActive = true;
+                coord.firstMessageArrivedAtMs = now;
+                coord.debounceDeadlineMs = now + Math.max(0L, burstDebounceMs);
+                if (burstDebounceMs > 0) {
+                    com.example.docmind.service.bot.SenderEpochRegistry.markDebouncing(
+                            effectivePageId, normalizedSenderId);
+                }
+            } else if (coord.debounceLeaderActive && !coord.batchCurrentlyExecuting && burstDebounceMs > 0) {
+                // Trường hợp 1a: Tin nhắn B đến khi Tin nhắn A vẫn đang nằm trong cửa sổ gom
+                long extended = now + Math.min(burstDebounceMs, 400L);
+                long hardCap = coord.firstMessageArrivedAtMs + maxBurstWaitMs;
+                coord.debounceDeadlineMs = Math.min(hardCap, Math.max(coord.debounceDeadlineMs, extended));
+                coord.lock.notifyAll();
+            }
+
+            if (!isLeader) {
+                // Luồng phụ chờ luồng điều phối hoàn tất xử lý cả cụm tin nhắn để trả kết quả đồng bộ
+                while (coord.debounceLeaderActive || coord.batchCurrentlyExecuting || !coord.pendingTexts.isEmpty()) {
+                    if (!coord.debounceLeaderActive && !coord.batchCurrentlyExecuting && !coord.pendingTexts.isEmpty()) {
+                        isLeader = true;
+                        coord.debounceLeaderActive = true;
+                        long tNow = System.currentTimeMillis();
+                        coord.firstMessageArrivedAtMs = tNow;
+                        coord.debounceDeadlineMs = tNow;
+                        break;
+                    }
+                    try {
+                        coord.lock.wait(2000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return coord.lastCompletedResponse;
+                    }
+                }
+                if (!isLeader) {
+                    return coord.lastCompletedResponse;
+                }
+            }
+        }
+
+        // Luồng Leader thực thi vòng lặp xử lý từng Batch tuần tự cho tới khi hàng đợi của Sender rỗng
+        FanpageBotResponse finalResp = null;
+        while (true) {
+            List<String> batchTexts;
+            List<String> batchDedupKeys;
+            String batchReplyToMid;
+            String batchQuotedText;
+            com.example.docmind.service.bot.SenderEpochRegistry.EpochTurnContext epochCtx;
+
+            synchronized (coord.lock) {
+                if (burstDebounceMs > 0) {
+                    while (true) {
+                        long remaining = coord.debounceDeadlineMs - System.currentTimeMillis();
+                        if (remaining <= 0) {
+                            break;
+                        }
+                        try {
+                            coord.lock.wait(remaining);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                }
+                if (coord.pendingTexts.isEmpty()) {
+                    coord.debounceLeaderActive = false;
+                    coord.batchCurrentlyExecuting = false;
+                    coord.runningLlmCanSupersede = false;
+                    coord.sendingBubblesCanInterrupt = false;
+                    coord.lock.notifyAll();
+                    break;
+                }
+                batchTexts = new ArrayList<>(coord.pendingTexts);
+                batchDedupKeys = new ArrayList<>(coord.pendingDedupKeys);
+                batchReplyToMid = coord.latestReplyToMid;
+                batchQuotedText = coord.latestQuotedMessageText;
+
+                coord.pendingTexts.clear();
+                coord.pendingDedupKeys.clear();
+                coord.latestReplyToMid = null;
+                coord.latestQuotedMessageText = null;
+
+                coord.inFlightTexts = new ArrayList<>(batchTexts);
+                coord.inFlightReplyToMid = batchReplyToMid;
+                coord.inFlightQuotedMessageText = batchQuotedText;
+                coord.debounceLeaderActive = false;
+                coord.batchCurrentlyExecuting = true;
+                coord.runningLlmCanSupersede = true;
+                coord.sendingBubblesCanInterrupt = false;
+
+                epochCtx = com.example.docmind.service.bot.SenderEpochRegistry.startNewBatchEpoch(
+                        effectivePageId, normalizedSenderId);
+            }
+
+            String mergedText = String.join("\n", batchTexts);
+            FanpageBotRequest webhookReq = new FanpageBotRequest(
+                    effectivePageId,
+                    normalizedSenderId,
+                    null,
+                    mergedText,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    5,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    stableWebhookConvId,
+                    false,
+                    batchReplyToMid,
+                    batchQuotedText
+            );
+
+            FanpageBotResponse batchResp = null;
+            boolean supersededBeforeSend = false;
+            try {
+                batchResp = fanpageBotService.handleCustomerMessage(webhookReq);
+                boolean isUninterruptibleMedicalSafetyHandoff = isEmergencyMedicalSafetyHandoff(batchResp);
+
+                synchronized (coord.lock) {
+                    boolean stillCurrent = com.example.docmind.service.bot.SenderEpochRegistry.isEpochCurrent(
+                            effectivePageId, normalizedSenderId, epochCtx.epoch())
+                            && (batchResp == null
+                                || batchResp.triggeredHooks() == null
+                                || !batchResp.triggeredHooks().contains("SUPERSEDED_BY_NEWER_EPOCH"));
+                    if (!stillCurrent) {
+                        supersededBeforeSend = true;
+                        log.info("[FB_WEBHOOK_EPOCH] Discarding superseded batchId={} epoch={} for sender={}",
+                                epochCtx.batchId(), epochCtx.epoch(), normalizedSenderId);
+                    } else {
+                        coord.runningLlmCanSupersede = false;
+                        coord.sendingBubblesCanInterrupt = !isUninterruptibleMedicalSafetyHandoff;
+                        coord.inFlightTexts.clear();
+                        coord.inFlightReplyToMid = null;
+                        coord.inFlightQuotedMessageText = null;
+                        com.example.docmind.service.bot.SenderEpochRegistry.transitionToSendingBubbles(
+                                effectivePageId, normalizedSenderId, epochCtx.epoch());
+                    }
+                }
+
+                if (!supersededBeforeSend && batchResp != null) {
+                    for (String dKey : batchDedupKeys) {
+                        if (dKey != null) {
+                            com.example.docmind.service.bot.ConversationState.cacheWebhookResponse(dKey, batchResp);
+                        }
+                    }
+                    if (conversationInboxService != null) {
+                        try {
+                            conversationInboxService.recordCustomerAndBotTurn(webhookReq, batchResp);
+                        } catch (Exception ignored) {
+                            // Non-blocking sync to inbox
+                        }
+                    }
+                    sendSequentialBubblesToFacebook(effectivePageId, normalizedSenderId, stableWebhookConvId, batchResp);
+                    finalResp = batchResp;
+                }
+            } finally {
+                com.example.docmind.service.bot.SenderEpochRegistry.completeTurn(
+                        effectivePageId, normalizedSenderId, epochCtx.epoch());
+                synchronized (coord.lock) {
+                    if (finalResp != null) {
+                        coord.lastCompletedResponse = finalResp;
+                    }
+                    coord.runningLlmCanSupersede = false;
+                    coord.sendingBubblesCanInterrupt = false;
+                    if (coord.pendingTexts.isEmpty()) {
+                        coord.batchCurrentlyExecuting = false;
+                        coord.debounceLeaderActive = false;
+                        coord.lock.notifyAll();
+                        break;
+                    } else {
+                        // Còn tin nhắn mới đến trong lúc Batch A đang chạy -> tiếp tục vòng lặp ngay cho Batch kế tiếp
+                        coord.debounceDeadlineMs = System.currentTimeMillis();
+                    }
+                }
+            }
+        }
+        return finalResp;
+    }
+
+    private static boolean isEmergencyMedicalSafetyHandoff(FanpageBotResponse resp) {
+        if (resp == null || !resp.needsHumanHandoff()) {
+            return false;
+        }
+        String hType = resp.handoffCategory() != null ? resp.handoffCategory().strip().toUpperCase(Locale.ROOT) : "";
+        if ("MEDICAL_SAFETY_HANDOFF".equals(hType)
+                || "SAFETY_RISK".equals(hType)
+                || "NEUROLOGICAL_RISK".equals(hType)) {
+            return true;
+        }
+        return resp.triggeredHooks() != null && resp.triggeredHooks().stream()
+                .anyMatch(h -> h != null && (h.contains("SAFETY_RISK") || h.contains("NEUROLOGICAL") || h.contains("MEDICAL_SAFETY")));
+    }
+
+    /**
+     * Gửi hành động trạng thái (ví dụ {@code typing_on}) tới khách hàng qua Facebook Graph API {@code me/messages}.
+     * Nếu {@code page-access-token} đang để trống (như trong Unit Test), bỏ qua hoàn toàn.
+     */
+    public boolean sendFacebookSenderAction(String recipientPsid, String senderAction) {
+        if (pageAccessToken == null || pageAccessToken.isBlank()
+                || recipientPsid == null || recipientPsid.isBlank()
+                || senderAction == null || senderAction.isBlank()) {
+            return false;
+        }
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("recipient", Map.of("id", recipientPsid.strip()));
+            payload.put("sender_action", senderAction.strip());
+            String jsonBody = objectMapper.writeValueAsString(payload);
+            String url = buildFacebookMessagesUrl(pageAccessToken.strip());
+            HttpResponseResult resp = graphApiSender.postJson(url, jsonBody);
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.warn("[FB_SEND_API] sender_action={} to psid={} returned status={} body={}",
+                        senderAction, recipientPsid, resp.statusCode(), resp.body());
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("[FB_SEND_API] Error sending sender_action={} to psid={}: {}",
+                    senderAction, recipientPsid, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Duyệt tuần tự qua danh sách {@code replyBubbles} (hoặc {@code reply} nếu {@code replyBubbles} rỗng)
+     * và bắn tuần tự từng bong bóng {@code 1 -> 2 -> 3} qua Facebook Graph API {@code me/messages}.
+     * Giữa các bong bóng có bật {@code sender_action: "typing_on"} và nghỉ có thể đánh thức ({@code awaitBubbleDelayOrSupersede})
+     * để nếu khách nhắn chen ngang giữa chừng thì dừng gửi ngay lập tức các bong bóng còn lại.
+     */
+    public int sendSequentialBubblesToFacebook(String recipientPsid, FanpageBotResponse botResp) {
+        return sendSequentialBubblesToFacebook(resolveEffectivePageId(defaultPageId, null), recipientPsid, null, botResp);
+    }
+
+    public int sendSequentialBubblesToFacebook(String effectivePageId, String recipientPsid, FanpageBotResponse botResp) {
+        return sendSequentialBubblesToFacebook(effectivePageId, recipientPsid, null, botResp);
+    }
+
+    public int sendSequentialBubblesToFacebook(
+            String effectivePageId,
+            String recipientPsid,
+            String conversationId,
+            FanpageBotResponse botResp
+    ) {
+        if (pageAccessToken == null || pageAccessToken.isBlank()
+                || recipientPsid == null || recipientPsid.isBlank()
+                || botResp == null) {
+            return 0;
+        }
+        String resolvedPageId = (effectivePageId != null && !effectivePageId.isBlank())
+                ? effectivePageId.strip()
+                : resolveEffectivePageId(defaultPageId, null);
+        String cleanPsid = recipientPsid.strip();
+        List<String> bubbleTexts = new ArrayList<>();
+        if (botResp.replyBubbles() != null && !botResp.replyBubbles().isEmpty()) {
+            for (FanpageBotResponse.ReplyBubble b : botResp.replyBubbles()) {
+                if (b != null && b.text() != null && !b.text().isBlank()) {
+                    bubbleTexts.add(b.text().strip());
+                }
+            }
+        }
+        if (bubbleTexts.isEmpty() && botResp.replyText() != null && !botResp.replyText().isBlank()) {
+            bubbleTexts.add(botResp.replyText().strip());
+        }
+        if (bubbleTexts.isEmpty()) {
+            return 0;
+        }
+
+        boolean uninterruptibleSafety = isEmergencyMedicalSafetyHandoff(botResp);
+        com.example.docmind.service.bot.SenderEpochRegistry.EpochTurnContext turnCtx =
+                com.example.docmind.service.bot.SenderEpochRegistry.getCurrentThreadTurn();
+        long expectedEpoch = (turnCtx != null && !uninterruptibleSafety) ? turnCtx.epoch() : 0L;
+
+        String url = buildFacebookMessagesUrl(pageAccessToken.strip());
+        int sentCount = 0;
+        int total = bubbleTexts.size();
+        boolean interruptedByNewerEpoch = false;
+        for (int i = 0; i < total; i++) {
+            if (!uninterruptibleSafety
+                    && !com.example.docmind.service.bot.SenderEpochRegistry.checkThreadEpochStillCurrent(
+                            resolvedPageId,
+                            cleanPsid,
+                            com.example.docmind.service.bot.SenderEpochRegistry.Checkpoint.BEFORE_OUTBOUND_BUBBLE_SEND)) {
+                interruptedByNewerEpoch = true;
+                log.info("[FB_SEND_API] Aborted sending bubble {}/{} to psid={} because epoch is superseded",
+                        i + 1, total, cleanPsid);
+                break;
+            }
+            String bubbleText = bubbleTexts.get(i);
+            try {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("recipient", Map.of("id", cleanPsid));
+                payload.put("messaging_type", "RESPONSE");
+                payload.put("message", Map.of("text", bubbleText));
+                String jsonBody = objectMapper.writeValueAsString(payload);
+
+                HttpResponseResult resp = graphApiSender.postJson(url, jsonBody);
+                if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                    sentCount++;
+                    String outMid = "";
+                    // Trích xuất message_id từ response của POST /v21.0/me/messages để lưu ánh xạ Quote-Reply bền vững
+                    if (resp.body() != null && !resp.body().isBlank()) {
+                        try {
+                            JsonNode respNode = objectMapper.readTree(resp.body());
+                            outMid = respNode.path("message_id").asText("");
+                            if (outMid == null || outMid.isBlank()) {
+                                outMid = respNode.path("mid").asText("");
+                            }
+                            if (outMid != null && !outMid.isBlank()) {
+                                com.example.docmind.service.bot.SentBubbleLedger.recordMessageId(
+                                        resolvedPageId, cleanPsid, outMid.strip(), "assistant", bubbleText);
+                            }
+                        } catch (Exception ignored) {
+                            // Ignore non-JSON mock response bodies if any
+                        }
+                    }
+                    log.info("[FB_SEND_API] Sent bubble {}/{} to psid={} status={} mid={}",
+                            i + 1, total, cleanPsid, resp.statusCode(),
+                            (outMid != null && !outMid.isBlank()) ? outMid.strip() : "-");
+                } else {
+                    log.error("[FB_SEND_API] Failed bubble {}/{} to psid={} status={} body={}",
+                            i + 1, total, cleanPsid, resp.statusCode(), resp.body());
+                }
+            } catch (Exception e) {
+                log.error("[FB_SEND_API] Exception sending bubble {}/{} to psid={}: {}",
+                        i + 1, total, cleanPsid, e.getMessage());
+            }
+
+            if (i + 1 < total) {
+                if (!uninterruptibleSafety && expectedEpoch > 0L
+                        && !com.example.docmind.service.bot.SenderEpochRegistry.isEpochCurrent(
+                                resolvedPageId, cleanPsid, expectedEpoch)) {
+                    interruptedByNewerEpoch = true;
+                    log.info("[FB_SEND_API] Aborted remaining bubbles after {}/{} to psid={} because newer message arrived",
+                            i + 1, total, cleanPsid);
+                    break;
+                }
+                sendFacebookSenderAction(cleanPsid, "typing_on");
+                if (interBubbleDelayMs > 0) {
+                    boolean stillValid = com.example.docmind.service.bot.SenderEpochRegistry.awaitBubbleDelayOrSupersede(
+                            resolvedPageId, cleanPsid, expectedEpoch, interBubbleDelayMs);
+                    if (!stillValid) {
+                        interruptedByNewerEpoch = true;
+                        log.info("[FB_SEND_API] Woke up early and canceled remaining bubbles {}-{} to psid={} due to customer interruption",
+                                i + 2, total, cleanPsid);
+                        break;
+                    }
+                }
+            }
+        }
+        if (interruptedByNewerEpoch && sentCount < total) {
+            if (conversationId != null && !conversationId.isBlank()) {
+                String ledgerKey = com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, conversationId);
+                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(ledgerKey, sentCount);
+            } else {
+                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(
+                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, null), sentCount);
+                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(
+                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, "fb_webhook_" + cleanPsid), sentCount);
+            }
+        }
+        return sentCount;
+    }
+
+    private static String buildFacebookMessagesUrl(String token) {
+        return FB_GRAPH_MESSAGES_API_URL + "?access_token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+    }
+
+    private HttpResponseResult defaultPostJsonToGraphApi(String url, String jsonBody) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json; charset=utf-8")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return new HttpResponseResult(resp.statusCode(), resp.body());
+    }
+
+    private HttpResponseResult defaultGetJsonFromGraphApi(String url, long timeoutMs) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofMillis(Math.max(200L, Math.min(timeoutMs, GRAPH_API_LOOKUP_TIMEOUT_MS))))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return new HttpResponseResult(resp.statusCode(), resp.body());
     }
 
     private static java.util.UUID parseSafeUuid(String raw) {
@@ -272,4 +1004,46 @@ public class FanpageBotController {
             return false;
         }
     }
+
+    @RestController
+    public static class RootPrivacyPolicyController {
+        @RequestMapping(
+                value = {"/privacy-policy", "/privacy-policy.html"},
+                method = {RequestMethod.GET, RequestMethod.HEAD},
+                produces = "text/html;charset=UTF-8"
+        )
+        public ResponseEntity<String> getRootPrivacyPolicyHtml() {
+            return ResponseEntity.ok()
+                    .header("Content-Type", "text/html;charset=UTF-8")
+                    .body(NANG_SEN_PRIVACY_POLICY_HTML);
+        }
+    }
+
+    public static final String NANG_SEN_PRIVACY_POLICY_HTML = """
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>Chính Sách Quyền Riêng Tư &amp; Xóa Dữ Liệu — Nàng Sen Spa (Trợ lý CSKH An Nhiên)</title>
+              <meta name="description" content="Chính sách quyền riêng tư, bảo mật thông tin và hướng dẫn yêu cầu xóa dữ liệu người dùng (Privacy Policy &amp; User Data Deletion Instructions) của Nàng Sen Spa — Trợ lý CSKH An Nhiên trên Facebook Messenger." />
+              <meta property="og:title" content="Chính Sách Quyền Riêng Tư &amp; Xóa Dữ Liệu — Nàng Sen Spa (Trợ lý CSKH An Nhiên)" />
+              <meta property="og:description" content="Chính sách bảo mật thông tin khách hàng và hướng dẫn xóa dữ liệu người dùng (Privacy Policy &amp; User Data Deletion Instructions) khi tương tác qua Facebook Messenger cùng Nàng Sen Spa." />
+              <meta property="og:type" content="website" />
+              <meta property="og:url" content="https://assistant.goc-an-nhien.site/privacy-policy.html" />
+              <meta property="og:image" content="https://assistant.goc-an-nhien.site/app-icon-1024.png" />
+            </head>
+            <body>
+              <h1>CHÍNH SÁCH QUYỀN RIÊNG TƯ &amp; XÓA DỮ LIỆU NGƯỜI DÙNG — NÀNG SEN SPA (TRỢ LÝ CSKH AN NHIÊN)</h1>
+              <h2>1. Dữ liệu thu thập (Information We Collect)</h2>
+              <p>Mã định danh người dùng trên Trang (Facebook Page-Scoped User ID - PSID), nội dung tin nhắn tư vấn, và họ tên/số điện thoại/khung giờ đặt lịch khi khách hàng chủ động cung cấp.</p>
+              <h2>2. Mục đích sử dụng (How We Use Information)</h2>
+              <p>Tư vấn dịch vụ spa dưỡng sinh, báo giá minh bạch theo bảng giá niêm yết và hỗ trợ đặt lịch hẹn tại Nàng Sen Spa qua Facebook Messenger.</p>
+              <h2>3. Bảo mật &amp; Không chia sẻ bên thứ ba (Data Protection)</h2>
+              <p>Dữ liệu được bảo mật nội bộ và tuyệt đối không bán hoặc chia sẻ cho bất kỳ bên thứ ba nào.</p>
+              <h2>4. Hướng dẫn yêu cầu xóa dữ liệu người dùng (User Data Deletion Instructions)</h2>
+              <p>Khách hàng có thể nhắn trực tiếp từ khóa "Xóa dữ liệu" hoặc "Hủy đăng ký" vào hộp thư Fanpage Nàng Sen Spa hoặc gửi email tới privacy@goc-an-nhien.site để xóa toàn bộ lịch sử hội thoại và thông tin liên hệ trong vòng 24 giờ.</p>
+            </body>
+            </html>
+            """;
 }

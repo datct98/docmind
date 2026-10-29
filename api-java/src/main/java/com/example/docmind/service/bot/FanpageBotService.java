@@ -443,7 +443,8 @@ public class FanpageBotService {
                         rawRequest.messages(), reconciled, rawRequest.documentIds(), rawRequest.topK(),
                         rawRequest.previousTemperature(), rawRequest.replyDelaySeconds(), rawRequest.idleSeconds(),
                         rawRequest.action(), rawRequest.splitPriceBubbles(), rawRequest.pendingTurnSequence(),
-                        rawRequest.priceBubbleSentAtNs(), rawRequest.conversationId(), rawRequest.resetSession());
+                        rawRequest.priceBubbleSentAtNs(), rawRequest.conversationId(), rawRequest.resetSession(),
+                        rawRequest.replyToMid(), rawRequest.quotedMessageText());
             }
         }
         CURRENT_TURN_ID.set(turnId);

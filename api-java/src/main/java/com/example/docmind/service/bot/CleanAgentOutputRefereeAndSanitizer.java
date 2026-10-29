@@ -40,7 +40,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     );
 
     private static final Pattern FORBIDDEN_WRONG_PRONOUN_OR_SUBJECTLESS_OPENER_PATTERN = Pattern.compile(
-            "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?(?:hiểu|biết|thấy|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi)|(?:đã\\s+)?hiểu\\s+rồi|em\\s+hiểu\\s+mình\\s+đang\\s+cân\\s+nhắc)\\b.*"
+            "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?(?:hiểu|biết|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi)|(?:đã\\s+)?hiểu\\s+rồi|em\\s+hiểu\\s+mình\\s+đang\\s+cân\\s+nhắc)\\b.*"
+    );
+
+    private static final Pattern CATALOG_COMPONENT_DURATION_PATTERN = Pattern.compile(
+            "(?iU)\\b(\\d{1,3})\\s*(?:phút|p)\\b"
     );
 
     private static final Pattern FORBIDDEN_SELF_CONFESSION_REPETITION_PATTERN = Pattern.compile(
@@ -755,6 +759,49 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String bookingStatus,
             String customerMessage
     ) {
+        boolean hasMsg = customerMessage != null && !customerMessage.isBlank();
+        boolean inferredCurrentTurnHasPriceObjection = !hasMsg
+                ? (priceObjectionCount >= 1 || explicitDownsellRequested)
+                : (CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(customerMessage, true)
+                    || CleanAgentOrchestratorService.isExplicitDownsellOrLowBudgetRequest(customerMessage, null));
+        boolean inferredHigherPriorityIntent = hasMsg
+                && (CleanAgentOrchestratorService.isOperationalOrLogisticsQuestion(customerMessage)
+                    || (CleanAgentOrchestratorService.isNormalPriceOrDetailInquiryMessage(customerMessage)
+                        && !inferredCurrentTurnHasPriceObjection)
+                    || (CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage)
+                        && !inferredCurrentTurnHasPriceObjection));
+        return checkCleanCatalogGrounding(
+                bubbles,
+                allCatalog,
+                scopeFilteredCatalog,
+                excludedCatalog,
+                priceObjectionCount,
+                explicitDownsellRequested,
+                activePackage,
+                heldPkgIsNull,
+                bookingStatus,
+                customerMessage,
+                inferredCurrentTurnHasPriceObjection,
+                false,
+                inferredHigherPriorityIntent
+        );
+    }
+
+    public static List<String> checkCleanCatalogGrounding(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            int priceObjectionCount,
+            boolean explicitDownsellRequested,
+            PackageCatalogService.PackageSummary activePackage,
+            boolean heldPkgIsNull,
+            String bookingStatus,
+            String customerMessage,
+            boolean currentTurnHasPriceObjection,
+            boolean downsellAlreadyOfferedInHistory,
+            boolean hasHigherPriorityIntent
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of();
         }
@@ -771,9 +818,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 if (p.priceVnd() > 0L) {
                     allowedPrices.add(p.priceVnd());
                 }
-                if (p.durationMinutes() != null && p.durationMinutes() > 0) {
-                    allowedDurations.add(p.durationMinutes());
-                }
+                allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(p));
+            }
+            if (activePackage != null) {
+                allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(activePackage));
             }
             if (excludedCatalog != null) {
                 for (PackageCatalogService.PackageSummary ex : excludedCatalog) {
@@ -783,8 +831,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
             }
             for (PackageCatalogService.PackageSummary p : allCatalog) {
-                if (p != null && p.durationMinutes() != null && p.durationMinutes() > 0) {
-                    allowedDurations.add(p.durationMinutes());
+                if (p != null) {
+                    allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(p));
                 }
             }
         }
@@ -803,7 +851,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         boolean turnMentionsAllowedPrice = !allowedPrices.isEmpty()
                 && allMentionedPricesInTurn.stream().anyMatch(allowedPrices::contains);
 
-        Pattern durPat = Pattern.compile("(?iU)\\b(\\d{2,3})\\s*phút\\b");
+        Pattern durPat = Pattern.compile("(?iU)\\b(\\d{2,3})\\s*(?:phút|p)\\b");
         Pattern privateOrVipRoomPat = Pattern.compile("(?iU)\\bphòng\\s+(?:vip|riêng)\\b");
         Pattern falsePriorPkgInterestPat = Pattern.compile("(?iU).*\\b(mình|anh|chị|bạn)\\s+đang\\s+quan\\s+tâm\\s+(?:đến\\s+|tới\\s+)?gói\\b.*");
         Pattern pastTenseInstructStaffPat = Pattern.compile(
@@ -845,6 +893,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
             }
 
+            if (!catalogEmpty) {
+                List<String> entityMismatchFlags = detectPriceEntityMismatchesInBubble(text, allCatalog);
+                for (String flag : entityMismatchFlags) {
+                    if (!violations.contains(flag)) {
+                        violations.add(flag);
+                    }
+                }
+            }
+
             Matcher dm = durPat.matcher(text);
             while (dm.find()) {
                 try {
@@ -859,10 +916,23 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
 
             if (excludedCatalog != null) {
+                String maskedForExcl = lower;
+                if (scopeFilteredCatalog != null && !scopeFilteredCatalog.isEmpty()) {
+                    List<PackageCatalogService.PackageSummary> sortedAllowed = scopeFilteredCatalog.stream()
+                            .filter(p -> p != null && p.displayName() != null && !p.displayName().isBlank())
+                            .sorted((a, b2) -> Integer.compare(b2.displayName().strip().length(), a.displayName().strip().length()))
+                            .toList();
+                    for (PackageCatalogService.PackageSummary allowPkg : sortedAllowed) {
+                        String allowLow = allowPkg.displayName().strip().toLowerCase(Locale.ROOT);
+                        if (allowLow.length() >= 5) {
+                            maskedForExcl = maskedForExcl.replace(allowLow, " ");
+                        }
+                    }
+                }
                 for (PackageCatalogService.PackageSummary ex : excludedCatalog) {
                     if (ex == null || ex.displayName() == null || ex.displayName().isBlank()) continue;
                     String exNameLower = ex.displayName().strip().toLowerCase(Locale.ROOT);
-                    if (exNameLower.length() >= 5 && lower.contains(exNameLower)) {
+                    if (exNameLower.length() >= 5 && maskedForExcl.contains(exNameLower)) {
                         violations.add("EXCLUDED_PACKAGE_MENTIONED:" + ex.displayName());
                     }
                 }
@@ -940,7 +1010,18 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 if (falseLowestOrDisparagePat.matcher(combinedTurnText).matches()) {
                     violations.add("CONTRADICTORY_LOWEST_PRICE_CLAIM_WHEN_DOWNSELL_EXISTS");
                 }
-                if (priceObjectionCount >= 2 && activePackage != null && activePackage.priceVnd() == minAllowedPrice) {
+                // Checkpoint 1.2: MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL chỉ kích hoạt khi hội đủ cả 4 điều kiện:
+                // (1) Lượt hiện tại có phản đối giá hoặc xin gói rẻ hơn (currentTurnHasPriceObjection == true)
+                // (2) Quy tắc downsell phù hợp với ý định lượt hiện tại (explicitDownsellRequested == true, priceObjectionCount >= 2)
+                // (3) Gói tiết kiệm phù hợp (DS02 - 239k) chưa được giới thiệu trong lịch sử (!downsellAlreadyOfferedInHistory)
+                // (4) Không có ý định ưu tiên cao hơn cần trả lời trước (!hasHigherPriorityIntent)
+                if (currentTurnHasPriceObjection
+                        && explicitDownsellRequested
+                        && !downsellAlreadyOfferedInHistory
+                        && !hasHigherPriorityIntent
+                        && priceObjectionCount >= 2
+                        && activePackage != null
+                        && activePackage.priceVnd() == minAllowedPrice) {
                     boolean mentionedDownsell = CleanAgentCatalogAndPromptBuilder.isAnyPackagePresentedInBotText(
                             combinedTurnText, List.of(activePackage));
                     if (!mentionedDownsell) {
@@ -951,6 +1032,452 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
 
         return violations;
+    }
+
+    /**
+     * Checkpoint 1.3: Đối chiếu cặp {@code (canonicalName, price, duration)} trong từng mệnh đề với danh sách đối tượng
+     * cấu trúc {@code Catalog}. Nếu tên gói và mức giá/thời lượng trong cùng một khẳng định thuộc về 2 gói khác nhau
+     * (ví dụ: {@code "gói Massage cơ bản 60 phút bên em đang áp dụng mức giá ưu đãi 239k"}), gắn cờ {@code PRICE_ENTITY_MISMATCH}.
+     */
+    public static List<String> detectPriceEntityMismatchesInBubble(
+            String bubbleText,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (bubbleText == null || bubbleText.isBlank() || allCatalog == null || allCatalog.isEmpty()) {
+            return List.of();
+        }
+        List<PackageCatalogService.PackageSummary> sortedCatalog = allCatalog.stream()
+                .filter(p -> p != null && !p.isAddon() && p.displayName() != null && !p.displayName().isBlank())
+                .sorted((a, b) -> Integer.compare(b.displayName().strip().length(), a.displayName().strip().length()))
+                .toList();
+        if (sortedCatalog.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> flags = new ArrayList<>();
+        String[] sentences = bubbleText.split("[.!?;\n]+");
+        Pattern clauseSplitPat = Pattern.compile(
+                "(?iU)(?:,\\s*(?:còn|trong\\s+khi|nhưng|thay\\s+vào\\s+đó|hiện\\s+tại|tuy\\s+nhiên|bên\\s+cạnh\\s+đó)\\b|\\b(?:còn|trong\\s+khi|và|hoặc|hay|so\\s+với|ngoài\\s+ra\\s+có)\\s+(?=gói\\b))"
+        );
+
+        for (String sentence : sentences) {
+            if (sentence == null || sentence.isBlank()) continue;
+            String[] subClauses = clauseSplitPat.split(sentence);
+            for (String rawClause : subClauses) {
+                if (rawClause == null || rawClause.isBlank()) continue;
+                String clause = rawClause.strip();
+                String maskedLower = clause.toLowerCase(Locale.ROOT);
+
+                List<PackageCatalogService.PackageSummary> mentionedPkgs = new ArrayList<>();
+                for (PackageCatalogService.PackageSummary p : sortedCatalog) {
+                    String dispLower = p.displayName().strip().toLowerCase(Locale.ROOT);
+                    String dispNoPrefix = dispLower.replaceFirst("^gói\\s+", "").strip();
+                    if (dispLower.length() < 4) continue;
+                    if (maskedLower.contains(dispLower)) {
+                        mentionedPkgs.add(p);
+                        maskedLower = maskedLower.replace(dispLower, " ");
+                    } else if (dispNoPrefix.length() >= 6 && maskedLower.contains(dispNoPrefix)) {
+                        mentionedPkgs.add(p);
+                        maskedLower = maskedLower.replace(dispNoPrefix, " ");
+                    }
+                }
+                if (mentionedPkgs.size() != 1) {
+                    continue;
+                }
+                PackageCatalogService.PackageSummary matchedPkg = mentionedPkgs.get(0);
+                String pkgNameLower = matchedPkg.displayName().strip().toLowerCase(Locale.ROOT);
+                String pkgNoPrefixLower = pkgNameLower.replaceFirst("^gói\\s+", "").strip();
+
+                // Kiểm tra thời lượng đi liền ngay sau tên gói (nếu có)
+                Pattern adjacentDurPat = Pattern.compile(
+                        "(?iU)(?:gói\\s+)?" + Pattern.quote(pkgNoPrefixLower) + "\\s+~?\\s*(\\d{2,3})\\s*(?:phút|p)\\b"
+                );
+                Matcher adjDurMatcher = adjacentDurPat.matcher(clause);
+                if (adjDurMatcher.find() && matchedPkg.durationMinutes() != null && matchedPkg.durationMinutes() > 0) {
+                    try {
+                        int statedMin = Integer.parseInt(adjDurMatcher.group(1));
+                        boolean anySameNameWithDur = sortedCatalog.stream()
+                                .anyMatch(p -> p.displayName().strip().equalsIgnoreCase(matchedPkg.displayName().strip())
+                                        && p.durationMinutes() != null && p.durationMinutes() == statedMin);
+                        if (!anySameNameWithDur && statedMin != matchedPkg.durationMinutes()) {
+                            if (!flags.contains("PRICE_ENTITY_MISMATCH")) {
+                                flags.add("PRICE_ENTITY_MISMATCH");
+                            }
+                            flags.add("PRICE_ENTITY_MISMATCH:" + matchedPkg.code()
+                                    + ":expectedDuration=" + matchedPkg.durationMinutes() + "p,actual=" + statedMin + "p");
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+
+                // Kiểm tra mức giá khẳng định trong cùng mệnh đề với tên gói
+                Matcher pm = CLEAN_PRICE_MENTION_PATTERN.matcher(clause);
+                while (pm.find()) {
+                    Long priceVnd = parseCleanPriceMentionToVnd(pm.group());
+                    if (priceVnd == null || priceVnd <= 0L) continue;
+                    String beforePrice = clause.substring(0, pm.start()).toLowerCase(Locale.ROOT);
+                    String afterPrice = clause.substring(pm.end()).toLowerCase(Locale.ROOT);
+                    boolean isNegatedOrComparative = beforePrice.matches(
+                            "(?isU).*(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)|(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+)?)[^,]*$")
+                            || afterPrice.matches("(?isU)^[^,]{0,40}?\\b(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)\\b.*");
+                    if (isNegatedOrComparative) {
+                        continue;
+                    }
+                    boolean anySameNameWithPrice = sortedCatalog.stream()
+                            .anyMatch(p -> p.displayName().strip().equalsIgnoreCase(matchedPkg.displayName().strip())
+                                    && p.priceVnd() == priceVnd);
+                    if (!anySameNameWithPrice && matchedPkg.priceVnd() != priceVnd) {
+                        if (!flags.contains("PRICE_ENTITY_MISMATCH")) {
+                            flags.add("PRICE_ENTITY_MISMATCH");
+                        }
+                        flags.add("PRICE_ENTITY_MISMATCH:" + matchedPkg.code()
+                                + ":expected=" + matchedPkg.priceDisplay() + ",actual=" + pm.group().strip());
+                    }
+                }
+            }
+        }
+        return flags;
+    }
+
+    /**
+     * Checkpoint 1.3 & Nguyên tắc 1 + 3: Dựng lại bong bóng trực tiếp từ đối tượng cấu trúc {@code Catalog}
+     * ({@code canonicalName + durationLabel + priceDisplay + includesSummary + customerFacingSpaceNote} lấy từ cùng 1 item)
+     * khi đầu ra vi phạm {@code PRICE_ENTITY_MISMATCH} sau tối đa 1 lần gọi lại LLM (tuyệt đối không dùng regex thay thế mù quáng).
+     */
+    public static List<FanpageBotResponse.ReplyBubble> rebuildBubblesFromStructuredCatalog(
+            List<FanpageBotResponse.ReplyBubble> candidateBubbles,
+            PackageCatalogService.PackageSummary targetPackage,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (candidateBubbles == null || candidateBubbles.isEmpty()) {
+            return List.of();
+        }
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+
+        List<FanpageBotResponse.ReplyBubble> rebuilt = new ArrayList<>(candidateBubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            List<String> mismatchFlags = detectPriceEntityMismatchesInBubble(b.text(), allCatalog);
+            if (mismatchFlags.isEmpty()) {
+                rebuilt.add(b);
+                continue;
+            }
+            PackageCatalogService.PackageSummary authoritativePkg = targetPackage;
+            if (authoritativePkg == null && allCatalog != null) {
+                String low = b.text().toLowerCase(Locale.ROOT);
+                List<PackageCatalogService.PackageSummary> sorted = allCatalog.stream()
+                        .filter(p -> p != null && !p.isAddon() && p.displayName() != null && !p.displayName().isBlank())
+                        .sorted((x, y) -> Integer.compare(y.displayName().strip().length(), x.displayName().strip().length()))
+                        .toList();
+                for (PackageCatalogService.PackageSummary p : sorted) {
+                    if (low.contains(p.displayName().strip().toLowerCase(Locale.ROOT))) {
+                        authoritativePkg = p;
+                        break;
+                    }
+                }
+            }
+            if (authoritativePkg == null) {
+                rebuilt.add(b);
+                continue;
+            }
+            String pkgName = authoritativePkg.displayName() != null ? authoritativePkg.displayName().strip() : "gói dịch vụ";
+            String displayWithGoi = pkgName.toLowerCase(Locale.ROOT).startsWith("gói ") ? pkgName : ("gói " + pkgName);
+            String pkgDur = (authoritativePkg.durationLabel() != null && !authoritativePkg.durationLabel().isBlank())
+                    ? (" " + authoritativePkg.durationLabel().strip())
+                    : "";
+            String pkgPrice = authoritativePkg.priceDisplay() != null ? authoritativePkg.priceDisplay().strip() : "";
+            String pkgIncludes = (authoritativePkg.includesSummary() != null && !authoritativePkg.includesSummary().isBlank())
+                    ? authoritativePkg.includesSummary().strip()
+                    : "";
+            String pkgSpace = (authoritativePkg.customerFacingSpaceNote() != null && !authoritativePkg.customerFacingSpaceNote().isBlank())
+                    ? authoritativePkg.customerFacingSpaceNote().strip()
+                    : "";
+
+            StringBuilder structuredBubble = new StringBuilder();
+            structuredBubble.append("Dạ hiện tại ").append(displayWithGoi).append(pkgDur)
+                    .append(" bên ").append(sp).append(" đang áp dụng mức giá niêm yết ").append(pkgPrice).append(" trọn gói");
+            if (!pkgIncludes.isEmpty()) {
+                structuredBubble.append(" (bao gồm ").append(pkgIncludes);
+                if (!pkgSpace.isEmpty()) {
+                    structuredBubble.append(" tại ").append(pkgSpace);
+                }
+                structuredBubble.append(")");
+            }
+            structuredBubble.append(", cam kết không phát sinh phụ phí hay nhận tip ạ.");
+            if (b.text().strip().endsWith("?")) {
+                structuredBubble.append(" Dạ ").append(cp).append(" thấy ").append(displayWithGoi)
+                        .append(" (").append(pkgPrice).append(") này có phù hợp với nhu cầu của ").append(cp).append(" không ạ?");
+            }
+            rebuilt.add(new FanpageBotResponse.ReplyBubble(structuredBubble.toString(), b.typingDelayMs()));
+        }
+        return rebuilt;
+    }
+
+    private static final Pattern AFFIRMATIVE_PROMO_FABRICATION_PATTERN = Pattern.compile(
+            "(?isU).*(?<!(?:chưa|không|ko|chẳng)\\s{1,4}(?:có|áp\\s+dụng|triển\\s+khai)\\s{1,4}(?:chương\\s+trình\\s+)?)"
+            + "\\b(?:đang\\s+(?:giảm|sale|ưu\\s+đãi)\\s+\\d{1,2}\\s*%|giảm\\s+(?:ngay\\s+|thêm\\s+|tới\\s+)?\\d{1,2}\\s*%|"
+            + "ưu\\s+đãi\\s+giảm\\s+\\d{1,2}\\s*%|mua\\s+\\d+\\s*(?:buổi|gói|vé|suất)\\s+(?:tặng|được\\s+tặng|giảm)\\s+\\d+|"
+            + "tặng\\s+(?:kèm\\s+)?voucher\\s+\\d+)"
+            + ".*"
+    );
+
+    public static boolean hasUngroundedPromoFabrication(
+            String combinedText,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        if (!AFFIRMATIVE_PROMO_FABRICATION_PATTERN.matcher(combinedText).matches()) {
+            return false;
+        }
+        if (allCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : allCatalog) {
+                if (p == null) continue;
+                String meta = ((p.includesSummary() != null ? p.includesSummary() : "") + " "
+                        + (p.processSummary() != null ? p.processSummary() : "")).toLowerCase(Locale.ROOT);
+                if (meta.contains("%") || meta.contains("voucher") || meta.contains("tặng 1")) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Checkpoint C: Deterministic Guard cho 3 trạng thái {@link CleanAgentCatalogAndPromptBuilder.ReplyResolutionState}
+     * ({@code RESOLVED_QUOTED_PACKAGE}, {@code UNRESOLVED_QUOTED_PACKAGE}, {@code AMBIGUOUS_PACKAGE_REFERENCE})
+     * và kiểm soát không tự bịa chính sách khuyến mãi ngoài {@link PackageCatalogService}.
+     */
+    public static List<String> checkReplyResolutionGuard(
+            List<FanpageBotResponse.ReplyBubble> candidateBubbles,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            String customerMessage
+    ) {
+        if (candidateBubbles == null || candidateBubbles.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder sb = new StringBuilder();
+        for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
+            if (b != null && b.text() != null && !b.text().isBlank()) {
+                if (sb.length() > 0) sb.append(' ');
+                sb.append(b.text().strip());
+            }
+        }
+        String combined = sb.toString();
+        if (combined.isEmpty()) {
+            return List.of();
+        }
+        String combinedLower = combined.toLowerCase(Locale.ROOT);
+        List<String> violations = new ArrayList<>();
+
+        if (hasUngroundedPromoFabrication(combined, allCatalog)) {
+            violations.add("UNGROUNDED_PROMO_POLICY_FABRICATION");
+        }
+
+        if (quoteResolution == null) {
+            return violations;
+        }
+        CleanAgentCatalogAndPromptBuilder.ReplyResolutionState state = quoteResolution.resolutionState();
+        if (state == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE) {
+            return violations;
+        }
+
+        Set<Long> replyPrices = extractPricesInVndFromText(combined);
+        Set<Long> customerExplicitPrices = extractPricesInVndFromText(customerMessage);
+
+        if (state == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.RESOLVED_QUOTED_PACKAGE) {
+            PackageCatalogService.PackageSummary qPkg = quoteResolution.quotedPackage();
+            if (qPkg != null) {
+                boolean mentionsQuotedPkg = isPackageMentionedByNameOrPrice(combinedLower, replyPrices, qPkg);
+                boolean mentionsOtherPkgPrice = false;
+                for (Long rp : replyPrices) {
+                    if (rp != null && rp > 0L && rp != qPkg.priceVnd() && !customerExplicitPrices.contains(rp)) {
+                        mentionsOtherPkgPrice = true;
+                        break;
+                    }
+                }
+                if (!mentionsQuotedPkg || mentionsOtherPkgPrice) {
+                    violations.add("QUOTED_PACKAGE_FOCUS_MISMATCH:" + (qPkg.code() != null ? qPkg.code() : qPkg.priceDisplay()));
+                }
+            }
+            return violations;
+        }
+
+        // UNRESOLVED_QUOTED_PACKAGE or AMBIGUOUS_PACKAGE_REFERENCE
+        List<PackageCatalogService.PackageSummary> candidates = quoteResolution.candidatePackages();
+        boolean hasClarificationQuestion = combined.contains("?");
+        if (candidates.size() >= 2) {
+            int mentionedCandidateCount = 0;
+            for (PackageCatalogService.PackageSummary cand : candidates) {
+                if (cand != null && isPackageMentionedByNameOrPrice(combinedLower, replyPrices, cand)) {
+                    mentionedCandidateCount++;
+                }
+            }
+            if (!hasClarificationQuestion || mentionedCandidateCount < 2) {
+                violations.add("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:TIER_1_MULTI_CANDIDATE");
+            }
+        } else if (candidates.size() == 1) {
+            PackageCatalogService.PackageSummary soleCand = candidates.get(0);
+            boolean mentionsSole = isPackageMentionedByNameOrPrice(combinedLower, replyPrices, soleCand);
+            boolean asksOrOtherPackage = combinedLower.matches(
+                    "(?isU).*\\b(hay\\s+(?:một\\s+|1\\s+|là\\s+)?gói\\s+(?:nào\\s+|dịch\\s+vụ\\s+)?khác|hoặc\\s+(?:một\\s+)?gói\\s+khác|hay\\s+đang\\s+(?:hỏi|quan\\s+tâm)\\s+gói\\s+khác)\\b.*"
+            );
+            if (!hasClarificationQuestion || !mentionsSole || !asksOrOtherPackage) {
+                violations.add("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:TIER_2_SINGLE_CANDIDATE");
+            }
+        } else {
+            boolean mentionsAnySpecificPkgName = false;
+            if (allCatalog != null) {
+                for (PackageCatalogService.PackageSummary p : allCatalog) {
+                    if (p == null || p.isAddon() || p.displayName() == null) continue;
+                    String dLow = p.displayName().strip().toLowerCase(Locale.ROOT);
+                    String dNoPrefix = dLow.replaceFirst("^gói\\s+", "").strip();
+                    if ((dLow.length() >= 4 && combinedLower.contains(dLow))
+                            || (dNoPrefix.length() >= 6 && combinedLower.contains(dNoPrefix))) {
+                        mentionsAnySpecificPkgName = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasClarificationQuestion || !replyPrices.isEmpty() || mentionsAnySpecificPkgName) {
+                violations.add("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:TIER_3_EMPTY_HISTORY");
+            }
+        }
+        return violations;
+    }
+
+    private static boolean isPackageMentionedByNameOrPrice(
+            String textLower,
+            Set<Long> extractedPrices,
+            PackageCatalogService.PackageSummary pkg
+    ) {
+        if (pkg == null) return false;
+        if (pkg.priceVnd() > 0L && extractedPrices != null && extractedPrices.contains(pkg.priceVnd())) {
+            return true;
+        }
+        if (pkg.displayName() != null && !pkg.displayName().isBlank()) {
+            String dLow = pkg.displayName().strip().toLowerCase(Locale.ROOT);
+            String dNoPrefix = dLow.replaceFirst("^gói\\s+", "").strip();
+            if ((dLow.length() >= 4 && textLower.contains(dLow))
+                    || (dNoPrefix.length() >= 6 && textLower.contains(dNoPrefix))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> buildDeterministicQuotedPackageReplyBubbles(
+            PackageCatalogService.PackageSummary quotedPkg,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (quotedPkg == null) {
+            return List.of();
+        }
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        String rawName = quotedPkg.displayName() != null ? quotedPkg.displayName().strip() : "gói dịch vụ";
+        String displayWithGoi = rawName.toLowerCase(Locale.ROOT).startsWith("gói ") ? rawName : ("gói " + rawName);
+        String durLabel = (quotedPkg.durationMinutes() != null && quotedPkg.durationMinutes() > 0)
+                ? (" " + quotedPkg.durationMinutes() + " phút")
+                : ((quotedPkg.durationLabel() != null && !quotedPkg.durationLabel().isBlank()) ? (" " + quotedPkg.durationLabel().strip()) : "");
+        String priceDisp = quotedPkg.priceDisplay() != null ? quotedPkg.priceDisplay().strip() : "";
+        String includes = quotedPkg.includesSummary() != null ? quotedPkg.includesSummary().strip() : "";
+        String spaceNote = quotedPkg.customerFacingSpaceNote() != null ? quotedPkg.customerFacingSpaceNote().strip() : "";
+        boolean isPromoQuestion = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage);
+
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(2);
+        if (isPromoQuestion) {
+            out.add(new FanpageBotResponse.ReplyBubble(
+                    "Dạ hiện tại " + displayWithGoi + durLabel + " bên " + sp
+                            + " đang áp dụng mức giá niêm yết trọn gói là " + priceDisp
+                            + ", hiện chưa có chương trình giảm giá riêng cho gói này ạ.",
+                    0
+            ));
+        } else {
+            String areas = (quotedPkg.bodyAreas() != null && !quotedPkg.bodyAreas().isEmpty())
+                    ? String.join(", ", quotedPkg.bodyAreas())
+                    : "chuyên sâu theo liệu trình";
+            out.add(new FanpageBotResponse.ReplyBubble(
+                    "Dạ với " + displayWithGoi + durLabel + " (giá niêm yết " + priceDisp
+                            + " trọn gói), liệu trình tập trung chăm sóc vùng " + areas + " cho " + cp + " ạ.",
+                    0
+            ));
+        }
+        if (!includes.isEmpty()) {
+            String spaceClause = !spaceNote.isEmpty() ? (" tại " + spaceNote) : "";
+            out.add(new FanpageBotResponse.ReplyBubble(
+                    "Mức " + priceDisp + " đã bao gồm trọn gói " + includes + spaceClause
+                            + ", cam kết không phát sinh phụ phí hay nhận tip ạ.",
+                    2000
+            ));
+        }
+        return out;
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> buildDeterministicReplyClarificationBubbles(
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        List<PackageCatalogService.PackageSummary> candidates =
+                quoteResolution != null ? quoteResolution.candidatePackages() : List.of();
+        boolean isPromo = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage);
+        String topicPhrase = isPromo ? "ưu đãi cho " : "thông tin cho ";
+
+        if (candidates.size() >= 2) {
+            List<String> formattedOptions = new ArrayList<>();
+            int limit = Math.min(3, candidates.size());
+            for (int i = 0; i < limit; i++) {
+                formattedOptions.add(formatPackageClarificationOption(candidates.get(i)));
+            }
+            String joinedOptions;
+            if (formattedOptions.size() == 2) {
+                joinedOptions = formattedOptions.get(0) + " hay " + formattedOptions.get(1);
+            } else {
+                joinedOptions = formattedOptions.get(0) + ", " + formattedOptions.get(1) + " hay " + formattedOptions.get(2);
+            }
+            String text = "Dạ " + cp + " đang hỏi " + topicPhrase + joinedOptions + " ạ? "
+                    + BubbleCapHook.capitalizeFirstLetter(sp) + " xác nhận đúng gói rồi báo " + cp + " chính xác nhé.";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
+        }
+        if (candidates.size() == 1) {
+            String opt = formatPackageClarificationOption(candidates.get(0));
+            String text = "Dạ không biết " + cp + " đang muốn hỏi " + topicPhrase + opt
+                    + " hay một gói khác trong bảng giá bên " + sp + " ạ? "
+                    + BubbleCapHook.capitalizeFirstLetter(sp) + " xác nhận đúng gói rồi báo " + cp + " chính xác nhé.";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
+        }
+        String openText = "Dạ do tin nhắn " + cp + " trích dẫn ở khá xa nên " + sp
+                + " chưa hiển thị lại được nội dung, " + cp + " nhắn giúp " + sp
+                + " tên gói hoặc mức giá " + cp + " đang quan tâm để " + sp + " kiểm tra chính xác nhất nhé ạ?";
+        return List.of(new FanpageBotResponse.ReplyBubble(openText, 0));
+    }
+
+    private static String formatPackageClarificationOption(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return "gói dịch vụ";
+        }
+        String rawName = pkg.displayName() != null ? pkg.displayName().strip() : "dịch vụ";
+        String cleanName = BubbleCapHook.capitalizeFirstLetter(rawName.replaceFirst("(?iU)^gói\\s+", "").strip());
+        String durPart = (pkg.durationMinutes() != null && pkg.durationMinutes() > 0)
+                ? (" " + pkg.durationMinutes() + " phút")
+                : ((pkg.durationLabel() != null && !pkg.durationLabel().isBlank())
+                    ? (" " + pkg.durationLabel().strip().replace("~", ""))
+                    : "");
+        String pricePart = (pkg.priceDisplay() != null && !pkg.priceDisplay().isBlank())
+                ? (" giá " + pkg.priceDisplay().strip())
+                : "";
+        return "gói " + cleanName + durPart + pricePart;
     }
 
     private static PackageCatalogService.PackageSummary resolveReferencedPackageForBubble(
@@ -989,10 +1516,64 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return !searchPool.isEmpty() ? searchPool.get(0) : null;
     }
 
+    public static Set<Integer> extractComponentDurationsFromCatalogPackage(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return Set.of();
+        }
+        Set<Integer> durations = new LinkedHashSet<>();
+        if (pkg.durationMinutes() != null && pkg.durationMinutes() > 0) {
+            durations.add(pkg.durationMinutes());
+        }
+        String[] verifiedFields = {
+                pkg.displayName(),
+                pkg.durationLabel(),
+                pkg.includesSummary(),
+                pkg.processSummary(),
+                pkg.suitableFor()
+        };
+        for (String field : verifiedFields) {
+            if (field == null || field.isBlank()) continue;
+            Matcher m = CATALOG_COMPONENT_DURATION_PATTERN.matcher(field);
+            while (m.find()) {
+                try {
+                    int min = Integer.parseInt(m.group(1));
+                    if (min > 0) {
+                        durations.add(min);
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return durations;
+    }
+
     public static boolean detectCleanCrossTurnRepetition(
             List<FanpageBotResponse.ReplyBubble> candidateBubbles,
             String prevBotTurnText,
             List<FanpageBotRequest.ConversationTurn> history
+    ) {
+        boolean inferredDetailOrPromoTurn = false;
+        if (history != null && !history.isEmpty()) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                FanpageBotRequest.ConversationTurn t = history.get(i);
+                if (t == null || t.content() == null || t.content().isBlank()) continue;
+                if (!"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())) {
+                    String lastUserMsg = t.content().strip();
+                    inferredDetailOrPromoTurn = CleanAgentOrchestratorService.isNormalPriceOrDetailInquiryMessage(lastUserMsg)
+                            || CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(lastUserMsg)
+                            || SentimentIntentLayer.isDetailOrFaqQuestion(lastUserMsg, null);
+                    break;
+                }
+            }
+        }
+        return detectCleanCrossTurnRepetition(candidateBubbles, prevBotTurnText, history, inferredDetailOrPromoTurn);
+    }
+
+    public static boolean detectCleanCrossTurnRepetition(
+            List<FanpageBotResponse.ReplyBubble> candidateBubbles,
+            String prevBotTurnText,
+            List<FanpageBotRequest.ConversationTurn> history,
+            boolean isDetailOrPromoQuestionTurn
     ) {
         if (candidateBubbles == null || candidateBubbles.isEmpty()) {
             return false;
@@ -1019,6 +1600,36 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return false;
         }
 
+        StringBuilder fullTurnSb = new StringBuilder();
+        for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
+            if (b != null && b.text() != null && !b.text().isBlank()) {
+                if (!fullTurnSb.isEmpty()) fullTurnSb.append(' ');
+                fullTurnSb.append(b.text().strip());
+            }
+        }
+        List<String> fullCandTokens = tokenizeCleanWords(fullTurnSb.toString());
+        if (!fullCandTokens.isEmpty()) {
+            for (String prevTurn : recentAssistantTurns) {
+                List<String> prevTokens = tokenizeCleanWords(prevTurn);
+                if (prevTokens.isEmpty()) continue;
+                Set<String> prevSet = new LinkedHashSet<>(prevTokens);
+                int hits = 0;
+                for (String t : fullCandTokens) {
+                    if (prevSet.contains(t)) {
+                        hits++;
+                    }
+                }
+                double fullOverlap = hits / (double) fullCandTokens.size();
+                if (fullOverlap >= 0.85d && (fullCandTokens.size() - hits) <= 3) {
+                    return true;
+                }
+            }
+        }
+
+        if (isDetailOrPromoQuestionTurn) {
+            return false;
+        }
+
         for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String bubbleText = b.text().strip();
@@ -1035,6 +1646,25 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (candidateBubble == null || candidateBubble.isBlank() || previousBotTurnText == null || previousBotTurnText.isBlank()) {
             return false;
         }
+        List<String> fullCandTokens = tokenizeCleanWords(candidateBubble);
+        List<String> fullPrevTokens = tokenizeCleanWords(previousBotTurnText);
+        if (!fullCandTokens.isEmpty() && !fullPrevTokens.isEmpty()) {
+            Set<String> fullPrevSet = new LinkedHashSet<>(fullPrevTokens);
+            int fullHits = 0;
+            for (String t : fullCandTokens) {
+                if (fullPrevSet.contains(t)) {
+                    fullHits++;
+                }
+            }
+            double fullRatio = fullHits / (double) fullCandTokens.size();
+            int newWords = fullCandTokens.size() - fullHits;
+            String candLow = candidateBubble.toLowerCase(Locale.ROOT);
+            boolean answersDetailOrPromo = candLow.matches("(?isU).*\\b(khuyến\\s+mãi|ưu\\s+đãi|giảm\\s+giá|voucher|không\\s+phát\\s+sinh|đã\\s+là\\s+mức\\s+giá|gồm\\s+có|quy\\s+trình)\\b.*");
+            if (answersDetailOrPromo && fullRatio < 0.85d && newWords >= 5) {
+                return false;
+            }
+        }
+
         List<String> candParts = new ArrayList<>();
         candParts.add(candidateBubble.strip());
         for (String s : candidateBubble.split("(?<=[.!?])\\s+")) {
@@ -1152,6 +1782,23 @@ public final class CleanAgentOutputRefereeAndSanitizer {
               .append("), BẮT BUỘC phải giới thiệu gói ").append(econHint)
               .append(" và giải thích trung thực sự khác biệt phạm vi vùng chăm sóc. TUYỆT ĐỐI CẤM nói gói 399k là 'mức thấp nhất bên em có' và CẤM chê mức giá thấp hơn 399k là 'chỉ làm được thư giãn hời hợt'.\n");
         }
+        if (violations.stream().anyMatch(v -> v.startsWith("QUOTED_PACKAGE_FOCUS_MISMATCH:"))) {
+            String qHint = activePackage != null
+                    ? (activePackage.displayName() + " " + activePackage.durationLabel() + " (" + activePackage.priceDisplay() + ")")
+                    : "đúng gói trong bong bóng được trích dẫn";
+            sb.append("- KHÁCH ĐANG QUOTE-REPLY VÀO GÓI ").append(qHint)
+              .append(": BẮT BUỘC chỉ trả lời đúng thông tin/ưu đãi niêm yết của gói ").append(qHint)
+              .append(", TUYỆT ĐỐI CẤM lôi gói khác (như 239k) vào câu trả lời!\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:"))) {
+            sb.append("- CHƯA XÁC ĐỊNH RÕ GÓI TRONG TIN NHẮN REPLY: TUYỆT ĐỐI CẤM tự mặc định trả lời cho 1 gói đơn lẻ. BẮT BUỘC đặt câu hỏi xác nhận lịch sự theo đúng hướng dẫn trong <AGENT_BRAIN_INSIGHT> (nếu lịch sử có >=2 gói thì hỏi xác nhận giữa các gói đó; nếu có 1 gói thì hỏi gói đó hay gói khác; nếu lịch sử trống thì hỏi mở không đoán mò giá).\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PROMO_POLICY_FABRICATION"))) {
+            sb.append("- TUYỆT ĐỐI CẤM tự bịa chương trình giảm giá %, voucher hay combo tặng buổi ngoài dữ liệu <SCOPE_FILTERED_CATALOG>. Hãy báo trung thực mức giá hiện tại là giá niêm yết trọn gói, không phát sinh phụ phí.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("PRICE_ENTITY_MISMATCH:"))) {
+            sb.append("- PHÁT HIỆN RÂU ÔNG NỌ CẮM CẰM BÀ KIA (`PRICE_ENTITY_MISMATCH`): Tuyệt đối KHÔNG ghép tên gói này với mức giá/thời lượng của gói khác (ví dụ: cấm nói 'Massage cơ bản 60 phút' có giá '239k' vì 239k là 'Gói dưỡng sinh cơ bản 60 phút', còn 'Massage cơ bản 60 phút' có giá 399k). BẮT BUỘC đối chiếu đúng từng bộ (tên gói, thời lượng, mức giá) trong <SCOPE_FILTERED_CATALOG>.\n");
+        }
         if (violations.stream().anyMatch(v -> v.contains("PRICE") || v.contains("DURATION") || v.contains("EXCLUDED_PACKAGE"))) {
             sb.append("- BẮT BUỘC chỉ sử dụng đúng tên gói, thời lượng và mức giá nằm trong <SCOPE_FILTERED_CATALOG>, tuyệt đối không bịa giá khi Catalog trống và không nhắc tới gói đã bị loại.\n");
         }
@@ -1204,8 +1851,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 "Dạ " + sp + " hiểu"
         );
         out = out.replaceAll(
-                "(?iU)^(\\s*(?:dạ[,\\s]+)?)mình\\s+((?:đã\\s+|rất\\s+|cũng\\s+)?(?:biết|thấy|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi))\\b",
+                "(?iU)^(\\s*(?:dạ[,\\s]+)?)mình\\s+((?:đã\\s+|rất\\s+|cũng\\s+)?(?:biết|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi))\\b",
                 "Dạ " + sp + " $2"
+        );
+        out = out.replaceAll(
+                "(?iU)\\b(dạ[,\\s]+)" + Pattern.quote(sp) + "\\s+thấy\\s+([^.!?]*?\\b(?:có\\s+phù\\s+hợp|phù\\s+hợp\\s+với|như\\s+thế\\s+nào|thế\\s+nào|ra\\s+sao)[^.!?]*?\\?)",
+                "$1" + cp + " thấy $2"
+        );
+        out = out.replaceAll(
+                "(?iU)(?<=^|[.!?]\\s+)" + Pattern.quote(sp) + "\\s+thấy\\s+([^.!?]*?\\b(?:có\\s+phù\\s+hợp|phù\\s+hợp\\s+với|như\\s+thế\\s+nào|thế\\s+nào|ra\\s+sao)[^.!?]*?\\?)",
+                BubbleCapHook.capitalizeFirstLetter(cp) + " thấy $1"
         );
 
         if (heldPkgIsNull) {

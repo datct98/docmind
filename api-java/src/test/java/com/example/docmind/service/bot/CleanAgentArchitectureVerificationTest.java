@@ -8,13 +8,16 @@ import com.example.docmind.service.retrieval.PromptBuilder;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CleanAgentArchitectureVerificationTest {
@@ -3143,5 +3146,1782 @@ class CleanAgentArchitectureVerificationTest {
                 stagePureBusy,
                 "Khi khách báo bận việc cá nhân thuần túy ('Em đang bận việc chút...'), phải tôn trọng tạm dừng ở STAGE_6"
         );
+    }
+
+    @Test
+    void testFacebookWebhook_NumericPageIdMapping_MidDeduplication_EchoIgnore_AndSequentialBubbles() {
+        ConversationState.clearSessionCache();
+
+        java.util.List<FanpageBotRequest> capturedServiceRequests = new java.util.ArrayList<>();
+        FanpageBotService mockBotService = org.mockito.Mockito.mock(FanpageBotService.class);
+        org.mockito.Mockito.when(mockBotService.handleCustomerMessage(org.mockito.Mockito.any(FanpageBotRequest.class)))
+                .thenAnswer(inv -> {
+                    FanpageBotRequest req = inv.getArgument(0);
+                    capturedServiceRequests.add(req);
+                    List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                            new FanpageBotResponse.ReplyBubble("Dạ em chào chị, em là An Nhiên từ Nàng Sen Spa ạ.", 800),
+                            new FanpageBotResponse.ReplyBubble("Gói Massage cơ bản 60 phút bên em có giá 399k trọn gói ạ.", 1200),
+                            new FanpageBotResponse.ReplyBubble("Mình muốn ghé trải nghiệm khung giờ nào để em giữ lịch ạ?", 1000)
+                    );
+                    return new FanpageBotResponse(
+                            "Dạ em chào chị, em là An Nhiên từ Nàng Sen Spa ạ.\n\nGói Massage cơ bản 60 phút bên em có giá 399k trọn gói ạ.\n\nMình muốn ghé trải nghiệm khung giờ nào để em giữ lịch ạ?",
+                            bubbles,
+                            List.of(800, 1200, 1000),
+                            "STAGE_1_INITIAL_CONSULTATION",
+                            0.95,
+                            false,
+                            null,
+                            null,
+                            null,
+                            List.of(),
+                            null,
+                            List.of()
+                    );
+                });
+
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(mockBotService);
+        controller.setPageAccessToken("EAAB_TEST_PAGE_ACCESS_TOKEN");
+        controller.setInterBubbleDelayMs(0L);
+
+        java.util.List<String> graphApiBodies = new java.util.ArrayList<>();
+        controller.setGraphApiSender((url, jsonBody) -> {
+            assertTrue(url.startsWith(com.example.docmind.controller.FanpageBotController.FB_GRAPH_MESSAGES_API_URL),
+                    "URL phải trỏ tới Facebook Graph API me/messages: " + url);
+            assertTrue(url.contains("access_token=EAAB_TEST_PAGE_ACCESS_TOKEN"));
+            graphApiBodies.add(jsonBody);
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"recipient_id\":\"psid_999\",\"message_id\":\"m_out\"}");
+        });
+
+        // 1. Kiểm tra ánh xạ PAGE_ID dạng số của Facebook ("12218945612345") sang UUID của Nàng Sen Spa
+        assertEquals(
+                "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+                controller.resolveEffectivePageId(null, "12218945612345"),
+                "Khi không truyền ?page_id và entry[].id là PAGE_ID dạng số của Facebook, phải tự động ánh xạ sang UUID của Nàng Sen Spa"
+        );
+        assertEquals(
+                "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+                controller.resolveEffectivePageId("12218945612345", "12218945612345"),
+                "Khi truyền ?page_id là PAGE_ID dạng số của Facebook, phải tự động ánh xạ sang UUID của Nàng Sen Spa"
+        );
+
+        // 2. Bỏ qua sự kiện is_echo == true VÀ sự kiện sender.id trùng với entry[].id (fbNumericPageId)
+        String echoPayload = """
+                {
+                  "object": "page",
+                  "entry": [
+                    {
+                      "id": "12218945612345",
+                      "time": 1730000001000,
+                      "messaging": [
+                        {
+                          "sender": { "id": "12218945612345" },
+                          "recipient": { "id": "psid_customer_01" },
+                          "timestamp": 1730000001001,
+                          "message": {
+                            "mid": "m_echo_flag_true",
+                            "is_echo": true,
+                            "text": "Tin nhắn phản chiếu có cờ is_echo"
+                          }
+                        },
+                        {
+                          "sender": { "id": "12218945612345" },
+                          "recipient": { "id": "psid_customer_01" },
+                          "timestamp": 1730000001002,
+                          "message": {
+                            "mid": "m_echo_same_sender_as_page",
+                            "text": "Tin nhắn phản chiếu có sender.id trùng với entry.id"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """;
+        var echoResp = controller.receiveMetaWebhook(null, null, echoPayload);
+        assertEquals(200, echoResp.getStatusCode().value());
+        assertEquals(0, echoResp.getBody().get("processed_events"), "Sự kiện is_echo phải bị bỏ qua tuyệt đối");
+        assertTrue(capturedServiceRequests.isEmpty(), "Không được gọi FanpageBotService cho sự kiện is_echo");
+        assertTrue(graphApiBodies.isEmpty(), "Không được bắn Graph API cho sự kiện is_echo");
+
+        // 3. Gửi tin nhắn thật từ khách hàng -> Ánh xạ UUID Nàng Sen Spa + bắn typing_on + 3 bong bóng tuần tự
+        String customerWebhookPayload = """
+                {
+                  "object": "page",
+                  "entry": [
+                    {
+                      "id": "12218945612345",
+                      "time": 1730000002000,
+                      "messaging": [
+                        {
+                          "sender": { "id": "psid_customer_01" },
+                          "recipient": { "id": "12218945612345" },
+                          "timestamp": 1730000002100,
+                          "message": {
+                            "mid": "m_real_customer_msg_001",
+                            "text": "Em bị mỏi cổ vai gáy, tư vấn giúp em với"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """;
+        var firstCallResp = controller.receiveMetaWebhook(null, null, customerWebhookPayload);
+        assertEquals(200, firstCallResp.getStatusCode().value());
+        assertEquals(1, firstCallResp.getBody().get("processed_events"));
+        assertEquals("b23cd382-4f7a-4829-8c54-1d410da14bf8", firstCallResp.getBody().get("resolved_page_id"));
+        assertEquals(1, capturedServiceRequests.size());
+        assertEquals(
+                "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+                capturedServiceRequests.get(0).pageId(),
+                "FanpageBotRequest.pageId() phải được ánh xạ sang đúng UUID Nàng Sen Spa"
+        );
+
+        // Kiểm tra thứ tự gọi Graph API:
+        // [0] typing_on ban đầu -> [1] Bubble 1 -> [2] typing_on giữa nhịp -> [3] Bubble 2 -> [4] typing_on giữa nhịp -> [5] Bubble 3
+        assertEquals(6, graphApiBodies.size(), "Phải bắn đúng 6 lệnh Graph API (1 typing_on đầu + 3 bong bóng + 2 typing_on giữa các bong bóng)");
+        assertTrue(graphApiBodies.get(0).contains("\"sender_action\":\"typing_on\""));
+        assertTrue(graphApiBodies.get(1).contains("An Nhiên từ Nàng Sen Spa"));
+        assertTrue(graphApiBodies.get(2).contains("\"sender_action\":\"typing_on\""));
+        assertTrue(graphApiBodies.get(3).contains("399k trọn gói"));
+        assertTrue(graphApiBodies.get(4).contains("\"sender_action\":\"typing_on\""));
+        assertTrue(graphApiBodies.get(5).contains("khung giờ nào để em giữ lịch"));
+
+        // 4. Chống trùng lặp mid khi Facebook retry cùng sự kiện m_real_customer_msg_001
+        var retryCallResp = controller.receiveMetaWebhook(null, null, customerWebhookPayload);
+        assertEquals(200, retryCallResp.getStatusCode().value());
+        assertEquals(0, retryCallResp.getBody().get("processed_events"), "Sự kiện retry trùng mid không được xử lý lại");
+        assertEquals(1, retryCallResp.getBody().get("deduplicated_events"), "Phải ghi nhận deduplicated_events == 1");
+        assertEquals(1, capturedServiceRequests.size(), "FanpageBotService chỉ được gọi 1 lần duy nhất khi Facebook retry cùng mid");
+        assertEquals(6, graphApiBodies.size(), "Không được bắn trùng bong bóng ra Graph API khi Facebook retry cùng mid");
+    }
+
+    @Test
+    void testCheckpointE1_QuoteReply530kBubble_AskPromo_ResolvesAndAnswers530kPromo() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy", "nhức vùng mông"),
+                        List.of("cổ", "vai", "gáy", "mông"),
+                        Set.of(),
+                        false
+                );
+        String quoted530kBubble = "Nếu mình muốn thư giãn sâu hơn, bên em có gói Massage cơ bản nâng cao 80 phút (530k) gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu chuyên sâu ạ.";
+
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "mid_bot_530k_01",
+                        quoted530kBubble,
+                        allCatalog
+                );
+        assertTrue(resolution.hasReplyToContext());
+        assertFalse(resolution.unresolvedReplyToMid());
+        assertFalse(resolution.ambiguousMultiplePackages());
+        assertNotNull(resolution.quotedPackage(), "Phải nhận diện duy nhất gói 530k từ nội dung bong bóng được quote");
+        assertEquals(530_000L, resolution.quotedPackage().priceVnd());
+        assertEquals("Massage cơ bản nâng cao", resolution.quotedPackage().displayName());
+
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "chị",
+                List.of("đau mỏi cổ vai gáy", "nhức vùng mông"),
+                List.of("cổ", "vai", "gáy", "mông"),
+                "mấy hôm nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                0,
+                false,
+                "NONE",
+                List.of("PROMO_OR_DISCOUNT_QUESTION", "SERVICE_OR_UNIT_DETAIL_QUESTION", "QUOTED_PACKAGE_RESOLVED"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                "Gói này có khuyến mãi không",
+                null,
+                List.of(),
+                java.util.Map.of(),
+                resolution
+        );
+        assertTrue(prompt.contains("quoted_package: \"Massage cơ bản nâng cao 80 phút (530k)\""),
+                "Prompt phải ghi rõ quoted_package là gói 530k");
+        assertTrue(prompt.contains("held_package: \"Massage cơ bản 60 phút\""),
+                "Prompt vẫn bảo toàn held_package là gói 399k");
+        assertTrue(prompt.contains("[GÓI TRONG BONG BÓNG KHÁCH VỪA REPLY (QUOTED_PACKAGE — TRẢ LỜI ĐÚNG THÔNG TIN/ƯU ĐÃI CỦA GÓI NÀY, CHƯA ÉP GIỜ ĐẶT LỊCH)]"),
+                "Prompt phải hướng dẫn giải đáp ưu đãi/giá đúng cho gói 530k đang được quote");
+    }
+
+    @Test
+    void testCheckpointE2_QuoteReply239kBubble_AskIncludes_Answers239kDetailsAndPartialScopeForMong() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy", "mỏi vùng mông"),
+                        List.of("cổ", "vai", "gáy", "mông"),
+                        Set.of(),
+                        false
+                );
+        String quoted239kBubble = "Nếu mình muốn ưu tiên phương án tiết kiệm hơn thì bên em có Gói dưỡng sinh cơ bản 60 phút giá 239k trọn gói ạ.";
+
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "mid_bot_239k_01",
+                        quoted239kBubble,
+                        allCatalog
+                );
+        assertNotNull(resolution.quotedPackage());
+        assertEquals(239_000L, resolution.quotedPackage().priceVnd());
+
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "chị",
+                List.of("đau mỏi cổ vai gáy", "mỏi vùng mông"),
+                List.of("cổ", "vai", "gáy", "mông"),
+                "1 tuần nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                1,
+                false,
+                "NONE",
+                List.of("SERVICE_OR_UNIT_DETAIL_QUESTION", "QUOTED_PACKAGE_RESOLVED"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                "Gói này gồm gì em",
+                null,
+                List.of(),
+                java.util.Map.of(),
+                resolution
+        );
+        assertTrue(prompt.contains("quoted_package: \"Gói dưỡng sinh cơ bản 60 phút (239k)\""));
+        assertTrue(prompt.contains("Phạm vi hẹp hơn: chỉ tập trung chăm sóc vùng [đầu, cổ, vai, gáy], KHÔNG bao gồm vùng [mông]"),
+                "Khi khách từng nêu đau vùng mông mà hỏi chi tiết gói 239k, phải nhắc rõ phạm vi gói 239k chưa bao gồm vùng mông");
+        assertTrue(prompt.contains("chưa bao gồm các vùng còn lại ngoài phạm vi như gói toàn thân"),
+                "Phải hướng dẫn bot nói rõ gói 239k tập trung vùng trong phạm vi trước, chưa bao gồm vùng ngoài phạm vi");
+    }
+
+    @Test
+    void testCheckpointE3_QuoteReplyMultiPackageBubble_ClarifiesOrDistinguishesBothPackages() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        String multiPkgBubble = "Dạ bên em hiện có gói Massage cơ bản 60 phút (399k) và gói Massage cơ bản nâng cao 80 phút (530k) có thêm ngâm bồn thảo dược ạ.";
+
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "mid_bot_multi_01",
+                        multiPkgBubble,
+                        allCatalog
+                );
+        assertTrue(resolution.hasReplyToContext());
+        assertTrue(resolution.ambiguousMultiplePackages(), "Bong bóng chứa cả 399k và 530k phải đánh dấu ambiguousMultiplePackages = true");
+        assertEquals(2, resolution.matchedPackages().size());
+        org.junit.jupiter.api.Assertions.assertNull(resolution.quotedPackage(),
+                "Không được tự ý chốt cứng 1 quotedPackage khi bong bóng chứa >= 2 gói");
+
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "chị",
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                0,
+                false,
+                "NONE",
+                List.of("PROMO_OR_DISCOUNT_QUESTION", "QUOTED_MESSAGE_AMBIGUOUS_PACKAGES"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                "Gói này có khuyến mãi không",
+                null,
+                List.of(),
+                java.util.Map.of(),
+                resolution
+        );
+        assertTrue(prompt.contains("AMBIGUOUS_MULTIPLE_PACKAGES"));
+        assertTrue(prompt.contains("[CÁC GÓI CÙNG XUẤT HIỆN TRONG BONG BÓNG KHÁCH VỪA REPLY (TRẢ LỜI RÕ HOẶC HỎI XÁC NHẬN KHÁCH ĐANG MUỐN HỎI GÓI NÀO)]"));
+    }
+
+    @Test
+    void testCheckpointE4_QuoteReplyUnresolvedMid_SafeFallbackWithoutBlocking() {
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        SentBubbleLedger.clear();
+
+        // Khi reply_to.mid không tồn tại trong Cache/DB -> lookup trả về null ngay lập tức, không block mạng
+        String lookedUp = SentBubbleLedger.lookupMessageByMid("b23cd382-4f7a-4829-8c54-1d410da14bf8", "psid_unknown", "mid_not_found_999");
+        org.junit.jupiter.api.Assertions.assertNull(lookedUp);
+
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "mid_not_found_999",
+                        lookedUp,
+                        allCatalog
+                );
+        assertTrue(resolution.hasReplyToContext());
+        assertTrue(resolution.unresolvedReplyToMid(), "Khi mid không tìm thấy trong Cache/DB phải đánh dấu unresolvedReplyToMid = true");
+        org.junit.jupiter.api.Assertions.assertNull(resolution.quotedPackage());
+
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "chị",
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                0,
+                false,
+                "NONE",
+                List.of("SERVICE_OR_UNIT_DETAIL_QUESTION", "UNRESOLVED_REPLY_TO_MID"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                "Gói này gồm gì vậy shop",
+                null,
+                List.of(),
+                java.util.Map.of(),
+                resolution
+        );
+        assertTrue(prompt.contains("UNRESOLVED_REPLY_TO_MID (mid_not_found_999)"));
+        assertTrue(prompt.contains("KHÔNG TÌM THẤY NỘI DUNG BONG BÓNG CŨ ĐƯỢC REPLY"),
+                "Phải hướng dẫn bot lịch sự làm rõ gói khách đang muốn hỏi khi mid không tìm thấy");
+        assertTrue(prompt.contains("Dạ do tin nhắn chị trích dẫn ở khá xa nên em chưa hiển thị lại được nội dung"),
+                "Khi lịch sử chưa có gói nào (Nấc 3), phải hướng dẫn hỏi mở lịch sự, không tự đoán mò gói");
+    }
+
+    @Test
+    void testCheckpointE5_QuoteReplyAfterRamRestart_RecoversBubbleTextFromDurableStore() {
+        SentBubbleLedger.useStore(new SentBubbleLedger.InMemoryStore());
+        SentBubbleLedger.clear();
+
+        try {
+            String pageId = "b23cd382-4f7a-4829-8c54-1d410da14bf8";
+            String psid = "psid_restart_test_01";
+            String mid = "m_outbound_530k_bubble_777";
+            String bubbleText = "Gói Massage cơ bản nâng cao 80 phút bên em có giá 530k trọn gói, gồm 10p ngâm bồn thảo dược và 70p massage trị liệu ạ.";
+
+            // Lưu message_id khi bot gửi bong bóng ra Facebook
+            SentBubbleLedger.recordMessageId(pageId, psid, mid, "assistant", bubbleText);
+            assertEquals(bubbleText, SentBubbleLedger.lookupMessageByMid(pageId, psid, mid));
+
+            // Mô phỏng container restart: xóa toàn bộ RAM cache nhưng giữ nguyên Store bền vững
+            SentBubbleLedger.dropCacheOnly();
+
+            // Tra cứu lại sau khi mất RAM cache -> phải phục hồi từ Store bền vững và nạp lại vào cache
+            String recoveredAfterRestart = SentBubbleLedger.lookupMessageByMid(pageId, psid, mid);
+            assertEquals(bubbleText, recoveredAfterRestart,
+                    "Sau khi xóa cache RAM (restart), SentBubbleLedger phải khôi phục đúng nội dung bong bóng từ Store bền vững");
+
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                    CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(mid, recoveredAfterRestart, sampleSpaCatalog());
+            assertNotNull(resolution.quotedPackage());
+            assertEquals(530_000L, resolution.quotedPackage().priceVnd());
+        } finally {
+            SentBubbleLedger.clear();
+        }
+    }
+
+    @Test
+    void testCheckpointE6_ComponentDuration70pAllowedFrom80pCatalog_FabricatedDurationBlocked() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+
+        // 1. Gói 80 phút có mô tả thành phần "10p ngâm bồn thảo dược + tắm tráng + 70p massage + ăn nhẹ" trong Catalog
+        // -> Không được báo lỗi giả UNGROUNDED_DURATION:70p hoặc UNGROUNDED_DURATION:10p
+        List<String> validComponentViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ gói Massage cơ bản nâng cao 80 phút (530k) bên em bao gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu chuyên sâu ạ.",
+                        0
+                )),
+                allCatalog,
+                allCatalog,
+                List.of()
+        );
+        assertFalse(
+                validComponentViolations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_DURATION:")),
+                "Thời lượng thành phần 10p và 70p nằm trong includesSummary của gói 80p không được bị báo lỗi UNGROUNDED_DURATION: " + validComponentViolations
+        );
+
+        // 2. Thời lượng bịa ngoài Catalog (45p, 95p) vẫn phải bị chặn nghiêm ngặt
+        List<String> fabricated45pViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ gói Massage cơ bản nâng cao bên em có 45p massage đá nóng và 95p bấm huyệt ạ.",
+                        0
+                )),
+                allCatalog,
+                allCatalog,
+                List.of()
+        );
+        assertTrue(
+                fabricated45pViolations.contains("UNGROUNDED_DURATION:45p"),
+                "Thời lượng bịa 45p không có trong Catalog phải bị chặn: " + fabricated45pViolations
+        );
+        assertTrue(
+                fabricated45pViolations.contains("UNGROUNDED_DURATION:95p"),
+                "Thời lượng bịa 95p không có trong Catalog phải bị chặn: " + fabricated45pViolations
+        );
+    }
+
+    @Test
+    void testCheckpointE7_AskPromoWithoutPriceObjection_DoesNotIncrementPriceObjectionOrDownsell() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+
+        for (String promoQuestion : List.of(
+                "Gói này có khuyến mãi không",
+                "Gói này có km k shop",
+                "Bên mình hiện có ưu đãi hay giảm giá gì cho gói này không ạ?"
+        )) {
+            assertTrue(
+                    CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(promoQuestion),
+                    "Phải nhận diện đúng câu hỏi khuyến mãi/ưu đãi: " + promoQuestion
+            );
+            assertFalse(
+                    CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(promoQuestion, true),
+                    "Câu hỏi khuyến mãi thuần túy không được tính là chê đắt để tăng priceObjectionCount: " + promoQuestion
+            );
+
+            List<FanpageBotRequest.ConversationTurn> historyWith399k = List.of(
+                    new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút bên em có giá 399k trọn gói ạ.")
+            );
+
+            // Khi khách hỏi khuyến mãi (priceObjectionCount vẫn = 0), stage không được nhảy sang STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE hay STAGE_3_DOWNSELL
+            List<String> signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                    promoQuestion,
+                    false, false, false, false,
+                    false, 0, false, false,
+                    List.of("đau mỏi cổ vai gáy"),
+                    List.of("cổ", "vai", "gáy"),
+                    "mấy hôm nay",
+                    CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_INVITED_TRIAL_OR_TIME,
+                    "NONE",
+                    historyWith399k
+            );
+            assertTrue(signals.contains("PROMO_OR_DISCOUNT_QUESTION"),
+                    "Phải gắn nhãn tín hiệu PROMO_OR_DISCOUNT_QUESTION cho câu: " + promoQuestion);
+            assertFalse(signals.contains("PRICE_OBJECTION_FIRST_TIME"),
+                    "Không được gắn nhầm nhãn chê đắt PRICE_OBJECTION_FIRST_TIME khi khách chỉ hỏi khuyến mãi: " + promoQuestion);
+
+            String stage = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                    signals,
+                    promoQuestion,
+                    0,
+                    true,
+                    false,
+                    false,
+                    tiered,
+                    historyWith399k
+            );
+            assertEquals("STAGE_1_DISCOVERY_AND_FIRST_QUOTE", stage,
+                    "Khi hỏi khuyến mãi mà không chê đắt, phải giữ nguyên ở STAGE_1_DISCOVERY_AND_FIRST_QUOTE (không tự ý downsell): " + promoQuestion);
+        }
+    }
+
+    @Test
+    void testCheckpointE8_RestatingPackageNameAndPriceWhenAnsweringDetailOrPromo_NotFlaggedCrossTurnRepetition() {
+        String prevBotText = "Dạ với tình trạng đau mỏi cổ vai gáy và lưng, bên em có gói Massage cơ bản nâng cao 80 phút giá 530k trọn gói gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu chuyên sâu giúp làm mềm cơ rất tốt ạ.";
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Chị bị đau mỏi cổ vai gáy và lưng mấy hôm nay"),
+                new FanpageBotRequest.ConversationTurn("assistant", prevBotText),
+                new FanpageBotRequest.ConversationTurn("user", "Gói này có khuyến mãi không")
+        );
+
+        // Khách quote-reply hỏi khuyến mãi của gói 530k -> Bot nhắc lại tên gói Massage cơ bản nâng cao 80 phút (530k) để giải thích giá niêm yết trọn gói không phụ phí
+        List<FanpageBotResponse.ReplyBubble> promoAnswerBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ hiện tại gói Massage cơ bản nâng cao 80 phút bên em đang áp dụng mức giá niêm yết 530k trọn gói đã bao gồm ngâm bồn thảo dược, massage trị liệu và ăn nhẹ thực dưỡng, cam kết không phát sinh phụ phí hay nhận tip ạ.",
+                        0
+                ),
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ mình thấy gói này có phù hợp với nhu cầu của mình không ạ?",
+                        1000
+                )
+        );
+
+        boolean flagged = CleanAgentOutputRefereeAndSanitizer.detectCleanCrossTurnRepetition(
+                promoAnswerBubbles,
+                prevBotText,
+                history,
+                true
+        );
+        assertFalse(
+                flagged,
+                "Nhắc lại tên gói và giá 530k để trả lời câu hỏi khuyến mãi/chi tiết gói không được bị phạt nhầm CROSS_TURN_REPETITION"
+        );
+
+        // Kiểm tra thêm sửa lỗi ngữ pháp hẹp ở câu hỏi kết lượt ("Dạ em thấy gói này có phù hợp..." -> "Dạ mình thấy gói này có phù hợp...")
+        String fixedClosingQuestion = CleanAgentOutputRefereeAndSanitizer.sanitizeMinorCleanAgentWordingInPlace(
+                "Dạ em thấy gói này có phù hợp với nhu cầu của mình không ạ?",
+                "em",
+                "mình",
+                null,
+                false,
+                "NONE"
+        );
+        assertEquals(
+                "Dạ mình thấy gói này có phù hợp với nhu cầu của mình không ạ?",
+                fixedClosingQuestion,
+                "Câu hỏi kết lượt lai đại từ 'Dạ em thấy gói này có phù hợp với nhu cầu của mình không ạ?' phải được sửa thành 'Dạ mình thấy...'"
+        );
+    }
+
+    @Test
+    void testCheckpointE9_VerbatimFullTurnRepetition_StillBlockedByCrossTurnRepetitionReferee() {
+        String previousAssistantTurn = "Dạ với tình trạng đau mỏi cổ vai gáy và lưng, bên em có gói Massage cơ bản nâng cao 80 phút giá 530k trọn gói gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu chuyên sâu giúp làm mềm cơ rất tốt ạ.";
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Chị bị đau mỏi cổ vai gáy và lưng mấy hôm nay"),
+                new FanpageBotRequest.ConversationTurn("assistant", previousAssistantTurn),
+                new FanpageBotRequest.ConversationTurn("user", "Gói này có khuyến mãi không")
+        );
+
+        // Bot lặp lại nguyên văn 100% câu trả lời của lượt trước ngay cả khi khách hỏi khuyến mãi
+        List<FanpageBotResponse.ReplyBubble> verbatimRepeatedBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(previousAssistantTurn, 0)
+        );
+
+        boolean flagged = CleanAgentOutputRefereeAndSanitizer.detectCleanCrossTurnRepetition(
+                verbatimRepeatedBubbles,
+                previousAssistantTurn,
+                history,
+                true
+        );
+        assertTrue(
+                flagged,
+                "Khi bot lặp nguyên văn 100% toàn bộ câu trả lời lượt trước, Referee bắt buộc phải chặn lỗi CROSS_TURN_REPETITION"
+        );
+    }
+
+    @Test
+    void testCheckpointE10_QuoteReply530kAskPromo_SetsQuotedPackageOnly_NeverSetsAcceptedPackage() {
+        ConversationState.clearSessionCache();
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+
+        String quoted530kText = "Nếu mình muốn thư giãn sâu hơn, bên em có gói Massage cơ bản nâng cao 80 phút (530k) gồm 10p ngâm bồn thảo dược và 70p massage trị liệu ạ.";
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution resolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "mid_530k_quote_10",
+                        quoted530kText,
+                        allCatalog
+                );
+
+        // Khách quote vào bong bóng 530k để hỏi "Gói này có khuyến mãi không"
+        String userMsg = "Gói này có khuyến mãi không";
+        boolean isPromoInquiry = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(userMsg);
+        assertTrue(isPromoInquiry);
+
+        // Kiểm tra logic tách biệt trạng thái:
+        // 1. quotedPackage = 530k
+        assertNotNull(resolution.quotedPackage());
+        assertEquals(530_000L, resolution.quotedPackage().priceVnd());
+
+        // 2. Khách chỉ hỏi khuyến mãi về gói được quote -> KHÔNG phải tín hiệu đồng ý chốt gói (packageInterestAccepted phải == false)
+        assertFalse(
+                CleanAgentOrchestratorService.isPositiveInterestForTrialInvite(userMsg),
+                "Hỏi 'Gói này có khuyến mãi không' tuyệt đối không phải là đồng ý chốt gói"
+        );
+        assertFalse(
+                CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(userMsg),
+                "Hỏi 'Gói này có khuyến mãi không' không phải là chọn gói đặt lịch"
+        );
+
+        // 3. Kiểm tra trong Prompt: held_package giữ nguyên (399k), quoted_package = 530k, accepted_package = NONE, stage = STAGE_2 (không nhảy sang STAGE_4_POSITIVE_TRIAL_OR_BOOKING)
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "chị",
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay",
+                true,
+                "Massage cơ bản 60 phút",
+                "399k",
+                0,
+                false,
+                "NONE",
+                List.of("PROMO_OR_DISCOUNT_QUESTION", "SERVICE_OR_UNIT_DETAIL_QUESTION", "QUOTED_PACKAGE_RESOLVED"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                userMsg,
+                null,
+                List.of(),
+                java.util.Map.of(),
+                resolution
+        );
+        assertTrue(prompt.contains("held_package: \"Massage cơ bản 60 phút\""),
+                "held_package vẫn phải giữ nguyên gói 399k");
+        assertTrue(prompt.contains("quoted_package: \"Massage cơ bản nâng cao 80 phút (530k)\""),
+                "quoted_package phải là gói 530k");
+        assertTrue(prompt.contains("accepted_package: \"null\""),
+                "accepted_package bắt buộc phải là null khi khách chỉ quote gói 530k để hỏi khuyến mãi");
+        assertTrue(prompt.contains("stage=STAGE_1_DISCOVERY_AND_FIRST_QUOTE"),
+                "Không được đẩy sang STAGE_4_POSITIVE_TRIAL_OR_BOOKING khi khách chỉ quote hỏi khuyến mãi");
+        assertFalse(prompt.contains("stage=STAGE_4_POSITIVE_TRIAL_OR_BOOKING"));
+    }
+
+    @Test
+    void testCheckpointF1_SaleInquiryOnly_EmitsPromoSignal_NeverIncrementsPriceObjectionCount() {
+        String msg = "Nay gói này có sale không?";
+        assertTrue(CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(msg),
+                "Câu hỏi 'Nay gói này có sale không?' phải được nhận diện là câu hỏi khuyến mãi");
+        assertTrue(CleanAgentOrchestratorService.isNormalPriceOrDetailInquiryMessage(msg),
+                "Câu hỏi 'Nay gói này có sale không?' phải được nhận diện là câu hỏi thông tin/ưu đãi thông thường");
+        assertFalse(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true),
+                "Chỉ hỏi 'có sale không' tuyệt đối không phải là phản đối giá (PRICE_OBJECTION)");
+
+        List<String> signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                msg,
+                false, false, false, true,
+                false, 1, false, false,
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay"
+        );
+        assertTrue(signals.contains("PROMO_OR_DISCOUNT_QUESTION"),
+                "Phải phát tín hiệu PROMO_OR_DISCOUNT_QUESTION: " + signals);
+        assertTrue(signals.contains("SERVICE_OR_UNIT_DETAIL_QUESTION"),
+                "Phải phát tín hiệu SERVICE_OR_UNIT_DETAIL_QUESTION: " + signals);
+        assertFalse(signals.contains("PRICE_OBJECTION"),
+                "Không được phát tín hiệu PRICE_OBJECTION: " + signals);
+        assertFalse(signals.contains("PRICE_OBJECTION_FIRST_TIME"),
+                "Không được phát tín hiệu PRICE_OBJECTION_FIRST_TIME: " + signals);
+        assertFalse(signals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST"),
+                "Không được phát tín hiệu PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST: " + signals);
+
+        // Ngăn bước Post-LLM Brain-to-State Reconciliation tự ý tăng priceObjectionCount kể cả khi LLM gán nhầm PRICE_OBJECTION
+        assertFalse(
+                CleanAgentOrchestratorService.shouldReconcilePostLlmPriceObjection(
+                        false,
+                        CleanAgentOrchestratorService.BRAIN_INTENT_PRICE_OBJECTION,
+                        true,
+                        msg
+                ),
+                "Post-LLM Brain-to-State Reconciliation tuyệt đối không được tăng priceObjectionCount cho câu hỏi 'Nay gói này có sale không?'"
+        );
+    }
+
+    @Test
+    void testCheckpointF2_MixedSaleAndPriceObjection_EmitsBothPromoAndPriceObjectionSignals() {
+        String msg = "Không sale thì đắt quá, có gói nào rẻ hơn không?";
+        assertTrue(CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(msg),
+                "Câu ghép vừa hỏi sale vừa chê đắt vẫn phải nhận diện tín hiệu hỏi sale");
+        assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true),
+                "Câu ghép có 'đắt quá, có gói nào rẻ hơn không' phải nhận diện phản đối giá");
+
+        List<String> signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                msg,
+                false, false, false, false,
+                true, 1, false, false,
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay"
+        );
+        assertTrue(signals.contains("PROMO_OR_DISCOUNT_QUESTION"),
+                "Phải phát đồng thời PROMO_OR_DISCOUNT_QUESTION: " + signals);
+        assertTrue(signals.contains("PRICE_OBJECTION"),
+                "Phải phát đồng thời PRICE_OBJECTION: " + signals);
+        assertTrue(signals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST"),
+                "Phải phát PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST: " + signals);
+
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        String stage = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signals, msg, 1, true, false, false, tiered, List.of()
+        );
+        assertEquals("STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION", stage,
+                "Khi khách vừa hỏi sale vừa chê đắt và xin gói rẻ hơn, Stage phải chuyển sang STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION");
+    }
+
+    @Test
+    void testCheckpointF3_QuoteReplyMidNotFound_AsksClarificationBetween530kAnd239k_NeverDefaultsTo239k() {
+        SentBubbleLedger.clear();
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa",
+                "Spa dưỡng sinh trị liệu cổ truyền",
+                "Khách đau mỏi cổ vai gáy",
+                "Tinh tế, giàu cảm xúc"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+
+        // Khi reply_to.mid không tìm thấy trong Ledger và Graph API (found=false), lịch sử đã tư vấn gói 530k và gói 239k
+        List<PackageCatalogService.PackageSummary> presentedInHistory = List.of(
+                allCatalog.stream().filter(p -> p.priceVnd() == 530_000L).findFirst().orElseThrow(),
+                allCatalog.stream().filter(p -> p.priceVnd() == 239_000L).findFirst().orElseThrow()
+        );
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution unresolvedQuote =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        "m_old_unindexed_530k_bubble",
+                        null,
+                        allCatalog,
+                        presentedInHistory
+                );
+        assertTrue(unresolvedQuote.unresolvedReplyToMid());
+        assertNull(unresolvedQuote.quotedPackage());
+        assertEquals(
+                CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.UNRESOLVED_QUOTED_PACKAGE,
+                unresolvedQuote.resolutionState()
+        );
+
+        // Dù trước đó held_package đang là Gói dưỡng sinh cơ bản 60 phút (239k), khi khách quote tin nhắn found=false hỏi "Nay gói này có sale không?"
+        // Prompt tuyệt đối không được khóa active_package_in_focus vào 239k làm câu trả lời duy nhất, mà phải hướng dẫn hỏi xác nhận giữa 530k và 239k
+        String prompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona,
+                "mình",
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay",
+                true,
+                "Gói dưỡng sinh cơ bản 60 phút",
+                "239k",
+                1,
+                false,
+                "NONE",
+                List.of("PROMO_OR_DISCOUNT_QUESTION", "SERVICE_OR_UNIT_DETAIL_QUESTION", "UNRESOLVED_REPLY_TO_MID"),
+                "",
+                1,
+                tiered,
+                List.of(),
+                List.of(),
+                "Nay gói này có sale không?",
+                null,
+                List.of(),
+                java.util.Map.of(),
+                unresolvedQuote
+        );
+        assertTrue(prompt.contains("quoted_package: \"UNRESOLVED_REPLY_TO_MID (m_old_unindexed_530k_bubble)\""),
+                "Prompt phải ghi nhận trạng thái UNRESOLVED_REPLY_TO_MID");
+        assertTrue(prompt.contains("TUYỆT ĐỐI KHÔNG tự mặc định lấy held_package hay gói gần nhất làm câu trả lời duy nhất"),
+                "Prompt phải cấm mặc định lấy gói cũ 239k làm câu trả lời duy nhất");
+        assertTrue(prompt.contains("Dạ mình đang hỏi ưu đãi cho gói Massage cơ bản nâng cao 80 phút giá 530k hay gói Dưỡng sinh cơ bản 60 phút giá 239k ạ?"),
+                "Prompt phải cung cấp mẫu câu hỏi xác nhận động giữa gói 530k và 239k thực tế trong lịch sử");
+
+        // Kiểm tra thêm tầng fallback Graph API trên FanpageBotController khi Ledger miss nhưng Graph API trả về nội dung bong bóng 530k
+        FanpageBotService dummyBotService = org.mockito.Mockito.mock(FanpageBotService.class);
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(dummyBotService);
+        controller.setPageAccessToken("EAAB_test_token");
+        controller.setGraphApiGetter((url, timeoutMs) -> new com.example.docmind.controller.FanpageBotController.HttpResponseResult(
+                200,
+                "{\"id\":\"m_old_530k_from_graph\",\"message\":\"Bên em có gói Massage cơ bản nâng cao 80 phút (530k) gồm 10p ngâm bồn thảo dược ạ.\"}"
+        ));
+        String resolvedFromGraph = controller.resolveQuotedMessageTextForWebhook(
+                com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID,
+                "psid_quote_graph_01",
+                "m_old_530k_from_graph"
+        );
+        assertNotNull(resolvedFromGraph);
+        assertTrue(resolvedFromGraph.contains("530k"));
+    }
+
+    @Test
+    void testCheckpointF4_HistoricalPriceObjectionCount2_CustomerAsksClosingTime_NeverTriggersMissingEconomicalPackageReferee() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        List<FanpageBotRequest.ConversationTurn> historyWithPrior239k = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Giá 399k đắt quá"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút (399k) chăm sóc toàn thân rất sâu ạ."),
+                new FanpageBotRequest.ConversationTurn("user", "Vẫn cao quá em ơi"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ vậy mình tham khảo Gói dưỡng sinh cơ bản 60 phút (239k) tập trung vùng đầu, cổ, vai, gáy nhé ạ.")
+        );
+
+        String customerMsg = "Tối mấy h đóng cửa";
+        assertTrue(CleanAgentOrchestratorService.isOperationalOrLogisticsQuestion(customerMsg),
+                "Câu hỏi 'Tối mấy h đóng cửa' phải được nhận diện là câu hỏi vận hành (OPERATIONAL_OR_LOGISTICS_QUESTION)");
+        assertFalse(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(customerMsg, true));
+
+        List<String> signals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                customerMsg,
+                false, false, false, true,
+                false, 2, false, false,
+                List.of("đau mỏi cổ vai gáy"),
+                List.of("cổ", "vai", "gáy"),
+                "mấy hôm nay",
+                null, "NONE", historyWithPrior239k
+        );
+        assertTrue(signals.contains("OPERATIONAL_OR_LOGISTICS_QUESTION"));
+        assertFalse(signals.contains("PRICE_OBJECTION"));
+
+        String stage = CleanAgentOrchestratorService.resolveCleanFunnelStage(
+                signals, customerMsg, 2, true, true, false, tiered, historyWithPrior239k
+        );
+        assertNotEquals("STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION", stage,
+                "Khi khách hỏi giờ đóng cửa, Stage tuyệt đối không được kẹt ở STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION dù lịch sử có priceObjectionCount == 2");
+
+        // Câu trả lời tự nhiên của bot về giờ đóng cửa (không nhắc tới 239k)
+        List<FanpageBotResponse.ReplyBubble> closingTimeBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ Nàng Sen Spa mở cửa đón khách đến 21h00 mỗi tối ạ, mình ghé trước 20h00 để làm trọn vẹn liệu trình 60 phút nhé ạ.", 0)
+        );
+        PackageCatalogService.PackageSummary ds02Pkg = tiered.economicalAlternatives().get(0);
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                closingTimeBubbles,
+                allCatalog,
+                tiered.allAllowedPackages(),
+                tiered.excludedCatalog(),
+                2,
+                true,
+                ds02Pkg,
+                false,
+                "NONE",
+                customerMsg,
+                false, // currentTurnHasPriceObjection == false
+                true,  // downsellAlreadyOfferedInHistory == true
+                true   // hasHigherPriorityIntent == true
+        );
+        assertFalse(
+                violations.stream().anyMatch(v -> v.startsWith("MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL")),
+                "Referee tuyệt đối không được bắt lỗi MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL khi khách hỏi giờ đóng cửa: " + violations
+        );
+        assertTrue(violations.isEmpty(), "Câu trả lời giờ đóng cửa hợp lệ không được có bất kỳ lỗi Referee nào: " + violations);
+    }
+
+    @Test
+    void testCheckpointF5_PriceEntityMismatch_MassageCoBan60PhutWith239k_DetectedAndRebuiltFromStructuredCatalog() {
+        List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tiered =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of("đau mỏi cổ vai gáy"),
+                        List.of("cổ", "vai", "gáy"),
+                        Set.of(),
+                        false
+                );
+        PackageCatalogService.PackageSummary ns01Pkg = tiered.primaryRecommendations().stream()
+                .filter(p -> p.priceVnd() == 399_000L)
+                .findFirst()
+                .orElseThrow();
+
+        // Bot sinh câu râu ông nọ cắm cằm bà kia: ghép tên "Massage cơ bản 60 phút" (NS01 = 399k) với giá "239k" (DS02 = 239k)
+        List<FanpageBotResponse.ReplyBubble> mismatchedBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ hiện tại gói Massage cơ bản 60 phút bên em đang áp dụng mức giá niêm yết 239k trọn gói ạ.",
+                        0
+                )
+        );
+
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                mismatchedBubbles,
+                allCatalog,
+                tiered.allAllowedPackages(),
+                tiered.excludedCatalog(),
+                1,
+                true,
+                ns01Pkg,
+                false,
+                "NONE",
+                "Nay gói này có sale không?"
+        );
+        assertTrue(
+                violations.stream().anyMatch(v -> v.startsWith("PRICE_ENTITY_MISMATCH:")),
+                "Referee bắt buộc phải phát hiện lỗi PRICE_ENTITY_MISMATCH khi ghép 'Massage cơ bản 60 phút' với giá '239k': " + violations
+        );
+
+        // Dựng lại câu từ đối tượng cấu trúc Catalog (không dùng regex sửa chuỗi mù quáng, không gọi LLM lần 3)
+        List<FanpageBotResponse.ReplyBubble> rebuiltBubbles =
+                CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
+                        mismatchedBubbles,
+                        ns01Pkg,
+                        tiered.allAllowedPackages(),
+                        "em",
+                        "mình"
+                );
+        assertFalse(rebuiltBubbles.isEmpty());
+        String rebuiltText = rebuiltBubbles.get(0).text();
+        assertTrue(rebuiltText.contains("Massage cơ bản") && rebuiltText.contains("399k"),
+                "Câu dựng lại từ Catalog chuẩn của NS01 phải khớp tên 'Massage cơ bản' và giá '399k': " + rebuiltText);
+        assertFalse(rebuiltText.contains("239k"),
+                "Câu dựng lại từ Catalog của NS01 không được còn giá lệch 239k: " + rebuiltText);
+
+        // Kiểm tra lại với Referee sau khi dựng từ dữ liệu cấu trúc Catalog -> 0 vi phạm
+        List<String> postRebuildViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                rebuiltBubbles,
+                allCatalog,
+                tiered.allAllowedPackages(),
+                tiered.excludedCatalog(),
+                1,
+                true,
+                ns01Pkg,
+                false,
+                "NONE",
+                "Nay gói này có sale không?"
+        );
+        assertTrue(postRebuildViolations.isEmpty(),
+                "Bong bóng dựng lại từ cấu trúc Catalog phải đạt 0 vi phạm Grounding: " + postRebuildViolations);
+    }
+
+    @Test
+    void testCheckpointF6_BurstDebounceWindow_MergesClosingTimeAndParkingIntoSingleLlmTurn() throws Exception {
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        java.util.concurrent.atomic.AtomicInteger handleCalls = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicReference<String> capturedMergedMessage = new java.util.concurrent.atomic.AtomicReference<>("");
+
+        FanpageBotService mockBotService = org.mockito.Mockito.mock(FanpageBotService.class);
+        org.mockito.Mockito.when(mockBotService.handleCustomerMessage(org.mockito.Mockito.any()))
+                .thenAnswer(inv -> {
+                    FanpageBotRequest req = inv.getArgument(0);
+                    handleCalls.incrementAndGet();
+                    capturedMergedMessage.set(req.message());
+                    return new FanpageBotResponse(
+                            "Dạ bên em mở cửa đến 21h00 tối và có bãi đỗ xe máy, ô tô rộng rãi ngay trước cửa ạ.",
+                            List.of(new FanpageBotResponse.ReplyBubble(
+                                    "Dạ bên em mở cửa đến 21h00 tối và có bãi đỗ xe máy, ô tô rộng rãi ngay trước cửa ạ.", 0)),
+                            List.of(0),
+                            "VALUE_CONSULTATION",
+                            0.95,
+                            false,
+                            null,
+                            null,
+                            null,
+                            List.of(),
+                            null,
+                            List.of(),
+                            List.of("CLEAN_AGENT_MODE")
+                    );
+                });
+
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(mockBotService);
+        controller.setPageAccessToken("EAAB_burst_token");
+        controller.setInterBubbleDelayMs(0L);
+        controller.setBurstDebounceMs(160L);
+        List<String> sentPayloads = java.util.Collections.synchronizedList(new ArrayList<>());
+        controller.setGraphApiSender((url, body) -> {
+            if (body.contains("\"message\"")) {
+                sentPayloads.add(body);
+            }
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_burst_1\"}");
+        });
+
+        String payloadA = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_burst_user_06"},
+                      "timestamp": 1775000001000,
+                      "message": {"mid": "m_burst_06_a", "text": "Tối mấy h đóng cửa"}
+                    }]
+                  }]
+                }
+                """;
+        String payloadB = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_burst_user_06"},
+                      "timestamp": 1775000001050,
+                      "message": {"mid": "m_burst_06_b", "text": "Có chỗ đỗ xe không"}
+                    }]
+                  }]
+                }
+                """;
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<?> f1 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadA));
+            Thread.sleep(35L); // Tin B đến khi Tin A vẫn đang trong cửa sổ gom 160ms
+            java.util.concurrent.Future<?> f2 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadB));
+            f1.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            f2.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(1, handleCalls.get(),
+                "Hai tin nhắn đến trong cửa sổ gom (debounce window) chỉ được gọi handleCustomerMessage đúng 1 lần duy nhất");
+        assertEquals("Tối mấy h đóng cửa\nCó chỗ đỗ xe không", capturedMergedMessage.get(),
+                "Nội dung 2 tin nhắn phải được gộp theo đúng thứ tự thời gian");
+        assertEquals(1, sentPayloads.size(),
+                "Chỉ gửi 1 lượt phản hồi tổng hợp cho cả 2 câu hỏi");
+
+        // Kiểm tra thêm Prompt Builder khi nhận câu gộp có chứa chỉ dẫn MULTI-MESSAGE BURST
+        PromptBuilder.PagePersona spaPersona = new PromptBuilder.PagePersona(
+                "Nàng Sen Spa", "Spa dưỡng sinh", "Khách hàng", "Tinh tế"
+        );
+        String burstPrompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                spaPersona, "mình", List.of(), List.of(), "chưa có", true,
+                "null", "null", 0, false, "NONE",
+                List.of("OPERATIONAL_OR_LOGISTICS_QUESTION", "SERVICE_OR_UNIT_DETAIL_QUESTION"),
+                "", 1, null, List.of(), List.of(),
+                capturedMergedMessage.get(), null, List.of(), java.util.Map.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty()
+        );
+        assertTrue(burstPrompt.contains("MULTI-MESSAGE BURST"),
+                "Prompt phải chứa khối chỉ dẫn MULTI-MESSAGE BURST khi khách gửi nhiều tin liên tiếp");
+        assertTrue(burstPrompt.contains("Tin nhắn 1: \"Tối mấy h đóng cửa\"")
+                        && burstPrompt.contains("Tin nhắn 2: \"Có chỗ đỗ xe không\""),
+                "Prompt phải liệt kê đầy đủ từng tin nhắn con trong cụm burst");
+    }
+
+    @Test
+    void testCheckpointF7_SupersedeInFlightLlm_MessageBArrivesBeforeFirstBubbleSent_AbortsBatchAAndRunsMergedAB() throws Exception {
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        java.util.concurrent.CountDownLatch batchAEnteredLlm = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch allowBatchALlmToReturn = new java.util.concurrent.CountDownLatch(1);
+        List<String> recordedLlmInputs = java.util.Collections.synchronizedList(new ArrayList<>());
+        List<String> outboundSentBubbles = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        FanpageBotService mockBotService = org.mockito.Mockito.mock(FanpageBotService.class);
+        org.mockito.Mockito.when(mockBotService.handleCustomerMessage(org.mockito.Mockito.any()))
+                .thenAnswer(inv -> {
+                    FanpageBotRequest req = inv.getArgument(0);
+                    String msg = req.message();
+                    recordedLlmInputs.add(msg);
+                    if ("Tối mấy h đóng cửa".equals(msg)) {
+                        batchAEnteredLlm.countDown();
+                        allowBatchALlmToReturn.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                        // Kiểm tra chốt chặn #1 (AFTER_LLM_BEFORE_REFEREE):
+                        boolean stillCurrent = SenderEpochRegistry.checkThreadEpochStillCurrent(
+                                req.pageId(), req.senderId(), SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE);
+                        if (!stillCurrent) {
+                            return new FanpageBotResponse(
+                                    "", List.of(), List.of(), "SUPERSEDED_ABORTED", 0.0, false,
+                                    null, null, null, List.of(), null, List.of(), List.of("SUPERSEDED_BY_NEWER_EPOCH")
+                            );
+                        }
+                        return new FanpageBotResponse(
+                                "Bong bóng cũ của riêng Batch A (LẼ RA PHẢI BỊ HỦY)",
+                                List.of(new FanpageBotResponse.ReplyBubble("Bong bóng cũ của riêng Batch A (LẼ RA PHẢI BỊ HỦY)", 0)),
+                                List.of(0), "VALUE_CONSULTATION", 0.9, false, null, null, null, List.of(), null, List.of(), List.of()
+                        );
+                    }
+                    // Batch mới đã gộp A + B
+                    return new FanpageBotResponse(
+                            "Dạ bên em mở cửa đến 21h00 tối và có chỗ đỗ xe máy, ô tô miễn phí ngay trước sảnh ạ.",
+                            List.of(new FanpageBotResponse.ReplyBubble(
+                                    "Dạ bên em mở cửa đến 21h00 tối và có chỗ đỗ xe máy, ô tô miễn phí ngay trước sảnh ạ.", 0)),
+                            List.of(0), "VALUE_CONSULTATION", 0.95, false, null, null, null, List.of(), null, List.of(), List.of()
+                    );
+                });
+
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(mockBotService);
+        controller.setPageAccessToken("EAAB_supersede_token");
+        controller.setInterBubbleDelayMs(0L);
+        controller.setBurstDebounceMs(0L); // Không chờ debounce để Batch A vào thẳng LLM ngay lập tức
+        controller.setGraphApiSender((url, body) -> {
+            if (body.contains("\"message\"")) {
+                outboundSentBubbles.add(body);
+            }
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_sup_1\"}");
+        });
+
+        String payloadA = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_supersede_user_07"},
+                      "timestamp": 1775000002000,
+                      "message": {"mid": "m_sup_07_a", "text": "Tối mấy h đóng cửa"}
+                    }]
+                  }]
+                }
+                """;
+        String payloadB = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_supersede_user_07"},
+                      "timestamp": 1775000002050,
+                      "message": {"mid": "m_sup_07_b", "text": "Có chỗ đỗ xe không"}
+                    }]
+                  }]
+                }
+                """;
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<?> f1 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadA));
+            assertTrue(batchAEnteredLlm.await(3, java.util.concurrent.TimeUnit.SECONDS),
+                    "Batch A phải đang nằm trong LLM trước khi Tin B đến");
+
+            // Tin B đến trong lúc Batch A đang chạy LLM và chưa gửi bong bóng đầu tiên
+            java.util.concurrent.Future<?> f2 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadB));
+            Thread.sleep(40L); // Đảm bảo Tin B đã tăng generationEpoch và đánh dấu Batch A là superseded
+            allowBatchALlmToReturn.countDown();
+
+            f1.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            f2.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(2, recordedLlmInputs.size());
+        assertEquals("Tối mấy h đóng cửa", recordedLlmInputs.get(0));
+        assertEquals("Tối mấy h đóng cửa\nCó chỗ đỗ xe không", recordedLlmInputs.get(1),
+                "Sau khi hủy Batch A lỗi thời, Batch mới phải chạy lại trên ngữ cảnh gộp đầy đủ A + B");
+        assertEquals(1, outboundSentBubbles.size(),
+                "Tuyệt đối không được gửi bong bóng của Batch A đã bị superseded ra Facebook");
+        assertFalse(outboundSentBubbles.get(0).contains("LẼ RA PHẢI BỊ HỦY"));
+        assertTrue(outboundSentBubbles.get(0).contains("21h00") && outboundSentBubbles.get(0).contains("đỗ xe"));
+        assertEquals(
+                SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE,
+                SenderEpochRegistry.getLastAbortedCheckpoint(
+                        com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID,
+                        "psid_supersede_user_07"
+                ),
+                "Batch A phải bị chặn đúng tại chốt AFTER_LLM_BEFORE_REFEREE"
+        );
+    }
+
+    @Test
+    void testCheckpointF8_UnifiedMidSendInterruption_MessageBArrivesDuringBubbleDelay_AbortsRemainingBubblesOfBatchAAndRunsBatchB() throws Exception {
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        java.util.concurrent.CountDownLatch bubble1OfBatchASent = new java.util.concurrent.CountDownLatch(1);
+        List<String> outboundBubbleOrder = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        String pageId = com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID;
+        String senderPsid = "psid_seq_user_08";
+
+        FanpageBotService mockBotService = org.mockito.Mockito.mock(FanpageBotService.class);
+        org.mockito.Mockito.when(mockBotService.handleCustomerMessage(org.mockito.Mockito.any()))
+                .thenAnswer(inv -> {
+                    FanpageBotRequest req = inv.getArgument(0);
+                    String ledgerKey = SentBubbleLedger.key(req.pageId(), req.senderId(), req.conversationId());
+                    String turnId = SentBubbleLedger.stableUserTurnId(ledgerKey, req.message());
+                    SentBubbleLedger.recordCustomerTurn(ledgerKey, turnId, req.message());
+                    if ("Tin nhắn A".equals(req.message())) {
+                        List<String> bubblesA = List.of("A-Bong bóng 1", "A-Bong bóng 2", "A-Bong bóng 3");
+                        SentBubbleLedger.recordAssistantTurn(
+                                ledgerKey, turnId + ":a", bubblesA, SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+                        return new FanpageBotResponse(
+                                String.join("\n\n", bubblesA),
+                                List.of(
+                                        new FanpageBotResponse.ReplyBubble("A-Bong bóng 1", 0),
+                                        new FanpageBotResponse.ReplyBubble("A-Bong bóng 2", 0),
+                                        new FanpageBotResponse.ReplyBubble("A-Bong bóng 3", 0)
+                                ),
+                                List.of(0, 0, 0), "VALUE_CONSULTATION", 0.95, false, null, null, null, List.of(), null, List.of(), List.of()
+                        );
+                    }
+                    SentBubbleLedger.recordAssistantTurn(
+                            ledgerKey, turnId + ":a", List.of("B-Bong bóng 1"), SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+                    return new FanpageBotResponse(
+                            "B-Bong bóng 1",
+                            List.of(new FanpageBotResponse.ReplyBubble("B-Bong bóng 1", 0)),
+                            List.of(0), "VALUE_CONSULTATION", 0.95, false, null, null, null, List.of(), null, List.of(), List.of()
+                    );
+                });
+
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(mockBotService);
+        controller.setPageAccessToken("EAAB_seq_token");
+        // Đặt bubbleDelayMs = 2500ms để mô phỏng đúng khoảng nghỉ giữa Bong bóng 1 và Bong bóng 2 ngoài thực tế
+        controller.setBubbleDelayMs(2500L);
+        controller.setBurstDebounceMs(0L);
+        controller.setGraphApiSender((url, body) -> {
+            if (body.contains("A-Bong bóng 1")) {
+                outboundBubbleOrder.add("A-Bong bóng 1");
+                bubble1OfBatchASent.countDown();
+            } else if (body.contains("A-Bong bóng 2")) {
+                outboundBubbleOrder.add("A-Bong bóng 2");
+            } else if (body.contains("A-Bong bóng 3")) {
+                outboundBubbleOrder.add("A-Bong bóng 3");
+            } else if (body.contains("B-Bong bóng 1")) {
+                outboundBubbleOrder.add("B-Bong bóng 1");
+            }
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_seq\"}");
+        });
+
+        String payloadA = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_seq_user_08"},
+                      "timestamp": 1775000003000,
+                      "message": {"mid": "m_seq_08_a", "text": "Tin nhắn A"}
+                    }]
+                  }]
+                }
+                """;
+        String payloadB = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_seq_user_08"},
+                      "timestamp": 1775000003050,
+                      "message": {"mid": "m_seq_08_b", "text": "Tin nhắn B"}
+                    }]
+                  }]
+                }
+                """;
+
+        long startMs = System.nanoTime();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<?> f1 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadA));
+            assertTrue(bubble1OfBatchASent.await(3, java.util.concurrent.TimeUnit.SECONDS),
+                    "Batch A phải đã gửi xong bong bóng 1 ra Facebook");
+
+            // Tin B đến trong khoảng nghỉ bubbleDelayMs (2500ms) sau khi Bong bóng 1 của Batch A đã gửi nhưng Bong bóng 2 chưa gửi
+            Thread.sleep(40L);
+            java.util.concurrent.Future<?> f2 = pool.submit(() -> controller.receiveMetaWebhook(null, null, payloadB));
+
+            f1.get(3, java.util.concurrent.TimeUnit.SECONDS);
+            f2.get(3, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+        long elapsedMs = (System.nanoTime() - startMs) / 1_000_000L;
+
+        assertTrue(elapsedMs < 1500L,
+                "Interruptible wait bắt buộc phải thức dậy ngay lập tức khi khách nhắn chen (không được ngủ mù quáng hết 2500ms*2), elapsed=" + elapsedMs + "ms");
+        assertEquals(
+                List.of("A-Bong bóng 1", "B-Bong bóng 1"),
+                outboundBubbleOrder,
+                "Khi khách nhắn chen trong khoảng nghỉ sau A-Bong bóng 1, phải dừng ngay lập tức, KHÔNG gửi A-Bong bóng 2 & A-Bong bóng 3"
+        );
+
+        // Kiểm tra SentBubbleLedger chỉ giữ lại A-Bong bóng 1 thực sự đã gửi và đánh dấu CANCELED cho A-Bong bóng 2, A-Bong bóng 3
+        String webhookConvId = "fb_webhook_" + senderPsid;
+        List<FanpageBotRequest.ConversationTurn> reconciledHistory =
+                SentBubbleLedger.reconcile(SentBubbleLedger.key(pageId, senderPsid, webhookConvId), List.of());
+        String joinedReconciled = reconciledHistory.stream()
+                .map(t -> t.role() + ":" + t.content())
+                .reduce((a, b) -> a + " | " + b)
+                .orElse("");
+        assertTrue(joinedReconciled.contains("A-Bong bóng 1") && joinedReconciled.contains("B-Bong bóng 1"),
+                "Lịch sử đối soát phải chứa A-Bong bóng 1 và B-Bong bóng 1: " + joinedReconciled);
+        assertFalse(joinedReconciled.contains("A-Bong bóng 2") || joinedReconciled.contains("A-Bong bóng 3"),
+                "Các bong bóng chưa kịp gửi của lượt A đã bị hủy không được lọt vào lịch sử hội thoại: " + joinedReconciled);
+    }
+
+    private static FanpageBotService buildRealEndToEndSpaBotService(
+            java.util.function.Function<String, String> llmResponder,
+            java.util.concurrent.atomic.AtomicInteger llmCallCounter
+    ) {
+        String pageIdStr = com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID;
+        UUID pageUuid = UUID.fromString(pageIdStr);
+        UUID docId = UUID.fromString("11111111-2222-3333-4444-555555555555");
+
+        com.example.docmind.repository.DocumentRepository docRepo =
+                org.mockito.Mockito.mock(com.example.docmind.repository.DocumentRepository.class);
+        com.example.docmind.entity.DocumentEntity readyDoc = com.example.docmind.entity.DocumentEntity.builder()
+                .id(docId)
+                .pageId(pageUuid)
+                .filename("nang_sen_spa_catalog.md")
+                .sha256("sha256_nang_sen_spa")
+                .mime("text/markdown")
+                .pages(1)
+                .status("READY")
+                .active(true)
+                .build();
+        org.mockito.Mockito.when(docRepo.findByPageIdOrderByCreatedAtDesc(pageUuid))
+                .thenReturn(List.of(readyDoc));
+        org.mockito.Mockito.when(docRepo.findAllByOrderByCreatedAtDesc())
+                .thenReturn(List.of(readyDoc));
+
+        String spaMarkdownCatalog = """
+                # BẢNG GIÁ DỊCH VỤ NÀNG SEN SPA - KHU VỰC HÀ NỘI
+                Giờ mở cửa: 09h00 - 21h00 hằng ngày. Miễn phí gửi xe máy, ô tô trước sảnh. Giá niêm yết trọn gói, không phát sinh phụ phí, không nhận tip.
+
+                | Mã gói | Tên gói | Giá | Thời gian | Bao gồm | Không gian | Phù hợp | Nổi bật |
+                |---|---|---|---|---|---|---|---|
+                | DS01 | Lấy ráy tai cơ bản | 129.000đ | 30 phút | Lấy ráy tai nhẹ nhàng + ăn nhẹ & trái cây theo mùa | Phòng chung | Khách muốn thư giãn tai | Vệ sinh tai ngoài thư giãn |
+                | DS02 | Gói dưỡng sinh cơ bản | 239.000đ | 60 phút | Gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ & trái cây theo mùa | Khu gội chung | Dân văn phòng đau mỏi nhẹ đầu cổ vai gáy | Gội đầu dưỡng sinh kết hợp massage cổ vai gáy |
+                | NS01 | Massage cơ bản | 399.000đ | 60 phút | Full body massage trị liệu cơ bản toàn thân cổ vai gáy lưng chân + ăn nhẹ thực dưỡng | Phòng chung | Đau mỏi cổ vai gáy, lưng, chân tay | Ấn huyệt làm mềm cơ toàn thân |
+                | NS02 | Massage cơ bản nâng cao | 530.000đ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage toàn thân cổ vai gáy lưng + ăn nhẹ | Phòng chung | Đau mỏi nhiều cần ngâm thảo dược | Ngâm bồn thảo dược ấm và massage trị liệu chuyên sâu |
+                | NS03 | Massage phục hồi | 580.000đ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi toàn thân + ăn nhẹ | Phòng VIP riêng | Khách cần phòng riêng và phục hồi chuyên sâu | Ngâm thảo dược, xông hơi và massage phục hồi toàn diện |
+                """;
+        RetrievedChunk rc = new RetrievedChunk(
+                UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                docId,
+                List.of("Khu vực Hà Nội", "Bảng giá dịch vụ"),
+                List.of(),
+                1,
+                null,
+                spaMarkdownCatalog,
+                0.95
+        );
+        ReciprocalRankFusion.FusedChunk fusedChunk = new ReciprocalRankFusion.FusedChunk(rc, 0.95);
+
+        com.example.docmind.service.retrieval.RetrievalService retrievalService =
+                org.mockito.Mockito.mock(com.example.docmind.service.retrieval.RetrievalService.class);
+        org.mockito.Mockito.when(retrievalService.retrieveWithRules(
+                        org.mockito.Mockito.any(),
+                        org.mockito.Mockito.anyString(),
+                        org.mockito.Mockito.anyInt(),
+                        org.mockito.Mockito.any(),
+                        org.mockito.Mockito.any()))
+                .thenReturn(new com.example.docmind.service.retrieval.RetrievalService.RetrievalResult(
+                        List.of(fusedChunk), List.of()
+                ));
+
+        com.example.docmind.service.llm.LlmClient stubLiveLlm = new com.example.docmind.service.llm.LlmClient() {
+            @Override
+            public String complete(String prompt) {
+                if (llmCallCounter != null) {
+                    llmCallCounter.incrementAndGet();
+                }
+                return llmResponder.apply(prompt);
+            }
+
+            @Override
+            public String name() {
+                return "openai:qwen3.5-plus";
+            }
+        };
+
+        com.example.docmind.config.ChatProperties chatProps = new com.example.docmind.config.ChatProperties();
+        FastApiAgentService mockFastApi = org.mockito.Mockito.mock(FastApiAgentService.class);
+        return new FanpageBotService(
+                retrievalService,
+                stubLiveLlm,
+                chatProps,
+                docRepo,
+                null,
+                new CustomerInsightEngine(),
+                null,
+                null,
+                new com.docmind.guardrail.GuardrailPipeline(),
+                null,
+                mockFastApi,
+                null,
+                new com.example.docmind.service.reasoning.QueryComplexityClassifier()
+        );
+    }
+
+    private static List<String> extractOutboundMessageTexts(List<String> rawGraphPayloads) throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        List<String> texts = new ArrayList<>();
+        for (String payload : rawGraphPayloads) {
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(payload);
+            String txt = root.path("message").path("text").asText("");
+            if (!txt.isBlank()) {
+                texts.add(txt);
+            }
+        }
+        return texts;
+    }
+
+    @Test
+    void testCheckpointF_E2E_1021AM_ResolvedQuote530kAfter3TurnsOf239k_NeverDriftsTo239kOrFabricatesPromo() throws Exception {
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        String pageId = com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID;
+        String senderPsid = "psid_1021am_case_a";
+        String webhookConvIdA = "fb_webhook_" + senderPsid;
+        String ledgerKey = SentBubbleLedger.key(pageId, senderPsid, webhookConvIdA);
+
+        // Dựng đúng lịch sử thực tế 10:21 AM: Bot đã giới thiệu gói 530k (có mid_bot_530k), sau đó 3 lượt trao đổi về gói 239k
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "u1", "Mình đau mỏi cổ vai gáy lưng muốn ngâm thảo dược");
+        String bot530kBubble = "Dạ mình tham khảo gói Massage cơ bản nâng cao 80 phút giá 530k gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu chuyên sâu nhé ạ.";
+        SentBubbleLedger.recordAssistantTurn(ledgerKey, "a1", List.of(bot530kBubble), SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+        SentBubbleLedger.recordMessageId(pageId, senderPsid, "mid_bot_530k", "assistant", bot530kBubble);
+
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "u2", "530k hơi cao em ơi, có gói nào nhẹ tiền hơn không");
+        SentBubbleLedger.recordAssistantTurn(ledgerKey, "a2",
+                List.of("Dạ vậy mình tham khảo Gói dưỡng sinh cơ bản 60 phút giá 239k gồm gội đầu và massage cổ vai gáy nhé ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "u3", "Gói 239k làm ở phòng nào em?");
+        SentBubbleLedger.recordAssistantTurn(ledgerKey, "a3",
+                List.of("Dạ Gói dưỡng sinh cơ bản 60 phút giá 239k thực hiện tại khu gội chung sạch thoáng ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "u4", "Gói 239k có ăn nhẹ không?");
+        SentBubbleLedger.recordAssistantTurn(ledgerKey, "a4",
+                List.of("Dạ Gói dưỡng sinh cơ bản 60 phút giá 239k đã bao gồm ăn nhẹ và trái cây theo mùa ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+
+        // Mô phỏng LLM cố tình trượt sang 239k và bịa giảm giá 15% cả 2 lần -> Orchestrator chỉ gọi LLM tối đa 2 lần (1 lần sinh lại)
+        // rồi Deterministic Guard dựng câu chuẩn về đúng gói 530k, không lọt 239k và không bịa giảm giá!
+        java.util.concurrent.atomic.AtomicInteger llmCalls = new java.util.concurrent.atomic.AtomicInteger(0);
+        FanpageBotService realBotService = buildRealEndToEndSpaBotService(prompt -> """
+                <AGENT_THOUGHT>
+                intent: PROMO_OR_DISCOUNT_QUESTION
+                </AGENT_THOUGHT>
+                Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em đang giảm 15% cho khách mới đặt lịch hôm nay ạ!
+                """, llmCalls);
+
+        com.example.docmind.controller.FanpageBotController controller =
+                new com.example.docmind.controller.FanpageBotController(realBotService);
+        controller.setPageAccessToken("EAAB_e2e_1021a");
+        controller.setBubbleDelayMs(0L);
+        controller.setBurstDebounceMs(0L);
+        List<String> rawGraphPayloads = java.util.Collections.synchronizedList(new ArrayList<>());
+        controller.setGraphApiSender((url, body) -> {
+            rawGraphPayloads.add(body);
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_1021a\"}");
+        });
+
+        String webhookPayload = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_1021am_case_a"},
+                      "timestamp": 1775000010000,
+                      "message": {
+                        "mid": "m_user_reply_1021a",
+                        "text": "Gói này có giảm giá k",
+                        "reply_to": {"mid": "mid_bot_530k"}
+                      }
+                    }]
+                  }]
+                }
+                """;
+
+        controller.receiveMetaWebhook(null, null, webhookPayload);
+
+        assertTrue(llmCalls.get() <= 2,
+                "Giới hạn tối đa 1 lần gọi lại LLM (tổng <= 2 lần gọi LLM), thực tế=" + llmCalls.get());
+        List<String> sentBubbles = extractOutboundMessageTexts(rawGraphPayloads);
+        assertFalse(sentBubbles.isEmpty(), "Phải có bong bóng gửi tới sendSequentialBubblesToFacebook");
+        String combinedSent = String.join(" ", sentBubbles);
+        assertTrue(combinedSent.contains("Massage cơ bản nâng cao") && combinedSent.contains("530k"),
+                "Khi phân giải được replyToMid -> gói 530k, bong bóng gửi ra Facebook bắt buộc phải tư vấn đúng gói 530k: " + combinedSent);
+        assertFalse(combinedSent.contains("239k") || combinedSent.toLowerCase().contains("dưỡng sinh cơ bản"),
+                "Tuyệt đối không được trượt sang gói 239k trong lịch sử cũ khi khách đã Reply vào tin nhắn 530k: " + combinedSent);
+        assertFalse(combinedSent.contains("15%"),
+                "Tuyệt đối không được gửi chính sách giảm giá bịa đặt ra Facebook: " + combinedSent);
+
+        // Kiểm tra priceObjectionCount không bị tăng bởi câu hỏi thuần ưu đãi "Gói này có giảm giá k"
+        ConversationState afterState = ConversationState.hydrateForTurn(
+                UUID.fromString(pageId), senderPsid, webhookConvIdA, false, "", List.of(), List.of(), List.of());
+        assertEquals(1, afterState.priceObjectionCount(),
+                "Câu hỏi thuần ưu đãi 'Gói này có giảm giá k' tuyệt đối không được làm tăng priceObjectionCount (vẫn giữ = 1 từ lượt u2)");
+    }
+
+    @Test
+    void testCheckpointF_E2E_1021AM_UnresolvedQuote_Tier1_530kAnd239k_And_Tier3_EmptyHistory_NeverDefaultsTo239k() throws Exception {
+        // --- TRƯỜNG HỢP B1 (NẤC 1): Lịch sử có gói 530k rồi 3 lượt 239k, nhưng replyToMid ở quá xa không tìm thấy (Graph API 404) ---
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        String pageId = com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID;
+        String senderB1 = "psid_1021am_case_b_tier1";
+        String ledgerKeyB1 = SentBubbleLedger.key(pageId, senderB1, "fb_webhook_" + senderB1);
+
+        // Lịch sử cũ lưu văn bản bong bóng trong SentBubbleLedger (chưa có ánh xạ mid cũ)
+        SentBubbleLedger.recordCustomerTurn(ledgerKeyB1, "u1", "Tư vấn chị gói ngâm thảo dược");
+        SentBubbleLedger.recordAssistantTurn(ledgerKeyB1, "a1",
+                List.of("Dạ bên em có gói Massage cơ bản nâng cao 80 phút giá 530k gồm 10p ngâm bồn thảo dược ấm và 70p massage trị liệu ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+        SentBubbleLedger.recordCustomerTurn(ledgerKeyB1, "u2", "Có gói nào rẻ hơn không em");
+        SentBubbleLedger.recordAssistantTurn(ledgerKeyB1, "a2",
+                List.of("Dạ chị tham khảo Gói dưỡng sinh cơ bản 60 phút giá 239k gồm gội đầu và massage cổ vai gáy nhé ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+        SentBubbleLedger.recordCustomerTurn(ledgerKeyB1, "u3", "Gói 239k mấy phút?");
+        SentBubbleLedger.recordAssistantTurn(ledgerKeyB1, "a3",
+                List.of("Dạ Gói dưỡng sinh cơ bản 60 phút giá 239k làm trọn vẹn trong 60 phút ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+
+        // Kể cả khi LLM ngoan cố tự bốc 239k làm đáp án đơn phương, Deterministic Guard phải chặn và đổi thành câu hỏi xác nhận giữa 530k và 239k!
+        java.util.concurrent.atomic.AtomicInteger llmCallsB1 = new java.util.concurrent.atomic.AtomicInteger(0);
+        FanpageBotService realBotServiceB1 = buildRealEndToEndSpaBotService(prompt -> """
+                <AGENT_THOUGHT>
+                intent: PROMO_OR_DISCOUNT_QUESTION
+                </AGENT_THOUGHT>
+                Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em là giá niêm yết trọn gói chưa có chương trình giảm giá riêng ạ.
+                """, llmCallsB1);
+
+        com.example.docmind.controller.FanpageBotController controllerB1 =
+                new com.example.docmind.controller.FanpageBotController(realBotServiceB1);
+        controllerB1.setPageAccessToken("EAAB_e2e_1021b1");
+        controllerB1.setBubbleDelayMs(0L);
+        controllerB1.setBurstDebounceMs(0L);
+        controllerB1.setGraphApiGetter((url, timeoutMs) ->
+                new com.example.docmind.controller.FanpageBotController.HttpResponseResult(404, "{\"error\":{\"message\":\"Not found\"}}"));
+        List<String> rawPayloadsB1 = java.util.Collections.synchronizedList(new ArrayList<>());
+        controllerB1.setGraphApiSender((url, body) -> {
+            rawPayloadsB1.add(body);
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_1021b1\"}");
+        });
+
+        String webhookB1 = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_1021am_case_b_tier1"},
+                      "timestamp": 1775000011000,
+                      "message": {
+                        "mid": "m_user_reply_1021b1",
+                        "text": "Gói này có giảm giá k",
+                        "reply_to": {"mid": "mid_unindexed_very_old"}
+                      }
+                    }]
+                  }]
+                }
+                """;
+        controllerB1.receiveMetaWebhook(null, null, webhookB1);
+
+        assertTrue(llmCallsB1.get() <= 2);
+        List<String> sentBubblesB1 = extractOutboundMessageTexts(rawPayloadsB1);
+        assertFalse(sentBubblesB1.isEmpty());
+        String combinedB1 = String.join(" ", sentBubblesB1);
+        assertTrue(combinedB1.contains("530k") && combinedB1.contains("239k") && combinedB1.contains("?"),
+                "Khi không phân giải được replyToMid và lịch sử có 530k & 239k, bong bóng gửi ra Facebook phải hỏi xác nhận giữa 530k và 239k: " + combinedB1);
+
+        // --- TRƯỜNG HỢP B3 (NẤC 3): Lịch sử hoàn toàn trống sau khi Reset DB, khách Reply vào một tin nhắn cũ trên Messenger ---
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        java.util.concurrent.atomic.AtomicInteger llmCallsB3 = new java.util.concurrent.atomic.AtomicInteger(0);
+        // Kể cả khi LLM tự đoán mò 530k hoặc 239k khi lịch sử trống -> Deterministic Guard chặn và gửi câu hỏi mở lịch sự!
+        FanpageBotService realBotServiceB3 = buildRealEndToEndSpaBotService(prompt -> """
+                <AGENT_THOUGHT>
+                intent: PROMO_OR_DISCOUNT_QUESTION
+                </AGENT_THOUGHT>
+                Dạ mình đang hỏi gói 530k hay gói 239k vậy ạ?
+                """, llmCallsB3);
+
+        com.example.docmind.controller.FanpageBotController controllerB3 =
+                new com.example.docmind.controller.FanpageBotController(realBotServiceB3);
+        controllerB3.setPageAccessToken("EAAB_e2e_1021b3");
+        controllerB3.setBubbleDelayMs(0L);
+        controllerB3.setBurstDebounceMs(0L);
+        controllerB3.setGraphApiGetter((url, timeoutMs) ->
+                new com.example.docmind.controller.FanpageBotController.HttpResponseResult(404, "{\"error\":{\"message\":\"Not found\"}}"));
+        List<String> rawPayloadsB3 = java.util.Collections.synchronizedList(new ArrayList<>());
+        controllerB3.setGraphApiSender((url, body) -> {
+            rawPayloadsB3.add(body);
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_1021b3\"}");
+        });
+
+        String webhookB3 = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_1021am_case_b_tier3_empty"},
+                      "timestamp": 1775000012000,
+                      "message": {
+                        "mid": "m_user_reply_1021b3",
+                        "text": "Gói này có giảm giá k",
+                        "reply_to": {"mid": "mid_pre_reset_old"}
+                      }
+                    }]
+                  }]
+                }
+                """;
+        controllerB3.receiveMetaWebhook(null, null, webhookB3);
+
+        assertTrue(llmCallsB3.get() <= 2);
+        List<String> sentBubblesB3 = extractOutboundMessageTexts(rawPayloadsB3);
+        assertFalse(sentBubblesB3.isEmpty());
+        String combinedB3 = String.join(" ", sentBubblesB3);
+        assertFalse(combinedB3.contains("530k") || combinedB3.contains("399k") || combinedB3.contains("239k"),
+                "Khi lịch sử trống (Nấc 3), tuyệt đối không được đoán mò bất kỳ con số giá 530k, 399k hay 239k nào: " + combinedB3);
+        assertTrue(combinedB3.contains("tên gói") && combinedB3.contains("mức giá"),
+                "Khi lịch sử trống (Nấc 3), phải hỏi mở lịch sự tên gói hoặc mức giá khách đang quan tâm: " + combinedB3);
+    }
+
+    @Test
+    void testCheckpointF_E2E_MixedPromoAndPriceObjection_AndPriceEntityMismatchGuardOnOutboundBubbles() throws Exception {
+        // 1. Kiểm tra phân loại đa tín hiệu cho câu hỏi thuần ưu đãi "Gói này có giảm giá k" vs câu hỗn hợp "Giá cao quá, có giảm giá không?"
+        String purePromo = "Gói này có giảm giá k";
+        assertTrue(CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(purePromo));
+        assertFalse(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(purePromo, true));
+        List<String> pureSignals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                purePromo, false, false, false, true, false, 0, false, false,
+                List.of("đau mỏi cổ vai gáy"), List.of("cổ", "vai", "gáy"), "mấy hôm nay"
+        );
+        assertTrue(pureSignals.contains("PROMO_OR_DISCOUNT_QUESTION"));
+        assertFalse(pureSignals.contains("PRICE_OBJECTION"));
+        assertEquals(
+                ThinkingMode.FAST_NO_THINK,
+                CleanAgentOrchestratorService.resolveCleanAgentThinkingMode(
+                        false, false, false, false, false, false, false, true, List.of("đau mỏi cổ vai gáy")
+                ),
+                "Câu hỏi thuần ưu đãi không được tự kích hoạt OBJECTION_REFRAME_THINK"
+        );
+
+        String mixedMsg = "Giá cao quá, có giảm giá không?";
+        assertTrue(CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(mixedMsg));
+        assertTrue(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(mixedMsg, true));
+        List<String> mixedSignals = CleanAgentOrchestratorService.classifyCleanCurrentTurnSignals(
+                mixedMsg, false, false, false, true, true, 0, false, false,
+                List.of("đau mỏi cổ vai gáy"), List.of("cổ", "vai", "gáy"), "mấy hôm nay"
+        );
+        assertTrue(mixedSignals.contains("PROMO_OR_DISCOUNT_QUESTION") && mixedSignals.contains("PRICE_OBJECTION"),
+                "Câu 'Giá cao quá, có giảm giá không?' phải phát đồng thời cả PROMO_OR_DISCOUNT_QUESTION và PRICE_OBJECTION: " + mixedSignals);
+        assertEquals(
+                ThinkingMode.OBJECTION_REFRAME_THINK,
+                CleanAgentOrchestratorService.resolveCleanAgentThinkingMode(
+                        false, false, false, true, false, false, false, true, List.of("đau mỏi cổ vai gáy")
+                ),
+                "Câu hỗn hợp có phản đối giá thực sự phải kích hoạt OBJECTION_REFRAME_THINK"
+        );
+
+        // 2. End-to-End kiểm tra chặn cặp Tên gói - Giá sai ("Massage cơ bản 60 phút" đi với "239k") tới tận sendSequentialBubblesToFacebook
+        SentBubbleLedger.clear();
+        SenderEpochRegistry.clearAll();
+        ConversationState.clearSessionCache();
+
+        String pageId = com.example.docmind.controller.FanpageBotController.DEFAULT_NANG_SEN_PAGE_ID;
+        String senderD = "psid_mismatch_e2e";
+        String ledgerKeyD = SentBubbleLedger.key(pageId, senderD, "fb_webhook_" + senderD);
+        SentBubbleLedger.recordCustomerTurn(ledgerKeyD, "u1", "Mình bị đau mỏi cổ vai gáy và lưng");
+        SentBubbleLedger.recordAssistantTurn(ledgerKeyD, "a1",
+                List.of("Dạ với tình trạng đau mỏi cổ vai gáy và lưng, mình tham khảo gói Massage cơ bản 60 phút giá 399k trọn gói nhé ạ."),
+                SentBubbleLedger.DeliveryStatus.DELIVERED, List.of());
+
+        java.util.concurrent.atomic.AtomicInteger llmCallsD = new java.util.concurrent.atomic.AtomicInteger(0);
+        // LLM cố tình sinh câu ghép râu ông nọ cắm cằm bà kia ("Massage cơ bản 60 phút" đi với "239k") cả 2 lần
+        FanpageBotService realBotServiceD = buildRealEndToEndSpaBotService(prompt -> """
+                <AGENT_THOUGHT>
+                intent: PROMO_OR_DISCOUNT_QUESTION
+                </AGENT_THOUGHT>
+                Dạ hiện gói Massage cơ bản 60 phút bên em đang áp dụng mức giá niêm yết 239k trọn gói không phát sinh phụ phí ạ.
+                """, llmCallsD);
+
+        com.example.docmind.controller.FanpageBotController controllerD =
+                new com.example.docmind.controller.FanpageBotController(realBotServiceD);
+        controllerD.setPageAccessToken("EAAB_e2e_mismatch");
+        controllerD.setBubbleDelayMs(0L);
+        controllerD.setBurstDebounceMs(0L);
+        List<String> rawPayloadsD = java.util.Collections.synchronizedList(new ArrayList<>());
+        controllerD.setGraphApiSender((url, body) -> {
+            rawPayloadsD.add(body);
+            return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"message_id\":\"m_out_mismatch\"}");
+        });
+
+        String webhookD = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "105239841239841",
+                    "messaging": [{
+                      "sender": {"id": "psid_mismatch_e2e"},
+                      "timestamp": 1775000013000,
+                      "message": {"mid": "m_user_mismatch_1", "text": "Gói Massage cơ bản 60 phút giá bao nhiêu, có km k em?"}
+                    }]
+                  }]
+                }
+                """;
+        controllerD.receiveMetaWebhook(null, null, webhookD);
+
+        assertEquals(2, llmCallsD.get(),
+                "Phải thử regenerate đúng 1 lần (tổng 2 lần gọi LLM), tuyệt đối không gọi LLM lần thứ 3");
+        List<String> sentBubblesD = extractOutboundMessageTexts(rawPayloadsD);
+        assertFalse(sentBubblesD.isEmpty());
+        String combinedD = String.join(" ", sentBubblesD);
+        assertTrue(combinedD.contains("Massage cơ bản") && combinedD.contains("399k"),
+                "Bong bóng cuối cùng gửi ra Facebook phải được dựng lại chuẩn xác từ PackageSummary của gói Massage cơ bản 60 phút = 399k: " + combinedD);
+        assertFalse(combinedD.contains("239k"),
+                "Tuyệt đối không được lọt cặp tên gói 'Massage cơ bản 60 phút' đi với giá sai '239k' ra Facebook: " + combinedD);
     }
 }

@@ -66,7 +66,11 @@ public class DocmindApiApplication {
             java.util.Map.entry("DOCMIND_CHAT_CANDIDATE_K", "docmind.chat.candidate-k"),
             java.util.Map.entry("DOCMIND_CHAT_RRF_K", "docmind.chat.rrf-k"),
             java.util.Map.entry("DOCMIND_FANPAGE_VERIFY_TOKEN", "docmind.fanpage.verify-token"),
-            java.util.Map.entry("DOCMIND_FANPAGE_APP_SECRET", "docmind.fanpage.app-secret")
+            java.util.Map.entry("DOCMIND_FANPAGE_APP_SECRET", "docmind.fanpage.app-secret"),
+            java.util.Map.entry("DOCMIND_FANPAGE_PAGE_ACCESS_TOKEN", "docmind.fanpage.page-access-token"),
+            java.util.Map.entry("DOCMIND_FANPAGE_DEFAULT_PAGE_ID", "docmind.fanpage.default-page-id"),
+            java.util.Map.entry("DOCMIND_FANPAGE_BUBBLE_DELAY_MS", "docmind.fanpage.bubble-delay-ms"),
+            java.util.Map.entry("DOCMIND_FANPAGE_BURST_DEBOUNCE_MS", "docmind.fanpage.burst-debounce-ms")
     );
 
     public static void main(String[] args) {

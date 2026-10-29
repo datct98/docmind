@@ -79,4 +79,15 @@ public class JdbcSentBubbleStore implements SentBubbleLedger.Store {
     public void resetAll() {
         jdbc.update("DELETE FROM sent_bubble_ledger");
     }
+
+    @Override
+    public void markAssistantBubblesCanceledFrom(String key, String turnId, int cancelFromOrder) {
+        try {
+            jdbc.update("UPDATE sent_bubble_ledger SET delivery_status = ? "
+                            + "WHERE ledger_key = ? AND turn_id = ? AND role = 'assistant' AND bubble_order >= ?",
+                    SentBubbleLedger.DeliveryStatus.CANCELED.name(), key, turnId, cancelFromOrder);
+        } catch (Exception e) {
+            log.warn("[SentBubbleLedger] markAssistantBubblesCanceledFrom failed key={} turn={}: {}", key, turnId, e.getMessage());
+        }
+    }
 }

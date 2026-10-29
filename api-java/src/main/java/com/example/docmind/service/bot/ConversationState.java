@@ -841,6 +841,7 @@ public record ConversationState(
 
     private static final Map<String, ConversationState> SESSION_STORE = new ConcurrentHashMap<>();
     private static final Map<String, Object> WEBHOOK_EVENT_DEDUP_STORE = new ConcurrentHashMap<>();
+    private static final Map<String, Long> WEBHOOK_MID_DEDUP_STORE = new ConcurrentHashMap<>();
     private static final Map<String, LastTurnPreStateSnapshot> LAST_TURN_PRE_STATE_STORE = new ConcurrentHashMap<>();
     private static final Map<String, PendingBubbleRecord> PENDING_BUBBLE_STORE = new ConcurrentHashMap<>();
     private static final class IdentityWeakMap {
@@ -943,14 +944,14 @@ public record ConversationState(
     );
     private static final String ATOMIC_SCOPE_REGEX =
             "(?:cổ\\s+vai\\s+" + "gáy|vai\\s+" + "gáy|cổ\\s+vai|cổ\\s+" + "gáy|"
-            + "cổ|vai|gáy|thắt\\s+lưng|lưng|eo|chân\\s+răng|bắp\\s+chân|bàn\\s+chân|chân|cánh\\s+tay|bàn\\s+tay|tay|"
+            + "cổ|vai|gáy|thắt\\s+lưng|lưng|eo|hông|mông|chân\\s+răng|bắp\\s+chân|bàn\\s+chân|chân|cánh\\s+tay|bàn\\s+tay|tay|"
             + "đầu\\s+gối|khớp\\s+gối|gối|(?<!lần\\s|buổi\\s|bắt\\s|từ\\s|ban\\s)đầu|cơ|tai|toàn\\s+thân|body|"
             + "răng\\s+hàm|răng\\s+khôn|răng\\s+cửa|răng|nướu|(?<!quyền\\s|tiện\\s|thuận\\s|có\\s)lợi(?!\\s+ích)|tủy|hàm|"
             + "da\\s+mặt|da\\s+đầu|da|mụn|nám|tóc|sofa|ghế|đệm|nệm|giường|tủ)";
     // Không bao giờ bắt từ đơn "gối" đứng độc lập làm bộ phận cơ thể (chỉ bắt "đầu gối", "khớp gối" hoặc có động từ "đau/mỏi/nhức gối")
     private static final String STANDALONE_BODY_AREA_REGEX =
             "(?:cổ\\s+vai\\s+" + "gáy|vai\\s+" + "gáy|cổ\\s+vai|cổ\\s+" + "gáy|"
-            + "cổ|vai|gáy|thắt\\s+lưng|lưng|eo|chân\\s+răng|bắp\\s+chân|bàn\\s+chân|chân|cánh\\s+tay|bàn\\s+tay|tay|"
+            + "cổ|vai|gáy|thắt\\s+lưng|lưng|eo|hông|mông|chân\\s+răng|bắp\\s+chân|bàn\\s+chân|chân|cánh\\s+tay|bàn\\s+tay|tay|"
             + "đầu\\s+gối|khớp\\s+gối|(?<!lần\\s|buổi\\s|bắt\\s|từ\\s|ban\\s)đầu|cơ|tai|toàn\\s+thân|body|"
             + "răng\\s+hàm|răng\\s+khôn|răng\\s+cửa|răng|nướu|(?<!quyền\\s|tiện\\s|thuận\\s|có\\s)lợi(?!\\s+ích)|tủy|hàm|"
             + "da\\s+mặt|da\\s+đầu|da|mụn|nám|tóc|sofa|ghế|đệm|nệm|giường|tủ)";
@@ -1167,7 +1168,41 @@ public record ConversationState(
     public static void clearSessionCache() {
         SESSION_STORE.clear();
         WEBHOOK_EVENT_DEDUP_STORE.clear();
+        WEBHOOK_MID_DEDUP_STORE.clear();
         LAST_TURN_PRE_STATE_STORE.clear();
+    }
+
+    /**
+     * Kiểm tra và đánh dấu nguyên tử (atomic) mã tin nhắn {@code mid} từ Facebook Webhook với TTL (mặc định 10 phút).
+     * Trả về {@code true} nếu đây là lần đầu tiên gặp {@code mid} trong khoảng TTL (cho phép xử lý),
+     * hoặc {@code false} nếu {@code mid} đang được xử lý hoặc đã xử lý rồi trong khoảng TTL (bỏ qua retry).
+     */
+    public static boolean tryAcquireWebhookMid(String mid, long ttlMs) {
+        if (mid == null || mid.isBlank()) {
+            return true;
+        }
+        String normalizedMid = mid.strip();
+        long now = System.currentTimeMillis();
+        long effectiveTtl = ttlMs > 0 ? ttlMs : 600_000L;
+        if (WEBHOOK_MID_DEDUP_STORE.size() > 4000) {
+            WEBHOOK_MID_DEDUP_STORE.entrySet().removeIf(e -> e.getValue() == null || (now - e.getValue()) > effectiveTtl);
+        }
+        final boolean[] acquired = {false};
+        WEBHOOK_MID_DEDUP_STORE.compute(normalizedMid, (k, existingTs) -> {
+            if (existingTs != null && (now - existingTs) <= effectiveTtl) {
+                acquired[0] = false;
+                return existingTs;
+            }
+            acquired[0] = true;
+            return now;
+        });
+        return acquired[0];
+    }
+
+    public static void releaseWebhookMid(String mid) {
+        if (mid != null && !mid.isBlank()) {
+            WEBHOOK_MID_DEDUP_STORE.remove(mid.strip());
+        }
     }
 
     public static ConversationState getSessionState(UUID pageId, String senderId) {

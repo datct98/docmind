@@ -63,6 +63,9 @@ public final class SentBubbleLedger {
 
         default void resetAll() {
         }
+
+        default void markAssistantBubblesCanceledFrom(String key, String turnId, int cancelFromOrder) {
+        }
     }
 
     public static final class InMemoryStore implements Store {
@@ -91,11 +94,39 @@ public final class SentBubbleLedger {
         public synchronized void resetAll() {
             data.clear();
         }
+
+        @Override
+        public synchronized void markAssistantBubblesCanceledFrom(String key, String turnId, int cancelFromOrder) {
+            List<TurnRecord> l = data.get(key);
+            if (l == null || turnId == null) {
+                return;
+            }
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if ("assistant".equals(t.role()) && turnId.equals(t.turnId())) {
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        updated.add(b.order() >= cancelFromOrder
+                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED)
+                                : b);
+                    }
+                    l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    break;
+                }
+            }
+        }
     }
 
     private static final int MAX_TURNS_PER_SESSION = 60;
     private static final int MAX_RECONCILED_TURNS = 24;
+    private static final int MAX_MID_CACHE_SIZE = 2000;
+    private static final long MID_CACHE_TTL_MS = 24L * 60L * 60L * 1000L;
+
+    private record CachedMidEntry(String text, String role, long expiresAtMs) {
+    }
+
     private static final Map<String, List<TurnRecord>> CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CachedMidEntry> MID_CACHE = new ConcurrentHashMap<>();
     private static volatile Store store = new InMemoryStore();
 
     private SentBubbleLedger() {
@@ -105,6 +136,7 @@ public final class SentBubbleLedger {
     public static void useStore(Store s) {
         store = s != null ? s : new InMemoryStore();
         CACHE.clear();
+        MID_CACHE.clear();
     }
 
     public static String key(String pageId, String senderId, String conversationId) {
@@ -112,15 +144,105 @@ public final class SentBubbleLedger {
                 + (conversationId != null ? conversationId : "-");
     }
 
+    public static String midLedgerKey(String pageId, String senderPsid) {
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        return "fb_mid|" + normPage + "|" + normSender;
+    }
+
+    private static String midCacheKey(String pageId, String senderPsid, String messageId) {
+        return midLedgerKey(pageId, senderPsid) + "|" + (messageId != null ? messageId.strip() : "");
+    }
+
+    /**
+     * Lưu ánh xạ bền vững {@code (pageId, senderPsid, messageId) -> messageText} vào Bounded Cache có TTL
+     * và xuống {@link Store} bền vững (PostgreSQL {@code sent_bubble_ledger} / {@link InMemoryStore}).
+     */
+    public static void recordMessageId(String pageId, String senderPsid, String messageId, String role, String messageText) {
+        if (messageId == null || messageId.isBlank() || messageText == null || messageText.isBlank()) {
+            return;
+        }
+        String cleanMid = messageId.strip();
+        String cleanText = messageText.strip();
+        String cleanRole = (role != null && !role.isBlank()) ? role.strip() : "assistant";
+        long now = System.currentTimeMillis();
+
+        if (MID_CACHE.size() >= MAX_MID_CACHE_SIZE) {
+            MID_CACHE.entrySet().removeIf(e -> e.getValue() == null || e.getValue().expiresAtMs() <= now);
+            if (MID_CACHE.size() >= MAX_MID_CACHE_SIZE) {
+                String firstKey = MID_CACHE.keySet().iterator().next();
+                if (firstKey != null) {
+                    MID_CACHE.remove(firstKey);
+                }
+            }
+        }
+
+        MID_CACHE.put(midCacheKey(pageId, senderPsid, cleanMid),
+                new CachedMidEntry(cleanText, cleanRole, now + MID_CACHE_TTL_MS));
+        try {
+            store.append(midLedgerKey(pageId, senderPsid),
+                    new TurnRecord(cleanMid, cleanRole,
+                            List.of(new BubbleRecord(0, cleanText, DeliveryStatus.DELIVERED))));
+        } catch (Exception ignored) {
+            // Non-blocking fallback if DB store is temporarily unavailable
+        }
+    }
+
+    /**
+     * Tra cứu nội dung bong bóng gốc theo {@code (pageId, senderPsid, messageId)}.
+     * Ưu tiên đọc từ Bounded Cache (có kiểm tra TTL); nếu cache miss (ví dụ sau khi container restart
+     * hoặc gọi {@link #dropCacheOnly()}), tự động khôi phục từ {@link Store} bền vững.
+     */
+    public static String lookupMessageByMid(String pageId, String senderPsid, String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        String cleanMid = messageId.strip();
+        String cKey = midCacheKey(pageId, senderPsid, cleanMid);
+        long now = System.currentTimeMillis();
+
+        CachedMidEntry cachedEntry = MID_CACHE.get(cKey);
+        if (cachedEntry != null) {
+            if (cachedEntry.expiresAtMs() > now && cachedEntry.text() != null && !cachedEntry.text().isBlank()) {
+                return cachedEntry.text();
+            }
+            MID_CACHE.remove(cKey);
+        }
+
+        try {
+            List<TurnRecord> persisted = store.load(midLedgerKey(pageId, senderPsid));
+            String matchedText = null;
+            for (TurnRecord rec : persisted) {
+                if (rec == null || rec.turnId() == null || rec.turnId().isBlank()) {
+                    continue;
+                }
+                String txt = rec.joinedText();
+                if (txt == null || txt.isBlank()) {
+                    continue;
+                }
+                MID_CACHE.put(midCacheKey(pageId, senderPsid, rec.turnId().strip()),
+                        new CachedMidEntry(txt, rec.role() != null ? rec.role() : "assistant", now + MID_CACHE_TTL_MS));
+                if (cleanMid.equals(rec.turnId().strip())) {
+                    matchedText = txt;
+                }
+            }
+            return matchedText;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     /** Xoá toàn bộ (cache + store) — chỉ dùng trong test. */
     public static void clear() {
         CACHE.clear();
+        MID_CACHE.clear();
         store.resetAll();
     }
 
     /** Mô phỏng restart tiến trình: mất cache nhưng dữ liệu bền vững còn nguyên. */
     public static void dropCacheOnly() {
         CACHE.clear();
+        MID_CACHE.clear();
     }
 
     /** resetSession: vô hiệu hoá cả kho bền vững lẫn cache. */
@@ -177,6 +299,41 @@ public final class SentBubbleLedger {
         }
         if (!recs.isEmpty()) {
             append(key, new TurnRecord(turnId, "assistant", List.copyOf(recs)));
+        }
+    }
+
+    /**
+     * Đánh dấu các bong bóng chưa kịp gửi ra Messenger (có {@code order >= cancelFromOrder}) ở lượt assistant mới nhất
+     * thành {@link DeliveryStatus#CANCELED} khi khách nhắn chen ngang giữa khoảng nghỉ {@code bubbleDelayMs}.
+     */
+    public static void markLatestAssistantBubblesCanceledFrom(String key, int cancelFromOrder) {
+        if (key == null || cancelFromOrder < 0) {
+            return;
+        }
+        String targetTurnId = null;
+        List<TurnRecord> l = cached(key);
+        synchronized (l) {
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if ("assistant".equals(t.role())) {
+                    targetTurnId = t.turnId();
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        updated.add(b.order() >= cancelFromOrder
+                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED)
+                                : b);
+                    }
+                    l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    break;
+                }
+            }
+        }
+        if (targetTurnId != null) {
+            try {
+                store.markAssistantBubblesCanceledFrom(key, targetTurnId, cancelFromOrder);
+            } catch (Exception ignored) {
+                // Non-blocking fallback
+            }
         }
     }
 

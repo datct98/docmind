@@ -70,6 +70,13 @@ public class CleanAgentOrchestratorService {
             "(?isU).*\\b(đang\\s+bận|bận\\s+chút|bận\\s+rồi|bận\\s+việc|thôi\\s+để|(?:để\\s+)?hôm\\s+khác|(?:để\\s+)?khi\\s+khác|(?:để\\s+)?lúc\\s+khác|để\\s+sau\\s+nhé)\\b.*"
     );
 
+    private static final Pattern PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "sale\\b|có\\s+sale|đang\\s+sale|khuyến\\s+mãi|khuyến\\s+mại|km\\b|ưu\\s+đãi|giảm\\s+giá|voucher|deal\\b|code\\b|mã\\s+giảm|chương\\s+trình\\s+(?:giảm|ưu\\s+đãi|khuyến\\s+mãi|sale)|"
+            + "có\\s+(?:được\\s+)?(?:giảm|km|khuyến\\s+mãi|khuyến\\s+mại|ưu\\s+đãi|tặng|sale|deal|voucher|code)(?:\\s+(?:gì|không|k|ko|hem|hông|chưa|nào))?"
+            + ")\\b.*"
+    );
+
     private static final Pattern NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN = Pattern.compile(
             "(?isU).*\\b("
             + "giá\\s+(?:sao|thế\\s+nào|như\\s+thế\\s+nào|bao\\s+nhiêu|bên\\s+mình|các\\s+gói|gói)|"
@@ -77,7 +84,18 @@ public class CleanAgentOrchestratorService {
             + "\\d{2,4}\\s*k\\s+là\\s+(?:1|một|\\d+)\\s*(?:buổi|lần|phút)|"
             + "gói\\s+\\d{2,4}\\s*k\\s+(?:là\\s+)?(?:mấy|bao\\s+nhiêu)\\s*(?:phút|buổi|lần)|"
             + "(?:là\\s+)?(?:mấy|bao\\s+nhiêu)\\s*(?:phút|buổi|tiếng)|"
-            + "gồm\\s+những\\s+gì|bao\\s+gồm\\s+gì|có\\s+những\\s+gì"
+            + "gồm\\s+những\\s+gì|bao\\s+gồm\\s+gì|có\\s+những\\s+gì|gồm\\s+gì|"
+            + "sale\\b|có\\s+sale|đang\\s+sale|khuyến\\s+mãi|khuyến\\s+mại|km\\b|ưu\\s+đãi|giảm\\s+giá|voucher|deal\\b|code\\b"
+            + ")\\b.*"
+    );
+
+    private static final Pattern OPERATIONAL_OR_LOGISTICS_QUESTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "(?:tối\\s+|sáng\\s+|trưa\\s+|chiều\\s+)?mấy\\s*(?:h|giờ)\\s*(?:đóng|mở|nghỉ)|"
+            + "đóng\\s+cửa|mở\\s+cửa|giờ\\s+(?:mở\\s+cửa|đóng\\s+cửa|hoạt\\s+động|làm\\s+việc)|"
+            + "đỗ\\s+xe|đậu\\s+xe|gửi\\s+xe|chỗ\\s+(?:đỗ|đậu|gửi|để)\\s+xe|bãi\\s+(?:đỗ\\s+|đậu\\s+|gửi\\s+)?xe|đỗ\\s+ô\\s+tô|gửi\\s+ô\\s+tô|"
+            + "địa\\s+chỉ(?:\\s+ở\\s+đâu)?|ở\\s+đâu\\s+(?:vậy|thế|ạ|nhỉ|shop|em)|chi\\s+nhánh|cơ\\s+sở\\s+(?:ở\\s+đâu|nào)|"
+            + "thanh\\s+toán|chuyển\\s+khoản|quẹt\\s+thẻ|nhân\\s+viên\\s+(?:nam|nữ)|ktv\\s+(?:nam|nữ)|chuyên\\s+viên\\s+(?:nam|nữ)"
             + ")\\b.*"
     );
 
@@ -271,6 +289,12 @@ public class CleanAgentOrchestratorService {
                     null
             );
             if (introBubbles != null && !introBubbles.isEmpty()) {
+                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                        request != null ? request.pageId() : null,
+                        request != null ? request.senderId() : null,
+                        SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
                 String introText = String.join("\n\n", introBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
                 String ledgerKeyIntro = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
                 String ledgerTurnIdIntro = SentBubbleLedger.stableUserTurnId(ledgerKeyIntro, mergedMessage);
@@ -421,9 +445,21 @@ public class CleanAgentOrchestratorService {
                 && !isPoliteClosingAck
                 && SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingSpeechAct);
 
+        String replyToMid = request != null && request.replyToMid() != null ? request.replyToMid().strip() : "";
+        String quotedMessageText = request != null && request.quotedMessageText() != null ? request.quotedMessageText().strip() : "";
+        if (quotedMessageText.isEmpty() && !replyToMid.isEmpty() && request != null) {
+            String lookedUpQuoted = SentBubbleLedger.lookupMessageByMid(request.pageId(), request.senderId(), replyToMid);
+            quotedMessageText = lookedUpQuoted != null ? lookedUpQuoted.strip() : "";
+        }
+        boolean hasReplyToContext = !replyToMid.isEmpty() || !quotedMessageText.isEmpty();
+
+        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
         boolean isDetailOrUnitQuestion = isAckForOfferedDetails
+                || isOperationalQuestion
                 || SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv)
                 || isNormalPriceOrDetailInquiryMessage(mergedMessage)
+                || isPromoOrDiscountInquiryMessage(mergedMessage)
+                || (hasReplyToContext && !hasProactiveBookingInfo && !isBareAck && !hasPriceObjectionKeyword && !isHesitation)
                 || (mergedMessage != null && mergedMessage.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(?:1|một)\\s+buổi\\s+(?:à|hả|phải\\s+không|đúng\\s+không|hay\\s+sao)\\b.*"));
 
         boolean isPositiveTrialInterest = !isMetaOrChallenge
@@ -488,6 +524,34 @@ public class CleanAgentOrchestratorService {
                                 PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
                                 safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN");
 
+        List<PackageCatalogService.PackageSummary> presentedPackagesInHistory =
+                CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(safeHistory, safePrior, allCatalog);
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        replyToMid,
+                        quotedMessageText,
+                        allCatalog,
+                        presentedPackagesInHistory
+                );
+        CleanAgentCatalogAndPromptBuilder.ReplyResolutionState replyResolutionState =
+                quotedReplyResolution.resolutionState();
+        if (quotedReplyResolution.quotedPackage() != null) {
+            currentTurnSignals = new ArrayList<>(currentTurnSignals);
+            if (!currentTurnSignals.contains("QUOTED_PACKAGE_RESOLVED")) {
+                currentTurnSignals.add("QUOTED_PACKAGE_RESOLVED");
+            }
+        } else if (quotedReplyResolution.ambiguousMultiplePackages()) {
+            currentTurnSignals = new ArrayList<>(currentTurnSignals);
+            if (!currentTurnSignals.contains("QUOTED_MESSAGE_AMBIGUOUS_PACKAGES")) {
+                currentTurnSignals.add("QUOTED_MESSAGE_AMBIGUOUS_PACKAGES");
+            }
+        } else if (quotedReplyResolution.unresolvedReplyToMid()) {
+            currentTurnSignals = new ArrayList<>(currentTurnSignals);
+            if (!currentTurnSignals.contains("UNRESOLVED_REPLY_TO_MID")) {
+                currentTurnSignals.add("UNRESOLVED_REPLY_TO_MID");
+            }
+        }
+
         CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
                 CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                         allCatalog,
@@ -514,17 +578,63 @@ public class CleanAgentOrchestratorService {
                 tieredCatalog,
                 safeHistory
         );
+        String stageBeforeReconcile = cleanStage;
+        String priceObjectionUpdateReason = confirmedPriceObjectionThisTurn
+                ? (isExplicitDownsell
+                    ? "EXPLICIT_DOWNSELL_OR_LOW_BUDGET_IN_CURRENT_TURN"
+                    : "CONFIRMED_PRICE_OBJECTION_IN_CURRENT_TURN")
+                : "UNCHANGED_NO_CURRENT_TURN_OBJECTION";
+
         boolean isPriceContextHesitationTurn = "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(cleanStage);
         boolean isPureDeferralOrBusyTurn = "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage);
         boolean holdSinglePackageFirstObjection = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
         boolean isDownsellOrRepeatObjectionStage = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(cleanStage);
 
-        List<PackageCatalogService.PackageSummary> scopeFilteredCatalog = holdSinglePackageFirstObjection
-                ? tieredCatalog.primaryRecommendations()
-                : tieredCatalog.allAllowedPackages();
+        List<PackageCatalogService.PackageSummary> scopeFilteredCatalog = new ArrayList<>(
+                holdSinglePackageFirstObjection
+                        ? tieredCatalog.primaryRecommendations()
+                        : tieredCatalog.allAllowedPackages()
+        );
         List<PackageCatalogService.PackageSummary> excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
         if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
             excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+        }
+        boolean enforceReplyScopeGuard = !isMetaOrChallenge
+                && !isPoliteClosingAck
+                && !isPostBookingClosingAck
+                && !isPureDeferralOrBusyTurn;
+        if (replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.RESOLVED_QUOTED_PACKAGE
+                && quotedReplyResolution.quotedPackage() != null
+                && enforceReplyScopeGuard) {
+            PackageCatalogService.PackageSummary qPkg = quotedReplyResolution.quotedPackage();
+            Set<Long> customerMsgPrices = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(mergedMessage);
+            scopeFilteredCatalog = new ArrayList<>();
+            scopeFilteredCatalog.add(qPkg);
+            excludedCatalog = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary ap : allCatalog) {
+                if (ap == null || ap.isAddon()) continue;
+                if (ap.equals(qPkg) || ap.priceVnd() == qPkg.priceVnd() || customerMsgPrices.contains(ap.priceVnd())) {
+                    if (!scopeFilteredCatalog.contains(ap)) {
+                        scopeFilteredCatalog.add(ap);
+                    }
+                } else {
+                    excludedCatalog.add(ap);
+                }
+            }
+        } else if ((replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.AMBIGUOUS_PACKAGE_REFERENCE
+                || replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.UNRESOLVED_QUOTED_PACKAGE)
+                && enforceReplyScopeGuard) {
+            List<PackageCatalogService.PackageSummary> candidates = quotedReplyResolution.candidatePackages();
+            scopeFilteredCatalog = new ArrayList<>(candidates);
+            excludedCatalog = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary ap : allCatalog) {
+                if (ap == null || ap.isAddon()) continue;
+                boolean inCandidates = candidates.stream()
+                        .anyMatch(c -> c != null && (c.equals(ap) || c.priceVnd() == ap.priceVnd()));
+                if (!inCandidates) {
+                    excludedCatalog.add(ap);
+                }
+            }
         }
 
         String heldPackageDisplay = CleanAgentCatalogAndPromptBuilder.resolveHeldPackageDisplay(
@@ -551,14 +661,36 @@ public class CleanAgentOrchestratorService {
         }
         boolean heldPkgIsNull = (rawHeldPackage == null || rawHeldPackage.isBlank())
                 && ("null".equalsIgnoreCase(heldPackageDisplay) || heldPackageDisplay == null || heldPackageDisplay.isBlank());
-        PackageCatalogService.PackageSummary activeTurnPkg = (!isMetaOrChallenge
-                && !isPoliteClosingAck
-                && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
-                && tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty())
-                ? tieredCatalog.economicalAlternatives().get(0)
-                : CleanAgentCatalogAndPromptBuilder.findHeldOrTopPrimaryPackage(
-                        tieredCatalog, heldPackageDisplay, heldPriceDisplay);
+        PackageCatalogService.PackageSummary explicitlyNamedPkgInTurn = null;
+        if (replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE
+                && isDetailOrUnitQuestion
+                && mergedMessage != null
+                && !mergedMessage.isBlank()) {
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution msgMatch =
+                    CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext("", mergedMessage, allCatalog);
+            if (msgMatch.quotedPackage() != null) {
+                explicitlyNamedPkgInTurn = msgMatch.quotedPackage();
+                PackageCatalogService.PackageSummary named = explicitlyNamedPkgInTurn;
+                if (!scopeFilteredCatalog.contains(named)) {
+                    scopeFilteredCatalog.add(0, named);
+                }
+                excludedCatalog.removeIf(ex -> ex != null && (ex.equals(named) || ex.priceVnd() == named.priceVnd()));
+            }
+        }
+        PackageCatalogService.PackageSummary activeTurnPkg = (quotedReplyResolution.quotedPackage() != null)
+                ? quotedReplyResolution.quotedPackage()
+                : ((quotedReplyResolution.unresolvedReplyToMid() || quotedReplyResolution.ambiguousMultiplePackages())
+                    ? null
+                    : (explicitlyNamedPkgInTurn != null
+                        ? explicitlyNamedPkgInTurn
+                        : ((!isMetaOrChallenge
+                            && !isPoliteClosingAck
+                            && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
+                            && tieredCatalog.economicalAlternatives() != null
+                            && !tieredCatalog.economicalAlternatives().isEmpty())
+                            ? tieredCatalog.economicalAlternatives().get(0)
+                            : CleanAgentCatalogAndPromptBuilder.findHeldOrTopPrimaryPackage(
+                                    tieredCatalog, heldPackageDisplay, heldPriceDisplay))));
 
         CustomerInsightDto enrichedTurnInsight = customerInsight;
         if (agentBrainService != null && (enrichedTurnInsight == null || enrichedTurnInsight.careNotes() == null)) {
@@ -605,7 +737,8 @@ public class CleanAgentOrchestratorService {
                 alignedActiveSkills,
                 safeConv.visitTime() != null && !safeConv.visitTime().isBlank()
                         ? Map.of("visit_time", safeConv.visitTime().strip())
-                        : Map.of()
+                        : Map.of(),
+                quotedReplyResolution
         );
 
         ThinkingMode selectedThinkingMode = resolveCleanAgentThinkingMode(
@@ -621,6 +754,7 @@ public class CleanAgentOrchestratorService {
         );
         ReasoningBudget cleanBudget = ReasoningBudget.forThinkingMode(selectedThinkingMode);
         String rawReply = null;
+        int llmRegenerationCount = 0;
         long llmStartNs = System.nanoTime();
         try {
             if (llmClient != null) {
@@ -633,12 +767,21 @@ public class CleanAgentOrchestratorService {
             log.warn("[CleanAgentMode] Exception calling llmClient {}: {}", llmClient != null ? llmClient.name() : "null", e.getMessage());
         }
 
+        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                request != null ? request.pageId() : null,
+                request != null ? request.senderId() : null,
+                SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+            return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+
         String sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
         CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput structured =
                 CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(sanitizedReply, minDelayMs);
-        if (structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty()) {
+        if ((structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
+                && llmRegenerationCount < 1) {
             try {
                 if (llmClient != null) {
+                    llmRegenerationCount++;
                     String retryRaw = llmClient.complete(prompt, ReasoningBudget.forThinkingMode(ThinkingMode.FAST_NO_THINK));
                     if (retryRaw != null && !retryRaw.isBlank()) {
                         rawReply = retryRaw;
@@ -648,6 +791,12 @@ public class CleanAgentOrchestratorService {
                 }
             } catch (Exception e) {
                 log.warn("[CleanAgentMode] JSON retry exception: {}", e.getMessage());
+            }
+            if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                    request != null ? request.pageId() : null,
+                    request != null ? request.senderId() : null,
+                    SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+                return buildSupersededAbortedResponse(extractedLead, customerInsight);
             }
         }
         long llmElapsedMs = Math.max(0L, (System.nanoTime() - llmStartNs) / 1_000_000L);
@@ -673,18 +822,23 @@ public class CleanAgentOrchestratorService {
             confirmedPriceObjectionThisTurn = true;
             hasPriceObjectionKeyword = true;
             priceObjectionCount = priorPriceObjectionCount + 1;
+            priceObjectionUpdateReason = "POST_LLM_RECONCILED_PRICE_OBJECTION";
             inPriceObjectionContext = true;
             cleanStage = priceObjectionCount == 1
                     ? "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE"
                     : "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION";
             holdSinglePackageFirstObjection = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
             isDownsellOrRepeatObjectionStage = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(cleanStage);
-            scopeFilteredCatalog = holdSinglePackageFirstObjection
-                    ? tieredCatalog.primaryRecommendations()
-                    : tieredCatalog.allAllowedPackages();
-            excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
-            if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
-                excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+            if (replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE || !enforceReplyScopeGuard) {
+                scopeFilteredCatalog = new ArrayList<>(
+                        holdSinglePackageFirstObjection
+                                ? tieredCatalog.primaryRecommendations()
+                                : tieredCatalog.allAllowedPackages()
+                );
+                excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
+                if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
+                    excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+                }
             }
             alignedActiveSkills = alignCleanAgentActiveSkills(
                     alignedActiveSkills,
@@ -698,6 +852,12 @@ public class CleanAgentOrchestratorService {
                     mergedMessage, priceObjectionCount, cleanStage);
         }
 
+        boolean hasHigherPriorityNonObjectionIntent = isOperationalQuestion
+                || (isDetailOrUnitQuestion && !confirmedPriceObjectionThisTurn)
+                || isMetaOrChallenge
+                || isPoliteClosingAck
+                || isPostBookingClosingAck;
+
         List<String> allViolations = new ArrayList<>(
                 CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                         candidateBubbles,
@@ -707,12 +867,29 @@ public class CleanAgentOrchestratorService {
                         priceObjectionCount,
                         isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
                         activeTurnPkg,
-                        heldPkgIsNull,
+                        heldPkgIsNull && !hasReplyToContext,
                         bookingFunnelStatus,
-                        mergedMessage
+                        mergedMessage,
+                        confirmedPriceObjectionThisTurn,
+                        hasPresentedDownsell,
+                        hasHigherPriorityNonObjectionIntent
                 )
         );
-        if (CleanAgentOutputRefereeAndSanitizer.detectCleanCrossTurnRepetition(candidateBubbles, prevBotTurnText, safeHistory)) {
+        for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
+                candidateBubbles,
+                quotedReplyResolution,
+                allCatalog,
+                mergedMessage
+        )) {
+            if (!allViolations.contains(replyGuardViolation)) {
+                allViolations.add(replyGuardViolation);
+            }
+        }
+        if (CleanAgentOutputRefereeAndSanitizer.detectCleanCrossTurnRepetition(
+                candidateBubbles,
+                prevBotTurnText,
+                safeHistory,
+                isDetailOrUnitQuestion || hasReplyToContext)) {
             allViolations.add("CROSS_TURN_REPETITION");
         }
 
@@ -720,12 +897,13 @@ public class CleanAgentOrchestratorService {
         boolean usedSafeHandoffFallback = false;
         List<String> telemetryErrors = new ArrayList<>();
         if (!allViolations.isEmpty()) {
-            log.warn("[CleanAgentMode] Holistic Referee detected violations: {} (userMsg='{}') -> regenerating full turn",
-                    allViolations, mergedMessage);
-            String repairHintPrompt = CleanAgentOutputRefereeAndSanitizer.buildCleanRepairPrompt(
-                    prompt, allViolations, selfPronoun, safeHonorific, activeTurnPkg);
-            try {
-                if (llmClient != null) {
+            log.warn("[CleanAgentMode] Holistic Referee detected violations: {} (userMsg='{}') -> regenerating full turn (llmRegenerationCount={})",
+                    allViolations, mergedMessage, llmRegenerationCount);
+            if (llmClient != null && llmRegenerationCount < 1) {
+                String repairHintPrompt = CleanAgentOutputRefereeAndSanitizer.buildCleanRepairPrompt(
+                        prompt, allViolations, selfPronoun, safeHonorific, activeTurnPkg);
+                try {
+                    llmRegenerationCount++;
                     String repairedRaw = llmClient.complete(repairHintPrompt, ReasoningBudget.forThinkingMode(ThinkingMode.FAST_NO_THINK));
                     if (repairedRaw != null && !repairedRaw.isBlank()) {
                         String repairedSanitized = PromptSecurityGuard.sanitizeModelOutput(repairedRaw);
@@ -741,24 +919,165 @@ public class CleanAgentOrchestratorService {
                             repairApplied = true;
                         }
                     }
+                } catch (Exception e) {
+                    log.warn("[CleanAgentMode] Holistic Referee regeneration exception: {}", e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("[CleanAgentMode] Holistic Referee regeneration exception: {}", e.getMessage());
+                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                        request != null ? request.pageId() : null,
+                        request != null ? request.senderId() : null,
+                        SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
             }
-            List<String> postRepairViolations = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
-                    candidateBubbles,
-                    allCatalog,
-                    scopeFilteredCatalog,
-                    excludedCatalog,
-                    priceObjectionCount,
-                    isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
-                    activeTurnPkg,
-                    heldPkgIsNull,
-                    bookingFunnelStatus,
-                    mergedMessage
+            List<String> postRepairViolations = new ArrayList<>(
+                    CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                            candidateBubbles,
+                            allCatalog,
+                            scopeFilteredCatalog,
+                            excludedCatalog,
+                            priceObjectionCount,
+                            isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
+                            activeTurnPkg,
+                            heldPkgIsNull && !hasReplyToContext,
+                            bookingFunnelStatus,
+                            mergedMessage,
+                            confirmedPriceObjectionThisTurn,
+                            hasPresentedDownsell,
+                            hasHigherPriorityNonObjectionIntent
+                    )
             );
+            for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
+                    candidateBubbles,
+                    quotedReplyResolution,
+                    allCatalog,
+                    mergedMessage
+            )) {
+                if (!postRepairViolations.contains(replyGuardViolation)) {
+                    postRepairViolations.add(replyGuardViolation);
+                }
+            }
+
+            boolean needsClarificationGuardRebuild = enforceReplyScopeGuard
+                    && (replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.UNRESOLVED_QUOTED_PACKAGE
+                        || replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.AMBIGUOUS_PACKAGE_REFERENCE)
+                    && postRepairViolations.stream().anyMatch(v -> v != null
+                        && (v.startsWith("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:")
+                            || v.startsWith("UNGROUNDED_PRICE_WHEN_CATALOG_EMPTY:")
+                            || v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")
+                            || v.startsWith("EXCLUDED_PACKAGE_MENTIONED:")
+                            || v.startsWith("PRICE_ENTITY_MISMATCH:")
+                            || v.startsWith("UNGROUNDED_PROMO_POLICY_FABRICATION")));
+            boolean needsQuotedPackageGuardRebuild = enforceReplyScopeGuard
+                    && replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.RESOLVED_QUOTED_PACKAGE
+                    && quotedReplyResolution.quotedPackage() != null
+                    && postRepairViolations.stream().anyMatch(v -> v != null
+                        && (v.startsWith("QUOTED_PACKAGE_FOCUS_MISMATCH:")
+                            || v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")
+                            || v.startsWith("EXCLUDED_PACKAGE_MENTIONED:")
+                            || v.startsWith("PRICE_ENTITY_MISMATCH:")
+                            || v.startsWith("UNGROUNDED_PROMO_POLICY_FABRICATION")));
+            boolean needsPromoFabricationGuardRebuild = !needsClarificationGuardRebuild
+                    && !needsQuotedPackageGuardRebuild
+                    && activeTurnPkg != null
+                    && postRepairViolations.stream().anyMatch(v -> v != null && v.startsWith("UNGROUNDED_PROMO_POLICY_FABRICATION"));
+
+            if (needsClarificationGuardRebuild) {
+                log.warn("[CleanAgentMode] Post-repair still violates Unresolved/Ambiguous Reply Guard ({}) -> applying Deterministic Clarification Guard without 3rd LLM call",
+                        postRepairViolations);
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildDeterministicReplyClarificationBubbles(
+                        quotedReplyResolution,
+                        mergedMessage,
+                        selfPronoun,
+                        safeHonorific
+                );
+                repairApplied = true;
+            } else if (needsQuotedPackageGuardRebuild) {
+                log.warn("[CleanAgentMode] Post-repair still violates Quoted Package Focus Guard ({}) -> rebuilding deterministically from quoted PackageSummary without 3rd LLM call",
+                        postRepairViolations);
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildDeterministicQuotedPackageReplyBubbles(
+                        quotedReplyResolution.quotedPackage(),
+                        mergedMessage,
+                        selfPronoun,
+                        safeHonorific
+                );
+                repairApplied = true;
+            } else if (needsPromoFabricationGuardRebuild) {
+                log.warn("[CleanAgentMode] Post-repair still has UNGROUNDED_PROMO_POLICY_FABRICATION ({}) -> rebuilding deterministically from active PackageSummary without 3rd LLM call",
+                        postRepairViolations);
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildDeterministicQuotedPackageReplyBubbles(
+                        activeTurnPkg,
+                        mergedMessage,
+                        selfPronoun,
+                        safeHonorific
+                );
+                repairApplied = true;
+            }
+
+            if (needsClarificationGuardRebuild || needsQuotedPackageGuardRebuild || needsPromoFabricationGuardRebuild) {
+                postRepairViolations = new ArrayList<>(
+                        CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                                candidateBubbles,
+                                allCatalog,
+                                scopeFilteredCatalog,
+                                excludedCatalog,
+                                priceObjectionCount,
+                                isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
+                                activeTurnPkg,
+                                heldPkgIsNull && !hasReplyToContext,
+                                bookingFunnelStatus,
+                                mergedMessage,
+                                confirmedPriceObjectionThisTurn,
+                                hasPresentedDownsell,
+                                hasHigherPriorityNonObjectionIntent
+                        )
+                );
+                for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
+                        candidateBubbles,
+                        quotedReplyResolution,
+                        allCatalog,
+                        mergedMessage
+                )) {
+                    if (!postRepairViolations.contains(replyGuardViolation)) {
+                        postRepairViolations.add(replyGuardViolation);
+                    }
+                }
+            }
+
+            boolean stillHasPriceEntityMismatch = postRepairViolations.stream()
+                    .anyMatch(v -> v != null && v.startsWith("PRICE_ENTITY_MISMATCH:"));
+            if (stillHasPriceEntityMismatch) {
+                log.warn("[CleanAgentMode] Post-repair still has PRICE_ENTITY_MISMATCH: violations={} -> rebuilding from structured Catalog without 3rd LLM call",
+                        postRepairViolations);
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
+                        candidateBubbles,
+                        activeTurnPkg,
+                        allCatalog,
+                        selfPronoun,
+                        safeHonorific
+                );
+                repairApplied = true;
+                postRepairViolations = new ArrayList<>(
+                        CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                                candidateBubbles,
+                                allCatalog,
+                                scopeFilteredCatalog,
+                                excludedCatalog,
+                                priceObjectionCount,
+                                isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
+                                activeTurnPkg,
+                                heldPkgIsNull && !hasReplyToContext,
+                                bookingFunnelStatus,
+                                mergedMessage,
+                                confirmedPriceObjectionThisTurn,
+                                hasPresentedDownsell,
+                                hasHigherPriorityNonObjectionIntent
+                        )
+                );
+            }
             boolean stillHasUngroundedPrice = postRepairViolations.stream()
-                    .anyMatch(v -> v != null && v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:"));
+                    .anyMatch(v -> v != null
+                            && (v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")
+                                || v.startsWith("UNGROUNDED_PRICE_WHEN_CATALOG_EMPTY:")));
             if (stillHasUngroundedPrice) {
                 log.warn("[CleanAgentMode] Post-repair still has UNGROUNDED_PRICE: violations={} userMsg='{}' -> triggering SAFE_HANDOFF",
                         postRepairViolations, mergedMessage);
@@ -847,6 +1166,12 @@ public class CleanAgentOrchestratorService {
                 replyHasPrice,
                 shouldHandoff
         );
+        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                request != null ? request.pageId() : null,
+                request != null ? request.senderId() : null,
+                SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+            return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
         String ledgerKey = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
         String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, mergedMessage);
         SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, mergedMessage);
@@ -870,6 +1195,51 @@ public class CleanAgentOrchestratorService {
                     incomingHistorySize
             );
         }
+
+        String traceCorrelationId = org.slf4j.MDC.get("correlation_id");
+        if (traceCorrelationId == null || traceCorrelationId.isBlank()) {
+            traceCorrelationId = UUID.randomUUID().toString();
+        }
+        String traceMessageId = org.slf4j.MDC.get("fb_message_id");
+        if (traceMessageId == null || traceMessageId.isBlank()) {
+            traceMessageId = ledgerUserTurnId;
+        }
+        String traceQuotedPkgId = quotedReplyResolution.quotedPackage() != null
+                ? (quotedReplyResolution.quotedPackage().code() + ":" + quotedReplyResolution.quotedPackage().priceDisplay())
+                : "null";
+        String traceActivePkgId = activeTurnPkg != null
+                ? (activeTurnPkg.code() + ":" + activeTurnPkg.priceDisplay())
+                : "null";
+        List<String> tracePresentedHistoryIds = presentedPackagesInHistory.stream()
+                .map(p -> (p.code() != null ? p.code() : p.displayName()) + ":" + p.priceDisplay())
+                .toList();
+        List<String> traceFinalBubbleTexts = finalBubbles.stream()
+                .map(FanpageBotResponse.ReplyBubble::text)
+                .toList();
+        log.info("[CleanAgentTrace] correlation_id={} pageId={} senderPsid={} messageId={} replyToMid={} replyResolutionState={} "
+                + "quotedMessageTextFound={} quotedPackageId={} heldPackageId={} activePackageId={} presentedPackagesInHistory={} "
+                + "intentSignals={} priceObjectionCount={} priceObjectionUpdateReason={} stageBeforeReconcile={} stageAfterReconcile={} "
+                + "refereeViolations={} regenerationCount={} finalBubbles={}",
+                traceCorrelationId,
+                request.pageId(),
+                request.senderId(),
+                traceMessageId,
+                replyToMid.isEmpty() ? "none" : replyToMid,
+                replyResolutionState.name(),
+                !quotedMessageText.isEmpty(),
+                traceQuotedPkgId,
+                !heldPkgIsNull ? heldPackageDisplay : "null",
+                traceActivePkgId,
+                tracePresentedHistoryIds,
+                currentTurnSignals,
+                priceObjectionCount,
+                priceObjectionUpdateReason,
+                stageBeforeReconcile,
+                cleanStage,
+                allViolations,
+                llmRegenerationCount,
+                traceFinalBubbleTexts
+        );
 
         CleanAgentOutputRefereeAndSanitizer.BrainReflection rawReflection =
                 structured != null && structured.brainReflection() != null
@@ -1037,6 +1407,27 @@ public class CleanAgentOrchestratorService {
         );
     }
 
+    private static FanpageBotResponse buildSupersededAbortedResponse(
+            FanpageBotResponse.ExtractedLead extractedLead,
+            CustomerInsightDto customerInsight
+    ) {
+        return new FanpageBotResponse(
+                "",
+                List.of(),
+                List.of(),
+                "SUPERSEDED_ABORTED",
+                0.0,
+                false,
+                null,
+                null,
+                extractedLead,
+                List.of(),
+                customerInsight,
+                List.of(),
+                List.of("SUPERSEDED_BY_NEWER_EPOCH")
+        );
+    }
+
     public static double computeConfidenceScore(List<ReciprocalRankFusion.FusedChunk> fused) {
         if (fused == null || fused.isEmpty()) {
             return 0.0;
@@ -1087,16 +1478,33 @@ public class CleanAgentOrchestratorService {
         return PURE_BUSY_OR_STOP_DEFERRAL_PATTERN.matcher(message.strip()).matches();
     }
 
+    public static boolean isOperationalOrLogisticsQuestion(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return OPERATIONAL_OR_LOGISTICS_QUESTION_PATTERN.matcher(message.strip()).matches();
+    }
+
+    public static boolean isPromoOrDiscountInquiryMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN.matcher(message.strip()).matches();
+    }
+
     public static boolean isNormalPriceOrDetailInquiryMessage(String message) {
         if (message == null || message.isBlank()) {
             return false;
         }
         String trimmed = message.strip();
-        if (CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
+        if ((CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
+                || EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()
+                || METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches())
                 && !NON_PRICE_CAO_EXCLUSION_PATTERN.matcher(trimmed).matches()) {
             return false;
         }
-        return NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches();
+        return NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches()
+                || PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches();
     }
 
     public static boolean isConfirmedCustomerPriceObjection(String message) {
@@ -1112,7 +1520,8 @@ public class CleanAgentOrchestratorService {
                 && !trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(giá|chi\\s+phí|tiền|gói|đắt|mắc|chát)\\b.*")) {
             return false;
         }
-        if (NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches()
+        if ((NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches()
+                || PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches())
                 && !CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
                 && !METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches()
                 && !EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()) {
@@ -1207,6 +1616,8 @@ public class CleanAgentOrchestratorService {
         }
         String trimmed = customerMessage.strip();
         if (isNormalPriceOrDetailInquiryMessage(trimmed)
+                || isOperationalOrLogisticsQuestion(trimmed)
+                || (isPromoOrDiscountInquiryMessage(trimmed) && !isConfirmedCustomerPriceObjection(trimmed, true))
                 || isBareAcknowledgmentMessage(trimmed)
                 || hasProactiveBookingOrPackageSelectionInMessage(trimmed)
                 || isHesitationOrDeferralMessage(trimmed)) {
@@ -1272,6 +1683,9 @@ public class CleanAgentOrchestratorService {
         }
         if (lower.matches("(?isU).*\\b(lưng|thắt\\s+lưng|cột\\s+sống|eo|hông)\\b.*")) {
             tokens.add("lưng");
+        }
+        if (lower.matches("(?isU).*\\bmông\\b.*")) {
+            tokens.add("mông");
         }
         if (lower.matches("(?isU).*\\b(gối|đầu\\s+gối|khớp\\s+gối)\\b.*")) {
             tokens.add("gối");
@@ -1455,15 +1869,18 @@ public class CleanAgentOrchestratorService {
         if (safeSignals.contains("POLITE_CLOSING_ACKNOWLEDGMENT")) {
             return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
         }
-        boolean isServiceDetailQuestionTurn = safeSignals.contains("SERVICE_OR_UNIT_DETAIL_QUESTION")
-                && !safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS")
-                && !safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
         boolean isExplicitDownsell = isExplicitDownsellOrLowBudgetRequest(customerMessage, null)
                 || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
-        boolean currentTurnHasPriceObjection = !isServiceDetailQuestionTurn
-                && (isExplicitDownsell
-                    || safeSignals.contains("PRICE_OBJECTION_FIRST_TIME")
-                    || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST"));
+        boolean hasPriceObjectionSignal = isExplicitDownsell
+                || safeSignals.contains("PRICE_OBJECTION")
+                || safeSignals.contains("PRICE_OBJECTION_FIRST_TIME")
+                || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
+        boolean isServiceDetailQuestionTurn = (safeSignals.contains("SERVICE_OR_UNIT_DETAIL_QUESTION")
+                || safeSignals.contains("OPERATIONAL_OR_LOGISTICS_QUESTION"))
+                && !hasPriceObjectionSignal
+                && !safeSignals.contains("PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS")
+                && !safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
+        boolean currentTurnHasPriceObjection = !isServiceDetailQuestionTurn && hasPriceObjectionSignal;
         boolean isHesitationTurn = !currentTurnHasPriceObjection
                 && (safeSignals.contains("HESITATION_OR_DEFERRAL") || isHesitationOrDeferralMessage(customerMessage));
         boolean isPureBusyOrStop = isHesitationTurn && isPureBusyOrStopDeferralMessage(customerMessage);
@@ -1911,6 +2328,7 @@ public class CleanAgentOrchestratorService {
             signals.add("STYLE_OR_REPETITION_FEEDBACK");
         }
         if (isPriceObj) {
+            signals.add("PRICE_OBJECTION");
             if (priceObjectionCount <= 1 && !isExplicitDownsell) {
                 signals.add("PRICE_OBJECTION_FIRST_TIME");
             } else {
@@ -1944,8 +2362,16 @@ public class CleanAgentOrchestratorService {
         boolean isPositiveInterest = !isPriceObj
                 && !isHesitation
                 && isPositiveInterestForTrialInvite(mergedMessage);
-        if (isDetailOrUnitQuestion) {
+        boolean isPromoQuestion = isPromoOrDiscountInquiryMessage(mergedMessage);
+        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
+        if (isOperationalQuestion) {
+            signals.add("OPERATIONAL_OR_LOGISTICS_QUESTION");
+        }
+        if ((isDetailOrUnitQuestion || isPromoQuestion || isOperationalQuestion) && !isPriceObj) {
             signals.add("SERVICE_OR_UNIT_DETAIL_QUESTION");
+        }
+        if (isPromoQuestion) {
+            signals.add("PROMO_OR_DISCOUNT_QUESTION");
         }
         if (!isPriceObj && !isHesitation && !isMetaSignalOnly(signals) && !isDetailOrUnitQuestion) {
             if (isPositiveInterest) {
@@ -1987,7 +2413,7 @@ public class CleanAgentOrchestratorService {
             boolean isDetailOrUnitQuestion,
             List<String> knownSymptoms
     ) {
-        if (isPureDeferralOrBusyTurn || packageInterestAccepted || isDetailOrUnitQuestion) {
+        if (isPureDeferralOrBusyTurn || packageInterestAccepted || (isDetailOrUnitQuestion && !hasPriceObjectionOrPriceHesitation)) {
             return ThinkingMode.FAST_NO_THINK;
         }
         if (hasPriceObjectionOrPriceHesitation) {
