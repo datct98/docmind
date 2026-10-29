@@ -146,14 +146,22 @@ public class CleanAgentOrchestratorService {
 
     private static final Pattern PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN = Pattern.compile(
             "(?isU).*\\b("
-            + "hôm\\s+nay|ngày\\s+mai|chiều\\s+nay|tối\\s+nay|sáng\\s+mai|chiều\\s+mai|sáng\\s+nay|trưa\\s+nay|lát\\s+nữa|tí\\s+nữa|cuối\\s+tuần|thứ\\s+\\d|chủ\\s+nhật|\\d{1,2}\\s*(?:h|giờ|g\\b)|"
-            + "(?:đặt|giữ|book|xếp)\\s+(?:lịch\\s+)?giúp\\s+(?:mình|chị|anh|em|tôi)|"
-            + "đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|book\\s+lịch|chốt\\s+(?:gói|lịch)|đăng\\s+ký\\s+(?:gói|lịch|thử)|"
+            + "hôm\\s+nay|ngày\\s+mai|chiều\\s+nay|tối\\s+nay|sáng\\s+mai|chiều\\s+mai|tối\\s+mai|sáng\\s+nay|trưa\\s+nay|lát\\s+nữa|tí\\s+nữa|cuối\\s+tuần|thứ\\s+\\d|chủ\\s+nhật|\\d{1,2}\\s*(?:h|giờ|g\\b)|"
+            + "(?:đặt|giữ|book|xếp|lên)\\s+(?:lịch\\s+|đơn\\s+|hàng\\s+)?giúp\\s+(?:mình|chị|anh|em|tôi)|"
+            + "đặt\\s+(?:lịch|gói|mẫu|khóa|lớp|sản\\s+phẩm|hàng|đơn|chỗ|bàn|cho\\s+(?:mình|chị|anh|em|tôi))|"
+            + "giữ\\s+(?:lịch|chỗ|suất|gói|mẫu)|book\\s+(?:lịch|gói|chỗ)|"
+            + "chốt\\s+(?:gói|mẫu|khóa|lớp|sản\\s+phẩm|đơn|lịch)|"
+            + "đăng\\s+ký\\s+(?:gói|khóa|lớp|học|lịch|thử|test|kiểm\\s+tra)|"
+            + "hẹn\\s+(?:lịch|test|kiểm\\s+tra|qua|ghé|xem\\s+mẫu)|"
             + "thử\\s+(?:gói|1\\s+buổi|trước|xem|lần)|trải\\s+nghiệm\\s+(?:thử|gói|1\\s+buổi|trước)|"
-            + "cho\\s+(?:mình|chị|anh|tôi)\\s+(?:thử|đặt|lấy|chốt|đăng\\s+ký|làm\\s+gói)|"
-            + "(?:mình|chị|anh|tôi)\\s+(?:qua|ghé|đến|sang|chọn\\s+gói|lấy\\s+gói)|qua\\s+(?:làm|thử|trải\\s+nghiệm)|"
-            + "(?:ok|oke|okay|ừ|uk|vâng|dạ|vậy)\\b.*\\b(?:\\d{2,3}\\s*k\\b|\\d{2,3}\\s*phút\\b|ns0\\d|ds0\\d|gói\\s+(?:dưỡng\\s+sinh|massage|cơ\\s+bản|chuyên\\s+sâu))"
+            + "cho\\s+(?:mình|chị|anh|tôi)\\s+(?:thử|đặt|lấy|chốt|đăng\\s+ký|làm\\s+gói|mua)|"
+            + "(?:mình|chị|anh|tôi)\\s+(?:qua|ghé|đến|sang|chọn\\s+(?:gói|mẫu|khóa)|lấy\\s+(?:gói|mẫu|khóa))|qua\\s+(?:làm|thử|trải\\s+nghiệm|xem\\s+mẫu)|"
+            + "(?:ok|oke|okay|ừ|uk|vâng|dạ|vậy)\\b.*\\b(?:\\d{2,4}\\s*k\\b|\\d+[.,]\\d{3}(?:[.,]\\d{3})?|\\d{2,3}\\s*(?:phút|buổi|m2|m²)\\b|ns0\\d|ds0\\d|gói\\s+(?:dưỡng\\s+sinh|massage|cơ\\s+bản|chuyên\\s+sâu))"
             + ")\\b.*"
+    );
+
+    private static final Pattern DECLARATIVE_PRODUCT_SELECTION_CLEAN_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+|vậy\\s+|thế\\s+)?(?:cho\\s+(?:mình|chị|anh|tôi)\\s+|lấy\\s+|chọn\\s+)?(?:gói|mẫu|khóa|lớp|sản\\s+phẩm)\\s+[^?]+\\b(?:nhé|nha|luôn|đi|ạ|cho\\s+(?:mình|chị|anh|tôi))\\s*[.!~]*\\s*$"
     );
 
     private static final Pattern PAUSE_OR_DEFERRAL_BOT_REPLY_CLEAN_PATTERN = Pattern.compile(
@@ -184,6 +192,8 @@ public class CleanAgentOrchestratorService {
     private AgentBrainService agentBrainService;
     private AgentSkillService agentSkillService;
     private volatile ThinkingModePolicy.TurnTelemetry lastTurnTelemetry;
+    private volatile ConversationState.StructuredBookingState lastTurnBookingState =
+            ConversationState.StructuredBookingState.none();
 
     public CleanAgentOrchestratorService() {
     }
@@ -213,6 +223,10 @@ public class CleanAgentOrchestratorService {
 
     public ThinkingModePolicy.TurnTelemetry getLastTurnTelemetry() {
         return lastTurnTelemetry;
+    }
+
+    public ConversationState.StructuredBookingState getLastTurnBookingState() {
+        return lastTurnBookingState;
     }
 
     public FanpageBotResponse executeCleanAgentTurn(
@@ -492,15 +506,92 @@ public class CleanAgentOrchestratorService {
             isHesitation = true;
         }
 
+        if (request != null && Boolean.TRUE.equals(request.resetSession()) && agentBrainService != null) {
+            agentBrainService.recordBookingState(pageId, request.senderId(), ConversationState.StructuredBookingState.none());
+        }
+        ConversationState.StructuredBookingState priorBookingState = safePrior.structuredBookingState();
+        if ((priorBookingState == null || priorBookingState.status() == ConversationState.BookingStatus.NONE)
+                && agentBrainService != null
+                && !safeHistory.isEmpty()) {
+            ConversationState.StructuredBookingState brainRecalledBooking =
+                    agentBrainService.recallBookingState(pageId, request.senderId());
+            if (brainRecalledBooking != null && brainRecalledBooking.status() != ConversationState.BookingStatus.NONE) {
+                priorBookingState = brainRecalledBooking;
+            }
+        }
+        if (priorBookingState == null) {
+            priorBookingState = ConversationState.StructuredBookingState.none();
+        }
+        java.time.ZoneId pageZoneId = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+
+        String replyToMid = request != null && request.replyToMid() != null ? request.replyToMid().strip() : "";
+        String quotedMessageText = request != null && request.quotedMessageText() != null ? request.quotedMessageText().strip() : "";
+        if (quotedMessageText.isEmpty() && !replyToMid.isEmpty() && request != null) {
+            String lookedUpQuoted = SentBubbleLedger.lookupMessageByMid(request.pageId(), request.senderId(), replyToMid);
+            quotedMessageText = lookedUpQuoted != null ? lookedUpQuoted.strip() : "";
+        }
+        boolean hasReplyToContext = !replyToMid.isEmpty() || !quotedMessageText.isEmpty();
+
+        List<PackageCatalogService.PackageSummary> presentedPackagesInHistory =
+                CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(safeHistory, safePrior, allCatalog);
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        replyToMid,
+                        quotedMessageText,
+                        allCatalog,
+                        presentedPackagesInHistory
+                );
+        CleanAgentCatalogAndPromptBuilder.ReplyResolutionState replyResolutionState =
+                quotedReplyResolution.resolutionState();
+
+        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
+        boolean isQuestionSentence = mergedMessage != null && mergedMessage.contains("?");
+        PackageCatalogService.PackageSummary preMatchedExplicitSelection = (!isMetaOrChallenge
+                && !hasPriceObjectionKeyword
+                && !isHesitation
+                && !isOperationalQuestion
+                && !isQuestionSentence
+                && !isNormalPriceOrDetailInquiryMessage(mergedMessage)
+                && !isPromoOrDiscountInquiryMessage(mergedMessage))
+                ? matchExplicitProductSelectionInMessage(
+                        mergedMessage,
+                        presentedPackagesInHistory,
+                        allCatalog,
+                        tieredCatalog,
+                        quotedReplyResolution
+                )
+                : null;
+        ConversationState.ParsedBookingDateTime preParsedTurnDateTime = (!isMetaOrChallenge
+                && !hasPriceObjectionKeyword
+                && !isHesitation
+                && !isOperationalQuestion
+                && !isQuestionSentence)
+                ? ConversationState.parseBookingDateTime(mergedMessage, null, null, pageZoneId, null)
+                : new ConversationState.ParsedBookingDateTime(null, null, null, pageZoneId.getId());
+        boolean isActiveBookingSlotContinuation = priorBookingState.status().isActiveOrConfirmed()
+                && priorBookingState.status() != ConversationState.BookingStatus.CONFIRMED
+                && !isMetaOrChallenge
+                && !hasPriceObjectionKeyword
+                && !isHesitation
+                && !isOperationalQuestion
+                && !isQuestionSentence
+                && !isNormalPriceOrDetailInquiryMessage(mergedMessage)
+                && !isPromoOrDiscountInquiryMessage(mergedMessage)
+                && (preMatchedExplicitSelection != null
+                    || preParsedTurnDateTime.bookingDate() != null
+                    || preParsedTurnDateTime.bookingTime() != null);
+
         boolean isBareAck = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
                 && !isHesitation
+                && !isActiveBookingSlotContinuation
                 && isBareAcknowledgmentMessage(mergedMessage);
         boolean hasProactiveBookingInfo = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
                 && !isHesitation
-                && hasProactiveBookingOrPackageSelectionInMessage(mergedMessage);
-        boolean isBookingAlreadyConfirmed = "CONFIRMED".equalsIgnoreCase(safeConv.bookingStatus())
+                && (isActiveBookingSlotContinuation || hasProactiveBookingOrPackageSelectionInMessage(mergedMessage));
+        boolean isBookingAlreadyConfirmed = priorBookingState.status() == ConversationState.BookingStatus.CONFIRMED
+                || "CONFIRMED".equalsIgnoreCase(safeConv.bookingStatus())
                 || "CONFIRMED".equalsIgnoreCase(safePrior.bookingStatus())
                 || SPEECH_ACT_BOOKING_CONFIRMED.equalsIgnoreCase(effectivePrecedingSpeechAct);
         boolean isPostBookingClosingAck = (isBareAck && isBookingAlreadyConfirmed)
@@ -520,23 +611,15 @@ public class CleanAgentOrchestratorService {
                 || (shortUtteranceRes.isContextualShortUtterance()
                     && "ACCEPTED_PACKAGE_DETAIL_OFFER".equals(shortUtteranceRes.decodedMeaning()));
 
-        String replyToMid = request != null && request.replyToMid() != null ? request.replyToMid().strip() : "";
-        String quotedMessageText = request != null && request.quotedMessageText() != null ? request.quotedMessageText().strip() : "";
-        if (quotedMessageText.isEmpty() && !replyToMid.isEmpty() && request != null) {
-            String lookedUpQuoted = SentBubbleLedger.lookupMessageByMid(request.pageId(), request.senderId(), replyToMid);
-            quotedMessageText = lookedUpQuoted != null ? lookedUpQuoted.strip() : "";
-        }
-        boolean hasReplyToContext = !replyToMid.isEmpty() || !quotedMessageText.isEmpty();
-
-        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
-        boolean isDetailOrUnitQuestion = isAckForOfferedDetails
-                || brainDecodedOperationalAck
-                || isOperationalQuestion
-                || SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv)
-                || isNormalPriceOrDetailInquiryMessage(mergedMessage)
-                || isPromoOrDiscountInquiryMessage(mergedMessage)
-                || (hasReplyToContext && !hasProactiveBookingInfo && !isBareAck && !hasPriceObjectionKeyword && !isHesitation)
-                || (mergedMessage != null && mergedMessage.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(?:1|một)\\s+buổi\\s+(?:à|hả|phải\\s+không|đúng\\s+không|hay\\s+sao)\\b.*"));
+        boolean isDetailOrUnitQuestion = !isActiveBookingSlotContinuation
+                && (isAckForOfferedDetails
+                    || brainDecodedOperationalAck
+                    || isOperationalQuestion
+                    || (!hasProactiveBookingInfo && SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv))
+                    || isNormalPriceOrDetailInquiryMessage(mergedMessage)
+                    || isPromoOrDiscountInquiryMessage(mergedMessage)
+                    || (hasReplyToContext && !hasProactiveBookingInfo && !isBareAck && !hasPriceObjectionKeyword && !isHesitation)
+                    || (mergedMessage != null && mergedMessage.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(?:1|một)\\s+buổi\\s+(?:à|hả|phải\\s+không|đúng\\s+không|hay\\s+sao)\\b.*")));
 
         boolean isPositiveTrialInterest = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
@@ -570,14 +653,27 @@ public class CleanAgentOrchestratorService {
                 && !brainDecodedLukewarmPostQuote
                 && (isAckOrAcceptNow
                     || (!priorTurnWasPause && (safeConv.packageInterestAccepted()
+                        || priorBookingState.status().isActiveOrConfirmed()
                         || "COLLECTING_INFO".equals(safePrior.bookingStatus())
                         || "COLLECTING_VISIT_TIME".equals(safePrior.bookingStatus()))));
         if (packageInterestAccepted) {
             inPriceObjectionContext = false;
         }
-        String bookingFunnelStatus = isBookingAlreadyConfirmed
-                ? "CONFIRMED"
-                : (packageInterestAccepted ? "COLLECTING_VISIT_TIME" : "NONE");
+
+        ConversationState.StructuredBookingState bookingState = resolveMultiIndustryBookingState(
+                mergedMessage,
+                priorBookingState,
+                packageInterestAccepted || isBookingAlreadyConfirmed,
+                isHesitation || isPoliteClosingAck || isChallengeAssumption || isMismatch,
+                isBookingAlreadyConfirmed,
+                presentedPackagesInHistory,
+                allCatalog,
+                tieredCatalog,
+                hasProactiveBookingInfo ? quotedReplyResolution : CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                pageZoneId,
+                null
+        );
+        String bookingFunnelStatus = bookingState.status().name();
 
         List<String> currentTurnSignals = new ArrayList<>(classifyCleanCurrentTurnSignals(
                 mergedMessage,
@@ -604,17 +700,6 @@ public class CleanAgentOrchestratorService {
             }
         }
 
-        List<PackageCatalogService.PackageSummary> presentedPackagesInHistory =
-                CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(safeHistory, safePrior, allCatalog);
-        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution =
-                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
-                        replyToMid,
-                        quotedMessageText,
-                        allCatalog,
-                        presentedPackagesInHistory
-                );
-        CleanAgentCatalogAndPromptBuilder.ReplyResolutionState replyResolutionState =
-                quotedReplyResolution.resolutionState();
         if (quotedReplyResolution.quotedPackage() != null) {
             if (!currentTurnSignals.contains("QUOTED_PACKAGE_RESOLVED")) {
                 currentTurnSignals.add("QUOTED_PACKAGE_RESOLVED");
@@ -654,6 +739,11 @@ public class CleanAgentOrchestratorService {
         boolean isPureDeferralOrBusyTurn = "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage);
         boolean holdSinglePackageFirstObjection = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
         boolean isDownsellOrRepeatObjectionStage = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(cleanStage);
+
+        if (isPureDeferralOrBusyTurn || isPriceContextHesitationTurn || holdSinglePackageFirstObjection || isDownsellOrRepeatObjectionStage) {
+            bookingState = ConversationState.StructuredBookingState.none();
+            bookingFunnelStatus = bookingState.status().name();
+        }
 
         List<PackageCatalogService.PackageSummary> scopeFilteredCatalog;
         List<PackageCatalogService.PackageSummary> excludedCatalog;
@@ -730,15 +820,58 @@ public class CleanAgentOrchestratorService {
         String heldPriceDisplay = CleanAgentCatalogAndPromptBuilder.resolveHeldPriceDisplay(
                 rawHeldPrice, rawHeldPackage, allCatalog);
 
+        PackageCatalogService.PackageSummary selectedBookingPkg = (bookingState.selectedProductId() != null)
+                ? findProductByIdInCatalog(bookingState.selectedProductId(), presentedPackagesInHistory, allCatalog)
+                : null;
+
         boolean customerProactivelyPickedDownsell = packageInterestAccepted
+                && bookingState.status() != ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION
                 && tieredCatalog.economicalAlternatives() != null
                 && !tieredCatalog.economicalAlternatives().isEmpty()
                 && (CleanAgentCatalogAndPromptBuilder.customerExplicitlyAskedForEconomicalGroup(
                         mergedMessage, tieredCatalog.economicalAlternatives())
                     || hasPackagePriceMentionedInText(mergedMessage, tieredCatalog.economicalAlternatives())
-                    || (hasPresentedDownsell && CleanAgentCatalogAndPromptBuilder.isAnyPackagePresentedInBotText(
-                        prevBotTurnText, tieredCatalog.economicalAlternatives())));
-        if (!isMetaOrChallenge
+                    || (selectedBookingPkg != null && tieredCatalog.economicalAlternatives().stream()
+                        .anyMatch(e -> e != null && e.productId().equalsIgnoreCase(selectedBookingPkg.productId()))));
+        if (selectedBookingPkg != null && !isMetaOrChallenge && !isPoliteClosingAck) {
+            heldPackageDisplay = selectedBookingPkg.canonicalLabel();
+            heldPriceDisplay = selectedBookingPkg.priceDisplay();
+            if (replyResolutionState == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE) {
+                Set<Long> customerMsgPrices = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(mergedMessage);
+                scopeFilteredCatalog = new ArrayList<>();
+                scopeFilteredCatalog.add(selectedBookingPkg);
+                excludedCatalog = new ArrayList<>();
+                for (PackageCatalogService.PackageSummary ap : allCatalog) {
+                    if (ap == null || ap.isAddon()) continue;
+                    if (ap.equals(selectedBookingPkg)
+                            || ap.productId().equalsIgnoreCase(selectedBookingPkg.productId())
+                            || ap.priceAmountVnd() == selectedBookingPkg.priceAmountVnd()
+                            || customerMsgPrices.contains(ap.priceAmountVnd())) {
+                        if (!scopeFilteredCatalog.contains(ap)) {
+                            scopeFilteredCatalog.add(ap);
+                        }
+                    } else {
+                        excludedCatalog.add(ap);
+                    }
+                }
+            }
+        } else if (bookingState.status() == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION) {
+            List<PackageCatalogService.PackageSummary> distinctPresented = deduplicateNonAddonProducts(presentedPackagesInHistory);
+            if (!distinctPresented.isEmpty()) {
+                scopeFilteredCatalog = new ArrayList<>(distinctPresented);
+                excludedCatalog = new ArrayList<>();
+                for (PackageCatalogService.PackageSummary ap : allCatalog) {
+                    if (ap == null || ap.isAddon()) continue;
+                    boolean inPresented = distinctPresented.stream()
+                            .anyMatch(pp -> pp != null && (pp.equals(ap)
+                                    || pp.productId().equalsIgnoreCase(ap.productId())
+                                    || pp.priceAmountVnd() == ap.priceAmountVnd()));
+                    if (!inPresented) {
+                        excludedCatalog.add(ap);
+                    }
+                }
+            }
+        } else if (!isMetaOrChallenge
                 && !isPoliteClosingAck
                 && customerProactivelyPickedDownsell
                 && tieredCatalog.economicalAlternatives() != null
@@ -765,20 +898,24 @@ public class CleanAgentOrchestratorService {
                 excludedCatalog.removeIf(ex -> ex != null && (ex.equals(named) || ex.priceVnd() == named.priceVnd()));
             }
         }
-        PackageCatalogService.PackageSummary activeTurnPkg = (quotedReplyResolution.quotedPackage() != null)
-                ? quotedReplyResolution.quotedPackage()
-                : ((quotedReplyResolution.unresolvedReplyToMid() || quotedReplyResolution.ambiguousMultiplePackages())
-                    ? null
-                    : (explicitlyNamedPkgInTurn != null
-                        ? explicitlyNamedPkgInTurn
-                        : ((!isMetaOrChallenge
-                            && !isPoliteClosingAck
-                            && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
-                            && tieredCatalog.economicalAlternatives() != null
-                            && !tieredCatalog.economicalAlternatives().isEmpty())
-                            ? tieredCatalog.economicalAlternatives().get(0)
-                            : CleanAgentCatalogAndPromptBuilder.findHeldOrTopPrimaryPackage(
-                                    tieredCatalog, heldPackageDisplay, heldPriceDisplay))));
+        PackageCatalogService.PackageSummary activeTurnPkg = (bookingState.status() == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION)
+                ? null
+                : (selectedBookingPkg != null
+                    ? selectedBookingPkg
+                    : ((quotedReplyResolution.quotedPackage() != null)
+                        ? quotedReplyResolution.quotedPackage()
+                        : ((quotedReplyResolution.unresolvedReplyToMid() || quotedReplyResolution.ambiguousMultiplePackages())
+                            ? null
+                            : (explicitlyNamedPkgInTurn != null
+                                ? explicitlyNamedPkgInTurn
+                                : ((!isMetaOrChallenge
+                                    && !isPoliteClosingAck
+                                    && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
+                                    && tieredCatalog.economicalAlternatives() != null
+                                    && !tieredCatalog.economicalAlternatives().isEmpty())
+                                    ? tieredCatalog.economicalAlternatives().get(0)
+                                    : CleanAgentCatalogAndPromptBuilder.findHeldOrTopPrimaryPackage(
+                                            tieredCatalog, heldPackageDisplay, heldPriceDisplay))))));
 
         CustomerInsightDto enrichedTurnInsight = customerInsight;
         if (agentBrainService != null && (enrichedTurnInsight == null || enrichedTurnInsight.careNotes() == null)) {
@@ -799,6 +936,17 @@ public class CleanAgentOrchestratorService {
             } catch (Exception e) {
                 log.warn("Non-fatal: failed to record clean-agent skill telemetry: {}", e.getMessage());
             }
+        }
+
+        Map<String, String> pendingBookingSlots = new java.util.LinkedHashMap<>();
+        if (bookingState.bookingDate() != null) {
+            pendingBookingSlots.put("booking_date", bookingState.bookingDate());
+        }
+        if (bookingState.bookingTime() != null) {
+            pendingBookingSlots.put("booking_time", bookingState.bookingTime());
+        }
+        if (pendingBookingSlots.isEmpty() && safeConv.visitTime() != null && !safeConv.visitTime().isBlank()) {
+            pendingBookingSlots.put("visit_time", safeConv.visitTime().strip());
         }
 
         String lastBotQuestion = extractLastBotQuestion(prevBotTurnText, safePrior.lastQuestion());
@@ -823,12 +971,11 @@ public class CleanAgentOrchestratorService {
                 mergedMessage,
                 enrichedTurnInsight,
                 alignedActiveSkills,
-                safeConv.visitTime() != null && !safeConv.visitTime().isBlank()
-                        ? Map.of("visit_time", safeConv.visitTime().strip())
-                        : Map.of(),
+                pendingBookingSlots,
                 quotedReplyResolution,
                 pageId,
-                appliedRules
+                appliedRules,
+                bookingState
         );
 
         ThinkingMode selectedThinkingMode = resolveCleanAgentThinkingMode(
@@ -1284,7 +1431,14 @@ public class CleanAgentOrchestratorService {
                     shouldHandoff,
                     incomingHistorySize
             );
+            ConversationState.updateStructuredBookingStateInSession(
+                    pageId,
+                    request.senderId(),
+                    request.conversationId(),
+                    bookingState
+            );
         }
+        this.lastTurnBookingState = bookingState;
 
         String traceCorrelationId = org.slf4j.MDC.get("correlation_id");
         if (traceCorrelationId == null || traceCorrelationId.isBlank()) {
@@ -1307,7 +1461,8 @@ public class CleanAgentOrchestratorService {
                 .map(FanpageBotResponse.ReplyBubble::text)
                 .toList();
         log.info("[CleanAgentTrace] correlation_id={} pageId={} senderPsid={} messageId={} replyToMid={} replyResolutionState={} "
-                + "quotedMessageTextFound={} quotedPackageId={} heldPackageId={} activePackageId={} presentedPackagesInHistory={} "
+                + "quotedMessageTextFound={} quotedPackageId={} heldPackageId={} activePackageId={} selectedProductId={} "
+                + "bookingDate={} bookingTime={} bookingStatus={} presentedPackagesInHistory={} "
                 + "intentSignals={} priceObjectionCount={} priceObjectionUpdateReason={} stageBeforeReconcile={} stageAfterReconcile={} "
                 + "refereeViolations={} regenerationCount={} finalBubbles={}",
                 traceCorrelationId,
@@ -1320,6 +1475,10 @@ public class CleanAgentOrchestratorService {
                 traceQuotedPkgId,
                 !heldPkgIsNull ? heldPackageDisplay : "null",
                 traceActivePkgId,
+                bookingState.selectedProductId() != null ? bookingState.selectedProductId() : "null",
+                bookingState.bookingDate() != null ? bookingState.bookingDate() : "null",
+                bookingState.bookingTime() != null ? bookingState.bookingTime() : "null",
+                bookingState.status().name(),
                 tracePresentedHistoryIds,
                 currentTurnSignals,
                 priceObjectionCount,
@@ -1351,6 +1510,7 @@ public class CleanAgentOrchestratorService {
 
         if (agentBrainService != null) {
             try {
+                agentBrainService.recordBookingState(pageId, request.senderId(), bookingState);
                 agentBrainService.recordCommercialFunnelState(
                         pageId,
                         request.senderId(),
@@ -1771,10 +1931,289 @@ public class CleanAgentOrchestratorService {
             return false;
         }
         String trimmed = message.strip();
-        if (isHesitationOrDeferralMessage(trimmed)) {
+        if (trimmed.contains("?")
+                || isHesitationOrDeferralMessage(trimmed)
+                || isOperationalOrLogisticsQuestion(trimmed)
+                || isPromoOrDiscountInquiryMessage(trimmed)
+                || isNormalPriceOrDetailInquiryMessage(trimmed)
+                || isConfirmedCustomerPriceObjection(trimmed, true)) {
             return false;
         }
-        return PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches();
+        return PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches()
+                || DECLARATIVE_PRODUCT_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches();
+    }
+
+    /**
+     * Máy trạng thái Đặt lịch / Đặt hàng đa ngành 6 trạng thái (Checkpoint C3-B):
+     * 1. NONE
+     * 2. AWAITING_PRODUCT_SELECTION (tuyệt đối không lấy selectedProductId từ heldPackage khi lịch sử có >= 2 sản phẩm)
+     * 3. AWAITING_DATE_OR_TIME
+     * 4. AWAITING_AVAILABILITY_CHECK
+     * 5. AWAITING_CUSTOMER_CONFIRMATION
+     * 6. CONFIRMED (chỉ khi đã có xác nhận chính thức từ công cụ đặt lịch hoặc nhân sự)
+     */
+    public static ConversationState.StructuredBookingState resolveMultiIndustryBookingState(
+            String mergedMessage,
+            ConversationState.StructuredBookingState priorBookingState,
+            boolean bookingIntentActiveThisTurn,
+            boolean shouldCancelActiveBooking,
+            boolean officiallyConfirmedByToolOrStaff,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution,
+            java.time.ZoneId pageZone,
+            java.time.LocalDate referenceDate
+    ) {
+        java.time.ZoneId safeZone = pageZone != null ? pageZone : java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        ConversationState.StructuredBookingState safePrior = priorBookingState != null
+                ? priorBookingState
+                : ConversationState.StructuredBookingState.none();
+
+        if (shouldCancelActiveBooking) {
+            return ConversationState.StructuredBookingState.none();
+        }
+        if (officiallyConfirmedByToolOrStaff || safePrior.status() == ConversationState.BookingStatus.CONFIRMED) {
+            ConversationState.ParsedBookingDateTime dt = ConversationState.parseBookingDateTime(
+                    mergedMessage, safePrior.bookingDate(), safePrior.bookingTime(), safeZone, referenceDate);
+            return new ConversationState.StructuredBookingState(
+                    safePrior.selectedProductId(),
+                    safePrior.selectedProductLabel(),
+                    dt.bookingDate(),
+                    dt.resolvedIsoDate(),
+                    dt.bookingTime(),
+                    dt.timezoneId(),
+                    ConversationState.BookingStatus.CONFIRMED,
+                    safePrior.candidateProductIds()
+            );
+        }
+        if (!bookingIntentActiveThisTurn) {
+            return ConversationState.StructuredBookingState.none();
+        }
+
+        List<PackageCatalogService.PackageSummary> distinctPresented = deduplicateNonAddonProducts(presentedPackagesInHistory);
+        PackageCatalogService.PackageSummary explicitPkgInTurn = matchExplicitProductSelectionInMessage(
+                mergedMessage,
+                distinctPresented,
+                allCatalog,
+                tieredCatalog,
+                quotedReplyResolution
+        );
+
+        PackageCatalogService.PackageSummary selectedPkg = null;
+        if (explicitPkgInTurn != null) {
+            selectedPkg = explicitPkgInTurn;
+        } else if (safePrior.selectedProductId() != null && !safePrior.selectedProductId().isBlank()) {
+            selectedPkg = findProductByIdInCatalog(safePrior.selectedProductId(), distinctPresented, allCatalog);
+        } else if (distinctPresented.size() == 1) {
+            selectedPkg = distinctPresented.get(0);
+        }
+        // Khi distinctPresented.size() >= 2 hoặc == 0 mà khách chưa chủ động chỉ định sản phẩm:
+        // selectedPkg BẮT BUỘC giữ nguyên null (tuyệt đối không lấy từ heldPackage!)
+
+        String selectedProductId = selectedPkg != null
+                ? selectedPkg.productId()
+                : (explicitPkgInTurn == null && safePrior.selectedProductId() != null && !safePrior.selectedProductId().isBlank()
+                    ? safePrior.selectedProductId()
+                    : null);
+        String selectedProductLabel = selectedPkg != null
+                ? (selectedPkg.canonicalLabel() + " (" + selectedPkg.priceDisplay() + ")")
+                : safePrior.selectedProductLabel();
+
+        List<String> candidateProductIds;
+        if (selectedProductId != null) {
+            candidateProductIds = List.of(selectedProductId);
+        } else if (!distinctPresented.isEmpty()) {
+            candidateProductIds = distinctPresented.stream()
+                    .map(PackageCatalogService.PackageSummary::productId)
+                    .toList();
+        } else if (tieredCatalog != null && tieredCatalog.allAllowedPackages() != null) {
+            candidateProductIds = deduplicateNonAddonProducts(tieredCatalog.allAllowedPackages()).stream()
+                    .map(PackageCatalogService.PackageSummary::productId)
+                    .toList();
+        } else {
+            candidateProductIds = List.of();
+        }
+
+        ConversationState.ParsedBookingDateTime parsedDT = ConversationState.parseBookingDateTime(
+                mergedMessage,
+                safePrior.bookingDate(),
+                safePrior.bookingTime(),
+                safeZone,
+                referenceDate
+        );
+
+        ConversationState.BookingStatus nextStatus;
+        if (selectedProductId == null || selectedProductId.isBlank()) {
+            nextStatus = ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION;
+        } else if (parsedDT.bookingDate() == null || parsedDT.bookingTime() == null) {
+            nextStatus = ConversationState.BookingStatus.AWAITING_DATE_OR_TIME;
+        } else if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+            nextStatus = ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
+        } else {
+            nextStatus = ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK;
+        }
+
+        return new ConversationState.StructuredBookingState(
+                selectedProductId,
+                selectedProductLabel,
+                parsedDT.bookingDate(),
+                parsedDT.resolvedIsoDate(),
+                parsedDT.bookingTime(),
+                parsedDT.timezoneId(),
+                nextStatus,
+                candidateProductIds
+        );
+    }
+
+    public static PackageCatalogService.PackageSummary matchExplicitProductSelectionInMessage(
+            String message,
+            List<PackageCatalogService.PackageSummary> presentedHistoryPackages,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution
+    ) {
+        if (quotedReplyResolution != null
+                && quotedReplyResolution.quotedPackage() != null
+                && !quotedReplyResolution.ambiguousMultiplePackages()
+                && !quotedReplyResolution.unresolvedReplyToMid()) {
+            return quotedReplyResolution.quotedPackage();
+        }
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        String normMsg = java.text.Normalizer.normalize(message.strip(), java.text.Normalizer.Form.NFC);
+        String lowerMsg = normMsg.toLowerCase(Locale.ROOT);
+
+        List<PackageCatalogService.PackageSummary> distinctPresented = deduplicateNonAddonProducts(presentedHistoryPackages);
+        List<PackageCatalogService.PackageSummary> distinctAll = deduplicateNonAddonProducts(allCatalog);
+        List<List<PackageCatalogService.PackageSummary>> searchPools = new ArrayList<>();
+        if (!distinctPresented.isEmpty()) {
+            searchPools.add(distinctPresented);
+        }
+        if (!distinctAll.isEmpty()) {
+            searchPools.add(distinctAll);
+        }
+
+        // 1. Khớp trực tiếp mã SKU / ProductId trong câu nói của khách (ví dụ: DS02, NS01, G8080, IELTS24)
+        for (List<PackageCatalogService.PackageSummary> pool : searchPools) {
+            List<PackageCatalogService.PackageSummary> codeMatches = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary p : pool) {
+                if (p == null) continue;
+                String pid = p.productId();
+                if (pid != null && !pid.isBlank() && !pid.startsWith("PKG_")) {
+                    String escaped = Pattern.quote(pid.strip().toLowerCase(Locale.ROOT));
+                    String compact = Pattern.quote(pid.strip().toLowerCase(Locale.ROOT).replaceAll("[-_]", ""));
+                    if (lowerMsg.matches("(?isU).*\\b" + escaped + "\\b.*")
+                            || lowerMsg.matches("(?isU).*\\b" + compact + "\\b.*")) {
+                        codeMatches.add(p);
+                    }
+                }
+            }
+            if (codeMatches.size() == 1) {
+                return codeMatches.get(0);
+            }
+        }
+
+        // 2. Khớp theo mức giá khách nêu tường minh trong câu đặt lịch (ví dụ: "Đặt gói 239k cho mình", "Gói 239k nhé")
+        Set<Long> mentionedPrices = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(normMsg);
+        if (!mentionedPrices.isEmpty()) {
+            for (List<PackageCatalogService.PackageSummary> pool : searchPools) {
+                List<PackageCatalogService.PackageSummary> priceMatches = new ArrayList<>();
+                for (PackageCatalogService.PackageSummary p : pool) {
+                    if (p != null && mentionedPrices.contains(p.priceAmountVnd())) {
+                        priceMatches.add(p);
+                    }
+                }
+                if (priceMatches.size() == 1) {
+                    return priceMatches.get(0);
+                }
+            }
+        }
+
+        // 3. Khớp theo tên chuẩn / thông số định danh duy nhất (ví dụ: "mẫu 80x80", "khóa 24 buổi", "gói dưỡng sinh cơ bản")
+        for (List<PackageCatalogService.PackageSummary> pool : searchPools) {
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution textMatch =
+                    CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext("", normMsg, pool, distinctPresented);
+            if (!textMatch.ambiguousMultiplePackages() && textMatch.quotedPackage() != null) {
+                return textMatch.quotedPackage();
+            }
+            List<PackageCatalogService.PackageSummary> specMatches = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary p : pool) {
+                if (p == null || p.normalized() == null || p.normalized().specifications() == null) continue;
+                for (PackageCatalogService.SpecificationAttr spec : p.normalized().specifications()) {
+                    if (spec == null || spec.rawValue() == null || spec.rawValue().isBlank()) continue;
+                    String sLow = spec.rawValue().strip().toLowerCase(Locale.ROOT);
+                    String sNoCm = sLow.replaceAll("\\s*cm\\b", "").strip();
+                    if ((sLow.length() >= 3 && lowerMsg.contains(sLow))
+                            || (sNoCm.matches("\\d+\\s*[x×]\\s*\\d+") && lowerMsg.contains(sNoCm))) {
+                        specMatches.add(p);
+                        break;
+                    }
+                }
+            }
+            if (specMatches.size() == 1) {
+                return specMatches.get(0);
+            }
+        }
+
+        // 4. Khách chỉ định rõ nhóm tiết kiệm ("đặt gói tiết kiệm", "lấy gói rẻ hơn") khi chỉ có 1 phương án tiết kiệm phù hợp
+        List<PackageCatalogService.PackageSummary> ecoCandidates = (tieredCatalog != null && tieredCatalog.economicalAlternatives() != null)
+                ? deduplicateNonAddonProducts(tieredCatalog.economicalAlternatives())
+                : List.of();
+        if (ecoCandidates.size() == 1
+                && CleanAgentCatalogAndPromptBuilder.customerExplicitlyAskedForEconomicalGroup(normMsg, ecoCandidates)) {
+            return ecoCandidates.get(0);
+        }
+        return null;
+    }
+
+    private static List<PackageCatalogService.PackageSummary> deduplicateNonAddonProducts(
+            List<PackageCatalogService.PackageSummary> list
+    ) {
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        List<PackageCatalogService.PackageSummary> out = new ArrayList<>();
+        Set<String> seenIds = new LinkedHashSet<>();
+        for (PackageCatalogService.PackageSummary p : list) {
+            if (p == null || p.isAddon()) continue;
+            String key = p.productId() != null ? p.productId().toUpperCase(Locale.ROOT) : (p.canonicalName() + ":" + p.priceAmountVnd());
+            if (seenIds.add(key)) {
+                out.add(p);
+            }
+        }
+        return out;
+    }
+
+    private static PackageCatalogService.PackageSummary findProductByIdInCatalog(
+            String productId,
+            List<PackageCatalogService.PackageSummary> primaryPool,
+            List<PackageCatalogService.PackageSummary> fallbackPool
+    ) {
+        if (productId == null || productId.isBlank()) {
+            return null;
+        }
+        String norm = productId.strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", "");
+        if (primaryPool != null) {
+            for (PackageCatalogService.PackageSummary p : primaryPool) {
+                if (p == null) continue;
+                String pid = p.productId() != null ? p.productId().strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", "") : "";
+                if (norm.equals(pid)) {
+                    return p;
+                }
+            }
+        }
+        if (fallbackPool != null) {
+            for (PackageCatalogService.PackageSummary p : fallbackPool) {
+                if (p == null) continue;
+                String pid = p.productId() != null ? p.productId().strip().toUpperCase(Locale.ROOT).replaceAll("[-_]", "") : "";
+                if (norm.equals(pid)) {
+                    return p;
+                }
+            }
+        }
+        return null;
     }
 
     public static boolean isPauseOrDeferralBotReply(String botText) {

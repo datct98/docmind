@@ -127,13 +127,528 @@ public record ConversationState(
         boolean bookingIntentConfirmed,
         String visitTime,
         String contactInfo,
-        String bookingStatus
+        String bookingStatus,
+        // === Checkpoint C3-B: 6-State Multi-Industry Booking / Ordering State Machine ===
+        String selectedProductId,
+        String bookingDate,
+        String bookingTime,
+        BookingStatus bookingStatusEnum
 ) {
 
+    /**
+     * 6 trạng thái Đặt lịch / Đặt hàng đa ngành tường minh (Checkpoint C3-B):
+     * 1. NONE: Chưa có ý định đặt lịch/đặt hàng.
+     * 2. AWAITING_PRODUCT_SELECTION: Khách muốn đặt nhưng chưa chọn rõ sản phẩm (khi lịch sử có >= 2 sản phẩm hoặc chưa rõ sản phẩm).
+     * 3. AWAITING_DATE_OR_TIME: Đã xác định rõ selectedProductId, còn thiếu ngày hoặc khung giờ cụ thể.
+     * 4. AWAITING_AVAILABILITY_CHECK: Đã thu thập đủ selectedProductId, bookingDate, bookingTime; đang chờ kiểm tra lịch trống / tồn kho thực tế.
+     * 5. AWAITING_CUSTOMER_CONFIRMATION: Đã kiểm tra có lịch trống phù hợp và đang chờ khách chốt xác nhận cuối cùng.
+     * 6. CONFIRMED: Chỉ chuyển sang trạng thái này khi có kết quả xác nhận thực tế từ công cụ đặt lịch hoặc nhân sự phụ trách.
+     */
+    public enum BookingStatus {
+        NONE,
+        AWAITING_PRODUCT_SELECTION,
+        AWAITING_DATE_OR_TIME,
+        AWAITING_AVAILABILITY_CHECK,
+        AWAITING_CUSTOMER_CONFIRMATION,
+        CONFIRMED;
+
+        public boolean isActiveOrConfirmed() {
+            return this != NONE;
+        }
+
+        public static boolean isSixStateCanonical(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return false;
+            }
+            String u = raw.strip().toUpperCase(Locale.ROOT);
+            for (BookingStatus bs : values()) {
+                if (bs.name().equals(u)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static BookingStatus fromLegacyString(String raw, String selectedProductId, String visitTime) {
+            if (raw == null || raw.isBlank()) {
+                return NONE;
+            }
+            String u = raw.strip().toUpperCase(Locale.ROOT);
+            for (BookingStatus bs : values()) {
+                if (bs.name().equals(u)) {
+                    return bs;
+                }
+            }
+            if ("COLLECTING_INFO".equals(u) || "COLLECTING_VISIT_TIME".equals(u)) {
+                return (selectedProductId != null && !selectedProductId.isBlank())
+                        ? AWAITING_DATE_OR_TIME
+                        : AWAITING_PRODUCT_SELECTION;
+            }
+            return NONE;
+        }
+    }
+
+    /**
+     * Trạng thái Đặt lịch / Đặt hàng cấu trúc đa ngành (Checkpoint C3-B).
+     */
+    public record StructuredBookingState(
+            String selectedProductId,
+            String selectedProductLabel,
+            String bookingDate,
+            String resolvedIsoDate,
+            String bookingTime,
+            String timezoneId,
+            BookingStatus status,
+            List<String> candidateProductIds
+    ) {
+        public static StructuredBookingState none() {
+            return new StructuredBookingState(
+                    null, null, null, null, null, "Asia/Ho_Chi_Minh", BookingStatus.NONE, List.of()
+            );
+        }
+    }
+
+    public record ParsedBookingDateTime(
+            String bookingDate,
+            String resolvedIsoDate,
+            String bookingTime,
+            String timezoneId
+    ) {}
+
+    private static final Pattern RELATIVE_BOOKING_DATE_PATTERN = Pattern.compile(
+            "(?iU)\\b("
+            + "(?:sáng|trưa|chiều|tối)\\s+(?:hôm\\s+nay|nay|ngày\\s+mai|mai|ngày\\s+kia|ngày\\s+mốt|thứ\\s+[2-7]|thứ\\s+(?:hai|ba|tư|năm|sáu|bảy)|chủ\\s+nhật)|"
+            + "hôm\\s+nay|bữa\\s+nay|ngày\\s+mai|ngày\\s+kia|ngày\\s+mốt|"
+            + "cuối\\s+tuần(?:\\s+này|\\s+sau)?|"
+            + "thứ\\s+[2-7](?:\\s+tuần\\s+này|\\s+tuần\\s+sau)?|"
+            + "thứ\\s+(?:hai|ba|tư|năm|sáu|bảy)(?:\\s+tuần\\s+này|\\s+tuần\\s+sau)?|"
+            + "chủ\\s+nhật(?:\\s+tuần\\s+này|\\s+tuần\\s+sau)?|"
+            + "(?:ngày\\s+)?\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?"
+            + ")\\b"
+    );
+
+    private static final Pattern EXPLICIT_CLOCK_TIME_PATTERN = Pattern.compile(
+            "(?iU)(?:\\b(?:lúc|vào|tầm|khoảng|khung(?:\\s+giờ)?)\\s+)?"
+            + "\\b([01]?\\d|2[0-3])\\s*(?:giờ|g\\b|h\\b|:)\\s*([0-5]?\\d|rưỡi)?(?:\\s*(sáng|trưa|chiều|tối|đêm|am|pm))?(?=\\s|$|[.,!?;:)])"
+    );
+
+    /**
+     * Phân tích ngày/giờ đặt lịch tương đối & tuyệt đối theo múi giờ của Page/cơ sở (mặc định Asia/Ho_Chi_Minh).
+     * Xử lý tổ hợp như "tối nay" + "lúc 7 giờ" -> bookingDate="tối nay", bookingTime="19:00".
+     */
+    public static ParsedBookingDateTime parseBookingDateTime(
+            String customerMessage,
+            String priorBookingDate,
+            String priorBookingTime,
+            java.time.ZoneId pageZone,
+            java.time.LocalDate referenceDate
+    ) {
+        java.time.ZoneId safeZone = pageZone != null ? pageZone : java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        java.time.LocalDate refDate = referenceDate != null ? referenceDate : java.time.LocalDate.now(safeZone);
+        String msg = customerMessage != null ? Normalizer.normalize(customerMessage.strip(), Normalizer.Form.NFC) : "";
+        String lower = msg.toLowerCase(Locale.ROOT);
+
+        String extractedDate = null;
+        if (!lower.isEmpty()) {
+            Matcher dm = RELATIVE_BOOKING_DATE_PATTERN.matcher(msg);
+            if (dm.find()) {
+                extractedDate = dm.group(1).replaceAll("\\s+", " ").strip().toLowerCase(Locale.ROOT);
+            } else if (lower.matches("(?isU).*\\b(?:đặt|giữ|hẹn|qua|ghé|sang|lấy|giao)\\s+mai\\b.*")
+                    || lower.matches("(?isU)^\\s*mai\\s+(?:lúc|tầm|khoảng|mình|chị|anh|\\d{1,2}\\s*(?:h|giờ)).*")) {
+                extractedDate = "ngày mai";
+            }
+        }
+
+        String effectiveDate = (extractedDate != null && !extractedDate.isBlank())
+                ? extractedDate
+                : (priorBookingDate != null && !priorBookingDate.isBlank() ? priorBookingDate.strip() : null);
+
+        String extractedTime = null;
+        if (!lower.isEmpty()) {
+            Matcher tm = EXPLICIT_CLOCK_TIME_PATTERN.matcher(lower);
+            while (tm.find()) {
+                int matchStart = tm.start();
+                String prefixWindow = lower.substring(Math.max(0, matchStart - 16), matchStart);
+                // Tránh bắt nhầm câu hỏi giờ mở/đóng cửa hoặc thời lượng liệu trình "1 tiếng / 2 giờ massage"
+                if (prefixWindow.contains("mở cửa") || prefixWindow.contains("đóng cửa") || prefixWindow.contains("kéo dài")) {
+                    continue;
+                }
+                int rawHour = Integer.parseInt(tm.group(1));
+                String minToken = tm.group(2);
+                String meridiem = tm.group(3) != null ? tm.group(3).strip().toLowerCase(Locale.ROOT) : "";
+                int minute = 0;
+                if (minToken != null && !minToken.isBlank()) {
+                    if ("rưỡi".equalsIgnoreCase(minToken.strip())) {
+                        minute = 30;
+                    } else {
+                        minute = Integer.parseInt(minToken.strip());
+                    }
+                }
+                String dateHint = effectiveDate != null ? effectiveDate.toLowerCase(Locale.ROOT) : "";
+                int hour24 = rawHour;
+                boolean eveningOrAfternoon = meridiem.equals("tối") || meridiem.equals("chiều") || meridiem.equals("đêm") || meridiem.equals("pm")
+                        || (meridiem.isEmpty() && (dateHint.contains("tối") || dateHint.contains("chiều")));
+                boolean morningHint = meridiem.equals("sáng") || meridiem.equals("am")
+                        || (meridiem.isEmpty() && dateHint.contains("sáng"));
+                boolean noonHint = meridiem.equals("trưa") || (meridiem.isEmpty() && dateHint.contains("trưa"));
+                if (eveningOrAfternoon && hour24 >= 1 && hour24 <= 11) {
+                    hour24 += 12;
+                } else if (noonHint && hour24 >= 1 && hour24 <= 2) {
+                    hour24 += 12;
+                } else if (morningHint && hour24 == 12) {
+                    hour24 = 0;
+                } else if (meridiem.isEmpty() && dateHint.isEmpty() && hour24 >= 1 && hour24 <= 6) {
+                    // Khung giờ hành chính/dịch vụ buổi chiều mặc định khi khách nói "lúc 3 giờ" mà không kèm sáng/tối
+                    hour24 += 12;
+                }
+                extractedTime = String.format(Locale.ROOT, "%02d:%02d", hour24, minute);
+                break;
+            }
+        }
+
+        boolean dateExplicitlyChangedWithoutNewTime = extractedDate != null
+                && priorBookingDate != null
+                && !extractedDate.equalsIgnoreCase(priorBookingDate)
+                && extractedTime == null
+                && lower.matches("(?isU).*\\b(đổi|chuyển|dời)\\b.*");
+        String effectiveTime = (extractedTime != null && !extractedTime.isBlank())
+                ? extractedTime
+                : (!dateExplicitlyChangedWithoutNewTime && priorBookingTime != null && !priorBookingTime.isBlank()
+                    ? priorBookingTime.strip()
+                    : null);
+
+        String resolvedIso = resolveRelativeDateToIsoString(effectiveDate, refDate);
+        return new ParsedBookingDateTime(effectiveDate, resolvedIso, effectiveTime, safeZone.getId());
+    }
+
+    private static String resolveRelativeDateToIsoString(String datePhrase, java.time.LocalDate refDate) {
+        if (datePhrase == null || datePhrase.isBlank() || refDate == null) {
+            return null;
+        }
+        String d = datePhrase.toLowerCase(Locale.ROOT).strip();
+        if (d.contains("hôm nay") || d.contains("bữa nay") || d.endsWith(" nay")) {
+            return refDate.toString();
+        }
+        if (d.contains("ngày mai") || d.endsWith(" mai") || d.equals("mai")) {
+            return refDate.plusDays(1).toString();
+        }
+        if (d.contains("ngày kia") || d.contains("ngày mốt")) {
+            return refDate.plusDays(2).toString();
+        }
+        if (d.contains("cuối tuần")) {
+            java.time.LocalDate sat = refDate.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.SATURDAY));
+            return (d.contains("sau") ? sat.plusWeeks(1) : sat).toString();
+        }
+        java.time.DayOfWeek dow = null;
+        if (d.contains("thứ 2") || d.contains("thứ hai")) dow = java.time.DayOfWeek.MONDAY;
+        else if (d.contains("thứ 3") || d.contains("thứ ba")) dow = java.time.DayOfWeek.TUESDAY;
+        else if (d.contains("thứ 4") || d.contains("thứ tư")) dow = java.time.DayOfWeek.WEDNESDAY;
+        else if (d.contains("thứ 5") || d.contains("thứ năm")) dow = java.time.DayOfWeek.THURSDAY;
+        else if (d.contains("thứ 6") || d.contains("thứ sáu")) dow = java.time.DayOfWeek.FRIDAY;
+        else if (d.contains("thứ 7") || d.contains("thứ bảy")) dow = java.time.DayOfWeek.SATURDAY;
+        else if (d.contains("chủ nhật")) dow = java.time.DayOfWeek.SUNDAY;
+        if (dow != null) {
+            java.time.LocalDate target = refDate.with(java.time.temporal.TemporalAdjusters.nextOrSame(dow));
+            if (d.contains("tuần sau")) {
+                target = target.plusWeeks(1);
+            }
+            return target.toString();
+        }
+        Matcher calM = Pattern.compile("(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?").matcher(d);
+        if (calM.find()) {
+            try {
+                int day = Integer.parseInt(calM.group(1));
+                int month = Integer.parseInt(calM.group(2));
+                int year = calM.group(3) != null
+                        ? (calM.group(3).length() == 2 ? 2000 + Integer.parseInt(calM.group(3)) : Integer.parseInt(calM.group(3)))
+                        : refDate.getYear();
+                return java.time.LocalDate.of(year, month, day).toString();
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public StructuredBookingState structuredBookingState() {
+        BookingStatus resolvedEnum = bookingStatusEnum != null
+                ? bookingStatusEnum
+                : BookingStatus.fromLegacyString(bookingStatus, selectedProductId, visitTime);
+        return new StructuredBookingState(
+                selectedProductId,
+                null,
+                bookingDate,
+                resolveRelativeDateToIsoString(bookingDate, java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))),
+                bookingTime,
+                "Asia/Ho_Chi_Minh",
+                resolvedEnum,
+                List.of()
+        );
+    }
+
+    public ConversationState withStructuredBookingState(StructuredBookingState bs) {
+        if (bs == null) {
+            return this;
+        }
+        BookingStatus st = bs.status() != null ? bs.status() : BookingStatus.NONE;
+        String combinedVisitTime = (bs.bookingDate() != null && bs.bookingTime() != null)
+                ? (bs.bookingDate() + " " + bs.bookingTime())
+                : (bs.bookingDate() != null ? bs.bookingDate() : (bs.bookingTime() != null ? bs.bookingTime() : this.visitTime));
+        boolean hasSelectedProd = bs.selectedProductId() != null && !bs.selectedProductId().isBlank();
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                hasSelectedProd, hasSelectedProd ? bs.selectedProductId() : null,
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration,
+                st.isActiveOrConfirmed() ? true : this.packageInterestAccepted,
+                st == BookingStatus.CONFIRMED,
+                combinedVisitTime,
+                contactInfo,
+                st.name(),
+                bs.selectedProductId(),
+                bs.bookingDate(),
+                bs.bookingTime(),
+                st
+        );
+    }
+
+    public static ConversationState updateStructuredBookingStateInSession(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            StructuredBookingState bs
+    ) {
+        if (bs == null) {
+            return null;
+        }
+        String sessionKey = buildSessionKey(pageId, senderId, conversationId);
+        if (sessionKey == null) {
+            return null;
+        }
+        ConversationState current = SESSION_STORE.get(sessionKey);
+        if (current == null) {
+            current = initial();
+        }
+        ConversationState updated = current.withStructuredBookingState(bs);
+        SESSION_STORE.put(sessionKey, updated);
+        LastTurnPreStateSnapshot snap = LAST_TURN_PRE_STATE_STORE.get(sessionKey);
+        if (snap != null) {
+            LAST_TURN_PRE_STATE_STORE.put(sessionKey, new LastTurnPreStateSnapshot(
+                    snap.historySize(),
+                    snap.normalizedUserMessage(),
+                    snap.preTurnState(),
+                    snap.enrichedTurnState(),
+                    updated
+            ));
+        }
+        return updated;
+    }
+
+    /**
+     * Chuyển trạng thái sang AWAITING_CUSTOMER_CONFIRMATION sau khi công cụ kiểm tra lịch / nhân sự xác nhận còn chỗ trống.
+     */
+    public static ConversationState markSlotAvailableAwaitingCustomerConfirmation(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            String verifiedProductId,
+            String verifiedDate,
+            String verifiedTime
+    ) {
+        ConversationState existing = getSessionState(pageId, senderId, conversationId);
+        StructuredBookingState base = existing != null ? existing.structuredBookingState() : StructuredBookingState.none();
+        String prodId = (verifiedProductId != null && !verifiedProductId.isBlank()) ? verifiedProductId.strip() : base.selectedProductId();
+        String bDate = (verifiedDate != null && !verifiedDate.isBlank()) ? verifiedDate.strip() : base.bookingDate();
+        String bTime = (verifiedTime != null && !verifiedTime.isBlank()) ? verifiedTime.strip() : base.bookingTime();
+        StructuredBookingState next = new StructuredBookingState(
+                prodId,
+                base.selectedProductLabel(),
+                bDate,
+                resolveRelativeDateToIsoString(bDate, java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))),
+                bTime,
+                base.timezoneId() != null ? base.timezoneId() : "Asia/Ho_Chi_Minh",
+                BookingStatus.AWAITING_CUSTOMER_CONFIRMATION,
+                base.candidateProductIds()
+        );
+        return updateStructuredBookingStateInSession(pageId, senderId, conversationId, next);
+    }
+
+    /**
+     * Chỉ chuyển sang CONFIRMED khi có kết quả xác nhận thực tế từ công cụ đặt lịch hoặc nhân sự phụ trách (C3-B Rule 6).
+     */
+    public static ConversationState confirmBookingOfficiallyFromToolOrStaff(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            String confirmedProductId,
+            String confirmedDate,
+            String confirmedTime
+    ) {
+        ConversationState existing = getSessionState(pageId, senderId, conversationId);
+        StructuredBookingState base = existing != null ? existing.structuredBookingState() : StructuredBookingState.none();
+        String prodId = (confirmedProductId != null && !confirmedProductId.isBlank()) ? confirmedProductId.strip() : base.selectedProductId();
+        String bDate = (confirmedDate != null && !confirmedDate.isBlank()) ? confirmedDate.strip() : base.bookingDate();
+        String bTime = (confirmedTime != null && !confirmedTime.isBlank()) ? confirmedTime.strip() : base.bookingTime();
+        StructuredBookingState next = new StructuredBookingState(
+                prodId,
+                base.selectedProductLabel(),
+                bDate,
+                resolveRelativeDateToIsoString(bDate, java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))),
+                bTime,
+                base.timezoneId() != null ? base.timezoneId() : "Asia/Ho_Chi_Minh",
+                BookingStatus.CONFIRMED,
+                base.candidateProductIds()
+        );
+        return updateStructuredBookingStateInSession(pageId, senderId, conversationId, next);
+    }
+
+    /** Tương thích ngược: chữ ký canonical v3.9 (96 tham số). */
+    public ConversationState(
+            boolean greetingSent,
+            boolean introSent,
+            ConversationStage stage,
+            String lastIntent,
+            String lastQuestion,
+            String lastQuestionIntent,
+            Set<String> usedQuestionIntents,
+            String lastBotAction,
+            KnownFacts known,
+            boolean priceDiscussed,
+            List<String> pricesShown,
+            List<String> recommendedOptions,
+            int objectionCount,
+            int ackCount,
+            int clarificationCount,
+            int conditionAskedCount,
+            int preferenceAskedCount,
+            int clarifyServiceTypeCount,
+            int clarifyDurationCount,
+            int frustrationCount,
+            int ambiguousCount,
+            int recommendationCount,
+            int priceRepeatGuardCount,
+            boolean conditionClarified,
+            boolean serviceFamilyKnown,
+            boolean packageRecommended,
+            boolean priceRequestedInSession,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String knownSeverity,
+            String knownDurationOfProblem,
+            String knownTrigger,
+            String knownServiceFamily,
+            String knownPreferredPressure,
+            String knownRecommendedPackage,
+            String lastQuotePackage,
+            String lastSentiment,
+            String lastEmotion,
+            List<String> usedTemplates,
+            boolean humanTakeover,
+            boolean optedOut,
+            boolean downsellOffered,
+            boolean trialInviteOffered,
+            boolean explicitDownsellRequest,
+            boolean packageRejectionDetected,
+            String lastQuotedPackage,
+            String lastQuotedDuration,
+            BigDecimal lastQuotedPrice,
+            String heldPackage,
+            String heldDuration,
+            String downsellPackage,
+            String downsellDuration,
+            BigDecimal downsellPrice,
+            Set<String> rejectedDurations,
+            Set<String> rejectedPackages,
+            String objectionStage,
+            String telemetrySubtype,
+            boolean docsHasFeedback,
+            boolean docsHasRelaxationBenefit,
+            boolean docsHasPrivateRoom,
+            boolean neurologicalRisk,
+            String preferredRegion,
+            List<String> mentionedPackages,
+            List<String> quotedPackages,
+            BigDecimal heldPrice,
+            int alternativeRequestCount,
+            boolean customerCorrectionDetected,
+            String rejectedWrongOffer,
+            List<PackageCatalogService.PackageSummary> availablePackageCatalog,
+            List<String> lastBotBubbleHashes,
+            List<UnresolvedCustomerRequest> outstandingRequests,
+            String lastAssistantMessage,
+            Set<String> confirmedScopes,
+            Set<String> forbiddenScopes,
+            Set<String> apologizedErrorIds,
+            String activeErrorId,
+            List<CustomerCareNoteArtifact> customerCareNotes,
+            List<String> scopeSupersessionEvents,
+            boolean possibleCorrection,
+            boolean packageExplicitlySelected,
+            String selectedPackageId,
+            String knownFrequency,
+            String knownSymptomDistribution,
+            String pendingQuestionSlot,
+            String knownEpisodeDuration,
+            boolean packageInterestAccepted,
+            boolean bookingIntentConfirmed,
+            String visitTime,
+            String contactInfo,
+            String bookingStatus
+    ) {
+        this(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId,
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus,
+                packageExplicitlySelected ? selectedPackageId : null,
+                null,
+                null,
+                BookingStatus.fromLegacyString(bookingStatus, packageExplicitlySelected ? selectedPackageId : null, visitTime)
+        );
+    }
+
     public boolean inPriceObjectionContext() {
+        BookingStatus resolvedEnum = bookingStatusEnum != null
+                ? bookingStatusEnum
+                : BookingStatus.fromLegacyString(bookingStatus, selectedProductId, visitTime);
         return this.objectionCount >= 1
                 && !"BOOKED".equalsIgnoreCase(this.objectionStage)
                 && !this.packageInterestAccepted
+                && !resolvedEnum.isActiveOrConfirmed()
                 && !"COLLECTING_INFO".equalsIgnoreCase(this.bookingStatus)
                 && !"COLLECTING_VISIT_TIME".equalsIgnoreCase(this.bookingStatus)
                 && !"CONFIRMED".equalsIgnoreCase(this.bookingStatus);
@@ -2222,8 +2737,10 @@ public record ConversationState(
                 if (ciM.find()) {
                     contactInfoL = ciM.group(1).strip();
                 }
-                if (bookingIntentConfirmedL && contactInfoL != null && !contactInfoL.isBlank()) {
-                    bookingStatusL = "CONFIRMED";
+                if (bookingIntentConfirmedL && contactInfoL != null && !contactInfoL.isBlank()
+                        && !"CONFIRMED".equalsIgnoreCase(bookingStatusL)
+                        && !BookingStatus.isSixStateCanonical(bookingStatusL)) {
+                    bookingStatusL = BookingStatus.AWAITING_AVAILABILITY_CHECK.name();
                 }
 
                 Matcher trigM = TRIGGER_TOKEN_PATTERN.matcher(cleanContent);
@@ -2398,7 +2915,13 @@ public record ConversationState(
                 possibleCorrection,
                 cached != null && cached.packageExplicitlySelected(), cached != null ? cached.selectedPackageId() : null,
                 knownFrequencyL, knownSymptomDistributionL, pendingQuestionSlotL,
-                knownEpisodeDurationL, packageInterestAcceptedL, bookingIntentConfirmedL, visitTimeL, contactInfoL, bookingStatusL
+                knownEpisodeDurationL, packageInterestAcceptedL, bookingIntentConfirmedL, visitTimeL, contactInfoL, bookingStatusL,
+                cached != null ? cached.selectedProductId() : null,
+                cached != null ? cached.bookingDate() : null,
+                cached != null ? cached.bookingTime() : null,
+                cached != null && cached.bookingStatusEnum() != null
+                        ? cached.bookingStatusEnum()
+                        : BookingStatus.fromLegacyString(bookingStatusL, cached != null ? cached.selectedProductId() : null, visitTimeL)
         );
     }
 
@@ -2424,7 +2947,8 @@ public record ConversationState(
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
                 knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
-                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus,
+                selectedProductId, bookingDate, bookingTime, bookingStatusEnum
         );
         ConversationState prior = ENRICHED_TO_PRIOR_MAP.get(this);
         if (prior != null && prior != this) {
@@ -2462,7 +2986,8 @@ public record ConversationState(
                 customerCareNotes, scopeSupersessionEvents, possibleCorrection,
                 packageExplicitlySelected, selectedPackageId,
                 knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
-                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo, bookingStatus,
+                selectedProductId, bookingDate, bookingTime, bookingStatusEnum
         );
         ConversationState prior = ENRICHED_TO_PRIOR_MAP.get(this);
         if (prior != null && prior != this) {
@@ -2810,8 +3335,10 @@ public record ConversationState(
         String nextBookingStatus;
         if (packageRejectedNow) {
             nextBookingStatus = "NONE";
+        } else if (this.bookingStatus != null && BookingStatus.isSixStateCanonical(this.bookingStatus) && !"NONE".equalsIgnoreCase(this.bookingStatus)) {
+            nextBookingStatus = this.bookingStatus;
         } else if (nextBookingIntentConfirmed && nextContactInfo != null && !nextContactInfo.isBlank()) {
-            nextBookingStatus = "CONFIRMED";
+            nextBookingStatus = BookingStatus.AWAITING_AVAILABILITY_CHECK.name();
         } else if (nextPackageInterestAccepted || nextBookingIntentConfirmed || "COLLECTING_INFO".equals(this.bookingStatus)) {
             nextBookingStatus = "COLLECTING_INFO";
         } else {
@@ -2933,7 +3460,15 @@ public record ConversationState(
                 nextPossibleCorrection,
                 nextPackageExplicitlySelected, nextSelectedPackageId,
                 freqNow, distNow, nextPendingSlot,
-                epDurationNow, nextPackageInterestAccepted, nextBookingIntentConfirmed, nextVisitTime, nextContactInfo, nextBookingStatus
+                epDurationNow, nextPackageInterestAccepted, nextBookingIntentConfirmed, nextVisitTime, nextContactInfo, nextBookingStatus,
+                packageRejectedNow ? null : this.selectedProductId,
+                packageRejectedNow ? null : this.bookingDate,
+                packageRejectedNow ? null : this.bookingTime,
+                packageRejectedNow
+                        ? BookingStatus.NONE
+                        : (this.bookingStatusEnum != null && this.bookingStatusEnum != BookingStatus.NONE
+                            ? this.bookingStatusEnum
+                            : BookingStatus.fromLegacyString(nextBookingStatus, this.selectedProductId, nextVisitTime))
         );
         ENRICHED_TO_PRIOR_MAP.put(enriched, this.priorTurnState());
         return enriched;
@@ -3516,7 +4051,11 @@ public record ConversationState(
                 base.packageExplicitlySelected(), base.selectedPackageId(),
                 base.knownFrequency(), base.knownSymptomDistribution(),
                 deliveredQuestionThisTurn != null ? inferPendingQuestionSlot(deliveredQuestionThisTurn) : base.pendingQuestionSlot(),
-                base.knownEpisodeDuration(), nextPkgInterestAccepted, nextBookingConfirmed, base.visitTime(), base.contactInfo(), nextBookingStatus
+                base.knownEpisodeDuration(), nextPkgInterestAccepted, nextBookingConfirmed, base.visitTime(), base.contactInfo(), nextBookingStatus,
+                base.selectedProductId(), base.bookingDate(), base.bookingTime(),
+                base.bookingStatusEnum() != null && base.bookingStatusEnum() != BookingStatus.NONE
+                        ? base.bookingStatusEnum()
+                        : BookingStatus.fromLegacyString(nextBookingStatus, base.selectedProductId(), base.visitTime())
         );
 
         if (sessionKey != null) {

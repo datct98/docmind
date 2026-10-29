@@ -2256,6 +2256,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         if (llmIntendedSpeechAct != null && !llmIntendedSpeechAct.isBlank()) {
             String upper = llmIntendedSpeechAct.strip().toUpperCase(Locale.ROOT);
+            if (CleanAgentOrchestratorService.SPEECH_ACT_BOOKING_CONFIRMED.equals(upper)
+                    && !"CONFIRMED".equalsIgnoreCase(bookingStatus)) {
+                return CleanAgentOrchestratorService.SPEECH_ACT_INVITED_TRIAL_OR_TIME;
+            }
             if (Set.of(
                     CleanAgentOrchestratorService.SPEECH_ACT_RESPECTED_PAUSE,
                     CleanAgentOrchestratorService.SPEECH_ACT_OFFERED_DETAILS,

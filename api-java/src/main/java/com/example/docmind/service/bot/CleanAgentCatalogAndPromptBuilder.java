@@ -85,10 +85,13 @@ public final class CleanAgentCatalogAndPromptBuilder {
                    * Bong bóng 1 (Ghi nhận & Hẹn gặp lại): Xác nhận {self_pronoun} đã lưu sẵn thông tin gói và các lưu ý chăm sóc (`care_notes`) của {customer_pronoun} để bất cứ khi nào {customer_pronoun} thu xếp được thời gian cần hỗ trợ cứ nhắn {self_pronoun} ngay (kết thúc bằng dấu ".").
                    * Bong bóng 2 (Lời chúc ấm áp tách riêng): Câu chúc {customer_pronoun} một ngày/buổi tối thật nhiều niềm vui, nhẹ nhàng và thư thái (ví dụ: "Chúc {customer_pronoun} một ngày thật nhiều niềm vui và thư thái ạ!").
 
-            7. Khi khách hỏi xác nhận chi tiết ("là 1 buổi à"), đồng thuận muốn thử (`STAGE_4_POSITIVE_TRIAL_OR_BOOKING`), hoặc xác nhận sau khi đã chốt lịch (`POST_BOOKING_CLOSING_ACK`):
-               - Nếu khách hỏi xác nhận hoặc muốn nghe chi tiết gói (`SERVICE_OR_UNIT_DETAIL_QUESTION`): Trả lời trực diện, rõ ràng đúng thông tin gói trong <SCOPE_FILTERED_CATALOG>, không thúc ép chốt giờ.
-               - Khi khách đồng thuận muốn thử (`STAGE_4_POSITIVE_TRIAL_OR_BOOKING`): Chốt thẳng vào gói vừa trao đổi gần nhất (nếu vừa giới thiệu gói Nhóm 2 hoặc khách chọn gói Nhóm 2 thì chốt thẳng gói Nhóm 2 đó, CẤM hỏi ngược bắt khách chọn lại giữa 2 gói!), khéo léo nhắc lại lưu ý chăm sóc trong `care_notes` của <AGENT_BRAIN_INSIGHT> theo đúng trạng thái thực tế: nếu chưa chốt giờ hẹn (`booking_funnel_status != "CONFIRMED"`) thì nói "{self_pronoun} lưu lại lưu ý này để khi {customer_pronoun} ghé, chuyên viên chuẩn bị chu đáo" (TUYỆT ĐỐI CẤM nói quá khứ "{self_pronoun} đã dặn chuyên viên" khi khách chưa chốt lịch!), và hỏi gọn gàng xem khách tiện ghé vào khung giờ nào để chuẩn bị chu đáo.
-               - Khi lịch hẹn đã xác nhận (`POST_BOOKING_CLOSING_ACK` / `booking_funnel_status == "CONFIRMED"`): Cảm ơn ấm áp và hẹn đón tiếp {customer_pronoun} đúng khung giờ đã đặt, CẤM hỏi lại khung giờ đặt lịch.
+            7. Khi khách hỏi xác nhận chi tiết, đồng thuận đặt lịch / đặt hàng (`STAGE_4_POSITIVE_TRIAL_OR_BOOKING`), hoặc xác nhận sau khi đã chốt lịch (`POST_BOOKING_CLOSING_ACK`) — TUÂN THỦ NGHIÊM NGẶT 6 TRẠNG THÁI `booking_funnel_status`:
+               - Nếu khách hỏi xác nhận hoặc muốn nghe chi tiết sản phẩm/gói (`SERVICE_OR_UNIT_DETAIL_QUESTION`): Trả lời trực diện, rõ ràng đúng thông tin trong <SCOPE_FILTERED_CATALOG>, không thúc ép chốt giờ.
+               - `booking_funnel_status == "AWAITING_PRODUCT_SELECTION"` (`selected_product_id == "null"`, lịch sử có từ 2 sản phẩm trở lên hoặc khách chưa chỉ định sản phẩm): TUYỆT ĐỐI CẤM tự mặc định lấy `held_package` hay phương án gần nhất làm lựa chọn của khách! Nếu `booking_date` đã có (ví dụ `"tối nay"`), giữ nguyên mốc thời gian đó (CẤM hỏi lại ngày) và hỏi lịch sự xem khách muốn đặt phương án nào trong danh sách đã trao đổi (kèm hỏi giờ nếu `booking_time == "null"`).
+               - `booking_funnel_status == "AWAITING_DATE_OR_TIME"` (`selected_product_id != "null"`): Xác nhận hỗ trợ đặt đúng sản phẩm khách đã chọn (TUYỆT ĐỐI KHÔNG quay lại gạ phương án khác!), khéo léo nhắc lưu ý chăm sóc ở thì tương lai ("{self_pronoun} lưu lại lưu ý này để chuẩn bị chu đáo", CẤM nói quá khứ "{self_pronoun} đã dặn..."), giữ nguyên `booking_date` nếu đã có và chỉ hỏi phần ngày hoặc khung giờ còn thiếu.
+               - `booking_funnel_status == "AWAITING_AVAILABILITY_CHECK"` (đã đủ `selected_product_id`, `booking_date`, `booking_time`): Ghi nhận đầy đủ yêu cầu đặt sản phẩm vào đúng ngày và khung giờ đó, thông báo rõ cần kiểm tra lịch trống / tồn kho thực tế trước khi xác nhận chính thức; TUYỆT ĐỐI CẤM tuyên bố đã đặt lịch thành công chính thức (`CONFIRMED`).
+               - `booking_funnel_status == "AWAITING_CUSTOMER_CONFIRMATION"`: Báo đã kiểm tra có lịch trống / suất phù hợp và mời khách xác nhận chốt cuối cùng.
+               - `booking_funnel_status == "CONFIRMED"` (`POST_BOOKING_CLOSING_ACK`): Chỉ khi lịch đã được xác nhận thực tế, cảm ơn ấm áp và hẹn đón tiếp/phục vụ {customer_pronoun} đúng khung giờ đã đặt, CẤM hỏi lại khung giờ đặt lịch.
 
             III. ĐỊNH DẠNG ĐẦU RA (BẮT BUỘC):
             - Trả về duy nhất JSON hợp lệ gồm `"reply_bubbles"` (đặt đầu tiên) và `"brain_reflection"` (đặt ngay sau):
@@ -1263,6 +1266,62 @@ public final class CleanAgentCatalogAndPromptBuilder {
             UUID pageId,
             List<LearnedRuleDto> appliedRules
     ) {
+        return buildCleanAgentPrompt(
+                pagePersona,
+                customerPronoun,
+                knownSymptoms,
+                knownBodyAreas,
+                statedContextOrTiming,
+                conditionClarified,
+                heldPackageDisplay,
+                heldPriceDisplay,
+                priceObjectionCount,
+                packageInterestAccepted,
+                bookingFunnelStatus,
+                currentTurnSignals,
+                lastBotQuestion,
+                discoveryQuestionCount,
+                tieredCatalog,
+                fusedChunks,
+                history,
+                customerMessage,
+                customerInsight,
+                activeSkills,
+                pendingBookingSlots,
+                quotedReplyResolution,
+                pageId,
+                appliedRules,
+                null
+        );
+    }
+
+    public static String buildCleanAgentPrompt(
+            PromptBuilder.PagePersona pagePersona,
+            String customerPronoun,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String statedContextOrTiming,
+            boolean conditionClarified,
+            String heldPackageDisplay,
+            String heldPriceDisplay,
+            int priceObjectionCount,
+            boolean packageInterestAccepted,
+            String bookingFunnelStatus,
+            List<String> currentTurnSignals,
+            String lastBotQuestion,
+            int discoveryQuestionCount,
+            TieredCatalogResult tieredCatalog,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String customerMessage,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            Map<String, String> pendingBookingSlots,
+            QuotedReplyResolution quotedReplyResolution,
+            UUID pageId,
+            List<LearnedRuleDto> appliedRules,
+            ConversationState.StructuredBookingState structuredBookingState
+    ) {
         QuotedReplyResolution safeQuote = quotedReplyResolution != null ? quotedReplyResolution : QuotedReplyResolution.empty();
         String botName = resolveBotDisplayName(pagePersona);
         String pageName = (pagePersona != null && pagePersona.name() != null && !pagePersona.name().isBlank())
@@ -1336,13 +1395,27 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 && (customerExplicitlyAskedForEconomicalGroup(customerMessage, tieredCatalog.economicalAlternatives())
                     || CleanAgentOrchestratorService.hasPackagePriceMentionedInText(customerMessage, tieredCatalog.economicalAlternatives()));
 
+        boolean hasExplicitSixStateBooking = structuredBookingState != null;
+        boolean awaitingProductSelectionInBooking = hasExplicitSixStateBooking
+                && structuredBookingState.status() == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION;
+        PackageCatalogService.PackageSummary explicitlySelectedBookingPkg = (hasExplicitSixStateBooking
+                && structuredBookingState.selectedProductId() != null
+                && !structuredBookingState.selectedProductId().isBlank())
+                ? findProductByIdInTieredCatalog(tieredCatalog, structuredBookingState.selectedProductId())
+                : null;
+
         String effectiveHeldPackageDisplay = heldPackageDisplay;
         String effectiveHeldPriceDisplay = heldPriceDisplay;
-        if (!isPoliteClosingAckTurn
+        if (explicitlySelectedBookingPkg != null && !isPoliteClosingAckTurn && !isOperationalQuestionTurn && !safeQuote.hasReplyToContext()) {
+            effectiveHeldPackageDisplay = explicitlySelectedBookingPkg.canonicalLabel();
+            effectiveHeldPriceDisplay = explicitlySelectedBookingPkg.priceDisplay();
+        } else if (!awaitingProductSelectionInBooking
+                && !isPoliteClosingAckTurn
                 && !isOperationalQuestionTurn
                 && !safeQuote.hasReplyToContext()
                 && (isDownsellOrRepeatObjectionTurn
-                    || (isBookingOrPositiveTrialTurn && (customerExplicitlyChoseDownsellPkg || downsellPresentedInLastBotTurn || downsellAlreadyOfferedInHistory))
+                    || (!hasExplicitSixStateBooking && isBookingOrPositiveTrialTurn
+                        && (customerExplicitlyChoseDownsellPkg || downsellPresentedInLastBotTurn || downsellAlreadyOfferedInHistory))
                     || (isServiceDetailQuestionTurn && downsellAlreadyOfferedInHistory))
                 && hasEconomicalAlt) {
             PackageCatalogService.PackageSummary downsellPkg = tieredCatalog.economicalAlternatives().get(0);
@@ -1353,29 +1426,38 @@ public final class CleanAgentCatalogAndPromptBuilder {
         boolean heldPkgIsNull = (effectiveHeldPackageDisplay == null
                 || effectiveHeldPackageDisplay.isBlank()
                 || "null".equalsIgnoreCase(effectiveHeldPackageDisplay.strip()));
-        String activePackageInFocus = !heldPkgIsNull
-                ? (effectiveHeldPackageDisplay + (effectiveHeldPriceDisplay != null && !"null".equals(effectiveHeldPriceDisplay) ? " (" + effectiveHeldPriceDisplay + ")" : ""))
-                : "KHÁCH MỚI CHIA SẺ NHU CẦU, CHƯA BIẾT TÊN GÓI — BẠN PHẢI CHỦ ĐỘNG ĐỀ XUẤT GÓI SỐ 1 (\"Với tình trạng này, "
-                    + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói...\", CẤM viết \"" + custPronoun
-                    + " đang quan tâm đến gói...\" và CẤM hỏi câu đối lập vô nghĩa \"thử 1 buổi lẻ trước hay đặt lịch ngay cho gói trọn vẹn\")";
+        String activePackageInFocus = awaitingProductSelectionInBooking
+                ? "CHƯA CHỌN SẢN PHẨM (selected_product_id=null; lịch sử có từ 2 sản phẩm trở lên — BẮT BUỘC hỏi khách muốn đặt phương án nào trong danh sách đã tư vấn, TUYỆT ĐỐI KHÔNG tự mặc định lấy held_package)"
+                : (!heldPkgIsNull
+                    ? (effectiveHeldPackageDisplay + (effectiveHeldPriceDisplay != null && !"null".equals(effectiveHeldPriceDisplay) ? " (" + effectiveHeldPriceDisplay + ")" : ""))
+                    : "KHÁCH MỚI CHIA SẺ NHU CẦU, CHƯA BIẾT TÊN GÓI — BẠN PHẢI CHỦ ĐỘNG ĐỀ XUẤT GÓI SỐ 1 (\"Với tình trạng này, "
+                        + selfPronoun + " gợi ý " + custPronoun + " tham khảo gói...\", CẤM viết \"" + custPronoun
+                        + " đang quan tâm đến gói...\" và CẤM hỏi câu đối lập vô nghĩa \"thử 1 buổi lẻ trước hay đặt lịch ngay cho gói trọn vẹn\")");
         String resolvedFunnelStatus = isPostBookingClosingAckTurn
                 ? "CONFIRMED"
                 : (isPoliteClosingAckTurn
                     ? "NONE"
-                    : ((bookingFunnelStatus != null && !bookingFunnelStatus.isBlank())
-                        ? ("COLLECTING_INFO".equals(bookingFunnelStatus) ? "COLLECTING_VISIT_TIME" : bookingFunnelStatus)
-                        : (isBookingOrPositiveTrialTurn ? "COLLECTING_VISIT_TIME" : "NONE")));
+                    : (hasExplicitSixStateBooking && structuredBookingState.status() != null
+                        ? structuredBookingState.status().name()
+                        : ((bookingFunnelStatus != null && !bookingFunnelStatus.isBlank())
+                            ? ("COLLECTING_INFO".equals(bookingFunnelStatus) ? "COLLECTING_VISIT_TIME" : bookingFunnelStatus)
+                            : (isBookingOrPositiveTrialTurn ? "COLLECTING_VISIT_TIME" : "NONE"))));
 
-        PackageCatalogService.PackageSummary activePkgForBrain = (!isPoliteClosingAckTurn
-                && !isOperationalQuestionTurn
-                && !safeQuote.hasReplyToContext()
-                && (isDownsellOrRepeatObjectionTurn
-                    || isPriceContextHesitationTurn
-                    || (isBookingOrPositiveTrialTurn && (customerExplicitlyChoseDownsellPkg || downsellPresentedInLastBotTurn || downsellAlreadyOfferedInHistory))
-                    || (isServiceDetailQuestionTurn && downsellAlreadyOfferedInHistory))
-                && hasEconomicalAlt)
-                ? tieredCatalog.economicalAlternatives().get(0)
-                : findHeldOrTopPrimaryPackage(tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
+        PackageCatalogService.PackageSummary activePkgForBrain = awaitingProductSelectionInBooking
+                ? null
+                : (explicitlySelectedBookingPkg != null
+                    ? explicitlySelectedBookingPkg
+                    : ((!isPoliteClosingAckTurn
+                        && !isOperationalQuestionTurn
+                        && !safeQuote.hasReplyToContext()
+                        && (isDownsellOrRepeatObjectionTurn
+                            || isPriceContextHesitationTurn
+                            || (!hasExplicitSixStateBooking && isBookingOrPositiveTrialTurn
+                                && (customerExplicitlyChoseDownsellPkg || downsellPresentedInLastBotTurn || downsellAlreadyOfferedInHistory))
+                            || (isServiceDetailQuestionTurn && downsellAlreadyOfferedInHistory))
+                        && hasEconomicalAlt)
+                        ? tieredCatalog.economicalAlternatives().get(0)
+                        : findHeldOrTopPrimaryPackage(tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay)));
 
         String quotedPackageStateDisplay = "null";
         if (safeQuote.quotedPackage() != null) {
@@ -1418,11 +1500,13 @@ public final class CleanAgentCatalogAndPromptBuilder {
             }
         }
 
-        String acceptedPackageStateDisplay = (packageInterestAccepted && activePkgForBrain != null && safeQuote.quotedPackage() == null)
-                ? (activePkgForBrain.canonicalLabel() + " (" + activePkgForBrain.priceDisplay() + ")")
-                : (packageInterestAccepted && !heldPkgIsNull && safeQuote.quotedPackage() == null
-                    ? (effectiveHeldPackageDisplay + (effectiveHeldPriceDisplay != null && !"null".equals(effectiveHeldPriceDisplay) ? " (" + effectiveHeldPriceDisplay + ")" : ""))
-                    : "null");
+        String acceptedPackageStateDisplay = awaitingProductSelectionInBooking
+                ? "null"
+                : ((packageInterestAccepted && activePkgForBrain != null && (safeQuote.quotedPackage() == null || hasExplicitSixStateBooking))
+                    ? (activePkgForBrain.canonicalLabel() + " (" + activePkgForBrain.priceDisplay() + ")")
+                    : (packageInterestAccepted && !heldPkgIsNull && (safeQuote.quotedPackage() == null || hasExplicitSixStateBooking)
+                        ? (effectiveHeldPackageDisplay + (effectiveHeldPriceDisplay != null && !"null".equals(effectiveHeldPriceDisplay) ? " (" + effectiveHeldPriceDisplay + ")" : ""))
+                        : "null"));
 
         StringBuilder sb = new StringBuilder(4096);
         sb.append("<CLEAN_AGENT_SYSTEM_PROMPT>\n")
@@ -1450,8 +1534,21 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 isOperationalQuestionTurn,
                 burstSubMessages,
                 careActor,
-                pageId
+                pageId,
+                structuredBookingState
         );
+
+        String selectedProductIdDisplay = (structuredBookingState != null && structuredBookingState.selectedProductId() != null)
+                ? structuredBookingState.selectedProductId()
+                : (acceptedPackageStateDisplay != null && !"null".equals(acceptedPackageStateDisplay) && activePkgForBrain != null
+                    ? activePkgForBrain.productId()
+                    : "null");
+        String bookingDateDisplay = (structuredBookingState != null && structuredBookingState.bookingDate() != null)
+                ? structuredBookingState.bookingDate()
+                : "null";
+        String bookingTimeDisplay = (structuredBookingState != null && structuredBookingState.bookingTime() != null)
+                ? structuredBookingState.bookingTime()
+                : "null";
 
         sb.append("<STRUCTURED_CONVERSATION_STATE>\n")
           .append("1. current_turn_signal:\n")
@@ -1469,6 +1566,9 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("   - quoted_package: \"").append(quotedPackageStateDisplay).append("\"\n")
           .append("   - held_package: \"").append(!heldPkgIsNull ? effectiveHeldPackageDisplay : "null").append("\"\n")
           .append("   - accepted_package: \"").append(acceptedPackageStateDisplay).append("\"\n")
+          .append("   - selected_product_id: \"").append(selectedProductIdDisplay).append("\"\n")
+          .append("   - booking_date: \"").append(bookingDateDisplay).append("\"\n")
+          .append("   - booking_time: \"").append(bookingTimeDisplay).append("\"\n")
           .append("   - price_objection_count: ").append(priceObjectionCount).append('\n')
           .append("   - booking_funnel_status: \"").append(resolvedFunnelStatus).append("\"\n");
         if (pendingBookingSlots != null && !pendingBookingSlots.isEmpty()) {
@@ -1502,7 +1602,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                     visiblePackagesForTurn.add(candidates.get(i));
                 }
             }
-        } else if (safeQuote.quotedPackage() != null) {
+        } else if (safeQuote.quotedPackage() != null && !isBookingOrPositiveTrialTurn) {
             sb.append("[GÓI TRONG BONG BÓNG KHÁCH VỪA REPLY (QUOTED_PACKAGE — TRẢ LỜI ĐÚNG THÔNG TIN/ƯU ĐÃI CỦA GÓI NÀY, CHƯA ÉP GIỜ ĐẶT LỊCH)]:\n");
             appendCatalogPackageLine(sb, 1, safeQuote.quotedPackage(), knownBodyAreas, knownSymptoms);
             visiblePackagesForTurn.add(safeQuote.quotedPackage());
@@ -1538,19 +1638,47 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 visiblePackagesForTurn.add(economicals.get(i));
             }
         } else if (isBookingOrPositiveTrialTurn) {
-            PackageCatalogService.PackageSummary selectedPkg = findHeldOrTopPrimaryPackage(
-                    tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
-            sb.append("[GÓI KHÁCH ĐANG QUAN TÂM / ĐẶT LỊCH TRẢI NGHIỆM]:\n");
-            if (selectedPkg != null) {
-                appendCatalogPackageLine(sb, 1, selectedPkg, knownBodyAreas, knownSymptoms);
-                visiblePackagesForTurn.add(selectedPkg);
+            if (awaitingProductSelectionInBooking) {
+                List<PackageCatalogService.PackageSummary> candidates = resolveBookingCandidateProducts(
+                        tieredCatalog, history, structuredBookingState
+                );
+                sb.append("[CÁC PHƯƠNG ÁN ĐÃ TRAO ĐỔI TRONG LỊCH SỬ — KHÁCH CHƯA CHỌN RÕ SẢN PHẨM (AWAITING_PRODUCT_SELECTION), HÃY HỎI KHÁCH MUỐN ĐẶT PHƯƠNG ÁN NÀO]:\n");
+                for (int i = 0; i < candidates.size(); i++) {
+                    appendCatalogPackageLine(sb, i + 1, candidates.get(i), knownBodyAreas, knownSymptoms);
+                    visiblePackagesForTurn.add(candidates.get(i));
+                }
+                if (structuredBookingState.bookingDate() != null) {
+                    sb.append("- Ngày dự kiến đã ghi nhận (GIỮ NGUYÊN, CẤM HỎI LẠI NGÀY): ").append(structuredBookingState.bookingDate()).append('\n');
+                }
+                if (structuredBookingState.bookingTime() != null) {
+                    sb.append("- Khung giờ dự kiến đã ghi nhận: ").append(structuredBookingState.bookingTime()).append('\n');
+                } else {
+                    sb.append("- Khung giờ cụ thể: chưa có — hãy hỏi kèm xem khách tiện vào mấy giờ.\n");
+                }
             } else {
-                sb.append("1. ").append(activePackageInFocus).append('\n');
+                PackageCatalogService.PackageSummary selectedPkg = explicitlySelectedBookingPkg != null
+                        ? explicitlySelectedBookingPkg
+                        : findHeldOrTopPrimaryPackage(
+                                tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
+                sb.append("[GÓI KHÁCH ĐANG QUAN TÂM / ĐẶT LỊCH TRẢI NGHIỆM]:\n");
+                if (selectedPkg != null) {
+                    appendCatalogPackageLine(sb, 1, selectedPkg, knownBodyAreas, knownSymptoms);
+                    visiblePackagesForTurn.add(selectedPkg);
+                } else {
+                    sb.append("1. ").append(activePackageInFocus).append('\n');
+                }
+                if (structuredBookingState != null) {
+                    sb.append("- Trạng thái đặt lịch (bookingStatus): ").append(structuredBookingState.status().name())
+                      .append(" | bookingDate=").append(structuredBookingState.bookingDate() != null ? structuredBookingState.bookingDate() : "chưa có")
+                      .append(" | bookingTime=").append(structuredBookingState.bookingTime() != null ? structuredBookingState.bookingTime() : "chưa có")
+                      .append('\n');
+                } else {
+                    String visitTimeSlot = (pendingBookingSlots != null && pendingBookingSlots.get("visit_time") != null)
+                            ? pendingBookingSlots.get("visit_time")
+                            : "chưa có khung giờ cụ thể — hãy mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai";
+                    sb.append("- Trạng thái khung giờ dự kiến ghé (pendingBookingSlots): ").append(visitTimeSlot).append('\n');
+                }
             }
-            String visitTimeSlot = (pendingBookingSlots != null && pendingBookingSlots.get("visit_time") != null)
-                    ? pendingBookingSlots.get("visit_time")
-                    : "chưa có khung giờ cụ thể — hãy mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai";
-            sb.append("- Trạng thái khung giờ dự kiến ghé (pendingBookingSlots): ").append(visitTimeSlot).append('\n');
         } else if (isFirstPriceObjectionHoldTurn) {
             PackageCatalogService.PackageSummary heldPkg = findHeldOrTopPrimaryPackage(
                     tieredCatalog, effectiveHeldPackageDisplay, effectiveHeldPriceDisplay);
@@ -1842,6 +1970,52 @@ public final class CleanAgentCatalogAndPromptBuilder {
             String careActor,
             UUID pageId
     ) {
+        appendCleanAgentBrainInsightBlock(
+                sb,
+                selfPronoun,
+                custPronoun,
+                knownSymptoms,
+                knownBodyAreas,
+                safeTiming,
+                discoveryCompleted,
+                activePackageInFocus,
+                activePkg,
+                priceObjectionCount,
+                stageLabel,
+                isServiceDetailQuestionTurn,
+                customerInsight,
+                activeSkills,
+                quotedReplyResolution,
+                isOperationalQuestionTurn,
+                burstSubMessages,
+                careActor,
+                pageId,
+                null
+        );
+    }
+
+    public static void appendCleanAgentBrainInsightBlock(
+            StringBuilder sb,
+            String selfPronoun,
+            String custPronoun,
+            List<String> knownSymptoms,
+            List<String> knownBodyAreas,
+            String safeTiming,
+            boolean discoveryCompleted,
+            String activePackageInFocus,
+            PackageCatalogService.PackageSummary activePkg,
+            int priceObjectionCount,
+            String stageLabel,
+            boolean isServiceDetailQuestionTurn,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            QuotedReplyResolution quotedReplyResolution,
+            boolean isOperationalQuestionTurn,
+            List<String> burstSubMessages,
+            String careActor,
+            UUID pageId,
+            ConversationState.StructuredBookingState structuredBookingState
+    ) {
         QuotedReplyResolution safeQuote = quotedReplyResolution != null ? quotedReplyResolution : QuotedReplyResolution.empty();
         List<String> safeBurst = burstSubMessages != null ? burstSubMessages : List.of();
         String safeCareActor = (careActor != null && !careActor.isBlank()) ? careActor.strip() : "chuyên viên";
@@ -1986,9 +2160,42 @@ public final class CleanAgentCatalogAndPromptBuilder {
             String careNoteExampleTail = !storedCareNotes.isEmpty()
                     ? (" " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " lưu lại lưu ý \"" + storedCareNotes.get(storedCareNotes.size() - 1) + "\" này để " + safeCareActor + " chuẩn bị chu đáo cho " + custPronoun + " nhé ạ.")
                     : "";
-            tacticalFocus = "Chốt thẳng vào phương án vừa thống nhất (" + pkgName + pkgDur + " - " + pkgPrice + ")" + careNoteHint + " và mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai; tuyệt đối không hỏi ngược bắt khách chọn lại giữa các mục.";
-            goodExample = "Dạ vâng ạ, vậy " + selfPronoun + " giữ phương án " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " nha." + careNoteExampleTail + " Không biết hôm nay hay ngày mai " + custPronoun + " tiện vào khung giờ nào để bên " + selfPronoun + " chuẩn bị chu đáo nhất ạ?";
-            antiPattern = "Hỏi ngược bắt khách chọn lại giữa 2 mục, vừa hỏi giờ vừa gạ đổi sang gói tiết kiệm hơn, hoặc nói quá khứ 'Em đã dặn " + safeCareActor + "' khi chưa chốt lịch.";
+            ConversationState.BookingStatus bStatus = structuredBookingState != null && structuredBookingState.status() != null
+                    ? structuredBookingState.status()
+                    : null;
+            if (bStatus == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION) {
+                String bDate = structuredBookingState.bookingDate();
+                String bTime = structuredBookingState.bookingTime();
+                if (bDate != null && !bDate.isBlank()) {
+                    tacticalFocus = "Khách muốn đặt cho mốc '" + bDate + "' nhưng trong lịch sử đang có từ 2 phương án trở lên và khách CHƯA chọn rõ sản phẩm (selectedProductId == null). BẮT BUỘC giữ nguyên mốc '" + bDate + "' (TUYỆT ĐỐI CẤM hỏi lại ngày!), hỏi lịch sự xem '" + bDate + "' " + custPronoun + " muốn đặt phương án nào trong danh sách đã tư vấn" + (bTime == null ? " và dự kiến vào mấy giờ" : "") + "; CẤM tự mặc định gán khách đã chọn bất kỳ mục nào.";
+                    goodExample = "Dạ cho lịch " + bDate + ", không biết " + custPronoun + " muốn đặt phương án nào trong các mục bên " + selfPronoun + " vừa tư vấn" + (bTime == null ? " và dự kiến vào khoảng mấy giờ" : "") + " để " + selfPronoun + " kiểm tra lịch trống chuẩn xác cho " + custPronoun + " ạ?";
+                    antiPattern = "Tự ý gán khách đã chọn gói 239k hoặc 399k khi khách chưa chỉ định, hoặc hỏi lại 'mình muốn đặt ngày nào' khi khách đã nói '" + bDate + "'.";
+                } else {
+                    tacticalFocus = "Khách vừa đồng ý đặt lịch/đặt hàng nhưng trong lịch sử đang có từ 2 phương án trở lên và khách CHƯA chọn rõ sản phẩm (selectedProductId == null). Hãy hỏi lịch sự xem " + custPronoun + " muốn đặt phương án nào trong danh sách đã tư vấn; TUYỆT ĐỐI CẤM tự mặc định lấy held_package hay phương án gần nhất làm lựa chọn của khách.";
+                    goodExample = "Dạ vâng ạ, không biết " + custPronoun + " muốn đặt phương án nào trong các mục bên " + selfPronoun + " vừa tư vấn để " + selfPronoun + " hỗ trợ giữ lịch chuẩn xác cho " + custPronoun + " ạ?";
+                    antiPattern = "Tự ý khẳng định khách đã chọn 1 gói cụ thể khi lịch sử có từ 2 gói trở lên và khách chưa chỉ định.";
+                }
+            } else if (bStatus == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK) {
+                String bDate = structuredBookingState.bookingDate() != null ? structuredBookingState.bookingDate() : "ngày hẹn";
+                String bTime = structuredBookingState.bookingTime() != null ? structuredBookingState.bookingTime() : "khung giờ yêu cầu";
+                tacticalFocus = "Ghi nhận đầy đủ yêu cầu đặt phương án (" + pkgName + pkgDur + " - " + pkgPrice + ") vào '" + bDate + "' lúc '" + bTime + "'" + careNoteHint + ", và thông báo rõ bên " + selfPronoun + " cần kiểm tra lịch trống / tồn kho thực tế trước khi gửi xác nhận chính thức cho " + custPronoun + "; TUYỆT ĐỐI CẤM tuyên bố đã đặt lịch thành công chính thức (CONFIRMED) khi chưa kiểm tra lịch trống!";
+                goodExample = "Dạ " + selfPronoun + " xin ghi nhận yêu cầu đặt " + pkgName + pkgDur + " (" + pkgPrice + ") vào " + bDate + " lúc " + bTime + " của " + custPronoun + " ạ." + careNoteExampleTail + " Để " + selfPronoun + " kiểm tra lịch trống thực tế khung giờ này rồi xác nhận chính thức ngay cho " + custPronoun + " nhé ạ.";
+                antiPattern = "Tuyên bố sai sự thật rằng 'đã đặt lịch thành công', 'đã chốt lịch chính thức' khi trạng thái mới là AWAITING_AVAILABILITY_CHECK, hoặc nói quá khứ 'Em đã dặn " + safeCareActor + "'.";
+            } else if (bStatus == ConversationState.BookingStatus.AWAITING_DATE_OR_TIME) {
+                String bDate = structuredBookingState.bookingDate();
+                if (bDate != null && !bDate.isBlank()) {
+                    tacticalFocus = "Xác nhận hỗ trợ đặt đúng phương án khách đã chọn (" + pkgName + pkgDur + " - " + pkgPrice + ") vào '" + bDate + "'" + careNoteHint + ", giữ nguyên mốc '" + bDate + "' (CẤM hỏi lại ngày) và chỉ hỏi thêm khung giờ cụ thể; tuyệt đối không quay lại gạ phương án khác.";
+                    goodExample = "Dạ vâng ạ, " + selfPronoun + " hỗ trợ đặt " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " vào " + bDate + " nha." + careNoteExampleTail + " Không biết " + bDate + " " + custPronoun + " tiện vào khoảng mấy giờ ạ?";
+                } else {
+                    tacticalFocus = "Xác nhận hỗ trợ đặt đúng phương án khách đã chọn (" + pkgName + pkgDur + " - " + pkgPrice + ")" + careNoteHint + " và hỏi khách ngày cùng khung giờ thuận tiện; tuyệt đối không quay lại gạ phương án khác.";
+                    goodExample = "Dạ vâng ạ, vậy " + selfPronoun + " hỗ trợ đặt " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " nha." + careNoteExampleTail + " Không biết hôm nay hay ngày mai " + custPronoun + " tiện vào khung giờ nào để bên " + selfPronoun + " kiểm tra lịch trống cho " + custPronoun + " ạ?";
+                }
+                antiPattern = "Quay lại gạ phương án khác khi khách đã chọn rõ " + pkgPrice + ", hoặc nói quá khứ 'Em đã dặn " + safeCareActor + "' khi chưa xác nhận lịch.";
+            } else {
+                tacticalFocus = "Chốt thẳng vào phương án vừa thống nhất (" + pkgName + pkgDur + " - " + pkgPrice + ")" + careNoteHint + " và mời khách chọn khung giờ thuận tiện hôm nay hoặc ngày mai; tuyệt đối không hỏi ngược bắt khách chọn lại giữa các mục.";
+                goodExample = "Dạ vâng ạ, vậy " + selfPronoun + " giữ phương án " + pkgName + pkgDur + " (" + pkgPrice + ") cho " + custPronoun + " nha." + careNoteExampleTail + " Không biết hôm nay hay ngày mai " + custPronoun + " tiện vào khung giờ nào để bên " + selfPronoun + " chuẩn bị chu đáo nhất ạ?";
+                antiPattern = "Hỏi ngược bắt khách chọn lại giữa 2 mục, vừa hỏi giờ vừa gạ đổi sang gói tiết kiệm hơn, hoặc nói quá khứ 'Em đã dặn " + safeCareActor + "' khi chưa chốt lịch.";
+            }
         } else if (!discoveryCompleted) {
             tacticalFocus = "Chia sẻ tự nhiên với nhu cầu/vấn đề " + needLabel + " mà khách vừa nêu, không đoán mò nguyên nhân và chỉ hỏi 1 câu ngắn để làm rõ bối cảnh hoặc thông tin cần thiết.";
             goodExample = "Dạ với nhu cầu " + needLabel + " của " + custPronoun + ", để " + selfPronoun + " tư vấn chuẩn xác nhất thì tình trạng/nhu cầu này của " + custPronoun + " đang trong bối cảnh hoặc thời gian như thế nào rồi ạ?";
@@ -2573,5 +2780,69 @@ public final class CleanAgentCatalogAndPromptBuilder {
             }
         }
         return false;
+    }
+
+    public static PackageCatalogService.PackageSummary findProductByIdInTieredCatalog(
+            TieredCatalogResult tieredCatalog,
+            String productId
+    ) {
+        if (tieredCatalog == null || productId == null || productId.isBlank()) {
+            return null;
+        }
+        String target = productId.strip();
+        for (PackageCatalogService.PackageSummary p : tieredCatalog.allAllowedPackages()) {
+            if (p == null) continue;
+            if (target.equalsIgnoreCase(p.productId())
+                    || (p.code() != null && target.equalsIgnoreCase(p.code()))
+                    || (p.canonicalName() != null && target.equalsIgnoreCase(p.canonicalName()))) {
+                return p;
+            }
+        }
+        if (tieredCatalog.excludedCatalog() != null) {
+            for (PackageCatalogService.PackageSummary p : tieredCatalog.excludedCatalog()) {
+                if (p == null) continue;
+                if (target.equalsIgnoreCase(p.productId())
+                        || (p.code() != null && target.equalsIgnoreCase(p.code()))) {
+                    return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static List<PackageCatalogService.PackageSummary> resolveBookingCandidateProducts(
+            TieredCatalogResult tieredCatalog,
+            List<FanpageBotRequest.ConversationTurn> history,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        List<PackageCatalogService.PackageSummary> out = new ArrayList<>();
+        Set<String> seenIds = new LinkedHashSet<>();
+        if (bookingState != null && bookingState.candidateProductIds() != null && tieredCatalog != null) {
+            for (String cid : bookingState.candidateProductIds()) {
+                PackageCatalogService.PackageSummary found = findProductByIdInTieredCatalog(tieredCatalog, cid);
+                if (found != null && seenIds.add(found.productId())) {
+                    out.add(found);
+                }
+            }
+        }
+        if (out.isEmpty() && tieredCatalog != null) {
+            List<PackageCatalogService.PackageSummary> allPool = new ArrayList<>(tieredCatalog.allAllowedPackages());
+            if (tieredCatalog.excludedCatalog() != null) {
+                allPool.addAll(tieredCatalog.excludedCatalog());
+            }
+            for (PackageCatalogService.PackageSummary p : extractPresentedPackagesFromHistory(history, null, allPool)) {
+                if (p != null && seenIds.add(p.productId())) {
+                    out.add(p);
+                }
+            }
+        }
+        if (out.isEmpty() && tieredCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : tieredCatalog.allAllowedPackages()) {
+                if (p != null && seenIds.add(p.productId())) {
+                    out.add(p);
+                }
+            }
+        }
+        return out;
     }
 }

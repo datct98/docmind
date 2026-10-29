@@ -396,6 +396,7 @@ public class AgentBrainService {
         private int priceObjectionCount = 0;
         private boolean inPriceObjectionContext = false;
         private boolean hasPresentedDownsell = false;
+        private ConversationState.StructuredBookingState structuredBookingState = ConversationState.StructuredBookingState.none();
 
         public synchronized List<String> verifiedFactsSnapshot() {
             return List.copyOf(verifiedFacts);
@@ -447,6 +448,10 @@ public class AgentBrainService {
 
         public synchronized boolean hasPresentedDownsellSnapshot() {
             return hasPresentedDownsell;
+        }
+
+        public synchronized ConversationState.StructuredBookingState structuredBookingStateSnapshot() {
+            return structuredBookingState;
         }
     }
 
@@ -539,6 +544,29 @@ public class AgentBrainService {
             mem.inPriceObjectionContext = inPriceObjectionContext;
             mem.hasPresentedDownsell = hasPresentedDownsell;
         }
+    }
+
+    public void recordBookingState(
+            UUID pageId,
+            String senderId,
+            ConversationState.StructuredBookingState bookingState) {
+        if (bookingState == null) {
+            return;
+        }
+        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(
+                toConversationMemoryKey(pageId, senderId),
+                k -> new CustomerBrainMemory()
+        );
+        synchronized (mem) {
+            mem.structuredBookingState = bookingState;
+        }
+    }
+
+    public ConversationState.StructuredBookingState recallBookingState(UUID pageId, String senderId) {
+        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        return mem != null && mem.structuredBookingStateSnapshot() != null
+                ? mem.structuredBookingStateSnapshot()
+                : ConversationState.StructuredBookingState.none();
     }
 
     public void clearCustomerMemory(UUID pageId, String senderId) {
