@@ -1437,7 +1437,8 @@ public final class PackageCatalogService {
 
         CommercialRole commercialRole = inferCommercialRole(
                 entry.skuCode,
-                entry.explicitRoleText + " " + String.join(" ", entry.headingPath),
+                entry.explicitRoleText,
+                String.join(" ", entry.headingPath),
                 entry.categoryOrFamily,
                 isAddon,
                 catalogHasSpaDsAndNsTiering
@@ -1541,18 +1542,38 @@ public final class PackageCatalogService {
             boolean isAddon,
             boolean catalogHasSpaDsAndNsTiering
     ) {
+        return inferCommercialRole(skuCode, "", explicitRoleAndHeadingText, serviceFamily, isAddon, catalogHasSpaDsAndNsTiering);
+    }
+
+    private static CommercialRole inferCommercialRole(
+            String skuCode,
+            String explicitRoleColumnText,
+            String headingPathText,
+            String serviceFamily,
+            boolean isAddon,
+            boolean catalogHasSpaDsAndNsTiering
+    ) {
         if (isAddon) {
             return CommercialRole.ADDON;
         }
-        String roleContext = (explicitRoleAndHeadingText != null ? explicitRoleAndHeadingText : "").toLowerCase(Locale.ROOT);
-        if (roleContext.contains("economical")
+        String explicitCol = (explicitRoleColumnText != null ? explicitRoleColumnText : "").strip().toLowerCase(Locale.ROOT);
+        String roleContext = (explicitCol + " " + (headingPathText != null ? headingPathText : "")).toLowerCase(Locale.ROOT);
+        if (explicitCol.contains("tiết kiệm")
+                || roleContext.contains("economical")
                 || roleContext.contains("downsell")
                 || roleContext.contains("hạ bậc")
                 || roleContext.contains("phương án tiết kiệm")
-                || roleContext.contains("gói tiết kiệm")) {
+                || roleContext.contains("gói tiết kiệm")
+                || roleContext.contains("mẫu tiết kiệm")
+                || roleContext.contains("khóa tiết kiệm")) {
             return CommercialRole.ECONOMICAL_OPTION;
         }
-        if (roleContext.contains("chủ lực") || roleContext.contains("primary")) {
+        if (explicitCol.contains("sản phẩm chính")
+                || explicitCol.contains("gói chính")
+                || explicitCol.contains("mẫu chính")
+                || explicitCol.contains("khóa chính")
+                || roleContext.contains("chủ lực")
+                || roleContext.contains("primary")) {
             return CommercialRole.PRIMARY;
         }
         if (roleContext.contains("premium") || roleContext.contains("cao cấp")) {

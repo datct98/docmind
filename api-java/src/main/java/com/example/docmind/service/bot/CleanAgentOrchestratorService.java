@@ -1127,6 +1127,12 @@ public class CleanAgentOrchestratorService {
                 || isPoliteClosingAck
                 || isPostBookingClosingAck;
 
+        if (!usedStructuredFallbackOnLlmFailure) {
+            // Mốc C3-D (Nhóm 3): Sửa nhẹ đại từ sai vai / mở câu không chủ ngữ tại chỗ 0ms thay vì gọi lại LLM lần 2
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                    candidateBubbles, selfPronoun, safeHonorific);
+        }
+
         List<String> allViolations = new ArrayList<>(
                 CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
                         candidateBubbles,
@@ -1141,14 +1147,19 @@ public class CleanAgentOrchestratorService {
                         mergedMessage,
                         confirmedPriceObjectionThisTurn,
                         hasPresentedDownsell,
-                        hasHigherPriorityNonObjectionIntent
+                        hasHigherPriorityNonObjectionIntent,
+                        cleanStage,
+                        presentedPackagesInHistory,
+                        bookingState,
+                        turnPersonaConfig
                 )
         );
         for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
                 candidateBubbles,
                 quotedReplyResolution,
                 allCatalog,
-                mergedMessage
+                mergedMessage,
+                turnPersonaConfig
         )) {
             if (!allViolations.contains(replyGuardViolation)) {
                 allViolations.add(replyGuardViolation);
@@ -1182,7 +1193,8 @@ public class CleanAgentOrchestratorService {
                                 CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(
                                         repairedStructured, repairedSanitized, minDelayMs);
                         if (!repairedBubbles.isEmpty()) {
-                            candidateBubbles = repairedBubbles;
+                            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                                    repairedBubbles, selfPronoun, safeHonorific);
                             structured = repairedStructured;
                             rawReply = repairedRaw;
                             repairApplied = true;
@@ -1212,14 +1224,19 @@ public class CleanAgentOrchestratorService {
                             mergedMessage,
                             confirmedPriceObjectionThisTurn,
                             hasPresentedDownsell,
-                            hasHigherPriorityNonObjectionIntent
+                            hasHigherPriorityNonObjectionIntent,
+                            cleanStage,
+                            presentedPackagesInHistory,
+                            bookingState,
+                            turnPersonaConfig
                     )
             );
             for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
                     candidateBubbles,
                     quotedReplyResolution,
                     allCatalog,
-                    mergedMessage
+                    mergedMessage,
+                    turnPersonaConfig
             )) {
                 if (!postRepairViolations.contains(replyGuardViolation)) {
                     postRepairViolations.add(replyGuardViolation);
@@ -1301,14 +1318,19 @@ public class CleanAgentOrchestratorService {
                                 mergedMessage,
                                 confirmedPriceObjectionThisTurn,
                                 hasPresentedDownsell,
-                                hasHigherPriorityNonObjectionIntent
+                                hasHigherPriorityNonObjectionIntent,
+                                cleanStage,
+                                presentedPackagesInHistory,
+                                bookingState,
+                                turnPersonaConfig
                         )
                 );
                 for (String replyGuardViolation : CleanAgentOutputRefereeAndSanitizer.checkReplyResolutionGuard(
                         candidateBubbles,
                         quotedReplyResolution,
                         allCatalog,
-                        mergedMessage
+                        mergedMessage,
+                        turnPersonaConfig
                 )) {
                     if (!postRepairViolations.contains(replyGuardViolation)) {
                         postRepairViolations.add(replyGuardViolation);
@@ -1344,10 +1366,67 @@ public class CleanAgentOrchestratorService {
                                 mergedMessage,
                                 confirmedPriceObjectionThisTurn,
                                 hasPresentedDownsell,
-                                hasHigherPriorityNonObjectionIntent
+                                hasHigherPriorityNonObjectionIntent,
+                                cleanStage,
+                                presentedPackagesInHistory,
+                                bookingState,
+                                turnPersonaConfig
                         )
                 );
             }
+
+            boolean stillHasGhostProductOnClosing = postRepairViolations.stream()
+                    .anyMatch(v -> v != null && v.startsWith("UNPRESENTED_GHOST_PRODUCT_ON_CLOSING:"));
+            boolean stillHasUngroundedPriceBeforeStructuralFallback = postRepairViolations.stream()
+                    .anyMatch(v -> v != null
+                            && (v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")
+                                || v.startsWith("UNGROUNDED_PRICE_WHEN_CATALOG_EMPTY:")));
+            boolean stillHasCommercialOrStateTruthViolation = postRepairViolations.stream()
+                    .anyMatch(v -> v != null
+                            && (v.startsWith("FALSE_PRODUCT_SELECTION_CLAIM")
+                                || v.startsWith("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM")
+                                || v.startsWith("CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:")
+                                || v.startsWith("UNGROUNDED_PRODUCT_SPECIFICATION:")));
+            if (stillHasGhostProductOnClosing
+                    || (!stillHasUngroundedPriceBeforeStructuralFallback && stillHasCommercialOrStateTruthViolation)) {
+                log.warn("[CleanAgentMode] Post-repair still violates C3-D Commercial/Booking/Closing Truth Guard ({}) -> applying Safe Multi-Industry Structural Fallback without 3rd LLM call",
+                        postRepairViolations);
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+                        quotedReplyResolution,
+                        bookingState,
+                        cleanStage,
+                        activeTurnPkg,
+                        scopeFilteredCatalog,
+                        allCatalog,
+                        turnPersonaConfig,
+                        mergedMessage,
+                        selfPronoun,
+                        safeHonorific
+                );
+                repairApplied = true;
+                postRepairViolations = new ArrayList<>(
+                        CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                                candidateBubbles,
+                                allCatalog,
+                                scopeFilteredCatalog,
+                                excludedCatalog,
+                                priceObjectionCount,
+                                isExplicitDownsell || isPriceContextHesitationTurn || !holdSinglePackageFirstObjection,
+                                activeTurnPkg,
+                                heldPkgIsNull && !hasReplyToContext,
+                                bookingFunnelStatus,
+                                mergedMessage,
+                                confirmedPriceObjectionThisTurn,
+                                hasPresentedDownsell,
+                                hasHigherPriorityNonObjectionIntent,
+                                cleanStage,
+                                presentedPackagesInHistory,
+                                bookingState,
+                                turnPersonaConfig
+                        )
+                );
+            }
+
             boolean stillHasUngroundedPrice = postRepairViolations.stream()
                     .anyMatch(v -> v != null
                             && (v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:")

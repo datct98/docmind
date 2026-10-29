@@ -820,6 +820,46 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             boolean downsellAlreadyOfferedInHistory,
             boolean hasHigherPriorityIntent
     ) {
+        return checkCleanCatalogGrounding(
+                bubbles,
+                allCatalog,
+                scopeFilteredCatalog,
+                excludedCatalog,
+                priceObjectionCount,
+                explicitDownsellRequested,
+                activePackage,
+                heldPkgIsNull,
+                bookingStatus,
+                customerMessage,
+                currentTurnHasPriceObjection,
+                downsellAlreadyOfferedInHistory,
+                hasHigherPriorityIntent,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public static List<String> checkCleanCatalogGrounding(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            int priceObjectionCount,
+            boolean explicitDownsellRequested,
+            PackageCatalogService.PackageSummary activePackage,
+            boolean heldPkgIsNull,
+            String bookingStatus,
+            String customerMessage,
+            boolean currentTurnHasPriceObjection,
+            boolean downsellAlreadyOfferedInHistory,
+            boolean hasHigherPriorityIntent,
+            String cleanStage,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            ConversationState.StructuredBookingState structuredBookingState,
+            com.example.docmind.dto.PagePersonaConfig personaConfig
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of();
         }
@@ -830,33 +870,46 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         Set<Long> allowedPrices = new LinkedHashSet<>();
         Set<Long> excludedPrices = new LinkedHashSet<>();
         Set<Integer> allowedDurations = new LinkedHashSet<>(List.of(5, 10, 15, 20, 30));
+        Set<Integer> catalogHeadlineDurations = new LinkedHashSet<>();
+        Set<String> allowedDimensionSpecs = new LinkedHashSet<>();
+        Set<Integer> allowedSessionSpecs = new LinkedHashSet<>();
+        Set<Integer> allowedPackingCounts = new LinkedHashSet<>();
+
         if (!catalogEmpty) {
             for (PackageCatalogService.PackageSummary p : scopeFilteredCatalog) {
                 if (p == null) continue;
-                if (p.priceVnd() > 0L) {
-                    allowedPrices.add(p.priceVnd());
+                if (p.priceAmountVnd() > 0L) {
+                    allowedPrices.add(p.priceAmountVnd());
                 }
                 allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(p));
+                collectGroundedSpecificationsFromPackage(
+                        p, catalogHeadlineDurations, allowedDimensionSpecs, allowedSessionSpecs, allowedPackingCounts);
             }
             if (activePackage != null) {
                 allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(activePackage));
+                collectGroundedSpecificationsFromPackage(
+                        activePackage, catalogHeadlineDurations, allowedDimensionSpecs, allowedSessionSpecs, allowedPackingCounts);
             }
             if (excludedCatalog != null) {
                 for (PackageCatalogService.PackageSummary ex : excludedCatalog) {
-                    if (ex != null && ex.priceVnd() > 0L && !allowedPrices.contains(ex.priceVnd())) {
-                        excludedPrices.add(ex.priceVnd());
+                    if (ex != null && ex.priceAmountVnd() > 0L && !allowedPrices.contains(ex.priceAmountVnd())) {
+                        excludedPrices.add(ex.priceAmountVnd());
                     }
                 }
             }
             for (PackageCatalogService.PackageSummary p : allCatalog) {
                 if (p != null) {
                     allowedDurations.addAll(extractComponentDurationsFromCatalogPackage(p));
+                    collectGroundedSpecificationsFromPackage(
+                            p, catalogHeadlineDurations, allowedDimensionSpecs, allowedSessionSpecs, allowedPackingCounts);
                 }
             }
         }
 
         boolean hasCustomerMessageContext = customerMessage != null && !customerMessage.isBlank();
         Set<Long> userAskedPrices = extractPricesInVndFromText(customerMessage);
+        Set<String> userAskedDims = extractNormalizedDimensionsFromText(customerMessage);
+        Set<Integer> userAskedSessions = extractSessionCountsFromText(customerMessage);
 
         StringBuilder preCombinedSb = new StringBuilder();
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
@@ -869,13 +922,21 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         boolean turnMentionsAllowedPrice = !allowedPrices.isEmpty()
                 && allMentionedPricesInTurn.stream().anyMatch(allowedPrices::contains);
 
+        String effBookingStatus = (structuredBookingState != null && structuredBookingState.status() != null)
+                ? structuredBookingState.status().name()
+                : (bookingStatus != null ? bookingStatus.strip() : "NONE");
+        boolean isBookingConfirmed = "CONFIRMED".equalsIgnoreCase(effBookingStatus);
+
         Pattern durPat = Pattern.compile("(?iU)\\b(\\d{2,3})\\s*(?:phút|p)\\b");
+        Pattern dimPat = Pattern.compile("(?iU)\\b(\\d{2,4})\\s*[x×*]\\s*(\\d{2,4})\\s*(cm|mm)?\\b");
+        Pattern sessionPat = Pattern.compile("(?iU)\\b(\\d{1,3})\\s*(buổi|tiết)\\b");
+        Pattern packingPat = Pattern.compile("(?iU)\\b(?:hộp|thùng)\\s+(\\d{1,3})\\s*viên\\b");
         Pattern privateOrVipRoomPat = Pattern.compile("(?iU)\\bphòng\\s+(?:vip|riêng)\\b");
         Pattern falsePriorPkgInterestPat = Pattern.compile("(?iU).*\\b(mình|anh|chị|bạn)\\s+đang\\s+quan\\s+tâm\\s+(?:đến\\s+|tới\\s+)?gói\\b.*");
         Pattern pastTenseInstructStaffPat = Pattern.compile(
                 "(?iU)\\bem\\s+đã\\s+(?:dặn|báo|nhắc|yêu\\s+cầu)(?:\\s+trước)?\\s+(?:các\\s+|bên\\s+)?(?:chuyên\\s+viên|kỹ\\s+thuật\\s+viên|nhân\\s+viên)\\b"
         );
-        boolean isBookingConfirmed = bookingStatus != null && "CONFIRMED".equalsIgnoreCase(bookingStatus.strip());
+
         StringBuilder combinedTurnSb = new StringBuilder();
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null) continue;
@@ -920,16 +981,76 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
             }
 
+            // 1. Kiểm chứng thông số thời lượng (phút) + chấp nhận tổng thành phần hợp lệ (VD: 10p + 70p = 80p)
+            Set<Integer> validAdditiveDurComponents = resolveValidAdditiveComponentsInText(
+                    text, durPat, catalogHeadlineDurations);
             Matcher dm = durPat.matcher(text);
             while (dm.find()) {
                 try {
                     int min = Integer.parseInt(dm.group(1));
                     if (catalogEmpty) {
-                        violations.add("UNGROUNDED_DURATION_WHEN_CATALOG_EMPTY:" + min + "p");
-                    } else if (!allowedDurations.contains(min)) {
-                        violations.add("UNGROUNDED_DURATION:" + min + "p");
+                        addUniqueViolation(violations, "UNGROUNDED_DURATION_WHEN_CATALOG_EMPTY:" + min + "p");
+                        addUniqueViolation(violations, "UNGROUNDED_PRODUCT_SPECIFICATION:" + min + "p");
+                    } else if (!allowedDurations.contains(min) && !validAdditiveDurComponents.contains(min)) {
+                        addUniqueViolation(violations, "UNGROUNDED_DURATION:" + min + "p");
+                        addUniqueViolation(violations, "UNGROUNDED_PRODUCT_SPECIFICATION:" + min + "p");
                     }
                 } catch (NumberFormatException ignored) {
+                }
+            }
+
+            // 2. Kiểm chứng thông số kích thước (cm / mm, ví dụ 80x80cm, 60x60cm)
+            Matcher dimMatcher = dimPat.matcher(text);
+            while (dimMatcher.find()) {
+                String rawDim = dimMatcher.group().strip();
+                String w = dimMatcher.group(1);
+                String h = dimMatcher.group(2);
+                String unit = dimMatcher.group(3) != null ? dimMatcher.group(3).toLowerCase(Locale.ROOT) : "";
+                String normWithUnit = w + "x" + h + unit;
+                String normBare = w + "x" + h;
+                boolean isGroundedDim = !catalogEmpty && (allowedDimensionSpecs.contains(normWithUnit)
+                        || allowedDimensionSpecs.contains(normBare)
+                        || (unit.isEmpty() && (allowedDimensionSpecs.contains(normBare + "cm") || allowedDimensionSpecs.contains(normBare + "mm"))));
+                boolean isNegatedCustomerDim = (userAskedDims.contains(normWithUnit) || userAskedDims.contains(normBare))
+                        && isSpecificationNegatedInContext(text, dimMatcher.start(), dimMatcher.end());
+                if (!isGroundedDim && !isNegatedCustomerDim) {
+                    addUniqueViolation(violations, "UNGROUNDED_PRODUCT_SPECIFICATION:" + rawDim);
+                }
+            }
+
+            // 3. Kiểm chứng thông số lộ trình số buổi / tiết (bỏ qua "1 buổi" mời trải nghiệm thử ở Spa)
+            Set<Integer> validAdditiveSessionComponents = resolveValidAdditiveComponentsInText(
+                    text, sessionPat, allowedSessionSpecs);
+            Matcher sessMatcher = sessionPat.matcher(text);
+            while (sessMatcher.find()) {
+                try {
+                    int sessCount = Integer.parseInt(sessMatcher.group(1));
+                    String sUnit = sessMatcher.group(2).toLowerCase(Locale.ROOT);
+                    if (sessCount >= 2 && (!allowedSessionSpecs.isEmpty() || sessCount >= 4)) {
+                        boolean groundedSess = !catalogEmpty
+                                && (allowedSessionSpecs.contains(sessCount) || validAdditiveSessionComponents.contains(sessCount));
+                        boolean negatedAskedSess = userAskedSessions.contains(sessCount)
+                                && isSpecificationNegatedInContext(text, sessMatcher.start(), sessMatcher.end());
+                        if (!groundedSess && !negatedAskedSess) {
+                            addUniqueViolation(violations, "UNGROUNDED_PRODUCT_SPECIFICATION:" + sessCount + " " + sUnit);
+                        }
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+
+            // 4. Kiểm chứng quy cách đóng gói (hộp/thùng X viên) khi Catalog có dữ liệu quy cách
+            if (!allowedPackingCounts.isEmpty()) {
+                Matcher packMatcher = packingPat.matcher(text);
+                while (packMatcher.find()) {
+                    try {
+                        int count = Integer.parseInt(packMatcher.group(1));
+                        if (!allowedPackingCounts.contains(count)
+                                && !isSpecificationNegatedInContext(text, packMatcher.start(), packMatcher.end())) {
+                            addUniqueViolation(violations, "UNGROUNDED_PRODUCT_SPECIFICATION:" + packMatcher.group().strip());
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
             }
 
@@ -951,22 +1072,30 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     if (ex == null || ex.displayName() == null || ex.displayName().isBlank()) continue;
                     String exNameLower = ex.displayName().strip().toLowerCase(Locale.ROOT);
                     if (exNameLower.length() >= 5 && maskedForExcl.contains(exNameLower)) {
-                        violations.add("EXCLUDED_PACKAGE_MENTIONED:" + ex.displayName());
+                        addUniqueViolation(violations, "EXCLUDED_PACKAGE_MENTIONED:" + ex.displayName());
                     }
                 }
             }
 
             Matcher medMatcher = FORBIDDEN_MEDICAL_CLAIM_CLEAN_PATTERN.matcher(text);
             while (medMatcher.find()) {
-                violations.add("FORBIDDEN_MEDICAL_CLAIM:" + medMatcher.group().strip());
+                addUniqueViolation(violations, "FORBIDDEN_MEDICAL_CLAIM:" + medMatcher.group().strip());
             }
 
             if (FORBIDDEN_WRONG_PRONOUN_OR_SUBJECTLESS_OPENER_PATTERN.matcher(text).matches()) {
-                violations.add("FORBIDDEN_WRONG_PRONOUN_OR_SUBJECTLESS_OPENER");
+                addUniqueViolation(violations, "FORBIDDEN_WRONG_PRONOUN_OR_SUBJECTLESS_OPENER");
             }
 
             if (FORBIDDEN_SELF_CONFESSION_REPETITION_PATTERN.matcher(text).matches()) {
-                violations.add("FORBIDDEN_INTERNAL_REPAIR_LEAK_SELF_CONFESSION");
+                addUniqueViolation(violations, "FORBIDDEN_INTERNAL_REPAIR_LEAK_SELF_CONFESSION");
+            }
+
+            // 5. Kiểm tra thuộc tính độc quyền giữa các phân khúc sản phẩm dựa trên dữ liệu Catalog đa ngành
+            if (!catalogEmpty) {
+                for (String exclusiveMismatch : detectCrossTierExclusiveAttributeMismatches(
+                        text, activePackage, scopeFilteredCatalog, allCatalog)) {
+                    addUniqueViolation(violations, exclusiveMismatch);
+                }
             }
 
             PackageCatalogService.PackageSummary refPkg = resolveReferencedPackageForBubble(
@@ -978,40 +1107,61 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 boolean pkgAllowsPrivateOrVip = spaceLower.contains("phòng riêng")
                         || spaceLower.contains("phòng vip")
                         || spaceLower.contains("vip");
-                if (!pkgAllowsPrivateOrVip && privateOrVipRoomPat.matcher(text).find()) {
-                    violations.add("UNGROUNDED_PRIVATE_ROOM:" + refPkg.code());
+                if (!pkgAllowsPrivateOrVip && privateOrVipRoomPat.matcher(text).find()
+                        && !isAttributeNegatedBeforeMatch(lower, "phòng")) {
+                    addUniqueViolation(violations, "UNGROUNDED_PRIVATE_ROOM:" + refPkg.code());
+                    addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":phòng riêng/vip");
                 }
 
                 String incLower = refPkg.includesSummary() != null
                         ? refPkg.includesSummary().toLowerCase(Locale.ROOT)
                         : "";
-                if (!incLower.contains("thực dưỡng") && lower.contains("thực dưỡng")) {
-                    violations.add("CROSS_TIER_AMENITY_MISMATCH:" + refPkg.code());
+                if (!incLower.contains("thực dưỡng") && lower.contains("thực dưỡng")
+                        && !isAttributeNegatedBeforeMatch(lower, "thực dưỡng")) {
+                    addUniqueViolation(violations, "CROSS_TIER_AMENITY_MISMATCH:" + refPkg.code());
+                    addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":thực dưỡng");
                 }
-                if (!incLower.contains("buffet") && lower.contains("buffet")) {
-                    violations.add("UNGROUNDED_BUFFET_AMENITY:" + refPkg.code());
+                if (!incLower.contains("buffet") && lower.contains("buffet")
+                        && !isAttributeNegatedBeforeMatch(lower, "buffet")) {
+                    addUniqueViolation(violations, "UNGROUNDED_BUFFET_AMENITY:" + refPkg.code());
+                    addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":buffet");
                 }
             }
 
             if (heldPkgIsNull && falsePriorPkgInterestPat.matcher(text).matches()) {
-                violations.add("FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION");
+                addUniqueViolation(violations, "FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION");
             }
 
             if (!isBookingConfirmed && pastTenseInstructStaffPat.matcher(text).find()) {
-                violations.add("UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION");
+                addUniqueViolation(violations, "UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION");
             }
         }
 
         String combinedTurnText = combinedTurnSb.toString();
+
+        // 6. Chặn nhắc sản phẩm / mức giá bóng ma chưa từng xuất hiện trong presentedPackagesInHistory khi khách tạm dừng (STAGE_6)
+        if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)) {
+            for (String ghostFlag : detectUnpresentedGhostProductOnClosing(
+                    combinedTurnText, allMentionedPricesInTurn, userAskedPrices, presentedPackagesInHistory, allCatalog)) {
+                addUniqueViolation(violations, ghostFlag);
+            }
+        }
+
+        // 7. Chặn tự nhận khách đã chọn sản phẩm khi selectedProductId == null & chặn tuyên bố đặt lịch thành công khi bookingStatus != CONFIRMED
+        for (String bookingStateFlag : detectBookingStateTruthViolations(
+                combinedTurnText, effBookingStatus, structuredBookingState, scopeFilteredCatalog, allCatalog)) {
+            addUniqueViolation(violations, bookingStateFlag);
+        }
+
         boolean hasDownsellOfferPhrase = DOWNSELL_OFFER_PHRASE_PATTERN.matcher(combinedTurnText).matches();
         boolean hasBookingTimeQuestionPhrase = BOOKING_TIME_QUESTION_PHRASE_PATTERN.matcher(combinedTurnText).matches();
 
         if (hasDownsellOfferPhrase && hasBookingTimeQuestionPhrase) {
-            violations.add("CONTRADICTORY_DOWNSELL_AND_BOOKING_CLOSE_IN_SAME_TURN");
+            addUniqueViolation(violations, "CONTRADICTORY_DOWNSELL_AND_BOOKING_CLOSE_IN_SAME_TURN");
         }
 
         if (priceObjectionCount == 1 && !explicitDownsellRequested && hasDownsellOfferPhrase) {
-            violations.add("PREMATURE_DOWNSELL_ON_FIRST_OBJECTION");
+            addUniqueViolation(violations, "PREMATURE_DOWNSELL_ON_FIRST_OBJECTION");
         }
 
         if (!catalogEmpty && allowedPrices.size() >= 2) {
@@ -1019,31 +1169,26 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             long maxAllowedPrice = allowedPrices.stream().mapToLong(Long::longValue).max().orElse(0L);
             if (minAllowedPrice < maxAllowedPrice) {
                 Pattern falseLowestOrDisparagePat = Pattern.compile(
-                        "(?isU).*(?:mức\\s+(?:giá\\s+|chi\\s+phí\\s+)?thấp\\s+nhất\\s+(?:bên\\s+em|toàn\\s+spa|hiện\\s+tại|cho)|"
-                        + "(?:gói|mức(?:\\s+giá)?)\\s+(?:thấp|rẻ)\\s+nhất\\s+(?:toàn\\s+spa|bên\\s+em)|"
-                        + "đã\\s+là\\s+(?:gói|mức(?:\\s+giá)?)\\s+(?:tiêu\\s+chuẩn\\s+)?thấp\\s+nhất|"
+                        "(?isU).*(?:mức\\s+(?:giá\\s+|chi\\s+phí\\s+)?thấp\\s+nhất\\s+(?:bên\\s+em|bên\\s+mình|trung\\s+tâm|toàn\\s+spa|hiện\\s+tại|cho)|"
+                        + "(?:gói|mẫu|khóa|khoá|mức(?:\\s+giá)?)\\s+(?:thấp|rẻ)\\s+nhất\\s+(?:toàn\\s+spa|bên\\s+em|bên\\s+mình|trung\\s+tâm)|"
+                        + "đã\\s+là\\s+(?:gói|mẫu|khóa|khoá|mức(?:\\s+giá)?)\\s+(?:tiêu\\s+chuẩn\\s+)?thấp\\s+nhất|"
                         + "dưới\\s+mức\\s+(?:giá\\s+)?này\\s+chỉ\\s+làm(?:\\s+được)?\\s+(?:thư\\s+giãn\\s+)?(?:hời\\s+hợt|qua\\s+loa)|"
                         + "mức\\s+(?:giá\\s+)?thấp\\s+hơn\\s+chỉ\\s+làm(?:\\s+được)?\\s+(?:thư\\s+giãn\\s+)?(?:hời\\s+hợt|qua\\s+loa)).*"
                 );
                 if (falseLowestOrDisparagePat.matcher(combinedTurnText).matches()) {
-                    violations.add("CONTRADICTORY_LOWEST_PRICE_CLAIM_WHEN_DOWNSELL_EXISTS");
+                    addUniqueViolation(violations, "CONTRADICTORY_LOWEST_PRICE_CLAIM_WHEN_DOWNSELL_EXISTS");
                 }
-                // Checkpoint 1.2: MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL chỉ kích hoạt khi hội đủ cả 4 điều kiện:
-                // (1) Lượt hiện tại có phản đối giá hoặc xin gói rẻ hơn (currentTurnHasPriceObjection == true)
-                // (2) Quy tắc downsell phù hợp với ý định lượt hiện tại (explicitDownsellRequested == true, priceObjectionCount >= 2)
-                // (3) Gói tiết kiệm phù hợp (DS02 - 239k) chưa được giới thiệu trong lịch sử (!downsellAlreadyOfferedInHistory)
-                // (4) Không có ý định ưu tiên cao hơn cần trả lời trước (!hasHigherPriorityIntent)
                 if (currentTurnHasPriceObjection
                         && explicitDownsellRequested
                         && !downsellAlreadyOfferedInHistory
                         && !hasHigherPriorityIntent
                         && priceObjectionCount >= 2
                         && activePackage != null
-                        && activePackage.priceVnd() == minAllowedPrice) {
+                        && activePackage.priceAmountVnd() == minAllowedPrice) {
                     boolean mentionedDownsell = CleanAgentCatalogAndPromptBuilder.isAnyPackagePresentedInBotText(
                             combinedTurnText, List.of(activePackage));
                     if (!mentionedDownsell) {
-                        violations.add("MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL:" + activePackage.code());
+                        addUniqueViolation(violations, "MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL:" + activePackage.code());
                     }
                 }
             }
@@ -1052,10 +1197,531 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return violations;
     }
 
+    private static void addUniqueViolation(List<String> violations, String flag) {
+        if (flag != null && !flag.isBlank() && !violations.contains(flag)) {
+            violations.add(flag);
+        }
+    }
+
+    private static void collectGroundedSpecificationsFromPackage(
+            PackageCatalogService.PackageSummary pkg,
+            Set<Integer> headlineDurations,
+            Set<String> allowedDimensions,
+            Set<Integer> allowedSessions,
+            Set<Integer> allowedPackingCounts
+    ) {
+        if (pkg == null) {
+            return;
+        }
+        if (pkg.durationMinutes() != null && pkg.durationMinutes() > 0) {
+            headlineDurations.add(pkg.durationMinutes());
+        }
+        Pattern packPat = Pattern.compile("(?iU)\\b(?:hộp|thùng)\\s+(\\d{1,3})\\s*viên\\b");
+        if (pkg.normalized() != null && pkg.normalized().specifications() != null) {
+            for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
+                if (attr == null) continue;
+                String unit = attr.unit() != null ? attr.unit().strip().toLowerCase(Locale.ROOT) : "";
+                String raw = attr.rawValue() != null ? attr.rawValue().strip().toLowerCase(Locale.ROOT) : "";
+                if (("phút".equals(unit) || "p".equals(unit)) && attr.numericValue() != null && attr.numericValue() > 0) {
+                    headlineDurations.add(attr.numericValue().intValue());
+                } else if (("buổi".equals(unit) || "tiết".equals(unit)) && attr.numericValue() != null && attr.numericValue() > 0) {
+                    allowedSessions.add(attr.numericValue().intValue());
+                } else if ("cm".equals(unit) || "mm".equals(unit) || raw.matches(".*\\d{2,4}\\s*[x×*]\\s*\\d{2,4}.*")) {
+                    allowedDimensions.addAll(extractNormalizedDimensionsFromText(raw));
+                }
+                Matcher attrPackMatcher = packPat.matcher(raw);
+                while (attrPackMatcher.find()) {
+                    try {
+                        allowedPackingCounts.add(Integer.parseInt(attrPackMatcher.group(1)));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        String[] corpusFields = {
+                pkg.canonicalName(),
+                pkg.displayName(),
+                pkg.durationLabel(),
+                pkg.includesSummary(),
+                pkg.processSummary(),
+                pkg.suitableFor()
+        };
+        for (String field : corpusFields) {
+            if (field == null || field.isBlank()) continue;
+            allowedDimensions.addAll(extractNormalizedDimensionsFromText(field));
+            allowedSessions.addAll(extractSessionCountsFromText(field));
+            Matcher pm = packPat.matcher(field);
+            while (pm.find()) {
+                try {
+                    allowedPackingCounts.add(Integer.parseInt(pm.group(1)));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+    }
+
+    private static Set<String> extractNormalizedDimensionsFromText(String text) {
+        Set<String> dims = new LinkedHashSet<>();
+        if (text == null || text.isBlank()) {
+            return dims;
+        }
+        Matcher m = Pattern.compile("(?iU)\\b(\\d{2,4})\\s*[x×*]\\s*(\\d{2,4})\\s*(cm|mm)?\\b").matcher(text);
+        while (m.find()) {
+            String w = m.group(1);
+            String h = m.group(2);
+            String u = m.group(3) != null ? m.group(3).toLowerCase(Locale.ROOT) : "";
+            dims.add(w + "x" + h);
+            if (!u.isEmpty()) {
+                dims.add(w + "x" + h + u);
+            }
+        }
+        return dims;
+    }
+
+    private static Set<Integer> extractSessionCountsFromText(String text) {
+        Set<Integer> counts = new LinkedHashSet<>();
+        if (text == null || text.isBlank()) {
+            return counts;
+        }
+        Matcher m = Pattern.compile("(?iU)\\b(\\d{1,3})\\s*(?:buổi|tiết)\\b").matcher(text);
+        while (m.find()) {
+            try {
+                int v = Integer.parseInt(m.group(1));
+                if (v >= 2) {
+                    counts.add(v);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return counts;
+    }
+
+    private static Set<Integer> resolveValidAdditiveComponentsInText(
+            String text,
+            Pattern unitPattern,
+            Set<Integer> allowedTotals
+    ) {
+        if (text == null || text.isBlank() || allowedTotals == null || allowedTotals.isEmpty()) {
+            return Set.of();
+        }
+        String low = text.toLowerCase(Locale.ROOT);
+        if (!low.contains("gồm") && !low.contains("+") && !low.contains("kết hợp") && !low.contains("và")) {
+            return Set.of();
+        }
+        List<Integer> extracted = new ArrayList<>();
+        Matcher m = unitPattern.matcher(text);
+        while (m.find()) {
+            try {
+                int val = Integer.parseInt(m.group(1));
+                if (val > 0) {
+                    extracted.add(val);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (extracted.size() < 2) {
+            return Set.of();
+        }
+        Set<Integer> validComponents = new LinkedHashSet<>();
+        for (int total : allowedTotals) {
+            List<Integer> sub = extracted.stream().filter(v -> v < total).toList();
+            if (sub.size() >= 2) {
+                int sumAll = sub.stream().mapToInt(Integer::intValue).sum();
+                if (sumAll == total) {
+                    validComponents.addAll(sub);
+                } else {
+                    for (int i = 0; i < sub.size(); i++) {
+                        for (int j = i + 1; j < sub.size(); j++) {
+                            if (sub.get(i) + sub.get(j) == total) {
+                                validComponents.add(sub.get(i));
+                                validComponents.add(sub.get(j));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return validComponents;
+    }
+
+    private static boolean isSpecificationNegatedInContext(String text, int start, int end) {
+        String before = text.substring(Math.max(0, start - 50), start).toLowerCase(Locale.ROOT);
+        String after = text.substring(end, Math.min(text.length(), end + 40)).toLowerCase(Locale.ROOT);
+        return before.matches("(?isU).*(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|kinh\\s+doanh|sản\\s+xuất|mở|áp\\s+dụng)\\b[^.!?;\\n]*$")
+                || after.matches("(?isU)^[^.!?;\\n]{0,35}?\\b(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|còn)\\b.*");
+    }
+
+    private static boolean isAttributeNegatedBeforeMatch(String lowerText, String keyword) {
+        int idx = lowerText.indexOf(keyword);
+        if (idx < 0) {
+            return false;
+        }
+        String before = lowerText.substring(Math.max(0, idx - 45), idx);
+        return before.matches("(?isU).*(?:không\\s+(?:có|phải|bao\\s+gồm|kèm)|chưa\\s+(?:có|phải|bao\\s+gồm|kèm)|chẳng\\s+phải|đâu\\s+phải|từ\\s+(?:gói|mẫu|khóa|khoá|mức)\\s+[^,.!?]{1,30}\\s+mới\\s+có)[^,.!?]*$");
+    }
+
+    private static final Pattern SENTENCE_BOUNDARY_SPLIT_PATTERN = Pattern.compile(
+            "(?:(?<!\\d)\\.(?!\\d)|[!?;\\n])+"
+    );
+
+    private static final Pattern MULTI_INDUSTRY_CLAUSE_SPLIT_PATTERN = Pattern.compile(
+            "(?iU)(?:,\\s*(?:còn|trong\\s+khi|nhưng|thay\\s+vào\\s+đó|hiện\\s+tại|tuy\\s+nhiên|bên\\s+cạnh\\s+đó)\\b"
+            + "|\\b(?:còn|trong\\s+khi|và|hoặc|hay|so\\s+với|ngoài\\s+ra\\s+có)\\s+(?=(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|mục|loại|dòng)\\b))"
+    );
+
+    private static final Pattern UNIT_PREFIX_STRIP_PATTERN = Pattern.compile(
+            "(?iU)^(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|mục)\\s+"
+    );
+
+    public static List<String> detectCrossTierExclusiveAttributeMismatches(
+            String bubbleText,
+            PackageCatalogService.PackageSummary fallbackActivePkg,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (bubbleText == null || bubbleText.isBlank() || allCatalog == null || allCatalog.size() < 2) {
+            return List.of();
+        }
+        List<PackageCatalogService.PackageSummary> nonAddonCatalog = allCatalog.stream()
+                .filter(p -> p != null && !p.isAddon() && !p.canonicalName().isBlank())
+                .sorted((a, b) -> Integer.compare(b.canonicalName().length(), a.canonicalName().length()))
+                .toList();
+        if (nonAddonCatalog.size() < 2) {
+            return List.of();
+        }
+
+        List<PackageCatalogService.PackageSummary> bubbleMentionedPkgs = findMentionedCatalogPackagesInClause(
+                bubbleText, nonAddonCatalog);
+        PackageCatalogService.PackageSummary bubbleSingleRef = bubbleMentionedPkgs.size() == 1
+                ? bubbleMentionedPkgs.get(0)
+                : (bubbleMentionedPkgs.isEmpty()
+                    ? resolveReferencedPackageForBubble(bubbleText, fallbackActivePkg, scopeFilteredCatalog, nonAddonCatalog)
+                    : null);
+
+        List<String> flags = new ArrayList<>();
+        String[] sentences = SENTENCE_BOUNDARY_SPLIT_PATTERN.split(bubbleText);
+        for (String sentence : sentences) {
+            if (sentence == null || sentence.isBlank()) continue;
+            for (String rawClause : MULTI_INDUSTRY_CLAUSE_SPLIT_PATTERN.split(sentence)) {
+                if (rawClause == null || rawClause.isBlank()) continue;
+                String clause = rawClause.strip();
+                String clauseLow = clause.toLowerCase(Locale.ROOT);
+                List<PackageCatalogService.PackageSummary> clausePkgs = findMentionedCatalogPackagesInClause(
+                        clause, nonAddonCatalog);
+                if (clausePkgs.size() >= 2) {
+                    continue;
+                }
+                PackageCatalogService.PackageSummary targetPkg = clausePkgs.size() == 1
+                        ? clausePkgs.get(0)
+                        : bubbleSingleRef;
+                if (targetPkg == null) {
+                    continue;
+                }
+                String targetCorpus = buildPackageAttributeCorpusLower(targetPkg);
+                String targetCode = targetPkg.code() != null && !targetPkg.code().isBlank()
+                        ? targetPkg.code()
+                        : targetPkg.productId();
+
+                for (PackageCatalogService.PackageSummary otherPkg : nonAddonCatalog) {
+                    if (Objects.equals(otherPkg.productId(), targetPkg.productId())) {
+                        continue;
+                    }
+                    for (String exclusiveAttr : extractDistinctiveCatalogAttributePhrases(otherPkg)) {
+                        if (targetCorpus.contains(exclusiveAttr) || hasHighAttributeWordContainment(targetCorpus, exclusiveAttr)) {
+                            continue;
+                        }
+                        if (clauseLow.contains(exclusiveAttr) && !isAttributeNegatedBeforeMatch(clauseLow, exclusiveAttr)) {
+                            String flag = "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + targetCode + ":" + exclusiveAttr;
+                            addUniqueViolation(flags, flag);
+                        }
+                    }
+                }
+            }
+        }
+        return flags;
+    }
+
+    private static String buildPackageAttributeCorpusLower(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return "";
+        }
+        String formatNote = (pkg.display() != null && pkg.display().customerFacingFormatNote() != null)
+                ? pkg.display().customerFacingFormatNote()
+                : "";
+        StringBuilder specsSb = new StringBuilder();
+        if (pkg.normalized() != null && pkg.normalized().specifications() != null) {
+            for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
+                if (attr != null && attr.rawValue() != null && !attr.rawValue().isBlank()) {
+                    specsSb.append(' ').append(attr.rawValue());
+                }
+            }
+        }
+        return ((pkg.canonicalName() != null ? pkg.canonicalName() : "") + " "
+                + (pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
+                + (pkg.processSummary() != null ? pkg.processSummary() : "") + " "
+                + (pkg.customerFacingSpaceNote() != null ? pkg.customerFacingSpaceNote() : "") + " "
+                + formatNote + " "
+                + (pkg.roomType() != null ? pkg.roomType() : "") + " "
+                + (pkg.suitableFor() != null ? pkg.suitableFor() : "")
+                + specsSb)
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("(?isU)\\(\\s*(?:không|chưa)\\s+(?:phải|bao\\s+gồm|có)[^)]*\\)", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
+    }
+
+    private static List<String> extractDistinctiveCatalogAttributePhrases(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return List.of();
+        }
+        Set<String> phrases = new LinkedHashSet<>();
+        String formatNote = (pkg.display() != null && pkg.display().customerFacingFormatNote() != null)
+                ? pkg.display().customerFacingFormatNote()
+                : pkg.customerFacingSpaceNote();
+        List<String> sources = new ArrayList<>();
+        sources.add(pkg.includesSummary());
+        sources.add(pkg.processSummary());
+        sources.add(formatNote);
+        sources.add(pkg.roomType());
+        if (pkg.normalized() != null && pkg.normalized().specifications() != null) {
+            for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
+                if (attr != null && attr.rawValue() != null && !attr.rawValue().isBlank()) {
+                    sources.add(attr.rawValue());
+                }
+            }
+        }
+        Set<String> genericSingleConcepts = Set.of(
+                "phòng chung", "tiêu chuẩn", "cơ bản", "trà thảo mộc", "giao hàng", "lớp offline",
+                "giáo trình", "tư vấn", "hỗ trợ", "trọn gói", "niêm yết"
+        );
+        for (String src : sources) {
+            if (src == null || src.isBlank()) continue;
+            String cleanedSrc = src.toLowerCase(Locale.ROOT)
+                    .replaceAll("(?isU)\\([^)]*\\)", " ");
+            String[] segments = cleanedSrc.split("(?:[+,;|/—–\\n]|\\s+và\\s+|\\s+-\\s+)");
+            for (String seg : segments) {
+                if (seg == null || seg.isBlank()) continue;
+                String norm = seg.strip()
+                        .replaceFirst("^(?:bao\\s+gồm|gồm\\s+có|gồm|tặng\\s+kèm|kèm)\\s+", "")
+                        .replaceFirst("^\\d{1,3}\\s*(?:phút|p|buổi|tiết|viên)\\s+", "")
+                        .replaceAll("\\s+", " ")
+                        .strip();
+                if (norm.length() < 6 || genericSingleConcepts.contains(norm)
+                        || norm.matches("^(?:hộp|thùng)?\\s*\\d+[\\dx×*.,\\s]*(?:cm|mm|phút|p|buổi|tiết|viên|m2|m²)$")) {
+                    continue;
+                }
+                String[] words = norm.split("\\s+");
+                if (words.length >= 2 && words.length <= 7) {
+                    phrases.add(norm);
+                    if (words.length >= 4) {
+                        String head3 = words[0] + " " + words[1] + " " + words[2];
+                        if (head3.length() >= 8 && !genericSingleConcepts.contains(head3)) {
+                            phrases.add(head3);
+                        }
+                        String tail3 = words[words.length - 3] + " " + words[words.length - 2] + " " + words[words.length - 1];
+                        if (tail3.length() >= 8 && !genericSingleConcepts.contains(tail3)) {
+                            phrases.add(tail3);
+                        }
+                    }
+                }
+            }
+        }
+        return List.copyOf(phrases);
+    }
+
+    private static boolean hasHighAttributeWordContainment(String targetCorpus, String attrPhrase) {
+        String[] words = attrPhrase.split("\\s+");
+        if (words.length == 0) return true;
+        int matched = 0;
+        int meaningful = 0;
+        for (String w : words) {
+            if (w.length() < 2 || PROVENANCE_STOPWORDS.contains(w)) continue;
+            meaningful++;
+            if (targetCorpus.contains(w)) {
+                matched++;
+            }
+        }
+        return meaningful > 0 && matched == meaningful;
+    }
+
+    private static List<String> detectUnpresentedGhostProductOnClosing(
+            String combinedTurnText,
+            Set<Long> mentionedPricesInTurn,
+            Set<Long> userAskedPrices,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (combinedTurnText == null || combinedTurnText.isBlank()) {
+            return List.of();
+        }
+        List<PackageCatalogService.PackageSummary> safePresented =
+                presentedPackagesInHistory != null ? presentedPackagesInHistory : List.of();
+        Set<Long> presentedPrices = new LinkedHashSet<>();
+        Set<String> presentedProductIds = new LinkedHashSet<>();
+
+        for (PackageCatalogService.PackageSummary pp : safePresented) {
+            if (pp == null) continue;
+            if (!pp.productId().isBlank()) {
+                presentedProductIds.add(pp.productId());
+            }
+            if (pp.priceAmountVnd() > 0L) {
+                presentedPrices.add(pp.priceAmountVnd());
+            }
+        }
+        if (allCatalog != null && !presentedPrices.isEmpty()) {
+            for (PackageCatalogService.PackageSummary p : allCatalog) {
+                if (p == null || p.isAddon()) continue;
+                if (p.priceAmountVnd() > 0L && presentedPrices.contains(p.priceAmountVnd())) {
+                    presentedProductIds.add(p.productId());
+                }
+            }
+        }
+
+        List<String> violations = new ArrayList<>();
+        String low = combinedTurnText.toLowerCase(Locale.ROOT);
+        if (allCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : allCatalog) {
+                if (p == null || p.isAddon() || presentedProductIds.contains(p.productId())) {
+                    continue;
+                }
+                String canonLow = p.canonicalName().toLowerCase(Locale.ROOT);
+                String noPrefix = UNIT_PREFIX_STRIP_PATTERN.matcher(canonLow).replaceFirst("").strip();
+                String code = p.code() != null ? p.code().strip() : "";
+                boolean mentionedName = (canonLow.length() >= 5 && low.contains(canonLow))
+                        || (noPrefix.length() >= 6 && low.contains(noPrefix));
+                boolean mentionedCode = code.length() >= 4
+                        && Pattern.compile("(?iU)\\b" + Pattern.quote(code) + "\\b").matcher(combinedTurnText).find();
+                if (mentionedName || mentionedCode) {
+                    String idLabel = !code.isEmpty() ? code : p.productId();
+                    addUniqueViolation(violations, "UNPRESENTED_GHOST_PRODUCT_ON_CLOSING:" + idLabel);
+                }
+            }
+        }
+        if (mentionedPricesInTurn != null) {
+            for (Long pVnd : mentionedPricesInTurn) {
+                if (pVnd != null && pVnd > 0L
+                        && !presentedPrices.contains(pVnd)
+                        && (userAskedPrices == null || !userAskedPrices.contains(pVnd))) {
+                    addUniqueViolation(violations, "UNPRESENTED_GHOST_PRODUCT_ON_CLOSING:" + PackageCatalogService.formatCompactPrice(pVnd));
+                }
+            }
+        }
+        return violations;
+    }
+
+    private static final Pattern EXPLICIT_FALSE_SELECTION_CLAIM_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:(?:mình|anh|chị|bạn)\\s+đã\\s+(?:chọn|chốt|đăng\\s+ký)\\s+(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|liệu\\s+trình)"
+            + "|(?:em|bên\\s+em|bên\\s+mình|trung\\s+tâm|shop)\\s+(?:đã\\s+)?(?:ghi\\s+nhận|xác\\s+nhận|chốt|giữ\\s+chỗ|lên\\s+đơn)\\s+(?:yêu\\s+cầu\\s+)?(?:đặt|đăng\\s+ký)\\s+(?:cho\\s+(?:mình|anh|chị|bạn)\\s+)?(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm)\\b)(?![^?.!]*\\bhay\\b[^?.!]*\\?).*"
+    );
+
+    private static final Pattern UNILATERAL_SINGLE_PRODUCT_BOOKING_COMMIT_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:hỗ\\s+trợ\\s+đặt|lên\\s+đơn(?:\\s+đặt)?|giữ\\s+lịch|giữ\\s+chỗ|đăng\\s+ký)\\s+(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm)\\b(?![^?.!]*\\bhay\\b).*"
+    );
+
+    private static final Pattern UNVERIFIED_BOOKING_CONFIRMATION_CLAIM_PATTERN = Pattern.compile(
+            "(?isU).*(?:"
+            + "\\bđã\\s+(?:đặt\\s+lịch|chốt\\s+lịch|lên\\s+lịch|giữ\\s+chỗ|giữ\\s+lịch|lên\\s+đơn|chốt\\s+đơn|đăng\\s+ký\\s+(?:khóa|khoá|lớp)|xếp\\s+lớp|hoàn\\s+tất\\s+đặt\\s+lịch|hoàn\\s+tất\\s+đơn\\s+hàng)\\s+thành\\s+công\\b"
+            + "|(?<!trước\\s+khi\\s)(?<!sau\\s+khi\\s)(?<!để\\s)(?<!sẽ\\s)(?<!rồi\\s)(?<!gửi\\s)(?<!báo\\s)\\b(?:lịch\\s+(?:hẹn|đặt|học)|đơn\\s+(?:hàng|đặt)|suất\\s+học)\\s+(?:của\\s+(?:mình|anh|chị|bạn)\\s+)?đã\\s+được\\s+(?:xác\\s+nhận(?:\\s+chính\\s+thức)?|chốt(?:\\s+thành\\s+công)?|hoàn\\s+tất|giữ\\s+chỗ)\\b"
+            + "|\\b(?:em|bên\\s+em|bên\\s+mình|trung\\s+tâm|shop)\\s+đã\\s+(?:xác\\s+nhận\\s+chính\\s+thức|chốt\\s+lịch\\s+chính\\s+thức|chốt\\s+đơn\\s+chính\\s+thức|hoàn\\s+tất\\s+đặt\\s+lịch|hoàn\\s+tất\\s+đơn\\s+hàng|đặt\\s+lịch\\s+xong)\\b"
+            + ").*"
+    );
+
+    private static List<String> detectBookingStateTruthViolations(
+            String combinedTurnText,
+            String effBookingStatus,
+            ConversationState.StructuredBookingState structuredBookingState,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (combinedTurnText == null || combinedTurnText.isBlank()) {
+            return List.of();
+        }
+        List<String> flags = new ArrayList<>();
+        boolean isConfirmed = "CONFIRMED".equalsIgnoreCase(effBookingStatus);
+        if (!isConfirmed && UNVERIFIED_BOOKING_CONFIRMATION_CLAIM_PATTERN.matcher(combinedTurnText).matches()) {
+            flags.add("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM");
+        }
+
+        boolean hasSelectedProduct = structuredBookingState != null
+                && structuredBookingState.selectedProductId() != null
+                && !structuredBookingState.selectedProductId().isBlank();
+        boolean awaitingProductSelection = "AWAITING_PRODUCT_SELECTION".equalsIgnoreCase(effBookingStatus);
+
+        if (!hasSelectedProduct && (structuredBookingState != null || awaitingProductSelection)) {
+            if (EXPLICIT_FALSE_SELECTION_CLAIM_PATTERN.matcher(combinedTurnText).matches()) {
+                addUniqueViolation(flags, "FALSE_PRODUCT_SELECTION_CLAIM");
+            } else if (awaitingProductSelection) {
+                List<PackageCatalogService.PackageSummary> pool = (scopeFilteredCatalog != null && !scopeFilteredCatalog.isEmpty())
+                        ? scopeFilteredCatalog
+                        : (allCatalog != null ? allCatalog : List.of());
+                long nonAddonPoolCount = pool.stream().filter(p -> p != null && !p.isAddon()).count();
+                Set<Long> prices = extractPricesInVndFromText(combinedTurnText);
+                String low = combinedTurnText.toLowerCase(Locale.ROOT);
+                long mentionedCount = pool.stream()
+                        .filter(p -> p != null && !p.isAddon() && isPackageMentionedByNameOrPrice(low, prices, p))
+                        .count();
+                boolean isGenuineMultiOptionClarification = mentionedCount >= 2 && combinedTurnText.contains("?");
+                if (!isGenuineMultiOptionClarification
+                        && (UNILATERAL_SINGLE_PRODUCT_BOOKING_COMMIT_PATTERN.matcher(combinedTurnText).matches()
+                            || (nonAddonPoolCount >= 2 && mentionedCount == 1 && !low.contains("hay ")))) {
+                    addUniqueViolation(flags, "FALSE_PRODUCT_SELECTION_CLAIM");
+                }
+            }
+        }
+        return flags;
+    }
+
+    private static List<PackageCatalogService.PackageSummary> findMentionedCatalogPackagesInClause(
+            String clause,
+            List<PackageCatalogService.PackageSummary> sortedCatalog
+    ) {
+        if (clause == null || clause.isBlank() || sortedCatalog == null || sortedCatalog.isEmpty()) {
+            return List.of();
+        }
+        String maskedLower = clause.toLowerCase(Locale.ROOT);
+        List<PackageCatalogService.PackageSummary> mentionedPkgs = new ArrayList<>();
+        for (PackageCatalogService.PackageSummary p : sortedCatalog) {
+            String canonLower = p.canonicalName().toLowerCase(Locale.ROOT);
+            String dispNoPrefix = UNIT_PREFIX_STRIP_PATTERN.matcher(canonLower).replaceFirst("").strip();
+            String code = p.code() != null ? p.code().strip() : "";
+            if (canonLower.length() >= 4 && maskedLower.contains(canonLower)) {
+                mentionedPkgs.add(p);
+                maskedLower = maskedLower.replace(canonLower, " ");
+            } else if (dispNoPrefix.length() >= 6 && maskedLower.contains(dispNoPrefix)) {
+                mentionedPkgs.add(p);
+                maskedLower = maskedLower.replace(dispNoPrefix, " ");
+            } else if (code.length() >= 4
+                    && Pattern.compile("(?iU)\\b" + Pattern.quote(code) + "\\b").matcher(maskedLower).find()) {
+                mentionedPkgs.add(p);
+                maskedLower = maskedLower.replaceAll("(?iU)\\b" + Pattern.quote(code) + "\\b", " ");
+            }
+        }
+        return mentionedPkgs;
+    }
+
+    private static String normalizeBillingUnitToken(String rawUnit) {
+        if (rawUnit == null || rawUnit.isBlank()) {
+            return "";
+        }
+        String u = rawUnit.strip().toLowerCase(Locale.ROOT)
+                .replaceFirst("^/+", "")
+                .strip();
+        if ("trọn gói".equals(u) || "fixed".equals(u)) {
+            return "";
+        }
+        if ("m2".equals(u)) {
+            return "m²";
+        }
+        if ("khoá".equals(u)) {
+            return "khóa";
+        }
+        return u;
+    }
+
     /**
-     * Checkpoint 1.3: Đối chiếu cặp {@code (canonicalName, price, duration)} trong từng mệnh đề với danh sách đối tượng
-     * cấu trúc {@code Catalog}. Nếu tên gói và mức giá/thời lượng trong cùng một khẳng định thuộc về 2 gói khác nhau
-     * (ví dụ: {@code "gói Massage cơ bản 60 phút bên em đang áp dụng mức giá ưu đãi 239k"}), gắn cờ {@code PRICE_ENTITY_MISMATCH}.
+     * Mốc C3-D (Nhóm 1): Kiểm chứng khớp bộ 4 thành phần
+     * {@code (canonicalName, normalized.specifications, normalized.priceAmountVnd, normalized.billingUnit)}
+     * cho mọi ngành (Spa {@code phút/trọn gói}, Gạch {@code 80x80cm /m²}, Giáo dục {@code 24 buổi /khóa}).
      */
     public static List<String> detectPriceEntityMismatchesInBubble(
             String bubbleText,
@@ -1065,70 +1731,103 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return List.of();
         }
         List<PackageCatalogService.PackageSummary> sortedCatalog = allCatalog.stream()
-                .filter(p -> p != null && !p.isAddon() && p.displayName() != null && !p.displayName().isBlank())
-                .sorted((a, b) -> Integer.compare(b.displayName().strip().length(), a.displayName().strip().length()))
+                .filter(p -> p != null && !p.isAddon() && !p.canonicalName().isBlank())
+                .sorted((a, b) -> Integer.compare(b.canonicalName().length(), a.canonicalName().length()))
                 .toList();
         if (sortedCatalog.isEmpty()) {
             return List.of();
         }
 
         List<String> flags = new ArrayList<>();
-        String[] sentences = bubbleText.split("[.!?;\n]+");
-        Pattern clauseSplitPat = Pattern.compile(
-                "(?iU)(?:,\\s*(?:còn|trong\\s+khi|nhưng|thay\\s+vào\\s+đó|hiện\\s+tại|tuy\\s+nhiên|bên\\s+cạnh\\s+đó)\\b|\\b(?:còn|trong\\s+khi|và|hoặc|hay|so\\s+với|ngoài\\s+ra\\s+có)\\s+(?=gói\\b))"
+        String[] sentences = SENTENCE_BOUNDARY_SPLIT_PATTERN.split(bubbleText);
+        Pattern attachedBillingUnitPat = Pattern.compile(
+                "(?iU)^\\s*/\\s*(m2|m²|thùng|hộp|viên|khóa|khoá|tháng|buổi|kỳ|năm|gói|lần|suất|bộ|phút|giờ|kg)(?![\\p{L}\\d])"
         );
 
         for (String sentence : sentences) {
             if (sentence == null || sentence.isBlank()) continue;
-            String[] subClauses = clauseSplitPat.split(sentence);
+            String[] subClauses = MULTI_INDUSTRY_CLAUSE_SPLIT_PATTERN.split(sentence);
             for (String rawClause : subClauses) {
                 if (rawClause == null || rawClause.isBlank()) continue;
                 String clause = rawClause.strip();
-                String maskedLower = clause.toLowerCase(Locale.ROOT);
-
-                List<PackageCatalogService.PackageSummary> mentionedPkgs = new ArrayList<>();
-                for (PackageCatalogService.PackageSummary p : sortedCatalog) {
-                    String dispLower = p.displayName().strip().toLowerCase(Locale.ROOT);
-                    String dispNoPrefix = dispLower.replaceFirst("^gói\\s+", "").strip();
-                    if (dispLower.length() < 4) continue;
-                    if (maskedLower.contains(dispLower)) {
-                        mentionedPkgs.add(p);
-                        maskedLower = maskedLower.replace(dispLower, " ");
-                    } else if (dispNoPrefix.length() >= 6 && maskedLower.contains(dispNoPrefix)) {
-                        mentionedPkgs.add(p);
-                        maskedLower = maskedLower.replace(dispNoPrefix, " ");
-                    }
-                }
+                List<PackageCatalogService.PackageSummary> mentionedPkgs =
+                        findMentionedCatalogPackagesInClause(clause, sortedCatalog);
                 if (mentionedPkgs.size() != 1) {
                     continue;
                 }
                 PackageCatalogService.PackageSummary matchedPkg = mentionedPkgs.get(0);
-                String pkgNameLower = matchedPkg.displayName().strip().toLowerCase(Locale.ROOT);
-                String pkgNoPrefixLower = pkgNameLower.replaceFirst("^gói\\s+", "").strip();
+                String pkgCode = (matchedPkg.code() != null && !matchedPkg.code().isBlank())
+                        ? matchedPkg.code()
+                        : matchedPkg.productId();
+                String pkgNameLower = matchedPkg.canonicalName().toLowerCase(Locale.ROOT);
+                String pkgNoPrefixLower = UNIT_PREFIX_STRIP_PATTERN.matcher(pkgNameLower).replaceFirst("").strip();
 
-                // Kiểm tra thời lượng đi liền ngay sau tên gói (nếu có)
+                // 1. Kiểm tra thông số thời lượng (phút) gắn với sản phẩm
                 Pattern adjacentDurPat = Pattern.compile(
-                        "(?iU)(?:gói\\s+)?" + Pattern.quote(pkgNoPrefixLower) + "\\s+~?\\s*(\\d{2,3})\\s*(?:phút|p)\\b"
+                        "(?iU)(?:(?:gói|liệu\\s+trình)\\s+)?" + Pattern.quote(pkgNoPrefixLower) + "\\s+~?\\s*(\\d{2,3})\\s*(?:phút|p)\\b"
                 );
                 Matcher adjDurMatcher = adjacentDurPat.matcher(clause);
                 if (adjDurMatcher.find() && matchedPkg.durationMinutes() != null && matchedPkg.durationMinutes() > 0) {
                     try {
                         int statedMin = Integer.parseInt(adjDurMatcher.group(1));
                         boolean anySameNameWithDur = sortedCatalog.stream()
-                                .anyMatch(p -> p.displayName().strip().equalsIgnoreCase(matchedPkg.displayName().strip())
+                                .anyMatch(p -> p.canonicalName().equalsIgnoreCase(matchedPkg.canonicalName())
                                         && p.durationMinutes() != null && p.durationMinutes() == statedMin);
                         if (!anySameNameWithDur && statedMin != matchedPkg.durationMinutes()) {
-                            if (!flags.contains("PRICE_ENTITY_MISMATCH")) {
-                                flags.add("PRICE_ENTITY_MISMATCH");
-                            }
-                            flags.add("PRICE_ENTITY_MISMATCH:" + matchedPkg.code()
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH:" + pkgCode
                                     + ":expectedDuration=" + matchedPkg.durationMinutes() + "p,actual=" + statedMin + "p");
                         }
                     } catch (NumberFormatException ignored) {
                     }
                 }
 
-                // Kiểm tra mức giá khẳng định trong cùng mệnh đề với tên gói
+                // 2. Kiểm tra thông số kích thước (NxM cm/mm) và số buổi (buổi/tiết) gắn với sản phẩm trong normalized.specifications
+                Set<String> pkgDims = new LinkedHashSet<>();
+                Set<Integer> pkgSessions = new LinkedHashSet<>();
+                collectGroundedSpecificationsFromPackage(
+                        matchedPkg, new LinkedHashSet<>(), pkgDims, pkgSessions, new LinkedHashSet<>());
+                if (!pkgDims.isEmpty()) {
+                    Matcher clauseDimMatcher = Pattern.compile("(?iU)\\b(\\d{2,4})\\s*[x×*]\\s*(\\d{2,4})\\s*(cm|mm)?\\b").matcher(clause);
+                    while (clauseDimMatcher.find()) {
+                        if (isSpecificationNegatedInContext(clause, clauseDimMatcher.start(), clauseDimMatcher.end())) {
+                            continue;
+                        }
+                        String w = clauseDimMatcher.group(1);
+                        String h = clauseDimMatcher.group(2);
+                        String u = clauseDimMatcher.group(3) != null ? clauseDimMatcher.group(3).toLowerCase(Locale.ROOT) : "";
+                        String bare = w + "x" + h;
+                        String withU = bare + u;
+                        if (!pkgDims.contains(withU) && !pkgDims.contains(bare)) {
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH:" + pkgCode
+                                    + ":expectedSpec=" + matchedPkg.formattedSpecsSummary() + ",actual=" + clauseDimMatcher.group().strip());
+                        }
+                    }
+                }
+                if (!pkgSessions.isEmpty()) {
+                    Set<Integer> additiveSess = resolveValidAdditiveComponentsInText(
+                            clause, Pattern.compile("(?iU)\\b(\\d{1,3})\\s*(buổi|tiết)\\b"), pkgSessions);
+                    Matcher clauseSessMatcher = Pattern.compile("(?iU)\\b(\\d{1,3})\\s*(buổi|tiết)\\b").matcher(clause);
+                    while (clauseSessMatcher.find()) {
+                        if (isSpecificationNegatedInContext(clause, clauseSessMatcher.start(), clauseSessMatcher.end())) {
+                            continue;
+                        }
+                        try {
+                            int statedSess = Integer.parseInt(clauseSessMatcher.group(1));
+                            if (statedSess >= 2 && !pkgSessions.contains(statedSess) && !additiveSess.contains(statedSess)) {
+                                addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
+                                addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH:" + pkgCode
+                                        + ":expectedSpec=" + matchedPkg.formattedSpecsSummary() + ",actual=" + clauseSessMatcher.group().strip());
+                            }
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+
+                // 3. Kiểm tra mức giá chuẩn hóa (priceAmountVnd) và đơn vị tính giá (billingUnit) trong cùng mệnh đề
+                String expectedUnitToken = normalizeBillingUnitToken(
+                        matchedPkg.normalized() != null ? matchedPkg.normalized().billingUnit() : "");
                 Matcher pm = CLEAN_PRICE_MENTION_PATTERN.matcher(clause);
                 while (pm.find()) {
                     Long priceVnd = parseCleanPriceMentionToVnd(pm.group());
@@ -1136,20 +1835,33 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     String beforePrice = clause.substring(0, pm.start()).toLowerCase(Locale.ROOT);
                     String afterPrice = clause.substring(pm.end()).toLowerCase(Locale.ROOT);
                     boolean isNegatedOrComparative = beforePrice.matches(
-                            "(?isU).*(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)|(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+)?)[^,]*$")
+                            "(?isU).*(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)|(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+|mẫu\\s+|khóa\\s+)?)[^,]*$")
                             || afterPrice.matches("(?isU)^[^,]{0,40}?\\b(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)\\b.*");
                     if (isNegatedOrComparative) {
                         continue;
                     }
                     boolean anySameNameWithPrice = sortedCatalog.stream()
-                            .anyMatch(p -> p.displayName().strip().equalsIgnoreCase(matchedPkg.displayName().strip())
-                                    && p.priceVnd() == priceVnd);
-                    if (!anySameNameWithPrice && matchedPkg.priceVnd() != priceVnd) {
-                        if (!flags.contains("PRICE_ENTITY_MISMATCH")) {
-                            flags.add("PRICE_ENTITY_MISMATCH");
+                            .anyMatch(p -> p.canonicalName().equalsIgnoreCase(matchedPkg.canonicalName())
+                                    && p.priceAmountVnd() == priceVnd);
+                    if (!anySameNameWithPrice && matchedPkg.priceAmountVnd() != priceVnd) {
+                        addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
+                        addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH:" + pkgCode
+                                + ":expected=" + matchedPkg.formattedPriceWithUnit() + ",actual=" + pm.group().strip());
+                    }
+
+                    Matcher unitMatcher = attachedBillingUnitPat.matcher(clause.substring(pm.end()));
+                    if (unitMatcher.find()) {
+                        String actualUnitToken = normalizeBillingUnitToken(unitMatcher.group(1));
+                        boolean anySameNameWithUnit = sortedCatalog.stream()
+                                .anyMatch(p -> p.canonicalName().equalsIgnoreCase(matchedPkg.canonicalName())
+                                        && normalizeBillingUnitToken(p.normalized() != null ? p.normalized().billingUnit() : "")
+                                                .equals(actualUnitToken));
+                        if (!anySameNameWithUnit && !actualUnitToken.isEmpty() && !actualUnitToken.equals(expectedUnitToken)) {
+                            String expDisplay = expectedUnitToken.isEmpty() ? "trọn gói" : ("/" + expectedUnitToken);
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
+                            addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH:" + pkgCode
+                                    + ":expectedBillingUnit=" + expDisplay + ",actual=/" + actualUnitToken);
                         }
-                        flags.add("PRICE_ENTITY_MISMATCH:" + matchedPkg.code()
-                                + ":expected=" + matchedPkg.priceDisplay() + ",actual=" + pm.group().strip());
                     }
                 }
             }
@@ -1349,6 +2061,22 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             List<PackageCatalogService.PackageSummary> allCatalog,
             String customerMessage
     ) {
+        return checkReplyResolutionGuard(
+                candidateBubbles,
+                quoteResolution,
+                allCatalog,
+                customerMessage,
+                null
+        );
+    }
+
+    public static List<String> checkReplyResolutionGuard(
+            List<FanpageBotResponse.ReplyBubble> candidateBubbles,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            String customerMessage,
+            com.example.docmind.dto.PagePersonaConfig personaConfig
+    ) {
         if (candidateBubbles == null || candidateBubbles.isEmpty()) {
             return List.of();
         }
@@ -1387,13 +2115,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 boolean mentionsQuotedPkg = isPackageMentionedByNameOrPrice(combinedLower, replyPrices, qPkg);
                 boolean mentionsOtherPkgPrice = false;
                 for (Long rp : replyPrices) {
-                    if (rp != null && rp > 0L && rp != qPkg.priceVnd() && !customerExplicitPrices.contains(rp)) {
+                    if (rp != null && rp > 0L && rp != qPkg.priceAmountVnd() && !customerExplicitPrices.contains(rp)) {
                         mentionsOtherPkgPrice = true;
                         break;
                     }
                 }
                 if (!mentionsQuotedPkg || mentionsOtherPkgPrice) {
-                    violations.add("QUOTED_PACKAGE_FOCUS_MISMATCH:" + (qPkg.code() != null ? qPkg.code() : qPkg.priceDisplay()));
+                    violations.add("QUOTED_PACKAGE_FOCUS_MISMATCH:" + (qPkg.code() != null ? qPkg.code() : qPkg.formattedPriceWithUnit()));
                 }
             }
             return violations;
@@ -1415,10 +2143,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         } else if (candidates.size() == 1) {
             PackageCatalogService.PackageSummary soleCand = candidates.get(0);
             boolean mentionsSole = isPackageMentionedByNameOrPrice(combinedLower, replyPrices, soleCand);
+            String dynamicUnit = Pattern.quote(resolveEffectiveUnitNoun(personaConfig, soleCand, allCatalog, null).toLowerCase(Locale.ROOT));
+            String unitAlternatives = "(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án|loại|dòng|hạng\\s+mục|dịch\\s+vụ|" + dynamicUnit + ")";
             boolean asksOrOtherPackage = combinedLower.matches(
-                    "(?isU).*\\b(hay\\s+(?:một\\s+|1\\s+|là\\s+)?(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+(?:[\\p{L}\\s]{0,24})?khác"
-                    + "|hoặc\\s+(?:một\\s+|1\\s+)?(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+(?:[\\p{L}\\s]{0,24})?khác"
-                    + "|hay\\s+đang\\s+(?:hỏi|quan\\s+tâm)\\s+(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+khác)\\b.*"
+                    "(?isU).*\\b(hay\\s+(?:một\\s+|1\\s+|là\\s+)?" + unitAlternatives + "\\s+(?:[\\p{L}\\s]{0,24})?khác"
+                    + "|hoặc\\s+(?:một\\s+|1\\s+)?" + unitAlternatives + "\\s+(?:[\\p{L}\\s]{0,24})?khác"
+                    + "|hay\\s+đang\\s+(?:hỏi|quan\\s+tâm)\\s+" + unitAlternatives + "\\s+khác)\\b.*"
             );
             if (!hasClarificationQuestion || !mentionsSole || !asksOrOtherPackage) {
                 violations.add("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:TIER_2_SINGLE_CANDIDATE");
@@ -1886,6 +2616,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return detectCleanCrossTurnRepetition(candidateBubbles, prevBotTurnText, history, inferredDetailOrPromoTurn);
     }
 
+    /**
+     * Mốc C3-D (Nhóm 3 — Tinh giản CROSS_TURN_REPETITION):
+     * Bỏ hoàn toàn cơ chế so khớp unigram 6 từ trên 3 lượt lịch sử (từng gây False Positive khi nhắc lại tên sản phẩm dài + thông số + đơn giá).
+     * Chỉ chặn khi một bong bóng (hoặc toàn lượt) lặp nguyên văn theo trật tự từ {@code >= 90%} so với bong bóng của LƯỢT LIỀN KỀ ngay trước đó.
+     */
     public static boolean detectCleanCrossTurnRepetition(
             List<FanpageBotResponse.ReplyBubble> candidateBubbles,
             String prevBotTurnText,
@@ -1895,135 +2630,171 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (candidateBubbles == null || candidateBubbles.isEmpty()) {
             return false;
         }
-        List<String> recentAssistantTurns = new ArrayList<>();
+        String adjacentPrevTurn = null;
         if (prevBotTurnText != null && !prevBotTurnText.isBlank()) {
-            recentAssistantTurns.add(prevBotTurnText.strip());
-        }
-        if (history != null && !history.isEmpty()) {
-            int count = 0;
-            for (int i = history.size() - 1; i >= 0 && count < 3; i--) {
+            adjacentPrevTurn = prevBotTurnText.strip();
+        } else if (history != null && !history.isEmpty()) {
+            for (int i = history.size() - 1; i >= 0; i--) {
                 FanpageBotRequest.ConversationTurn t = history.get(i);
                 if (t != null && ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role()))
                         && t.content() != null && !t.content().isBlank()) {
-                    String c = t.content().strip();
-                    if (!recentAssistantTurns.contains(c)) {
-                        recentAssistantTurns.add(c);
-                    }
-                    count++;
+                    adjacentPrevTurn = t.content().strip();
+                    break;
                 }
             }
         }
-        if (recentAssistantTurns.isEmpty()) {
+        if (adjacentPrevTurn == null || adjacentPrevTurn.isEmpty()) {
             return false;
+        }
+
+        List<String> adjacentPrevBubbles = new ArrayList<>();
+        adjacentPrevBubbles.add(adjacentPrevTurn);
+        for (String part : adjacentPrevTurn.split("\\n\\n+")) {
+            if (part != null && !part.isBlank()) {
+                String s = part.strip();
+                if (!adjacentPrevBubbles.contains(s)) {
+                    adjacentPrevBubbles.add(s);
+                }
+            }
         }
 
         StringBuilder fullTurnSb = new StringBuilder();
         for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
-            if (b != null && b.text() != null && !b.text().isBlank()) {
-                if (!fullTurnSb.isEmpty()) fullTurnSb.append(' ');
-                fullTurnSb.append(b.text().strip());
-            }
-        }
-        List<String> fullCandTokens = tokenizeCleanWords(fullTurnSb.toString());
-        if (!fullCandTokens.isEmpty()) {
-            for (String prevTurn : recentAssistantTurns) {
-                List<String> prevTokens = tokenizeCleanWords(prevTurn);
-                if (prevTokens.isEmpty()) continue;
-                Set<String> prevSet = new LinkedHashSet<>(prevTokens);
-                int hits = 0;
-                for (String t : fullCandTokens) {
-                    if (prevSet.contains(t)) {
-                        hits++;
-                    }
-                }
-                double fullOverlap = hits / (double) fullCandTokens.size();
-                if (fullOverlap >= 0.85d && (fullCandTokens.size() - hits) <= 3) {
-                    return true;
-                }
-            }
-        }
-
-        if (isDetailOrPromoQuestionTurn) {
-            return false;
-        }
-
-        for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String bubbleText = b.text().strip();
-            for (String prevTurn : recentAssistantTurns) {
-                if (hasCleanBubbleTokenOverlapExceeding75Percent(bubbleText, prevTurn)) {
+            if (!fullTurnSb.isEmpty()) {
+                fullTurnSb.append(' ');
+            }
+            fullTurnSb.append(bubbleText);
+            for (String prevBubble : adjacentPrevBubbles) {
+                if (hasVerbatimAdjacentBubbleSimilarityAtLeast90Percent(bubbleText, prevBubble)) {
                     return true;
                 }
             }
         }
-        return false;
+
+        String combinedCand = fullTurnSb.toString();
+        return !combinedCand.isEmpty()
+                && hasVerbatimAdjacentBubbleSimilarityAtLeast90Percent(combinedCand, adjacentPrevTurn);
     }
 
-    public static boolean hasCleanBubbleTokenOverlapExceeding75Percent(String candidateBubble, String previousBotTurnText) {
-        if (candidateBubble == null || candidateBubble.isBlank() || previousBotTurnText == null || previousBotTurnText.isBlank()) {
+    public static boolean hasVerbatimAdjacentBubbleSimilarityAtLeast90Percent(
+            String candidateBubble,
+            String adjacentPreviousBubble
+    ) {
+        if (candidateBubble == null || candidateBubble.isBlank()
+                || adjacentPreviousBubble == null || adjacentPreviousBubble.isBlank()) {
             return false;
         }
-        List<String> fullCandTokens = tokenizeCleanWords(candidateBubble);
-        List<String> fullPrevTokens = tokenizeCleanWords(previousBotTurnText);
-        if (!fullCandTokens.isEmpty() && !fullPrevTokens.isEmpty()) {
-            Set<String> fullPrevSet = new LinkedHashSet<>(fullPrevTokens);
-            int fullHits = 0;
-            for (String t : fullCandTokens) {
-                if (fullPrevSet.contains(t)) {
-                    fullHits++;
-                }
-            }
-            double fullRatio = fullHits / (double) fullCandTokens.size();
-            int newWords = fullCandTokens.size() - fullHits;
-            String candLow = candidateBubble.toLowerCase(Locale.ROOT);
-            boolean answersDetailOrPromo = candLow.matches("(?isU).*\\b(khuyến\\s+mãi|ưu\\s+đãi|giảm\\s+giá|voucher|không\\s+phát\\s+sinh|đã\\s+là\\s+mức\\s+giá|gồm\\s+có|quy\\s+trình)\\b.*");
-            if (answersDetailOrPromo && fullRatio < 0.85d && newWords >= 5) {
-                return false;
-            }
+        List<String> candTokens = stripEdgeCourtesyParticles(tokenizeCleanWords(candidateBubble));
+        List<String> prevTokens = stripEdgeCourtesyParticles(tokenizeCleanWords(adjacentPreviousBubble));
+        if (candTokens.size() < 5 || prevTokens.size() < 5) {
+            return false;
         }
+        int maxLen = Math.max(candTokens.size(), prevTokens.size());
+        int minLen = Math.min(candTokens.size(), prevTokens.size());
+        if ((double) minLen / (double) maxLen < 0.90d) {
+            return false;
+        }
+        int lcs = computeOrderedTokenLcsLength(candTokens, prevTokens);
+        double orderedSimilarity = lcs / (double) maxLen;
+        return orderedSimilarity >= 0.90d;
+    }
 
-        List<String> candParts = new ArrayList<>();
-        candParts.add(candidateBubble.strip());
-        for (String s : candidateBubble.split("(?<=[.!?])\\s+")) {
-            if (s != null && tokenizeCleanWords(s).size() >= 6) {
-                candParts.add(s.strip());
-            }
-        }
+    /** Giữ tên hàm cũ để tương thích API nội bộ nếu được gọi trực tiếp, chuyển sang ngưỡng nguyên văn >= 90%. */
+    public static boolean hasCleanBubbleTokenOverlapExceeding75Percent(String candidateBubble, String previousBotTurnText) {
+        return hasVerbatimAdjacentBubbleSimilarityAtLeast90Percent(candidateBubble, previousBotTurnText);
+    }
 
-        List<String> prevParts = new ArrayList<>();
-        prevParts.add(previousBotTurnText.strip());
-        for (String part : previousBotTurnText.split("\\n\\n+")) {
-            if (part != null && !part.isBlank()) {
-                prevParts.add(part.strip());
-                for (String s : part.split("(?<=[.!?])\\s+")) {
-                    if (s != null && tokenizeCleanWords(s).size() >= 6) {
-                        prevParts.add(s.strip());
-                    }
-                }
-            }
+    private static List<String> stripEdgeCourtesyParticles(List<String> tokens) {
+        if (tokens == null || tokens.size() < 6) {
+            return tokens != null ? tokens : List.of();
         }
+        Set<String> edgeFillers = Set.of("dạ", "vâng", "ạ", "nhé", "nha");
+        int start = 0;
+        int end = tokens.size();
+        while (start < end && (end - start) > 5 && edgeFillers.contains(tokens.get(start))) {
+            start++;
+        }
+        while (end > start && (end - start) > 5 && edgeFillers.contains(tokens.get(end - 1))) {
+            end--;
+        }
+        return tokens.subList(start, end);
+    }
 
-        for (String candPart : candParts) {
-            List<String> candTokens = tokenizeCleanWords(candPart);
-            if (candTokens.isEmpty()) continue;
-            for (String prevPart : prevParts) {
-                List<String> prevTokens = tokenizeCleanWords(prevPart);
-                if (prevTokens.isEmpty()) continue;
-                if (candTokens.size() >= 6 && prevTokens.size() < 5) continue;
-                Set<String> prevSet = new LinkedHashSet<>(prevTokens);
-                int hits = 0;
-                for (String t : candTokens) {
-                    if (prevSet.contains(t)) {
-                        hits++;
-                    }
-                }
-                double overlapRatio = hits / (double) candTokens.size();
-                if (overlapRatio > 0.75d) {
-                    return true;
+    private static int computeOrderedTokenLcsLength(List<String> a, List<String> b) {
+        int m = a.size();
+        int n = b.size();
+        int[] prev = new int[n + 1];
+        int[] curr = new int[n + 1];
+        for (int i = 1; i <= m; i++) {
+            String ai = a.get(i - 1);
+            for (int j = 1; j <= n; j++) {
+                if (ai.equals(b.get(j - 1))) {
+                    curr[j] = prev[j - 1] + 1;
+                } else {
+                    curr[j] = Math.max(prev[j], curr[j - 1]);
                 }
             }
+            int[] tmp = prev;
+            prev = curr;
+            curr = tmp;
+            java.util.Arrays.fill(curr, 0);
         }
-        return false;
+        return prev[n];
+    }
+
+    /**
+     * Mốc C3-D (Nhóm 3 — Sửa nhẹ đại từ sai vai / mở câu không chủ ngữ tại chỗ 0ms thay vì gọi lại LLM).
+     */
+    public static String repairWrongPronounOpenerInPlace(
+            String text,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        if ("mình".equalsIgnoreCase(sp)) {
+            sp = "bên mình";
+        }
+        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        String out = text.strip();
+        out = out.replaceAll(
+                "(?iU)^\\s*(?:dạ[,\\s]+)?em\\s+hiểu\\s+mình\\s+đang\\s+cân\\s+nhắc(?:\\s+ạ)?",
+                "Dạ " + sp + " hiểu " + cp + " đang băn khoăn"
+        );
+        out = out.replaceAll(
+                "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?hiểu(?:\\s+rồi)?|(?:đã\\s+)?hiểu\\s+rồi)(?:\\s+ạ)?(?=\\s*[.,!?;:]|$)",
+                "Dạ " + sp + " hiểu ạ"
+        );
+        out = out.replaceAll(
+                "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?hiểu(?:\\s+rồi)?|(?:đã\\s+)?hiểu\\s+rồi)\\b",
+                "Dạ " + sp + " hiểu"
+        );
+        out = out.replaceAll(
+                "(?iU)^(\\s*(?:dạ[,\\s]+)?)mình\\s+((?:đã\\s+|rất\\s+|cũng\\s+)?(?:biết|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi))\\b",
+                "Dạ " + sp + " $2"
+        );
+        return out;
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> repairWrongPronounOpenersInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        List<FanpageBotResponse.ReplyBubble> repaired = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null) continue;
+            String fixed = repairWrongPronounOpenerInPlace(b.text(), selfPronoun, customerPronoun);
+            repaired.add(new FanpageBotResponse.ReplyBubble(fixed, b.typingDelayMs()));
+        }
+        return repaired;
     }
 
     private static List<String> tokenizeCleanWords(String text) {
@@ -2066,12 +2837,29 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             sb.append("- Bắt buộc tự xưng là \"").append(selfPronoun).append("\" và gọi khách là \"").append(customerPronoun)
               .append("\". Tuyệt đối KHÔNG viết \"Dạ mình hiểu\", \"Dạ mình đã hiểu rồi ạ\" hay \"Dạ hiểu rồi ạ\".\n");
         }
-        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRIVATE_ROOM") || v.startsWith("CROSS_TIER_AMENITY_MISMATCH") || v.startsWith("UNGROUNDED_BUFFET_AMENITY"))) {
-            String spaceInfo = activePackage != null ? activePackage.customerFacingSpaceNote() : "đúng mục Không gian/Hình thức của gói";
-            String incInfo = activePackage != null ? activePackage.includesSummary() : "đúng mục Quyền lợi đi kèm của gói";
+        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRIVATE_ROOM")
+                || v.startsWith("CROSS_TIER_AMENITY_MISMATCH")
+                || v.startsWith("UNGROUNDED_BUFFET_AMENITY")
+                || v.startsWith("CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:"))) {
+            String spaceInfo = activePackage != null ? activePackage.customerFacingSpaceNote() : "đúng mục Không gian/Hình thức của sản phẩm đang tư vấn";
+            String incInfo = activePackage != null ? activePackage.includesSummary() : "đúng mục Quyền lợi/Quy cách đi kèm của sản phẩm đang tư vấn";
             sb.append("- BẮT BUỘC chỉ nêu đúng Không gian/Hình thức (\"").append(spaceInfo)
-              .append("\") và Quyền lợi đi kèm (\"").append(incInfo)
-              .append("\") của gói đang tư vấn; tuyệt đối KHÔNG bịa 'phòng riêng/VIP', 'buffet' hay tiện ích của gói khác.\n");
+              .append("\") và Quyền lợi/Quy cách đi kèm (\"").append(incInfo)
+              .append("\") của đúng sản phẩm đang tư vấn; tuyệt đối KHÔNG gán thuộc tính độc quyền của phân khúc khác.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRODUCT_SPECIFICATION:"))) {
+            String specInfo = activePackage != null ? activePackage.formattedSpecsSummary() : "đúng thông số trong <SCOPE_FILTERED_CATALOG>";
+            sb.append("- BẮT BUỘC chỉ nêu đúng thông số kỹ thuật niêm yết (").append(specInfo)
+              .append(" hoặc thông số thành phần hợp lệ trong mục Bao gồm), tuyệt đối KHÔNG tự bịa thông số ngoài Catalog.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNPRESENTED_GHOST_PRODUCT_ON_CLOSING:"))) {
+            sb.append("- KHÁCH ĐANG XIN TẠM DỪNG CÂN NHẮC (`STAGE_6`): TUYỆT ĐỐI CẤM nhắc thêm bất kỳ sản phẩm hay mức giá nào chưa từng xuất hiện trong lịch sử hội thoại. Chỉ chào tạm biệt ấm áp và hẹn hỗ trợ khi khách cần.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("FALSE_PRODUCT_SELECTION_CLAIM"))) {
+            sb.append("- KHÁCH CHƯA CHỌN RÕ SẢN PHẨM (`selectedProductId == null`): TUYỆT ĐỐI CẤM tự nhận khách đã chọn 1 sản phẩm. Bắt buộc hỏi rõ khách muốn đặt sản phẩm nào trong các phương án đã trao đổi.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM"))) {
+            sb.append("- CHƯA XÁC NHẬN LỊCH TRỐNG THỰC TẾ (`bookingStatus != CONFIRMED`): TUYỆT ĐỐI CẤM tuyên bố 'đã đặt lịch thành công' hoặc 'lịch hẹn đã được xác nhận chính thức'. Chỉ ghi nhận yêu cầu và báo cần kiểm tra lịch trống/tồn kho thực tế trước khi gửi xác nhận chính thức.\n");
         }
         if (violations.stream().anyMatch(v -> v.startsWith("UNCONFIRMED_BOOKING_PAST_TENSE_STAFF_INSTRUCTION"))) {
             sb.append("- Khi khách chưa chốt khung giờ đặt lịch (bookingStatus != CONFIRMED), TUYỆT ĐỐI CẤM nói quá khứ \"").append(selfPronoun)
@@ -2157,20 +2945,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return text;
         }
         String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        if ("mình".equalsIgnoreCase(sp)) {
+            sp = "bên mình";
+        }
         String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
-        String out = text.strip();
-        out = out.replaceAll(
-                "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?hiểu(?:\\s+rồi)?|(?:đã\\s+)?hiểu\\s+rồi)(?:\\s+ạ)?(?=\\s*[.,!?;:]|$)",
-                "Dạ " + sp + " hiểu ạ"
-        );
-        out = out.replaceAll(
-                "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình\\s+(?:đã\\s+|rất\\s+|cũng\\s+)?hiểu(?:\\s+rồi)?|(?:đã\\s+)?hiểu\\s+rồi)\\b",
-                "Dạ " + sp + " hiểu"
-        );
-        out = out.replaceAll(
-                "(?iU)^(\\s*(?:dạ[,\\s]+)?)mình\\s+((?:đã\\s+|rất\\s+|cũng\\s+)?(?:biết|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi))\\b",
-                "Dạ " + sp + " $2"
-        );
+        String out = repairWrongPronounOpenerInPlace(text.strip(), sp, cp);
         out = out.replaceAll(
                 "(?iU)\\b(dạ[,\\s]+)" + Pattern.quote(sp) + "\\s+thấy\\s+([^.!?]*?\\b(?:có\\s+phù\\s+hợp|phù\\s+hợp\\s+với|như\\s+thế\\s+nào|thế\\s+nào|ra\\s+sao)[^.!?]*?\\?)",
                 "$1" + cp + " thấy $2"
@@ -2204,21 +2983,25 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
 
         if (activePackage != null) {
-            if (activePackage.priceVnd() > 0L && activePackage.priceVnd() < 350_000L
-                    && activePackage.displayName() != null && !activePackage.displayName().isBlank()) {
+            // Mốc C3-D (Nhóm 3): Đã xóa hoàn toàn ngưỡng cứng < 350_000L và câu mẫu Spa cứng ("chăm sóc vùng đầu – cổ – vai – gáy ... trọn gói").
+            // Chỉ đối chiếu dữ liệu cấu trúc 4 lớp khi activePackage thực sự mang vai trò CommercialRole.ECONOMICAL_OPTION ở bất kỳ mức giá/ngành nào.
+            if (activePackage.commercialRole() == PackageCatalogService.CommercialRole.ECONOMICAL_OPTION
+                    && !activePackage.canonicalName().isBlank()) {
                 Pattern falseLowestSentencePat = Pattern.compile(
-                        "(?isU)[^.!?]*(?:mức\\s+(?:giá\\s+|chi\\s+phí\\s+)?thấp\\s+nhất\\s+(?:bên\\s+em|hiện\\s+tại|cho)|"
+                        "(?isU)[^.!?]*(?:mức\\s+(?:giá\\s+|chi\\s+phí\\s+)?thấp\\s+nhất\\s+(?:bên\\s+em|bên\\s+mình|trung\\s+tâm|hiện\\s+tại|cho)|"
                         + "dưới\\s+mức\\s+(?:giá\\s+)?này\\s+chỉ\\s+làm(?:\\s+được)?\\s+(?:thư\\s+giãn\\s+)?(?:hời\\s+hợt|qua\\s+loa))[^.!?]*[.!?]?"
                 );
                 if (falseLowestSentencePat.matcher(out).find()) {
-                    String honestDownsellSentence = "Nếu " + cp + " muốn ưu tiên phương án tiết kiệm hơn tập trung chăm sóc vùng đầu – cổ – vai – gáy thì bên "
-                            + sp + " cũng có " + activePackage.displayName().strip() + " "
-                            + (activePackage.durationLabel() != null ? activePackage.durationLabel().strip() + " " : "")
-                            + "(" + activePackage.priceDisplay() + " trọn gói"
-                            + (activePackage.includesSummary() != null && !activePackage.includesSummary().isBlank()
-                                ? ", bao gồm " + activePackage.includesSummary().strip()
-                                : "")
-                            + ") ạ.";
+                    String shopRef = formatShopReference(sp);
+                    String itemWithUnit = activePackage.displayWithUnitNoun(activePackage.unitNoun());
+                    String formattedPrice = activePackage.formattedPriceWithUnit();
+                    String inc = (activePackage.includesSummary() != null && !activePackage.includesSummary().isBlank())
+                            ? (", bao gồm " + activePackage.includesSummary().strip())
+                            : "";
+                    String honestDownsellSentence = "Nếu " + cp + " muốn tham khảo phương án tiết kiệm hơn thì "
+                            + shopRef + " cũng có " + itemWithUnit
+                            + (!formattedPrice.isEmpty() ? " (" + formattedPrice + inc + ")" : "")
+                            + " ạ.";
                     out = falseLowestSentencePat.matcher(out).replaceAll(Matcher.quoteReplacement(honestDownsellSentence));
                 }
             }
