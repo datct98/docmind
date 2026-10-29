@@ -2217,6 +2217,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String bookingStatus,
             String llmIntendedSpeechAct
     ) {
+        return resolveActualSentSpeechAct(turnStage, finalBubbles, bookingStatus, llmIntendedSpeechAct, false);
+    }
+
+    public static String resolveActualSentSpeechAct(
+            String turnStage,
+            List<FanpageBotResponse.ReplyBubble> finalBubbles,
+            String bookingStatus,
+            String llmIntendedSpeechAct,
+            boolean isOperationalQuestionTurn
+    ) {
         String combinedText = finalBubbles != null
                 ? String.join(" ", finalBubbles.stream()
                         .filter(Objects::nonNull)
@@ -2224,6 +2234,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         .filter(Objects::nonNull)
                         .toList()).strip()
                 : "";
+        if (isOperationalQuestionTurn) {
+            return CleanAgentOrchestratorService.SPEECH_ACT_ANSWERED_OPERATIONAL_INFO;
+        }
         if ("CONFIRMED".equalsIgnoreCase(bookingStatus)
                 && !"STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equalsIgnoreCase(turnStage)
                 && !"STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equalsIgnoreCase(turnStage)) {

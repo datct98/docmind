@@ -316,8 +316,11 @@ public final class CleanAgentCatalogAndPromptBuilder {
             Set<String> requestedScopes,
             List<String> knownSymptoms
     ) {
-        List<String> pkgAreas = pkg.bodyAreas() != null
-                ? pkg.bodyAreas().stream().filter(Objects::nonNull).map(s -> s.strip().toLowerCase(Locale.ROOT)).toList()
+        List<String> rawPkgScopes = (pkg.inferred() != null && pkg.inferred().scopeTags() != null && !pkg.inferred().scopeTags().isEmpty())
+                ? pkg.inferred().scopeTags()
+                : pkg.scopeTags();
+        List<String> pkgAreas = rawPkgScopes != null
+                ? rawPkgScopes.stream().filter(Objects::nonNull).map(s -> s.strip().toLowerCase(Locale.ROOT)).toList()
                 : List.of();
         String combinedMeta = ((pkg.displayName() != null ? pkg.displayName() : "") + " "
                 + (pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
@@ -372,10 +375,13 @@ public final class CleanAgentCatalogAndPromptBuilder {
         if (pkg == null) {
             return "";
         }
-        List<String> pkgAreas = pkg.bodyAreas() != null
-                ? pkg.bodyAreas().stream().filter(Objects::nonNull).map(s -> s.strip().toLowerCase(Locale.ROOT)).toList()
+        List<String> rawPkgScopes = (pkg.inferred() != null && pkg.inferred().scopeTags() != null && !pkg.inferred().scopeTags().isEmpty())
+                ? pkg.inferred().scopeTags()
+                : pkg.scopeTags();
+        List<String> pkgAreas = rawPkgScopes != null
+                ? rawPkgScopes.stream().filter(Objects::nonNull).map(s -> s.strip().toLowerCase(Locale.ROOT)).toList()
                 : List.of();
-        if (pkgAreas.contains("toàn thân") || pkgAreas.contains("body") || "body_therapy".equalsIgnoreCase(pkg.serviceFamily())) {
+        if (pkgAreas.isEmpty() || pkgAreas.contains("toàn thân") || pkgAreas.contains("body") || "body_therapy".equalsIgnoreCase(pkg.serviceFamily())) {
             return "";
         }
         Set<String> requestedScopes = new LinkedHashSet<>();

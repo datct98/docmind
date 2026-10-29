@@ -1079,7 +1079,7 @@ public final class PackageCatalogService {
             String includesCell = findCellByHeaderKeywords(cells, headers, List.of("bao gồm", "nội dung", "quyền lợi", "đi kèm"), headers == null && cells.size() > 4 ? 4 : -1);
             String spaceOrFormatCell = findCellByHeaderKeywords(cells, headers, List.of("không gian", "phòng", "hình thức"), -1);
             String highlightCell = findCellByHeaderKeywords(cells, headers, List.of("nổi bật", "ưu điểm", "đặc điểm"), -1);
-            String suitableCell = findCellByHeaderKeywords(cells, headers, List.of("phù hợp", "ứng dụng", "khu vực ốp", "đối tượng", "mục tiêu"), -1);
+            String suitableCell = findCellByHeaderKeywords(cells, headers, List.of("phù hợp", "ứng dụng", "khu vực ốp", "khu vực", "vùng chăm sóc", "vùng tác động", "phạm vi", "đối tượng", "mục tiêu"), -1);
             String processOrDetailCell = findCellByHeaderKeywords(cells, headers, List.of("quy trình", "chi tiết", "mô tả", "thông số"), -1);
 
             outEntries.add(new RawParsedEntry(
@@ -1202,7 +1202,7 @@ public final class PackageCatalogService {
                     primarySpecText = seg.substring(seg.indexOf(':') + 1).strip();
                 } else if (segLow.startsWith("bao gồm:") || segLow.startsWith("quyền lợi:")) {
                     includesText = seg.substring(seg.indexOf(':') + 1).strip();
-                } else if (segLow.startsWith("phù hợp:") || segLow.startsWith("ứng dụng:") || segLow.startsWith("mục tiêu:")) {
+                } else if (segLow.startsWith("phù hợp:") || segLow.startsWith("ứng dụng:") || segLow.startsWith("mục tiêu:") || segLow.startsWith("vùng chăm sóc:") || segLow.startsWith("phạm vi:") || segLow.startsWith("khu vực:")) {
                     suitableText = seg.substring(seg.indexOf(':') + 1).strip();
                 } else if (segLow.startsWith("hình thức:") || segLow.startsWith("không gian:")) {
                     formatText = seg.substring(seg.indexOf(':') + 1).strip();

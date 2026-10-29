@@ -4154,60 +4154,11 @@ public record ConversationState(
     }
 
     /**
-     * Trích xuất toàn bộ vùng tác động / phạm vi mục tiêu ({@code targetScopes}) từ câu nói của khách,
-     * hỗ trợ cả cấu trúc xuôi ("đau lưng") và cấu trúc đảo ("chân đau") sau khi đã lọc mệnh đề phản bác.
+     * Trích xuất toàn bộ vùng tác động / phạm vi mục tiêu ({@code targetScopes}) từ câu nói của khách
+     * thông qua {@link ScopeMatcher} đa ngành (đọc từ {@code scopeTags} / {@code scopeTaxonomy} và lọc mệnh đề phản bác/rút lại).
      */
     public static List<String> extractTargetScopes(String text, List<String> domainKeywords) {
-        if (text == null || text.isBlank()) {
-            return List.of();
-        }
-        String cleanText = SentimentIntentLayer.stripMismatchCritiqueClause(text);
-        Set<String> scopes = new LinkedHashSet<>();
-        Matcher needM = MULTI_ENTITY_NEED_PATTERN.matcher(cleanText);
-        while (needM.find()) {
-            String fwdScope = needM.group("fwdScope");
-            String fwdScopeChain = needM.group("fwdScopeChain");
-            String invScope = needM.group("invScope");
-            String standalone = needM.group("standalone");
-            if (fwdScope != null && !fwdScope.isBlank()) {
-                addNormalizedAtomicScopes(scopes, fwdScope);
-            }
-            if (fwdScopeChain != null && !fwdScopeChain.isBlank()) {
-                addNormalizedAtomicScopes(scopes, fwdScopeChain);
-            }
-            if (invScope != null && !invScope.isBlank()) {
-                addNormalizedAtomicScopes(scopes, invScope);
-            }
-            if (standalone != null && standalone.toLowerCase(Locale.ROOT).contains("chuột")) {
-                scopes.add("chân");
-            }
-        }
-        String maskedText = cleanText.replaceAll("(?iU)\\bchân\\s+răng\\b", "răng")
-                .replaceAll("(?iU)\\bchân\\s+không\\b", " ")
-                .replaceAll("(?iU)\\b(?:quyền\\s+lợi|lợi\\s+ích|tiện\\s+lợi|thuận\\s+lợi|có\\s+lợi)\\b", " ")
-                .replaceAll("(?iU)\\b(?:gội|lần|bắt|ban)\\s+đầu\\b", " ");
-        Matcher areaM = BODY_AREA_TOKEN_PATTERN.matcher(maskedText);
-        while (areaM.find()) {
-            String raw = areaM.group(1);
-            if (raw != null && !raw.isBlank()) {
-                addNormalizedAtomicScopes(scopes, raw);
-            }
-        }
-        if (domainKeywords != null && !domainKeywords.isEmpty()) {
-            String lowerClean = Normalizer.normalize(maskedText, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-            for (String kw : domainKeywords) {
-                if (kw == null || kw.isBlank()) continue;
-                String kwLower = Normalizer.normalize(kw.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-                if (kwLower.contains("gội đầu")) continue;
-                if (kwLower.split("\\s+").length <= 2 && lowerClean.contains(kwLower)) {
-                    Matcher km = BODY_AREA_TOKEN_PATTERN.matcher(kwLower);
-                    if (km.find()) {
-                        addNormalizedAtomicScopes(scopes, km.group(1));
-                    }
-                }
-            }
-        }
-        return new ArrayList<>(scopes);
+        return ScopeMatcher.extractScopesFromText(text, domainKeywords);
     }
 
     /**

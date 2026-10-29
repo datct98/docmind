@@ -40,6 +40,7 @@ public class CleanAgentOrchestratorService {
     public static final String SPEECH_ACT_OFFERED_DETAILS = "OFFERED_PACKAGE_DETAILS";
     public static final String SPEECH_ACT_INVITED_TRIAL_OR_TIME = "INVITED_TRIAL_OR_ASKED_TIME";
     public static final String SPEECH_ACT_BOOKING_CONFIRMED = "BOOKING_CONFIRMED_ACK";
+    public static final String SPEECH_ACT_ANSWERED_OPERATIONAL_INFO = "ANSWERED_OPERATIONAL_INFO";
     public static final String SPEECH_ACT_GENERAL_CONSULTATION = "GENERAL_CONSULTATION";
 
     public static final String BRAIN_INTENT_PRICE_OBJECTION = "PRICE_OBJECTION";
@@ -397,14 +398,25 @@ public class CleanAgentOrchestratorService {
                 || recalledHasPresentedDownsell
                 || (customerInsight != null && customerInsight.hasPresentedDownsell());
 
-        List<String> domainKeywords = pagePersona != null && pagePersona.resolvedConfig() != null
-                ? pagePersona.resolvedConfig().resolvedScopeTaxonomy()
+        com.example.docmind.dto.PagePersonaConfig effectivePersonaConfig = pagePersona != null
+                ? pagePersona.resolvedConfig()
+                : null;
+        List<String> domainKeywords = effectivePersonaConfig != null
+                ? effectivePersonaConfig.resolvedScopeTaxonomy()
                 : List.of();
+        List<PackageCatalogService.PackageSummary> allCatalog =
+                (safeConv.availablePackageCatalog() != null && !safeConv.availablePackageCatalog().isEmpty())
+                        ? safeConv.availablePackageCatalog()
+                        : PackageCatalogService.filterByRegion(
+                                PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
+                                safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN");
+
         List<String> knownSymptoms = safeConv.knownSymptoms() != null ? safeConv.knownSymptoms() : List.of();
-        List<String> knownBodyAreas = extractCanonicalBodyAreas(
+        List<String> knownBodyAreas = ScopeMatcher.mergeScopes(
                 mergedMessage,
                 safeConv.knownBodyAreas() != null ? safeConv.knownBodyAreas() : List.of(),
-                domainKeywords
+                allCatalog,
+                effectivePersonaConfig
         );
         String statedContextOrTiming = resolveStatedContextOrTiming(safeConv, safePrior, safeHistory, mergedMessage, isMetaOrChallenge);
         int discoveryQuestionCount = resolveDiscoveryQuestionCount(safePrior, safeHistory);
@@ -423,6 +435,63 @@ public class CleanAgentOrchestratorService {
                 ? null
                 : (safeConv.heldPrice() != null ? safeConv.heldPrice() : safeConv.lastQuotedPrice());
 
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        knownSymptoms,
+                        knownBodyAreas,
+                        safeConv.rejectedPackages(),
+                        isMismatch
+                );
+        boolean hasEconomicalAltInCatalog = tieredCatalog.economicalAlternatives() != null
+                && !tieredCatalog.economicalAlternatives().isEmpty();
+        boolean hasPresentedDownsell = !safeHistory.isEmpty()
+                ? (hasEconomicalAltInCatalog && CleanAgentCatalogAndPromptBuilder.hasPackageMentionedInBotHistory(
+                        safeHistory, tieredCatalog.economicalAlternatives()))
+                : priorHasPresentedDownsell;
+
+        AgentBrainService.ShortUtteranceResolution shortUtteranceRes = (!isMetaOrChallenge && !hasPriceObjectionKeyword)
+                ? (agentBrainService != null
+                    ? agentBrainService.decodeContextualShortUtterance(
+                            mergedMessage,
+                            prevBotTurnText,
+                            effectivePrecedingSpeechAct,
+                            safeHistory,
+                            priceObjectionCount,
+                            inPriceObjectionContext,
+                            hasPresentedDownsell,
+                            hasEconomicalAltInCatalog,
+                            safePrior.bookingStatus())
+                    : AgentBrainService.decodeContextualShortUtteranceStatic(
+                            mergedMessage,
+                            prevBotTurnText,
+                            effectivePrecedingSpeechAct,
+                            safeHistory,
+                            priceObjectionCount,
+                            inPriceObjectionContext,
+                            hasPresentedDownsell,
+                            hasEconomicalAltInCatalog,
+                            safePrior.bookingStatus()))
+                : AgentBrainService.ShortUtteranceResolution.notApplicable();
+
+        boolean brainDecodedPositiveConfirm = shortUtteranceRes.isContextualShortUtterance()
+                && "POSITIVE_CONFIRMATION_SIGNAL".equals(shortUtteranceRes.decodedMeaning());
+        boolean brainDecodedOperationalAck = shortUtteranceRes.isContextualShortUtterance()
+                && "ACKNOWLEDGED_OPERATIONAL_INFO".equals(shortUtteranceRes.decodedMeaning());
+        boolean brainDecodedPriceHesitation = shortUtteranceRes.isContextualShortUtterance()
+                && ("PRICE_HESITATION_AFTER_VALUE_DEFENSE".equals(shortUtteranceRes.decodedMeaning())
+                    || "PRICE_CONTEXT_HESITATION_WITH_AVAILABLE_ECONOMICAL_OPTION".equals(shortUtteranceRes.decodedMeaning()));
+        boolean brainDecodedPoliteDeferral = shortUtteranceRes.isContextualShortUtterance()
+                && ("EXPLICIT_POLITE_DEFERRAL_PAUSE".equals(shortUtteranceRes.decodedMeaning())
+                    || "POLITE_CLOSING_ACKNOWLEDGMENT".equals(shortUtteranceRes.decodedMeaning())
+                    || "PRICE_HESITATION_NO_UNPRESENTED_ECONOMICAL_OPTION".equals(shortUtteranceRes.decodedMeaning()));
+        boolean brainDecodedLukewarmPostQuote = shortUtteranceRes.isContextualShortUtterance()
+                && "LUKEWARM_POST_PRICE_QUOTE_EVALUATION".equals(shortUtteranceRes.decodedMeaning());
+
+        if (brainDecodedPriceHesitation || brainDecodedPoliteDeferral) {
+            isHesitation = true;
+        }
+
         boolean isBareAck = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
                 && !isHesitation
@@ -434,16 +503,22 @@ public class CleanAgentOrchestratorService {
         boolean isBookingAlreadyConfirmed = "CONFIRMED".equalsIgnoreCase(safeConv.bookingStatus())
                 || "CONFIRMED".equalsIgnoreCase(safePrior.bookingStatus())
                 || SPEECH_ACT_BOOKING_CONFIRMED.equalsIgnoreCase(effectivePrecedingSpeechAct);
-        boolean isPostBookingClosingAck = isBareAck && isBookingAlreadyConfirmed;
-        boolean isPoliteClosingAck = isBareAck
-                && !isPostBookingClosingAck
-                && (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingSpeechAct)
-                    || wasPriorCustomerTurnHesitation(safeHistory)
-                    || isPauseOrDeferralBotReply(prevBotTurnText));
-        boolean isAckForOfferedDetails = isBareAck
+        boolean isPostBookingClosingAck = (isBareAck && isBookingAlreadyConfirmed)
+                || (shortUtteranceRes.isContextualShortUtterance()
+                    && "POST_BOOKING_CLOSING_ACK".equals(shortUtteranceRes.decodedMeaning()));
+        boolean isPoliteClosingAck = brainDecodedPoliteDeferral
+                || (isBareAck
+                    && !isPostBookingClosingAck
+                    && !brainDecodedOperationalAck
+                    && (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingSpeechAct)
+                        || wasPriorCustomerTurnHesitation(safeHistory)
+                        || isPauseOrDeferralBotReply(prevBotTurnText)));
+        boolean isAckForOfferedDetails = (isBareAck
                 && !isPostBookingClosingAck
                 && !isPoliteClosingAck
-                && SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingSpeechAct);
+                && SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingSpeechAct))
+                || (shortUtteranceRes.isContextualShortUtterance()
+                    && "ACCEPTED_PACKAGE_DETAIL_OFFER".equals(shortUtteranceRes.decodedMeaning()));
 
         String replyToMid = request != null && request.replyToMid() != null ? request.replyToMid().strip() : "";
         String quotedMessageText = request != null && request.quotedMessageText() != null ? request.quotedMessageText().strip() : "";
@@ -455,6 +530,7 @@ public class CleanAgentOrchestratorService {
 
         boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
         boolean isDetailOrUnitQuestion = isAckForOfferedDetails
+                || brainDecodedOperationalAck
                 || isOperationalQuestion
                 || SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv)
                 || isNormalPriceOrDetailInquiryMessage(mergedMessage)
@@ -468,7 +544,9 @@ public class CleanAgentOrchestratorService {
                 && !isPoliteClosingAck
                 && !isPostBookingClosingAck
                 && !isDetailOrUnitQuestion
-                && (isPositiveInterestForTrialInvite(mergedMessage)
+                && !brainDecodedLukewarmPostQuote
+                && (brainDecodedPositiveConfirm
+                    || isPositiveInterestForTrialInvite(mergedMessage)
                     || (isBareAck && SPEECH_ACT_INVITED_TRIAL_OR_TIME.equalsIgnoreCase(effectivePrecedingSpeechAct)));
         boolean isAckOrAcceptNow = !isMetaOrChallenge
                 && !hasPriceObjectionKeyword
@@ -476,6 +554,7 @@ public class CleanAgentOrchestratorService {
                 && !isPoliteClosingAck
                 && !isPostBookingClosingAck
                 && !isDetailOrUnitQuestion
+                && !brainDecodedLukewarmPostQuote
                 && (isPositiveTrialInterest
                     || hasProactiveBookingInfo
                     || SentimentIntentLayer.isTrialAcceptanceMessage(mergedMessage)
@@ -488,6 +567,7 @@ public class CleanAgentOrchestratorService {
                 && !isPoliteClosingAck
                 && !isPostBookingClosingAck
                 && !isDetailOrUnitQuestion
+                && !brainDecodedLukewarmPostQuote
                 && (isAckOrAcceptNow
                     || (!priorTurnWasPause && (safeConv.packageInterestAccepted()
                         || "COLLECTING_INFO".equals(safePrior.bookingStatus())
@@ -499,7 +579,7 @@ public class CleanAgentOrchestratorService {
                 ? "CONFIRMED"
                 : (packageInterestAccepted ? "COLLECTING_VISIT_TIME" : "NONE");
 
-        List<String> currentTurnSignals = classifyCleanCurrentTurnSignals(
+        List<String> currentTurnSignals = new ArrayList<>(classifyCleanCurrentTurnSignals(
                 mergedMessage,
                 isChallengeAssumption,
                 isStyleOrRepetitionComplaint,
@@ -515,14 +595,14 @@ public class CleanAgentOrchestratorService {
                 effectivePrecedingSpeechAct,
                 bookingFunnelStatus,
                 safeHistory
-        );
-
-        List<PackageCatalogService.PackageSummary> allCatalog =
-                (safeConv.availablePackageCatalog() != null && !safeConv.availablePackageCatalog().isEmpty())
-                        ? safeConv.availablePackageCatalog()
-                        : PackageCatalogService.filterByRegion(
-                                PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
-                                safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN");
+        ));
+        if (shortUtteranceRes.isContextualShortUtterance()) {
+            for (String sig : shortUtteranceRes.recommendedSignals()) {
+                if (!currentTurnSignals.contains(sig)) {
+                    currentTurnSignals.add(sig);
+                }
+            }
+        }
 
         List<PackageCatalogService.PackageSummary> presentedPackagesInHistory =
                 CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(safeHistory, safePrior, allCatalog);
@@ -536,48 +616,33 @@ public class CleanAgentOrchestratorService {
         CleanAgentCatalogAndPromptBuilder.ReplyResolutionState replyResolutionState =
                 quotedReplyResolution.resolutionState();
         if (quotedReplyResolution.quotedPackage() != null) {
-            currentTurnSignals = new ArrayList<>(currentTurnSignals);
             if (!currentTurnSignals.contains("QUOTED_PACKAGE_RESOLVED")) {
                 currentTurnSignals.add("QUOTED_PACKAGE_RESOLVED");
             }
         } else if (quotedReplyResolution.ambiguousMultiplePackages()) {
-            currentTurnSignals = new ArrayList<>(currentTurnSignals);
             if (!currentTurnSignals.contains("QUOTED_MESSAGE_AMBIGUOUS_PACKAGES")) {
                 currentTurnSignals.add("QUOTED_MESSAGE_AMBIGUOUS_PACKAGES");
             }
         } else if (quotedReplyResolution.unresolvedReplyToMid()) {
-            currentTurnSignals = new ArrayList<>(currentTurnSignals);
             if (!currentTurnSignals.contains("UNRESOLVED_REPLY_TO_MID")) {
                 currentTurnSignals.add("UNRESOLVED_REPLY_TO_MID");
             }
         }
 
-        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
-                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
-                        allCatalog,
-                        knownSymptoms,
-                        knownBodyAreas,
-                        safeConv.rejectedPackages(),
-                        isMismatch
+        String cleanStage = (shortUtteranceRes.isContextualShortUtterance()
+                && !shortUtteranceRes.recommendedStage().isBlank()
+                && !hasReplyToContext)
+                ? shortUtteranceRes.recommendedStage()
+                : resolveCleanFunnelStage(
+                        currentTurnSignals,
+                        mergedMessage,
+                        priceObjectionCount,
+                        inPriceObjectionContext,
+                        hasPresentedDownsell,
+                        packageInterestAccepted,
+                        tieredCatalog,
+                        safeHistory
                 );
-
-        boolean hasEconomicalAltInCatalog = tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty();
-        boolean hasPresentedDownsell = !safeHistory.isEmpty()
-                ? (hasEconomicalAltInCatalog && CleanAgentCatalogAndPromptBuilder.hasPackageMentionedInBotHistory(
-                        safeHistory, tieredCatalog.economicalAlternatives()))
-                : priorHasPresentedDownsell;
-
-        String cleanStage = resolveCleanFunnelStage(
-                currentTurnSignals,
-                mergedMessage,
-                priceObjectionCount,
-                inPriceObjectionContext,
-                hasPresentedDownsell,
-                packageInterestAccepted,
-                tieredCatalog,
-                safeHistory
-        );
         String stageBeforeReconcile = cleanStage;
         String priceObjectionUpdateReason = confirmedPriceObjectionThisTurn
                 ? (isExplicitDownsell
@@ -590,14 +655,37 @@ public class CleanAgentOrchestratorService {
         boolean holdSinglePackageFirstObjection = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(cleanStage);
         boolean isDownsellOrRepeatObjectionStage = "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(cleanStage);
 
-        List<PackageCatalogService.PackageSummary> scopeFilteredCatalog = new ArrayList<>(
-                holdSinglePackageFirstObjection
-                        ? tieredCatalog.primaryRecommendations()
-                        : tieredCatalog.allAllowedPackages()
-        );
-        List<PackageCatalogService.PackageSummary> excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
-        if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
-            excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+        List<PackageCatalogService.PackageSummary> scopeFilteredCatalog;
+        List<PackageCatalogService.PackageSummary> excludedCatalog;
+        if (isPureDeferralOrBusyTurn) {
+            // Checkpoint C3-A.3: Ở STAGE_6 (khách xin tạm dừng/cân nhắc thêm), khóa chặt không cho nhắc bất kỳ sản phẩm bóng ma nào ngoài presentedPackagesInHistory
+            scopeFilteredCatalog = new ArrayList<>(presentedPackagesInHistory);
+            excludedCatalog = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary ap : allCatalog) {
+                if (ap == null || ap.isAddon()) continue;
+                boolean wasPresented = presentedPackagesInHistory.stream()
+                        .anyMatch(pp -> pp != null && (pp.equals(ap) || pp.priceAmountVnd() == ap.priceAmountVnd()));
+                if (!wasPresented) {
+                    excludedCatalog.add(ap);
+                }
+            }
+        } else if ((isOperationalQuestion || brainDecodedOperationalAck) && !hasPresentedDownsell) {
+            // Khách hỏi giờ đóng cửa / chỗ đỗ xe sau khi chê đắt -> KHÔNG bị ép chèn gói tiết kiệm chưa từng giới thiệu
+            scopeFilteredCatalog = new ArrayList<>(tieredCatalog.primaryRecommendations());
+            excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
+            if (tieredCatalog.economicalAlternatives() != null) {
+                excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+            }
+        } else {
+            scopeFilteredCatalog = new ArrayList<>(
+                    holdSinglePackageFirstObjection
+                            ? tieredCatalog.primaryRecommendations()
+                            : tieredCatalog.allAllowedPackages()
+            );
+            excludedCatalog = new ArrayList<>(tieredCatalog.excludedCatalog());
+            if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
+                excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
+            }
         }
         boolean enforceReplyScopeGuard = !isMetaOrChallenge
                 && !isPoliteClosingAck
@@ -1257,7 +1345,8 @@ public class CleanAgentOrchestratorService {
                 cleanStage,
                 finalBubbles,
                 bookingFunnelStatus,
-                rawReflection.intendedSpeechAct()
+                rawReflection.intendedSpeechAct(),
+                isOperationalQuestion
         );
 
         if (agentBrainService != null) {
@@ -1638,71 +1727,11 @@ public class CleanAgentOrchestratorService {
             List<String> priorBodyAreas,
             List<String> domainKeywords
     ) {
-        LinkedHashSet<String> merged = new LinkedHashSet<>();
-        if (priorBodyAreas != null) {
-            for (String area : priorBodyAreas) {
-                if (area != null && !area.isBlank()) {
-                    merged.addAll(expandCanonicalBodyAreaTokens(area));
-                }
-            }
-        }
-        if (customerMessage != null && !customerMessage.isBlank()) {
-            merged.addAll(expandCanonicalBodyAreaTokens(customerMessage));
-            List<String> dynamicAreas = ConversationState.extractTargetScopes(
-                    customerMessage,
-                    domainKeywords != null ? domainKeywords : List.of()
-            );
-            for (String da : dynamicAreas) {
-                if (da != null && !da.isBlank()) {
-                    List<String> expanded = expandCanonicalBodyAreaTokens(da);
-                    if (!expanded.isEmpty()) {
-                        merged.addAll(expanded);
-                    } else {
-                        merged.add(da.strip().toLowerCase(Locale.ROOT));
-                    }
-                }
-            }
-        }
-        return new ArrayList<>(merged);
-    }
-
-    private static List<String> expandCanonicalBodyAreaTokens(String rawText) {
-        if (rawText == null || rawText.isBlank()) {
-            return List.of();
-        }
-        String lower = rawText.toLowerCase(Locale.ROOT);
-        LinkedHashSet<String> tokens = new LinkedHashSet<>();
-        if (lower.matches("(?isU).*\\b(đầu|nửa\\s+đầu|thái\\s+dương|trán|da\\s+đầu)\\b.*")) {
-            tokens.add("đầu");
-        }
-        if (lower.matches("(?isU).*\\bcổ\\b.*") && !lower.matches("(?isU).*\\bcổ\\s+(?:tay|chân)\\b.*")) {
-            tokens.add("cổ");
-        }
-        if (lower.matches("(?isU).*\\b(vai|bả\\s+vai)\\b.*")) {
-            tokens.add("vai");
-        }
-        if (lower.matches("(?isU).*\\bgáy\\b.*")) {
-            tokens.add("gáy");
-        }
-        if (lower.matches("(?isU).*\\b(lưng|thắt\\s+lưng|cột\\s+sống|eo|hông)\\b.*")) {
-            tokens.add("lưng");
-        }
-        if (lower.matches("(?isU).*\\bmông\\b.*")) {
-            tokens.add("mông");
-        }
-        if (lower.matches("(?isU).*\\b(gối|đầu\\s+gối|khớp\\s+gối)\\b.*")) {
-            tokens.add("gối");
-        }
-        if (lower.matches("(?isU).*\\b(tay|cánh\\s+tay|bàn\\s+tay|cổ\\s+tay|ngón\\s+tay)\\b.*")) {
-            tokens.add("tay");
-        }
-        if (lower.matches("(?isU).*\\b(chân|bắp\\s+chân|bàn\\s+chân|cổ\\s+chân|gót\\s+chân|đùi)\\b.*")) {
-            tokens.add("chân");
-        }
-        if (lower.matches("(?isU).*\\b(toàn\\s+thân|cả\\s+người|khắp\\s+người|body)\\b.*")) {
-            tokens.add("toàn thân");
-        }
-        return new ArrayList<>(tokens);
+        return ScopeMatcher.mergeScopes(
+                customerMessage,
+                priorBodyAreas != null ? priorBodyAreas : List.of(),
+                domainKeywords != null ? domainKeywords : List.of()
+        );
     }
 
     public static boolean isExplicitDownsellOrLowBudgetRequest(String message, ConversationState convState) {
@@ -1812,6 +1841,9 @@ public class CleanAgentOrchestratorService {
         if (isPauseOrDeferralBotReply(botText) || wasPriorCustomerTurnHesitation(history)) {
             return SPEECH_ACT_RESPECTED_PAUSE;
         }
+        if (AgentBrainService.isOperationalAnswerContext(botText, history)) {
+            return SPEECH_ACT_ANSWERED_OPERATIONAL_INFO;
+        }
         if (isOfferPackageDetailsBotReply(botText)) {
             return SPEECH_ACT_OFFERED_DETAILS;
         }
@@ -1872,6 +1904,57 @@ public class CleanAgentOrchestratorService {
         if (safeSignals.contains("POLITE_CLOSING_ACKNOWLEDGMENT")) {
             return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
         }
+        if (safeSignals.contains("ACKNOWLEDGED_OPERATIONAL_INFO")) {
+            return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+        }
+        if (safeSignals.contains("POSITIVE_CONFIRMATION_SIGNAL")) {
+            return "STAGE_4_POSITIVE_TRIAL_OR_BOOKING";
+        }
+
+        boolean hasEconomicalAlt = tieredCatalog != null
+                && tieredCatalog.economicalAlternatives() != null
+                && !tieredCatalog.economicalAlternatives().isEmpty();
+        boolean downsellAlreadyOffered = hasPresentedDownsell
+                || (hasEconomicalAlt && CleanAgentCatalogAndPromptBuilder.hasPackageMentionedInBotHistory(
+                        history, tieredCatalog.economicalAlternatives()));
+
+        AgentBrainService.ShortUtteranceResolution shortRes = AgentBrainService.decodeContextualShortUtteranceStatic(
+                customerMessage,
+                resolveImmediatelyPrecedingBotText(history, null),
+                null,
+                history,
+                priceObjectionCount,
+                inPriceObjectionContext,
+                downsellAlreadyOffered,
+                hasEconomicalAlt,
+                "NONE"
+        );
+        if (shortRes.isContextualShortUtterance() && !shortRes.recommendedStage().isEmpty()) {
+            if ("ACKNOWLEDGED_OPERATIONAL_INFO".equals(shortRes.decodedMeaning())) {
+                return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+            }
+            if ("POSITIVE_CONFIRMATION_SIGNAL".equals(shortRes.decodedMeaning())) {
+                return "STAGE_4_POSITIVE_TRIAL_OR_BOOKING";
+            }
+            if ("LUKEWARM_POST_PRICE_QUOTE_EVALUATION".equals(shortRes.decodedMeaning())) {
+                return (inPriceObjectionContext && !downsellAlreadyOffered && hasEconomicalAlt)
+                        ? "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL"
+                        : "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
+            }
+            if ("PRICE_HESITATION_AFTER_VALUE_DEFENSE".equals(shortRes.decodedMeaning())
+                    || "PRICE_HESITATION_PASSIVE_ACK_AFTER_VALUE_DEFENSE".equals(shortRes.decodedMeaning())
+                    || "PRICE_CONTEXT_HESITATION_WITH_AVAILABLE_ECONOMICAL_OPTION".equals(shortRes.decodedMeaning())) {
+                return (!downsellAlreadyOffered && hasEconomicalAlt)
+                        ? "STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL"
+                        : "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
+            }
+            if ("EXPLICIT_POLITE_DEFERRAL_PAUSE".equals(shortRes.decodedMeaning())
+                    || "PRICE_HESITATION_NO_UNPRESENTED_ECONOMICAL_OPTION".equals(shortRes.decodedMeaning())
+                    || "POLITE_CLOSING_ACKNOWLEDGMENT".equals(shortRes.decodedMeaning())) {
+                return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
+            }
+        }
+
         boolean isExplicitDownsell = isExplicitDownsellOrLowBudgetRequest(customerMessage, null)
                 || safeSignals.contains("PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST");
         boolean hasPriceObjectionSignal = isExplicitDownsell
@@ -1885,14 +1968,10 @@ public class CleanAgentOrchestratorService {
                 && !safeSignals.contains("POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE");
         boolean currentTurnHasPriceObjection = !isServiceDetailQuestionTurn && hasPriceObjectionSignal;
         boolean isHesitationTurn = !currentTurnHasPriceObjection
-                && (safeSignals.contains("HESITATION_OR_DEFERRAL") || isHesitationOrDeferralMessage(customerMessage));
+                && (safeSignals.contains("HESITATION_OR_DEFERRAL")
+                    || safeSignals.contains("PRICE_HESITATION_AFTER_VALUE_DEFENSE")
+                    || isHesitationOrDeferralMessage(customerMessage));
         boolean isPureBusyOrStop = isHesitationTurn && isPureBusyOrStopDeferralMessage(customerMessage);
-        boolean hasEconomicalAlt = tieredCatalog != null
-                && tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty();
-        boolean downsellAlreadyOffered = hasPresentedDownsell
-                || (hasEconomicalAlt && CleanAgentCatalogAndPromptBuilder.hasPackageMentionedInBotHistory(
-                        history, tieredCatalog.economicalAlternatives()));
         if (isHesitationTurn) {
             if (!isPureBusyOrStop
                     && inPriceObjectionContext
@@ -1902,7 +1981,7 @@ public class CleanAgentOrchestratorService {
             }
             return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
         }
-        if (isServiceDetailQuestionTurn) {
+        if (isServiceDetailQuestionTurn || safeSignals.contains("LUKEWARM_POST_QUOTE_CHECKIN")) {
             return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
         }
         boolean isBookingOrPositiveTrialTurn = !currentTurnHasPriceObjection
@@ -2317,9 +2396,10 @@ public class CleanAgentOrchestratorService {
         boolean isPriceObj = hasPriceObjectionKeyword || isCleanPriceObjectionMessage(mergedMessage);
         boolean isBareAck = !isPriceObj && !isHesitation && isBareAcknowledgmentMessage(mergedMessage);
         boolean hasProactiveBookingInfo = !isPriceObj && !isHesitation && hasProactiveBookingOrPackageSelectionInMessage(mergedMessage);
+        String immediateBotText = resolveImmediatelyPrecedingBotText(history, null);
         String effectivePrecedingAct = (precedingBotSpeechAct != null && !precedingBotSpeechAct.isBlank())
                 ? precedingBotSpeechAct.strip()
-                : inferPrecedingBotSpeechAct(null, resolveImmediatelyPrecedingBotText(history, null), history, bookingStatus);
+                : inferPrecedingBotSpeechAct(null, immediateBotText, history, bookingStatus);
 
         if (isMismatch) {
             signals.add("ENTITY_MISMATCH_CORRECTION");
@@ -2330,6 +2410,26 @@ public class CleanAgentOrchestratorService {
         if (isStyleOrRepetitionComplaint && !isChallengeAssumption && !isMismatch) {
             signals.add("STYLE_OR_REPETITION_FEEDBACK");
         }
+
+        if (!isPriceObj && !isMetaSignalOnly(signals)) {
+            AgentBrainService.ShortUtteranceResolution shortRes =
+                    AgentBrainService.decodeContextualShortUtteranceStatic(
+                            mergedMessage,
+                            immediateBotText,
+                            effectivePrecedingAct,
+                            history,
+                            priceObjectionCount,
+                            priceObjectionCount >= 1 && priceObjectionCount < 2,
+                            priceObjectionCount >= 2,
+                            true,
+                            bookingStatus
+                    );
+            if (shortRes.isContextualShortUtterance() && !shortRes.recommendedSignals().isEmpty()) {
+                signals.addAll(shortRes.recommendedSignals());
+                return signals;
+            }
+        }
+
         if (isPriceObj) {
             signals.add("PRICE_OBJECTION");
             if (priceObjectionCount <= 1 && !isExplicitDownsell) {
@@ -2350,6 +2450,11 @@ public class CleanAgentOrchestratorService {
             if (SPEECH_ACT_RESPECTED_PAUSE.equalsIgnoreCase(effectivePrecedingAct)
                     || wasPriorCustomerTurnHesitation(history)) {
                 signals.add("POLITE_CLOSING_ACKNOWLEDGMENT");
+                return signals;
+            }
+            if (SPEECH_ACT_ANSWERED_OPERATIONAL_INFO.equalsIgnoreCase(effectivePrecedingAct)) {
+                signals.add("ACKNOWLEDGED_OPERATIONAL_INFO");
+                signals.add("SERVICE_OR_UNIT_DETAIL_QUESTION");
                 return signals;
             }
             if (SPEECH_ACT_OFFERED_DETAILS.equalsIgnoreCase(effectivePrecedingAct)) {
