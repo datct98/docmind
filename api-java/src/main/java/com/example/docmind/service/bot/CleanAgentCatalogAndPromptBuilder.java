@@ -1508,11 +1508,12 @@ public final class CleanAgentCatalogAndPromptBuilder {
                         ? (effectiveHeldPackageDisplay + (effectiveHeldPriceDisplay != null && !"null".equals(effectiveHeldPriceDisplay) ? " (" + effectiveHeldPriceDisplay + ")" : ""))
                         : "null"));
 
-        StringBuilder sb = new StringBuilder(4096);
+        StringBuilder sb = new StringBuilder(5120);
         sb.append("<CLEAN_AGENT_SYSTEM_PROMPT>\n")
           .append(systemPrompt.strip())
           .append("\n</CLEAN_AGENT_SYSTEM_PROMPT>\n")
           .append("<!-- SYSTEM_USER_SPLIT -->\n\n");
+        int structuredTurnContractInsertOffset = sb.length();
 
         List<String> burstSubMessages = extractBurstSubMessages(customerMessage);
         appendCleanAgentBrainInsightBlock(
@@ -1736,10 +1737,53 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 }
             }
         }
-        if (activePkgForBrain != null && !visiblePackagesForTurn.contains(activePkgForBrain)) {
+        if (activePkgForBrain != null
+                && !isPureDeferralOrBusyTurn
+                && !isMetaCommunicationTurn
+                && !isPostBookingClosingAckTurn
+                && !visiblePackagesForTurn.contains(activePkgForBrain)) {
             visiblePackagesForTurn.add(activePkgForBrain);
         }
         sb.append("</SCOPE_FILTERED_CATALOG>\n\n");
+
+        String resolvedPageUnitNoun = resolveEffectivePageUnitNoun(pagePersona, visiblePackagesForTurn, tieredCatalog);
+        List<AgentSkillDto> governedSkillsForContract = new ArrayList<>();
+        if (activeSkills != null) {
+            for (AgentSkillDto s : activeSkills) {
+                if (isSkillAllowedForPageAndTurn(
+                        s,
+                        pageId,
+                        resolvedStage,
+                        safeQuote,
+                        isOperationalQuestionTurn,
+                        visiblePackagesForTurn
+                )) {
+                    governedSkillsForContract.add(s);
+                }
+            }
+        }
+        StructuredTurnContract turnContract = buildStructuredTurnContract(
+                safeSignals,
+                safeQuote,
+                burstSubMessages,
+                resolvedStage,
+                resolvedPageUnitNoun,
+                discoveryCompleted,
+                knownSymptoms,
+                knownBodyAreas,
+                safeTiming,
+                selectedProductIdDisplay,
+                bookingDateDisplay,
+                bookingTimeDisplay,
+                resolvedFunnelStatus,
+                priceObjectionCount,
+                customerInsight,
+                governedSkillsForContract,
+                isOperationalQuestionTurn,
+                isServiceDetailQuestionTurn,
+                visiblePackagesForTurn
+        );
+        sb.insert(structuredTurnContractInsertOffset, renderStructuredTurnContractXml(turnContract));
 
         sb.append("<DOCUMENT_CONTEXT>\n");
         if (fusedChunks != null && !fusedChunks.isEmpty()) {
@@ -2092,19 +2136,19 @@ public final class CleanAgentCatalogAndPromptBuilder {
             if (candidates.size() >= 2) {
                 PackageCatalogService.PackageSummary p1 = candidates.get(0);
                 PackageCatalogService.PackageSummary p2 = candidates.get(1);
-                String p1Label = BubbleCapHook.capitalizeFirstLetter(p1.canonicalLabel().replaceFirst("(?iU)^gói\\s+", "").strip());
-                String p2Label = BubbleCapHook.capitalizeFirstLetter(p2.canonicalLabel().replaceFirst("(?iU)^gói\\s+", "").strip());
-                String p1ItemPrefix = (p1.durationMinutes() != null && p1.durationMinutes() > 0) ? "gói " : "";
-                String p2ItemPrefix = (p2.durationMinutes() != null && p2.durationMinutes() > 0) ? "gói " : "";
-                tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false) và dùng đại từ chỉ định ('gói này', 'gói đó'). TUYỆT ĐỐI KHÔNG tự mặc định lấy held_package hay gói gần nhất làm câu trả lời duy nhất, và KHÔNG tự bịa chính sách giảm giá combo. Hãy hỏi xác nhận ngắn gọn giữa đúng các mục đã tư vấn trong lịch sử: " + p1ItemPrefix + p1Label + " giá " + p1.formattedPriceWithUnit() + " hay " + p2ItemPrefix + p2Label + " giá " + p2.formattedPriceWithUnit() + ".";
-                goodExample = "Dạ " + custPronoun + " đang hỏi ưu đãi cho " + p1ItemPrefix + p1Label + " giá " + p1.formattedPriceWithUnit() + " hay " + p2ItemPrefix + p2Label + " giá " + p2.formattedPriceWithUnit() + " ạ? " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " xác nhận đúng rồi báo " + custPronoun + " chính xác nhé.";
-                antiPattern = "Mặc định lấy gói gần nhất làm câu trả lời duy nhất, tự bịa ưu đãi combo, hoặc ép chốt lịch khi chưa rõ khách Reply vào mục nào.";
+                String u1 = p1.unitNoun();
+                String p1Full = formatClarificationCandidateWithUnit(p1, u1);
+                String p2Full = formatClarificationCandidateWithUnit(p2, p2.unitNoun());
+                tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false) và dùng đại từ chỉ định. TUYỆT ĐỐI KHÔNG tự mặc định lấy held_package hay " + u1 + " gần nhất làm câu trả lời duy nhất, và KHÔNG tự bịa chính sách giảm giá combo. Hãy hỏi xác nhận ngắn gọn giữa đúng các " + u1 + " đã tư vấn trong lịch sử: " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay " + p2Full + " giá " + p2.formattedPriceWithUnit() + ".";
+                goodExample = "Dạ " + custPronoun + " đang hỏi ưu đãi cho " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay " + p2Full + " giá " + p2.formattedPriceWithUnit() + " ạ? " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " xác nhận đúng rồi báo " + custPronoun + " chính xác nhé.";
+                antiPattern = "Mặc định lấy " + u1 + " gần nhất làm câu trả lời duy nhất, tự bịa ưu đãi combo, hoặc ép chốt lịch khi chưa rõ khách Reply vào " + u1 + " nào.";
             } else if (candidates.size() == 1) {
                 PackageCatalogService.PackageSummary p1 = candidates.get(0);
-                String p1Label = BubbleCapHook.capitalizeFirstLetter(p1.canonicalLabel().replaceFirst("(?iU)^gói\\s+", "").strip());
-                tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false). Trong lịch sử mới xuất hiện 1 mục là " + p1Label + " (" + p1.formattedPriceWithUnit() + "). TUYỆT ĐỐI KHÔNG tự mặc định khách chắc chắn hỏi mục này — hãy hỏi xác nhận ngắn gọn xem " + custPronoun + " đang hỏi " + p1Label + " giá " + p1.formattedPriceWithUnit() + " hay một mục khác trong bảng giá để " + selfPronoun + " kiểm tra chính xác.";
-                goodExample = "Dạ không biết " + custPronoun + " đang muốn hỏi thông tin ưu đãi của " + p1Label + " giá " + p1.formattedPriceWithUnit() + " hay một mục khác trong bảng giá bên " + selfPronoun + " ạ? " + BubbleCapHook.capitalizeFirstLetter(custPronoun) + " xác nhận giúp " + selfPronoun + " để " + selfPronoun + " báo chính xác nhất nhé ạ.";
-                antiPattern = "Trả lời khẳng định một chiều cho 1 mục mà không hỏi xác nhận xem khách hỏi mục đó hay mục khác.";
+                String u1 = p1.unitNoun();
+                String p1Full = formatClarificationCandidateWithUnit(p1, u1);
+                tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false). Trong lịch sử mới xuất hiện 1 " + u1 + " là " + p1Full + " (" + p1.formattedPriceWithUnit() + "). TUYỆT ĐỐI KHÔNG tự mặc định khách chắc chắn hỏi " + u1 + " này — hãy hỏi xác nhận ngắn gọn xem " + custPronoun + " đang hỏi " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay một " + u1 + " khác trong bảng giá để " + selfPronoun + " kiểm tra chính xác.";
+                goodExample = "Dạ không biết " + custPronoun + " đang muốn hỏi thông tin ưu đãi của " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay một " + u1 + " khác trong bảng giá bên " + selfPronoun + " ạ? " + BubbleCapHook.capitalizeFirstLetter(custPronoun) + " xác nhận giúp " + selfPronoun + " để " + selfPronoun + " báo chính xác nhất nhé ạ.";
+                antiPattern = "Trả lời khẳng định một chiều cho 1 " + u1 + " mà không hỏi xác nhận xem khách hỏi " + u1 + " đó hay " + u1 + " khác.";
             } else {
                 tacticalFocus = "Khách vừa Reply vào một tin nhắn ở rất xa (reply_to.mid=" + safeQuote.replyToMid() + " found=false) và hiện chưa có lịch sử sản phẩm/dịch vụ nào trong phiên. TUYỆT ĐỐI KHÔNG đoán mò bất kỳ tên sản phẩm/gói hay con số giá nào. Hãy hỏi mở lịch sự để khách nhắn lại tên sản phẩm/gói hoặc mức giá khách đang quan tâm.";
                 goodExample = "Dạ do tin nhắn " + custPronoun + " trích dẫn ở khá xa nên " + selfPronoun + " chưa hiển thị lại được nội dung, " + custPronoun + " nhắn giúp " + selfPronoun + " tên sản phẩm/gói hoặc mức giá " + custPronoun + " đang quan tâm để " + selfPronoun + " kiểm tra chính xác nhất nhé ạ?";
@@ -2254,6 +2298,343 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("</AGENT_BRAIN_INSIGHT>\n\n");
     }
 
+    public record StructuredProductConstraint(
+            String productId,
+            String rawSkuCode,
+            String canonicalName,
+            String unitNoun,
+            String commercialRole,
+            String priceLabel,
+            String formattedPriceWithUnit,
+            long priceAmountVnd,
+            String billingUnit,
+            String formattedSpecsSummary,
+            List<String> scopeTags
+    ) {
+        public static StructuredProductConstraint fromPackageSummary(PackageCatalogService.PackageSummary p, String fallbackUnitNoun) {
+            PackageCatalogService.CatalogSourceData src = p.source();
+            PackageCatalogService.CatalogNormalizedData norm = p.normalized();
+            PackageCatalogService.CatalogInferredData inf = p.inferred();
+            PackageCatalogService.CatalogDisplayData disp = p.display();
+            String uNoun = (disp != null && disp.unitNoun() != null && !disp.unitNoun().isBlank())
+                    ? disp.unitNoun()
+                    : ((fallbackUnitNoun != null && !fallbackUnitNoun.isBlank()) ? fallbackUnitNoun : "sản phẩm");
+            return new StructuredProductConstraint(
+                    norm != null && norm.productId() != null ? norm.productId() : p.productId(),
+                    src != null && src.rawSkuCode() != null ? src.rawSkuCode() : (p.code() != null ? p.code() : ""),
+                    norm != null && norm.canonicalName() != null ? norm.canonicalName() : p.canonicalName(),
+                    uNoun,
+                    inf != null && inf.commercialRole() != null ? inf.commercialRole().name() : p.commercialRole().name(),
+                    disp != null && disp.priceLabel() != null ? disp.priceLabel() : p.priceLabel(),
+                    disp != null && disp.formattedPriceWithUnit() != null ? disp.formattedPriceWithUnit() : p.formattedPriceWithUnit(),
+                    norm != null ? norm.priceAmountVnd() : p.priceAmountVnd(),
+                    norm != null && norm.billingUnit() != null ? norm.billingUnit() : p.billingUnit(),
+                    disp != null && disp.formattedSpecsSummary() != null ? disp.formattedSpecsSummary() : p.formattedSpecsSummary(),
+                    inf != null && inf.scopeTags() != null ? inf.scopeTags() : p.scopeTags()
+            );
+        }
+    }
+
+    public record StructuredTurnContract(
+            String primaryIntent,
+            List<String> detectedSignals,
+            String replyResolutionState,
+            String replyToMid,
+            int burstMessageCount,
+            String stage,
+            String unitNoun,
+            boolean discoveryCompleted,
+            List<String> verifiedScopes,
+            String verifiedContextOrTiming,
+            String selectedProductId,
+            String bookingDate,
+            String bookingTime,
+            String bookingStatus,
+            int priceObjectionCount,
+            String buyerArchetype,
+            String workingHypothesis,
+            int buyingTemperature,
+            String lastActualSentSpeechAct,
+            List<String> activeSkillCodes,
+            String primaryGoal,
+            List<String> allowedActions,
+            List<String> forbiddenActions,
+            List<StructuredProductConstraint> commercialProducts,
+            boolean allowUngroundedPromo,
+            boolean allowCrossTierAttributeLeak,
+            boolean allowGhostProductOnClosing
+    ) {
+    }
+
+    private static String formatClarificationCandidateWithUnit(
+            PackageCatalogService.PackageSummary pkg,
+            String unitNoun
+    ) {
+        String effectiveUnit = (unitNoun != null && !unitNoun.isBlank()) ? unitNoun.strip() : "sản phẩm";
+        if (pkg == null) {
+            return effectiveUnit;
+        }
+        String label = pkg.canonicalLabel();
+        if (label.isEmpty()) {
+            return effectiveUnit;
+        }
+        String lowUnit = effectiveUnit.toLowerCase(Locale.ROOT);
+        String lowLabel = label.toLowerCase(Locale.ROOT);
+        if (lowLabel.startsWith(lowUnit + " ")) {
+            String rest = label.substring(effectiveUnit.length()).strip();
+            return lowUnit + " " + BubbleCapHook.capitalizeFirstLetter(rest);
+        }
+        return lowUnit + " " + BubbleCapHook.capitalizeFirstLetter(label);
+    }
+
+    public static String resolveEffectivePageUnitNoun(
+            PromptBuilder.PagePersona pagePersona,
+            List<PackageCatalogService.PackageSummary> visiblePackages,
+            TieredCatalogResult tieredCatalog
+    ) {
+        if (pagePersona != null && pagePersona.personaConfig() != null) {
+            com.example.docmind.dto.PagePersonaConfig cfg = pagePersona.personaConfig();
+            if (cfg.unitNoun() != null && !cfg.unitNoun().isBlank()) {
+                return cfg.unitNoun().strip();
+            }
+            if ((cfg.industryCode() != null && !cfg.industryCode().isBlank())
+                    || !cfg.safeDomainKeywords().isEmpty()) {
+                String resolved = cfg.resolvedUnitNoun();
+                if (!"sản phẩm".equals(resolved)) {
+                    return resolved;
+                }
+            }
+        }
+        if (visiblePackages != null) {
+            for (PackageCatalogService.PackageSummary p : visiblePackages) {
+                if (p != null && p.display() != null && p.display().unitNoun() != null && !p.display().unitNoun().isBlank()) {
+                    return p.display().unitNoun().strip();
+                }
+            }
+        }
+        if (tieredCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : tieredCatalog.allAllowedPackages()) {
+                if (p != null && p.display() != null && p.display().unitNoun() != null && !p.display().unitNoun().isBlank()) {
+                    return p.display().unitNoun().strip();
+                }
+            }
+        }
+        return (pagePersona != null && pagePersona.personaConfig() != null)
+                ? pagePersona.personaConfig().resolvedUnitNoun()
+                : "sản phẩm";
+    }
+
+    public static StructuredTurnContract buildStructuredTurnContract(
+            List<String> signals,
+            QuotedReplyResolution quoteResolution,
+            List<String> burstSubMessages,
+            String resolvedStage,
+            String unitNoun,
+            boolean discoveryCompleted,
+            List<String> knownSymptoms,
+            List<String> knownScopes,
+            String safeTiming,
+            String selectedProductId,
+            String bookingDate,
+            String bookingTime,
+            String bookingStatus,
+            int priceObjectionCount,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            boolean isOperationalQuestionTurn,
+            boolean isServiceDetailQuestionTurn,
+            List<PackageCatalogService.PackageSummary> visiblePackages
+    ) {
+        List<String> safeSignals = signals != null ? List.copyOf(signals) : List.of();
+        QuotedReplyResolution safeQuote = quoteResolution != null ? quoteResolution : QuotedReplyResolution.empty();
+        String primaryIntent = isOperationalQuestionTurn
+                ? "OPERATIONAL_INFO_INQUIRY"
+                : (!safeSignals.isEmpty() ? safeSignals.get(0) : (isServiceDetailQuestionTurn ? "PRODUCT_DETAIL_INQUIRY" : "GENERAL_CONSULTATION"));
+
+        Set<String> mergedScopes = new LinkedHashSet<>();
+        if (knownScopes != null) mergedScopes.addAll(knownScopes);
+        if (knownSymptoms != null) mergedScopes.addAll(knownSymptoms);
+
+        String archetype = (customerInsight != null && customerInsight.buyerArchetype() != null && !customerInsight.buyerArchetype().isBlank())
+                ? customerInsight.buyerArchetype().strip()
+                : "INSUFFICIENT_EVIDENCE";
+        String hypothesis = (customerInsight != null && customerInsight.workingHypothesis() != null && !customerInsight.workingHypothesis().isBlank())
+                ? customerInsight.workingHypothesis().strip()
+                : "INSUFFICIENT_EVIDENCE";
+        int buyingTemp = customerInsight != null ? customerInsight.buyingTemperature() : 40;
+        String lastSpeechAct = (customerInsight != null && customerInsight.lastActualSentSpeechAct() != null && !customerInsight.lastActualSentSpeechAct().isBlank())
+                ? customerInsight.lastActualSentSpeechAct().strip()
+                : "NONE";
+
+        List<String> skillCodes = new ArrayList<>();
+        if (activeSkills != null) {
+            for (AgentSkillDto s : activeSkills) {
+                if (s != null && s.code() != null && !s.code().isBlank()) {
+                    skillCodes.add(s.code().strip());
+                }
+            }
+        }
+
+        String primaryGoal;
+        List<String> allowedActions = new ArrayList<>();
+        List<String> forbiddenActions = new ArrayList<>();
+        forbiddenActions.add("FABRICATE_UNGROUNDED_PRICE_OR_PROMO");
+        forbiddenActions.add("CROSS_TIER_EXCLUSIVE_ATTRIBUTE_LEAK");
+
+        if (safeQuote.unresolvedReplyToMid() || safeQuote.ambiguousMultiplePackages()) {
+            primaryGoal = "CLARIFY_QUOTED_TARGET_WITHOUT_GUESSING";
+            allowedActions.add("ASK_TARGET_CLARIFICATION_BY_UNIT_NOUN");
+            forbiddenActions.add("DEFAULT_TO_HELD_PACKAGE");
+            forbiddenActions.add("PUSH_BOOKING_TIME");
+        } else if (isOperationalQuestionTurn) {
+            primaryGoal = "ANSWER_OPERATIONAL_QUESTION_DIRECTLY";
+            allowedActions.add("PROVIDE_GROUNDED_OPERATIONAL_INFO");
+            forbiddenActions.add("UNSOLICITED_DOWNSELL_PITCH");
+        } else if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(resolvedStage)) {
+            primaryGoal = "RESPECT_CUSTOMER_PAUSE_AND_WARM_FAREWELL";
+            allowedActions.add("ACKNOWLEDGE_PAUSE");
+            allowedActions.add("WARM_CLOSING_WISH");
+            forbiddenActions.add("MENTION_UNPRESENTED_GHOST_PRODUCT");
+            forbiddenActions.add("PUSH_BOOKING_TIME");
+        } else if ("STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(resolvedStage)) {
+            primaryGoal = "HOLD_VALUE_AND_EXPLAIN_WORTH_WITHOUT_DOWNSELL";
+            allowedActions.add("EXPLAIN_PRODUCT_VALUE_AND_INCLUDES");
+            allowedActions.add("INVITE_LOW_PRESSURE_TRIAL");
+            forbiddenActions.add("PREMATURE_DOWNSELL_ON_FIRST_OBJECTION");
+        } else if ("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(resolvedStage)
+                || "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(resolvedStage)) {
+            primaryGoal = "OFFER_GROUNDED_ECONOMICAL_OPTION_WITH_HONEST_SCOPE";
+            allowedActions.add("PRESENT_ECONOMICAL_OPTION");
+            allowedActions.add("CONTRAST_SCOPE_HONESTLY");
+            forbiddenActions.add("DISPARAGE_LOWER_TIER");
+        } else if ("STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(resolvedStage)) {
+            if ("AWAITING_PRODUCT_SELECTION".equals(bookingStatus)) {
+                primaryGoal = "CLARIFY_PRODUCT_CHOICE_WHILE_PRESERVING_CAPTURED_SLOTS";
+                allowedActions.add("ASK_WHICH_PRESENTED_PRODUCT_TO_BOOK");
+                allowedActions.add("KEEP_CAPTURED_DATE_OR_TIME");
+                forbiddenActions.add("FALSE_PRODUCT_SELECTION_CLAIM");
+                forbiddenActions.add("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM");
+            } else if ("AWAITING_AVAILABILITY_CHECK".equals(bookingStatus)) {
+                primaryGoal = "ACKNOWLEDGE_REQUEST_AND_INFORM_AVAILABILITY_CHECK";
+                allowedActions.add("CONFIRM_CAPTURED_PRODUCT_DATE_TIME");
+                allowedActions.add("NOTIFY_PENDING_AVAILABILITY_CHECK");
+                forbiddenActions.add("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM");
+            } else if ("CONFIRMED".equals(bookingStatus)) {
+                primaryGoal = "CONFIRM_VERIFIED_BOOKING_WARMLY";
+                allowedActions.add("CONFIRM_BOOKING_DETAILS");
+            } else {
+                primaryGoal = "CONFIRM_SELECTED_PRODUCT_AND_COLLECT_MISSING_DATE_OR_TIME";
+                allowedActions.add("LOCK_SELECTED_PRODUCT");
+                allowedActions.add("ASK_MISSING_DATE_OR_TIME");
+                forbiddenActions.add("RE_PITCH_UNSELECTED_PRODUCT");
+                forbiddenActions.add("UNVERIFIED_BOOKING_CONFIRMATION_CLAIM");
+            }
+        } else if (!discoveryCompleted) {
+            primaryGoal = "EMPATHIZE_AND_ASK_ONE_CONCISE_DISCOVERY_QUESTION";
+            allowedActions.add("ACKNOWLEDGE_CUSTOMER_NEED");
+            allowedActions.add("ASK_SINGLE_CONTEXT_QUESTION");
+            forbiddenActions.add("GUESS_UNSTATED_CAUSE");
+        } else {
+            primaryGoal = "RECOMMEND_TOP_MATCHING_PRIMARY_PRODUCT";
+            allowedActions.add("PRESENT_PRIMARY_PRODUCT_FROM_4_LAYER_CATALOG");
+            allowedActions.add("ASK_OPEN_FEEDBACK_QUESTION");
+        }
+
+        List<StructuredProductConstraint> productConstraints = new ArrayList<>();
+        if (visiblePackages != null) {
+            for (PackageCatalogService.PackageSummary p : visiblePackages) {
+                if (p != null) {
+                    productConstraints.add(StructuredProductConstraint.fromPackageSummary(p, unitNoun));
+                }
+            }
+        }
+
+        return new StructuredTurnContract(
+                primaryIntent,
+                safeSignals,
+                safeQuote.resolutionState().name(),
+                safeQuote.replyToMid() != null ? safeQuote.replyToMid() : "null",
+                burstSubMessages != null ? burstSubMessages.size() : 1,
+                resolvedStage != null ? resolvedStage : "STAGE_1_DISCOVERY_AND_FIRST_QUOTE",
+                unitNoun != null && !unitNoun.isBlank() ? unitNoun : "sản phẩm",
+                discoveryCompleted,
+                List.copyOf(mergedScopes),
+                safeTiming != null ? safeTiming : "chưa đề cập",
+                selectedProductId != null ? selectedProductId : "null",
+                bookingDate != null ? bookingDate : "null",
+                bookingTime != null ? bookingTime : "null",
+                bookingStatus != null ? bookingStatus : "NONE",
+                priceObjectionCount,
+                archetype,
+                hypothesis,
+                buyingTemp,
+                lastSpeechAct,
+                List.copyOf(skillCodes),
+                primaryGoal,
+                List.copyOf(allowedActions),
+                List.copyOf(forbiddenActions),
+                List.copyOf(productConstraints),
+                false,
+                false,
+                false
+        );
+    }
+
+    public static String renderStructuredTurnContractXml(StructuredTurnContract c) {
+        if (c == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(1024);
+        sb.append("<STRUCTURED_TURN_CONTRACT>\n")
+          .append("1. Intent:\n")
+          .append("   - primary_intent: \"").append(c.primaryIntent()).append("\"\n")
+          .append("   - detected_signals: ").append(c.detectedSignals()).append('\n')
+          .append("   - reply_to_resolution: state=").append(c.replyResolutionState())
+          .append(", mid=\"").append(c.replyToMid()).append("\", burst_count=").append(c.burstMessageCount()).append('\n')
+          .append("2. Conversation & Booking State:\n")
+          .append("   - stage: \"").append(c.stage()).append("\", unit_noun=\"").append(c.unitNoun()).append("\"\n")
+          .append("   - discovery_completed: ").append(c.discoveryCompleted())
+          .append(", verified_scopes: ").append(c.verifiedScopes())
+          .append(", context_or_timing: \"").append(c.verifiedContextOrTiming()).append("\"\n")
+          .append("   - booking_state: status=").append(c.bookingStatus())
+          .append(", selected_product_id=\"").append(c.selectedProductId()).append("\"")
+          .append(", booking_date=\"").append(c.bookingDate()).append("\"")
+          .append(", booking_time=\"").append(c.bookingTime()).append("\"")
+          .append(", price_objection_count=").append(c.priceObjectionCount()).append('\n')
+          .append("3. Brain Hypothesis & Skill:\n")
+          .append("   - buyer_archetype: \"").append(c.buyerArchetype()).append("\", buying_temp=").append(c.buyingTemperature()).append("/100\n")
+          .append("   - living_hypothesis: \"").append(c.workingHypothesis()).append("\"\n")
+          .append("   - last_actual_sent_speech_act: \"").append(c.lastActualSentSpeechAct()).append("\", active_skills: ").append(c.activeSkillCodes()).append('\n')
+          .append("4. Goal & Allowed Actions:\n")
+          .append("   - primary_goal: \"").append(c.primaryGoal()).append("\"\n")
+          .append("   - allowed_actions: ").append(c.allowedActions()).append('\n')
+          .append("   - forbidden_actions: ").append(c.forbiddenActions()).append('\n')
+          .append("5. Commercial Constraints:\n")
+          .append("   - allow_ungrounded_promo: ").append(c.allowUngroundedPromo())
+          .append(", allow_cross_tier_attribute_leak: ").append(c.allowCrossTierAttributeLeak())
+          .append(", allow_ghost_product_on_closing: ").append(c.allowGhostProductOnClosing()).append('\n');
+        if (c.commercialProducts().isEmpty()) {
+            sb.append("   - allowed_4layer_products: []\n");
+        } else {
+            sb.append("   - allowed_4layer_products:\n");
+            for (StructuredProductConstraint p : c.commercialProducts()) {
+                sb.append("     * [id=").append(p.productId())
+                  .append(" | sku=").append(p.rawSkuCode())
+                  .append(" | role=").append(p.commercialRole())
+                  .append(" | unit_noun=").append(p.unitNoun())
+                  .append(" | name=\"").append(p.canonicalName()).append("\"")
+                  .append(" | specs=\"").append(p.formattedSpecsSummary()).append("\"")
+                  .append(" | ").append(p.priceLabel()).append("=\"").append(p.formattedPriceWithUnit()).append("\"")
+                  .append(" (amount_vnd=").append(p.priceAmountVnd())
+                  .append(", billing_unit=\"").append(p.billingUnit()).append("\")")
+                  .append(" | scopes=").append(p.scopeTags())
+                  .append("]\n");
+            }
+        }
+        sb.append("</STRUCTURED_TURN_CONTRACT>\n\n");
+        return sb.toString();
+    }
+
     public static void appendCatalogPackageLine(
             StringBuilder sb,
             int index,
@@ -2262,23 +2643,35 @@ public final class CleanAgentCatalogAndPromptBuilder {
             List<String> knownSymptoms
     ) {
         if (p == null) return;
+        PackageCatalogService.CatalogNormalizedData norm = p.normalized();
+        PackageCatalogService.CatalogInferredData inf = p.inferred();
+        PackageCatalogService.CatalogDisplayData disp = p.display();
+        String canonicalName = (norm != null && norm.canonicalName() != null && !norm.canonicalName().isBlank())
+                ? norm.canonicalName()
+                : (p.displayName() != null ? p.displayName() : "");
         String partialScopeNote = buildPartialScopeLimitationNote(p, knownBodyAreas, knownSymptoms);
-        String specsSummary = p.formattedSpecsSummary();
-        String priceLabel = (p.priceLabel() != null && !p.priceLabel().isBlank()) ? p.priceLabel() : "Giá niêm yết";
-        String formattedPrice = (p.formattedPriceWithUnit() != null && !p.formattedPriceWithUnit().isBlank())
-                ? p.formattedPriceWithUnit()
+        String specsSummary = (disp != null && disp.formattedSpecsSummary() != null)
+                ? disp.formattedSpecsSummary()
+                : p.formattedSpecsSummary();
+        String priceLabel = (disp != null && disp.priceLabel() != null && !disp.priceLabel().isBlank())
+                ? disp.priceLabel()
+                : "Giá niêm yết";
+        String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
+                ? disp.formattedPriceWithUnit()
                 : (p.priceDisplay() != null ? p.priceDisplay() : "");
-        String scopeLabel = (p.display() != null && p.display().scopeLabel() != null && !p.display().scopeLabel().isBlank())
-                ? p.display().scopeLabel()
+        String scopeLabel = (disp != null && disp.scopeLabel() != null && !disp.scopeLabel().isBlank())
+                ? disp.scopeLabel()
                 : "Phạm vi phù hợp";
-        String formatLabel = (p.display() != null && p.display().formatOrSpaceLabel() != null && !p.display().formatOrSpaceLabel().isBlank())
-                ? p.display().formatOrSpaceLabel()
+        String formatLabel = (disp != null && disp.formatOrSpaceLabel() != null && !disp.formatOrSpaceLabel().isBlank())
+                ? disp.formatOrSpaceLabel()
                 : "Hình thức";
-        String spaceOrFormatNote = p.customerFacingSpaceNote();
-        List<String> scopes = p.scopeTags();
+        String spaceOrFormatNote = (disp != null && disp.customerFacingFormatNote() != null && !disp.customerFacingFormatNote().isBlank())
+                ? disp.customerFacingFormatNote()
+                : p.customerFacingSpaceNote();
+        List<String> scopes = (inf != null && inf.scopeTags() != null) ? inf.scopeTags() : p.scopeTags();
 
         sb.append(index).append(". ")
-          .append(p.displayName() != null ? p.displayName() : "");
+          .append(canonicalName);
         if (specsSummary != null && !specsSummary.isBlank()) {
             sb.append(" — ").append(specsSummary);
         }

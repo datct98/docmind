@@ -194,6 +194,7 @@ public class CleanAgentOrchestratorService {
     private volatile ThinkingModePolicy.TurnTelemetry lastTurnTelemetry;
     private volatile ConversationState.StructuredBookingState lastTurnBookingState =
             ConversationState.StructuredBookingState.none();
+    private volatile ThinkingMode lastSelectedThinkingMode = ThinkingMode.FAST_NO_THINK;
 
     public CleanAgentOrchestratorService() {
     }
@@ -223,6 +224,10 @@ public class CleanAgentOrchestratorService {
 
     public ThinkingModePolicy.TurnTelemetry getLastTurnTelemetry() {
         return lastTurnTelemetry;
+    }
+
+    public ThinkingMode getLastSelectedThinkingMode() {
+        return lastSelectedThinkingMode;
     }
 
     public ConversationState.StructuredBookingState getLastTurnBookingState() {
@@ -979,16 +984,21 @@ public class CleanAgentOrchestratorService {
         );
 
         ThinkingMode selectedThinkingMode = resolveCleanAgentThinkingMode(
+                mergedMessage,
                 isChallengeAssumption,
                 isStyleOrRepetitionComplaint,
                 isMismatch,
                 hasPriceObjectionKeyword || isPriceContextHesitationTurn,
+                isHesitation,
+                isOperationalQuestion,
+                isBareAck,
                 isPureDeferralOrBusyTurn || isPostBookingClosingAck,
                 conditionClarified,
                 packageInterestAccepted,
                 isDetailOrUnitQuestion,
                 knownSymptoms
         );
+        this.lastSelectedThinkingMode = selectedThinkingMode;
         ReasoningBudget cleanBudget = ReasoningBudget.forThinkingMode(selectedThinkingMode);
         String rawReply = null;
         int llmRegenerationCount = 0;
@@ -1040,6 +1050,28 @@ public class CleanAgentOrchestratorService {
 
         List<FanpageBotResponse.ReplyBubble> candidateBubbles =
                 CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, minDelayMs);
+        com.example.docmind.dto.PagePersonaConfig turnPersonaConfig =
+                (pagePersona != null && pagePersona.personaConfig() != null)
+                        ? pagePersona.personaConfig()
+                        : com.example.docmind.dto.PagePersonaConfig.empty();
+        boolean usedStructuredFallbackOnLlmFailure = false;
+        if (candidateBubbles.isEmpty()) {
+            log.warn("[CleanAgentMode] LLM returned empty/unreachable output after retry (userMsg='{}', replyToMid='{}') -> activating Safe Multi-Industry Structural Fallback",
+                    mergedMessage, request != null ? request.replyToMid() : null);
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+                    quotedReplyResolution,
+                    bookingState,
+                    cleanStage,
+                    activeTurnPkg,
+                    scopeFilteredCatalog,
+                    allCatalog,
+                    turnPersonaConfig,
+                    mergedMessage,
+                    selfPronoun,
+                    safeHonorific
+            );
+            usedStructuredFallbackOnLlmFailure = true;
+        }
 
         CleanAgentOutputRefereeAndSanitizer.BrainReflection initialReflection =
                 structured != null && structured.brainReflection() != null
@@ -1130,10 +1162,10 @@ public class CleanAgentOrchestratorService {
             allViolations.add("CROSS_TURN_REPETITION");
         }
 
-        boolean repairApplied = false;
+        boolean repairApplied = usedStructuredFallbackOnLlmFailure;
         boolean usedSafeHandoffFallback = false;
         List<String> telemetryErrors = new ArrayList<>();
-        if (!allViolations.isEmpty()) {
+        if (!allViolations.isEmpty() && !usedStructuredFallbackOnLlmFailure) {
             log.warn("[CleanAgentMode] Holistic Referee detected violations: {} (userMsg='{}') -> regenerating full turn (llmRegenerationCount={})",
                     allViolations, mergedMessage, llmRegenerationCount);
             if (llmClient != null && llmRegenerationCount < 1) {
@@ -1225,7 +1257,9 @@ public class CleanAgentOrchestratorService {
                         quotedReplyResolution,
                         mergedMessage,
                         selfPronoun,
-                        safeHonorific
+                        safeHonorific,
+                        turnPersonaConfig,
+                        allCatalog
                 );
                 repairApplied = true;
             } else if (needsQuotedPackageGuardRebuild) {
@@ -1235,7 +1269,8 @@ public class CleanAgentOrchestratorService {
                         quotedReplyResolution.quotedPackage(),
                         mergedMessage,
                         selfPronoun,
-                        safeHonorific
+                        safeHonorific,
+                        turnPersonaConfig
                 );
                 repairApplied = true;
             } else if (needsPromoFabricationGuardRebuild) {
@@ -1245,7 +1280,8 @@ public class CleanAgentOrchestratorService {
                         activeTurnPkg,
                         mergedMessage,
                         selfPronoun,
-                        safeHonorific
+                        safeHonorific,
+                        turnPersonaConfig
                 );
                 repairApplied = true;
             }
@@ -1290,7 +1326,8 @@ public class CleanAgentOrchestratorService {
                         activeTurnPkg,
                         allCatalog,
                         selfPronoun,
-                        safeHonorific
+                        safeHonorific,
+                        turnPersonaConfig
                 );
                 repairApplied = true;
                 postRepairViolations = new ArrayList<>(
@@ -2949,6 +2986,18 @@ public class CleanAgentOrchestratorService {
                 || signals.contains("STYLE_OR_REPETITION_FEEDBACK");
     }
 
+    private static final Pattern SIMPLE_GREETING_MESSAGE_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:alo|hi|hello|hey|xin\\s+chào|chào\\s+(?:shop|bạn|em|anh|chị|ad|admin|page|mình)|shop\\s+ơi|em\\s+ơi|bạn\\s+ơi|có\\s+ai\\s+(?:ở\\s+đó\\s+)?không)[\\s,!?.ạnha]*$"
+    );
+
+    private static final Pattern SIMPLE_FACTUAL_INFO_QUERY_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:cho\\s+(?:mình|anh|chị|em)\\s+(?:hỏi|xin)\\s+)?(?:bảng\\s+giá|menu|danh\\s+sách|các\\s+(?:gói|mẫu|khóa|khoá|sản\\s+phẩm)|giá\\s+(?:bao\\s+nhiêu|sao|thế\\s+nào)|ở\\s+đâu|địa\\s+chỉ|mấy\\s+giờ|giờ\\s+mở\\s+cửa|chỗ\\s+đỗ\\s+xe|giao\\s+hàng|ship|vận\\s+chuyển|lịch\\s+khai\\s+giảng|học\\s+phí)[^.!?]{0,60}[?\\sạ]*$"
+    );
+
+    private static final Pattern EMOTIONAL_OR_DISTRESS_SIGNAL_PATTERN = Pattern.compile(
+            "(?iU)\\b(đau|nhức|mỏi|căng|tê|mệt|mất\\s+ngủ|stress|căng\\s+thẳng|khó\\s+chịu|sợ|lo\\s+lắng|phân\\s+vân|băn\\s+khoăn|ngại|mất\\s+gốc|yếu|kém|áp\\s+lực|buồn)\\b"
+    );
+
     public static ThinkingMode resolveCleanAgentThinkingMode(
             boolean isChallengeAssumption,
             boolean isStyleOrRepetitionComplaint,
@@ -2971,6 +3020,54 @@ public class CleanAgentOrchestratorService {
         }
         if (conditionClarified || (knownSymptoms != null && !knownSymptoms.isEmpty())) {
             return ThinkingMode.PRICE_ANCHOR_THINK;
+        }
+        return ThinkingMode.EMOTIONAL_WARM_THINK;
+    }
+
+    public static ThinkingMode resolveCleanAgentThinkingMode(
+            String customerMessage,
+            boolean isChallengeAssumption,
+            boolean isStyleOrRepetitionComplaint,
+            boolean isMismatch,
+            boolean hasPriceObjectionOrPriceHesitation,
+            boolean isHesitation,
+            boolean isOperationalQuestion,
+            boolean isBareAck,
+            boolean isPureDeferralOrBusyTurn,
+            boolean conditionClarified,
+            boolean packageInterestAccepted,
+            boolean isDetailOrUnitQuestion,
+            List<String> knownSymptoms
+    ) {
+        if (hasPriceObjectionOrPriceHesitation) {
+            return ThinkingMode.OBJECTION_REFRAME_THINK;
+        }
+        if (isChallengeAssumption || isStyleOrRepetitionComplaint || isMismatch) {
+            return ThinkingMode.EMOTIONAL_WARM_THINK;
+        }
+        String msg = customerMessage != null ? customerMessage.strip() : "";
+        boolean hasEmotionalOrDistress = (!msg.isEmpty() && EMOTIONAL_OR_DISTRESS_SIGNAL_PATTERN.matcher(msg).find());
+        if ((isHesitation && !isPureDeferralOrBusyTurn)
+                || (hasEmotionalOrDistress && !conditionClarified && !isDetailOrUnitQuestion && !isOperationalQuestion)) {
+            return ThinkingMode.EMOTIONAL_WARM_THINK;
+        }
+        if (isPureDeferralOrBusyTurn
+                || packageInterestAccepted
+                || isOperationalQuestion
+                || isDetailOrUnitQuestion
+                || isBareAck
+                || (!msg.isEmpty() && SIMPLE_GREETING_MESSAGE_PATTERN.matcher(msg).matches())
+                || (!msg.isEmpty() && !hasEmotionalOrDistress && SIMPLE_FACTUAL_INFO_QUERY_PATTERN.matcher(msg).matches())) {
+            return ThinkingMode.FAST_NO_THINK;
+        }
+        if (hasEmotionalOrDistress) {
+            return ThinkingMode.EMOTIONAL_WARM_THINK;
+        }
+        if (conditionClarified || (knownSymptoms != null && !knownSymptoms.isEmpty())) {
+            return ThinkingMode.PRICE_ANCHOR_THINK;
+        }
+        if (!msg.isEmpty() && msg.split("\\s+").length <= 6) {
+            return ThinkingMode.FAST_NO_THINK;
         }
         return ThinkingMode.EMOTIONAL_WARM_THINK;
     }

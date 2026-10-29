@@ -625,12 +625,23 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     public static final Pattern CLEAN_PRICE_MENTION_PATTERN = Pattern.compile(
-            "(?iU)(?<!\\d)(?:\\d{1,3}(?:[.,]\\d{3})+\\s*(?:đồng|vnđ|vnd|đ)?|\\d{5,7}\\s*(?:đồng|vnđ|vnd|đ)|\\d{2,4}\\s*(?:k|nghìn|ngàn)(?:\\s*(?:đồng|vnđ|vnd|đ))?)(?!\\p{L}|\\d)"
+            "(?iU)(?<![\\d.,])(?:"
+            + "\\d{1,3}\\s*(?:triệu|tr)\\s*\\d{1,3}"
+            + "|\\d{1,3}(?:[.,]\\d{1,2})?\\s*(?:triệu|tr)(?:\\s*(?:đồng|vnđ|vnd|đ))?"
+            + "|\\d{1,3}(?:\\.\\d{3})+\\s*(?:k|nghìn|ngàn)(?:\\s*(?:đồng|vnđ|vnd|đ))?"
+            + "|\\d{1,3}(?:[.,]\\d{3})+\\s*(?:đồng|vnđ|vnd|đ)?"
+            + "|\\d{5,9}\\s*(?:đồng|vnđ|vnd|đ)"
+            + "|\\d{2,4}\\s*(?:k|nghìn|ngàn)(?:\\s*(?:đồng|vnđ|vnd|đ))?"
+            + ")(?!\\p{L}|\\d)"
     );
 
     public static Long parseCleanPriceMentionToVnd(String rawPrice) {
         if (rawPrice == null || rawPrice.isBlank()) {
             return null;
+        }
+        PackageCatalogService.ParsedPrice structured = PackageCatalogService.parseStructuredPrice(rawPrice);
+        if (structured != null && structured.priceAmountVnd() > 0L) {
+            return structured.priceAmountVnd();
         }
         String lower = rawPrice.toLowerCase(Locale.ROOT).strip();
         String digits = lower.replaceAll("\\D", "");
@@ -639,7 +650,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         try {
             long val = Long.parseLong(digits);
-            if (val < 10_000L && (lower.contains("k") || lower.contains("nghìn") || lower.contains("ngàn"))) {
+            if (val < 1_000_000L && (lower.contains("k") || lower.contains("nghìn") || lower.contains("ngàn"))) {
                 val *= 1_000L;
             }
             return val > 0L ? val : null;
@@ -1151,6 +1162,51 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      * ({@code canonicalName + durationLabel + priceDisplay + includesSummary + customerFacingSpaceNote} lấy từ cùng 1 item)
      * khi đầu ra vi phạm {@code PRICE_ENTITY_MISMATCH} sau tối đa 1 lần gọi lại LLM (tuyệt đối không dùng regex thay thế mù quáng).
      */
+    private static String formatShopReference(String selfPronoun) {
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String low = sp.toLowerCase(Locale.ROOT);
+        if (low.startsWith("bên ") || low.equals("shop") || low.startsWith("trung tâm") || low.startsWith("cửa hàng") || low.startsWith("showroom")) {
+            return sp;
+        }
+        return "bên " + sp;
+    }
+
+    public static String resolveEffectiveUnitNoun(
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            PackageCatalogService.PackageSummary targetPkg,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            String explicitFallbackUnitNoun
+    ) {
+        if (personaConfig != null) {
+            if (personaConfig.unitNoun() != null && !personaConfig.unitNoun().isBlank()) {
+                return personaConfig.unitNoun().strip();
+            }
+            if ((personaConfig.industryCode() != null && !personaConfig.industryCode().isBlank())
+                    || !personaConfig.safeDomainKeywords().isEmpty()) {
+                String fromPersona = personaConfig.resolvedUnitNoun();
+                if (!"sản phẩm".equals(fromPersona)) {
+                    return fromPersona;
+                }
+            }
+        }
+        if (targetPkg != null && targetPkg.display() != null
+                && targetPkg.display().unitNoun() != null && !targetPkg.display().unitNoun().isBlank()) {
+            return targetPkg.display().unitNoun().strip();
+        }
+        if (allCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : allCatalog) {
+                if (p != null && !p.isAddon() && p.display() != null
+                        && p.display().unitNoun() != null && !p.display().unitNoun().isBlank()) {
+                    return p.display().unitNoun().strip();
+                }
+            }
+        }
+        if (explicitFallbackUnitNoun != null && !explicitFallbackUnitNoun.isBlank()) {
+            return explicitFallbackUnitNoun.strip();
+        }
+        return personaConfig != null ? personaConfig.resolvedUnitNoun() : "sản phẩm";
+    }
+
     public static List<FanpageBotResponse.ReplyBubble> rebuildBubblesFromStructuredCatalog(
             List<FanpageBotResponse.ReplyBubble> candidateBubbles,
             PackageCatalogService.PackageSummary targetPackage,
@@ -1158,11 +1214,33 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String selfPronoun,
             String customerPronoun
     ) {
+        return rebuildBubblesFromStructuredCatalog(
+                candidateBubbles,
+                targetPackage,
+                allCatalog,
+                selfPronoun,
+                customerPronoun,
+                null
+        );
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> rebuildBubblesFromStructuredCatalog(
+            List<FanpageBotResponse.ReplyBubble> candidateBubbles,
+            PackageCatalogService.PackageSummary targetPackage,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            String selfPronoun,
+            String customerPronoun,
+            com.example.docmind.dto.PagePersonaConfig personaConfig
+    ) {
         if (candidateBubbles == null || candidateBubbles.isEmpty()) {
             return List.of();
         }
-        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
-        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        String sp = (selfPronoun != null && !selfPronoun.isBlank())
+                ? selfPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedSelfPronoun() : "em");
+        String cp = (customerPronoun != null && !customerPronoun.isBlank())
+                ? customerPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedDefaultCustomerPronoun() : "mình");
 
         List<FanpageBotResponse.ReplyBubble> rebuilt = new ArrayList<>(candidateBubbles.size());
         for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
@@ -1176,11 +1254,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (authoritativePkg == null && allCatalog != null) {
                 String low = b.text().toLowerCase(Locale.ROOT);
                 List<PackageCatalogService.PackageSummary> sorted = allCatalog.stream()
-                        .filter(p -> p != null && !p.isAddon() && p.displayName() != null && !p.displayName().isBlank())
-                        .sorted((x, y) -> Integer.compare(y.displayName().strip().length(), x.displayName().strip().length()))
+                        .filter(p -> p != null && !p.isAddon() && !p.canonicalName().isBlank())
+                        .sorted((x, y) -> Integer.compare(y.canonicalName().length(), x.canonicalName().length()))
                         .toList();
                 for (PackageCatalogService.PackageSummary p : sorted) {
-                    if (low.contains(p.displayName().strip().toLowerCase(Locale.ROOT))) {
+                    if (low.contains(p.canonicalName().toLowerCase(Locale.ROOT))) {
                         authoritativePkg = p;
                         break;
                     }
@@ -1190,33 +1268,39 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 rebuilt.add(b);
                 continue;
             }
-            String pkgName = authoritativePkg.displayName() != null ? authoritativePkg.displayName().strip() : "gói dịch vụ";
-            String displayWithGoi = pkgName.toLowerCase(Locale.ROOT).startsWith("gói ") ? pkgName : ("gói " + pkgName);
-            String pkgDur = (authoritativePkg.durationLabel() != null && !authoritativePkg.durationLabel().isBlank())
-                    ? (" " + authoritativePkg.durationLabel().strip())
-                    : "";
-            String pkgPrice = authoritativePkg.priceDisplay() != null ? authoritativePkg.priceDisplay().strip() : "";
+            String unitNoun = resolveEffectiveUnitNoun(personaConfig, authoritativePkg, allCatalog, null);
+            String itemWithUnit = authoritativePkg.displayWithUnitNoun(unitNoun);
+            PackageCatalogService.CatalogDisplayData disp = authoritativePkg.display();
+            String priceLabel = (disp != null && disp.priceLabel() != null && !disp.priceLabel().isBlank())
+                    ? disp.priceLabel().strip().toLowerCase(Locale.ROOT)
+                    : "mức giá niêm yết";
+            String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
+                    ? disp.formattedPriceWithUnit().strip()
+                    : (authoritativePkg.priceDisplay() != null ? authoritativePkg.priceDisplay().strip() : "");
             String pkgIncludes = (authoritativePkg.includesSummary() != null && !authoritativePkg.includesSummary().isBlank())
                     ? authoritativePkg.includesSummary().strip()
                     : "";
-            String pkgSpace = (authoritativePkg.customerFacingSpaceNote() != null && !authoritativePkg.customerFacingSpaceNote().isBlank())
-                    ? authoritativePkg.customerFacingSpaceNote().strip()
-                    : "";
+            String formatNote = (disp != null && disp.customerFacingFormatNote() != null && !disp.customerFacingFormatNote().isBlank())
+                    ? disp.customerFacingFormatNote().strip()
+                    : authoritativePkg.customerFacingSpaceNote();
 
+            String shopRef = formatShopReference(sp);
             StringBuilder structuredBubble = new StringBuilder();
-            structuredBubble.append("Dạ hiện tại ").append(displayWithGoi).append(pkgDur)
-                    .append(" bên ").append(sp).append(" đang áp dụng mức giá niêm yết ").append(pkgPrice).append(" trọn gói");
+            structuredBubble.append("Dạ hiện tại ").append(itemWithUnit)
+                    .append(' ').append(shopRef).append(" đang áp dụng ").append(priceLabel).append(" là ").append(formattedPrice);
             if (!pkgIncludes.isEmpty()) {
                 structuredBubble.append(" (bao gồm ").append(pkgIncludes);
-                if (!pkgSpace.isEmpty()) {
-                    structuredBubble.append(" tại ").append(pkgSpace);
+                if (!formatNote.isEmpty()) {
+                    structuredBubble.append(" — ").append(formatNote);
                 }
                 structuredBubble.append(")");
+            } else if (!formatNote.isEmpty()) {
+                structuredBubble.append(" (").append(formatNote).append(")");
             }
-            structuredBubble.append(", cam kết không phát sinh phụ phí hay nhận tip ạ.");
+            structuredBubble.append(" theo đúng thông tin niêm yết của ").append(shopRef).append(" ạ.");
             if (b.text().strip().endsWith("?")) {
-                structuredBubble.append(" Dạ ").append(cp).append(" thấy ").append(displayWithGoi)
-                        .append(" (").append(pkgPrice).append(") này có phù hợp với nhu cầu của ").append(cp).append(" không ạ?");
+                structuredBubble.append(" Dạ ").append(cp).append(" thấy ").append(itemWithUnit)
+                        .append(" (").append(formattedPrice).append(") này có phù hợp với nhu cầu của ").append(cp).append(" không ạ?");
             }
             rebuilt.add(new FanpageBotResponse.ReplyBubble(structuredBubble.toString(), b.typingDelayMs()));
         }
@@ -1332,7 +1416,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             PackageCatalogService.PackageSummary soleCand = candidates.get(0);
             boolean mentionsSole = isPackageMentionedByNameOrPrice(combinedLower, replyPrices, soleCand);
             boolean asksOrOtherPackage = combinedLower.matches(
-                    "(?isU).*\\b(hay\\s+(?:một\\s+|1\\s+|là\\s+)?gói\\s+(?:nào\\s+|dịch\\s+vụ\\s+)?khác|hoặc\\s+(?:một\\s+)?gói\\s+khác|hay\\s+đang\\s+(?:hỏi|quan\\s+tâm)\\s+gói\\s+khác)\\b.*"
+                    "(?isU).*\\b(hay\\s+(?:một\\s+|1\\s+|là\\s+)?(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+(?:[\\p{L}\\s]{0,24})?khác"
+                    + "|hoặc\\s+(?:một\\s+|1\\s+)?(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+(?:[\\p{L}\\s]{0,24})?khác"
+                    + "|hay\\s+đang\\s+(?:hỏi|quan\\s+tâm)\\s+(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|mục|phương\\s+án)\\s+khác)\\b.*"
             );
             if (!hasClarificationQuestion || !mentionsSole || !asksOrOtherPackage) {
                 violations.add("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:TIER_2_SINGLE_CANDIDATE");
@@ -1341,9 +1427,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             boolean mentionsAnySpecificPkgName = false;
             if (allCatalog != null) {
                 for (PackageCatalogService.PackageSummary p : allCatalog) {
-                    if (p == null || p.isAddon() || p.displayName() == null) continue;
-                    String dLow = p.displayName().strip().toLowerCase(Locale.ROOT);
-                    String dNoPrefix = dLow.replaceFirst("^gói\\s+", "").strip();
+                    if (p == null || p.isAddon() || p.canonicalName().isBlank()) continue;
+                    String dLow = p.canonicalName().toLowerCase(Locale.ROOT);
+                    String dNoPrefix = dLow.replaceFirst("^(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm)\\s+", "").strip();
                     if ((dLow.length() >= 4 && combinedLower.contains(dLow))
                             || (dNoPrefix.length() >= 6 && combinedLower.contains(dNoPrefix))) {
                         mentionsAnySpecificPkgName = true;
@@ -1364,12 +1450,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             PackageCatalogService.PackageSummary pkg
     ) {
         if (pkg == null) return false;
-        if (pkg.priceVnd() > 0L && extractedPrices != null && extractedPrices.contains(pkg.priceVnd())) {
+        if (pkg.priceAmountVnd() > 0L && extractedPrices != null && extractedPrices.contains(pkg.priceAmountVnd())) {
             return true;
         }
-        if (pkg.displayName() != null && !pkg.displayName().isBlank()) {
-            String dLow = pkg.displayName().strip().toLowerCase(Locale.ROOT);
-            String dNoPrefix = dLow.replaceFirst("^gói\\s+", "").strip();
+        String canonical = pkg.canonicalName();
+        if (!canonical.isBlank()) {
+            String dLow = canonical.toLowerCase(Locale.ROOT);
+            String dNoPrefix = dLow.replaceFirst("^(?:gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm)\\s+", "").strip();
             if ((dLow.length() >= 4 && textLower.contains(dLow))
                     || (dNoPrefix.length() >= 6 && textLower.contains(dNoPrefix))) {
                 return true;
@@ -1384,44 +1471,74 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String selfPronoun,
             String customerPronoun
     ) {
+        return buildDeterministicQuotedPackageReplyBubbles(
+                quotedPkg,
+                customerMessage,
+                selfPronoun,
+                customerPronoun,
+                null
+        );
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> buildDeterministicQuotedPackageReplyBubbles(
+            PackageCatalogService.PackageSummary quotedPkg,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun,
+            com.example.docmind.dto.PagePersonaConfig personaConfig
+    ) {
         if (quotedPkg == null) {
             return List.of();
         }
-        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
-        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
-        String rawName = quotedPkg.displayName() != null ? quotedPkg.displayName().strip() : "gói dịch vụ";
-        String displayWithGoi = rawName.toLowerCase(Locale.ROOT).startsWith("gói ") ? rawName : ("gói " + rawName);
-        String durLabel = (quotedPkg.durationMinutes() != null && quotedPkg.durationMinutes() > 0)
-                ? (" " + quotedPkg.durationMinutes() + " phút")
-                : ((quotedPkg.durationLabel() != null && !quotedPkg.durationLabel().isBlank()) ? (" " + quotedPkg.durationLabel().strip()) : "");
-        String priceDisp = quotedPkg.priceDisplay() != null ? quotedPkg.priceDisplay().strip() : "";
+        String sp = (selfPronoun != null && !selfPronoun.isBlank())
+                ? selfPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedSelfPronoun() : "em");
+        String cp = (customerPronoun != null && !customerPronoun.isBlank())
+                ? customerPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedDefaultCustomerPronoun() : "mình");
+        String unitNoun = resolveEffectiveUnitNoun(personaConfig, quotedPkg, null, null);
+        String itemWithUnit = quotedPkg.displayWithUnitNoun(unitNoun);
+        PackageCatalogService.CatalogDisplayData disp = quotedPkg.display();
+        String priceLabel = (disp != null && disp.priceLabel() != null && !disp.priceLabel().isBlank())
+                ? disp.priceLabel().strip().toLowerCase(Locale.ROOT)
+                : "mức giá niêm yết";
+        String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
+                ? disp.formattedPriceWithUnit().strip()
+                : (quotedPkg.priceDisplay() != null ? quotedPkg.priceDisplay().strip() : "");
         String includes = quotedPkg.includesSummary() != null ? quotedPkg.includesSummary().strip() : "";
-        String spaceNote = quotedPkg.customerFacingSpaceNote() != null ? quotedPkg.customerFacingSpaceNote().strip() : "";
+        String formatNote = (disp != null && disp.customerFacingFormatNote() != null && !disp.customerFacingFormatNote().isBlank())
+                ? disp.customerFacingFormatNote().strip()
+                : quotedPkg.customerFacingSpaceNote();
+        List<String> scopes = quotedPkg.inferred() != null && quotedPkg.inferred().scopeTags() != null
+                ? quotedPkg.inferred().scopeTags()
+                : quotedPkg.scopeTags();
         boolean isPromoQuestion = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage);
 
+        String shopRef = formatShopReference(sp);
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(2);
         if (isPromoQuestion) {
             out.add(new FanpageBotResponse.ReplyBubble(
-                    "Dạ hiện tại " + displayWithGoi + durLabel + " bên " + sp
-                            + " đang áp dụng mức giá niêm yết trọn gói là " + priceDisp
-                            + ", hiện chưa có chương trình giảm giá riêng cho gói này ạ.",
+                    "Dạ hiện tại " + itemWithUnit + " " + shopRef
+                            + " đang áp dụng " + priceLabel + " là " + formattedPrice
+                            + ", hiện chưa có chương trình giảm giá riêng cho " + unitNoun + " này ạ.",
                     0
             ));
         } else {
-            String areas = (quotedPkg.bodyAreas() != null && !quotedPkg.bodyAreas().isEmpty())
-                    ? String.join(", ", quotedPkg.bodyAreas())
-                    : "chuyên sâu theo liệu trình";
+            String scopeClause = (scopes != null && !scopes.isEmpty())
+                    ? (", phù hợp cho nhu cầu " + String.join(", ", scopes) + " của " + cp)
+                    : (" dành cho nhu cầu của " + cp);
             out.add(new FanpageBotResponse.ReplyBubble(
-                    "Dạ với " + displayWithGoi + durLabel + " (giá niêm yết " + priceDisp
-                            + " trọn gói), liệu trình tập trung chăm sóc vùng " + areas + " cho " + cp + " ạ.",
+                    "Dạ với " + itemWithUnit + " (" + priceLabel + ": " + formattedPrice + ")" + scopeClause + " ạ.",
                     0
             ));
         }
-        if (!includes.isEmpty()) {
-            String spaceClause = !spaceNote.isEmpty() ? (" tại " + spaceNote) : "";
+        if (!includes.isEmpty() || !formatNote.isEmpty()) {
+            String detailBody = !includes.isEmpty()
+                    ? (includes + (!formatNote.isEmpty() ? (" (" + formatNote + ")") : ""))
+                    : formatNote;
             out.add(new FanpageBotResponse.ReplyBubble(
-                    "Mức " + priceDisp + " đã bao gồm trọn gói " + includes + spaceClause
-                            + ", cam kết không phát sinh phụ phí hay nhận tip ạ.",
+                    "Mức " + formattedPrice + " đã bao gồm " + detailBody
+                            + " theo đúng thông tin niêm yết của " + shopRef + " ạ.",
                     2000
             ));
         }
@@ -1434,18 +1551,47 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String selfPronoun,
             String customerPronoun
     ) {
-        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
-        String cp = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        return buildDeterministicReplyClarificationBubbles(
+                quoteResolution,
+                customerMessage,
+                selfPronoun,
+                customerPronoun,
+                null,
+                null
+        );
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> buildDeterministicReplyClarificationBubbles(
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        String sp = (selfPronoun != null && !selfPronoun.isBlank())
+                ? selfPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedSelfPronoun() : "em");
+        String cp = (customerPronoun != null && !customerPronoun.isBlank())
+                ? customerPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedDefaultCustomerPronoun() : "mình");
         List<PackageCatalogService.PackageSummary> candidates =
                 quoteResolution != null ? quoteResolution.candidatePackages() : List.of();
+        String unitNoun = resolveEffectiveUnitNoun(
+                personaConfig,
+                !candidates.isEmpty() ? candidates.get(0) : null,
+                allCatalog,
+                null
+        );
         boolean isPromo = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage);
         String topicPhrase = isPromo ? "ưu đãi cho " : "thông tin cho ";
 
+        String shopRef = formatShopReference(sp);
         if (candidates.size() >= 2) {
             List<String> formattedOptions = new ArrayList<>();
             int limit = Math.min(3, candidates.size());
             for (int i = 0; i < limit; i++) {
-                formattedOptions.add(formatPackageClarificationOption(candidates.get(i)));
+                formattedOptions.add(formatPackageClarificationOption(candidates.get(i), unitNoun));
             }
             String joinedOptions;
             if (formattedOptions.size() == 2) {
@@ -1453,38 +1599,203 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             } else {
                 joinedOptions = formattedOptions.get(0) + ", " + formattedOptions.get(1) + " hay " + formattedOptions.get(2);
             }
-            String text = "Dạ " + cp + " đang hỏi " + topicPhrase + joinedOptions + " ạ? "
-                    + BubbleCapHook.capitalizeFirstLetter(sp) + " xác nhận đúng gói rồi báo " + cp + " chính xác nhé.";
+            String text = "Dạ để " + sp + " kiểm tra và báo chính xác nhất, không biết " + cp + " đang muốn hỏi "
+                    + topicPhrase + joinedOptions + " ạ?";
             return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
         }
         if (candidates.size() == 1) {
-            String opt = formatPackageClarificationOption(candidates.get(0));
-            String text = "Dạ không biết " + cp + " đang muốn hỏi " + topicPhrase + opt
-                    + " hay một gói khác trong bảng giá bên " + sp + " ạ? "
-                    + BubbleCapHook.capitalizeFirstLetter(sp) + " xác nhận đúng gói rồi báo " + cp + " chính xác nhé.";
+            String opt = formatPackageClarificationOption(candidates.get(0), unitNoun);
+            String text = "Dạ để " + sp + " báo chính xác nhất, không biết " + cp + " đang muốn hỏi " + topicPhrase + opt
+                    + " hay một " + unitNoun + " khác trong bảng giá của " + shopRef + " ạ?";
             return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
         }
         String openText = "Dạ do tin nhắn " + cp + " trích dẫn ở khá xa nên " + sp
                 + " chưa hiển thị lại được nội dung, " + cp + " nhắn giúp " + sp
-                + " tên gói hoặc mức giá " + cp + " đang quan tâm để " + sp + " kiểm tra chính xác nhất nhé ạ?";
+                + " tên " + unitNoun + " hoặc mức giá " + cp + " đang quan tâm để " + sp + " kiểm tra chính xác nhất nhé ạ?";
         return List.of(new FanpageBotResponse.ReplyBubble(openText, 0));
     }
 
-    private static String formatPackageClarificationOption(PackageCatalogService.PackageSummary pkg) {
+    private static String formatPackageClarificationOption(
+            PackageCatalogService.PackageSummary pkg,
+            String fallbackUnitNoun
+    ) {
+        String uNoun = resolveEffectiveUnitNoun(null, pkg, null, fallbackUnitNoun);
         if (pkg == null) {
-            return "gói dịch vụ";
+            return uNoun;
         }
-        String rawName = pkg.displayName() != null ? pkg.displayName().strip() : "dịch vụ";
-        String cleanName = BubbleCapHook.capitalizeFirstLetter(rawName.replaceFirst("(?iU)^gói\\s+", "").strip());
-        String durPart = (pkg.durationMinutes() != null && pkg.durationMinutes() > 0)
-                ? (" " + pkg.durationMinutes() + " phút")
-                : ((pkg.durationLabel() != null && !pkg.durationLabel().isBlank())
-                    ? (" " + pkg.durationLabel().strip().replace("~", ""))
-                    : "");
-        String pricePart = (pkg.priceDisplay() != null && !pkg.priceDisplay().isBlank())
-                ? (" giá " + pkg.priceDisplay().strip())
-                : "";
-        return "gói " + cleanName + durPart + pricePart;
+        String itemWithUnit = pkg.displayWithUnitNoun(uNoun);
+        PackageCatalogService.CatalogDisplayData disp = pkg.display();
+        String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
+                ? disp.formattedPriceWithUnit().strip()
+                : (pkg.priceDisplay() != null ? pkg.priceDisplay().strip() : "");
+        String pricePart = !formattedPrice.isEmpty() ? (" giá " + formattedPrice) : "";
+        return itemWithUnit + pricePart;
+    }
+
+    /**
+     * Tầng Fallback Cấu Trúc Đa Ngành An Toàn (Mốc C3-C):
+     * Khi LLM bị timeout, lỗi kết nối, trả rỗng hoặc không thể khôi phục sau 1 lần retry,
+     * dựng câu trả lời/câu hỏi làm rõ trung tính 100% đúng dữ liệu từ {@link PackageCatalogService.PackageSummary#display()},
+     * {@code unitNoun} và {@link com.example.docmind.dto.PagePersonaConfig}, bảo toàn tuyệt đối ngữ cảnh {@code reply_to.mid}
+     * và trạng thái đặt lịch 6 trạng thái.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> buildSafeMultiIndustryTurnFallbackBubbles(
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            ConversationState.StructuredBookingState bookingState,
+            String cleanStage,
+            PackageCatalogService.PackageSummary activeTurnPkg,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        String sp = (selfPronoun != null && !selfPronoun.isBlank())
+                ? selfPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedSelfPronoun() : "em");
+        String cp = (customerPronoun != null && !customerPronoun.isBlank())
+                ? customerPronoun.strip()
+                : (personaConfig != null ? personaConfig.resolvedDefaultCustomerPronoun() : "mình");
+        String careActor = personaConfig != null ? personaConfig.resolvedCareActor() : "chuyên viên";
+        String unitNoun = resolveEffectiveUnitNoun(personaConfig, activeTurnPkg, allCatalog, null);
+        String shopRef = formatShopReference(sp);
+
+        // 1. Bảo toàn tuyệt đối ngữ cảnh reply_to.mid
+        if (quoteResolution != null && quoteResolution.resolutionState() != CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE) {
+            if (quoteResolution.resolutionState() == CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.RESOLVED_QUOTED_PACKAGE
+                    && quoteResolution.quotedPackage() != null) {
+                return buildDeterministicQuotedPackageReplyBubbles(
+                        quoteResolution.quotedPackage(),
+                        customerMessage,
+                        sp,
+                        cp,
+                        personaConfig
+                );
+            }
+            return buildDeterministicReplyClarificationBubbles(
+                    quoteResolution,
+                    customerMessage,
+                    sp,
+                    cp,
+                    personaConfig,
+                    allCatalog
+            );
+        }
+
+        // 2. Bảo toàn 6 trạng thái Đặt lịch / Đặt hàng tường minh
+        if (bookingState != null && bookingState.status() != null
+                && bookingState.status() != ConversationState.BookingStatus.NONE) {
+            ConversationState.BookingStatus st = bookingState.status();
+            if (st == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION) {
+                List<PackageCatalogService.PackageSummary> pool = (scopeFilteredCatalog != null && !scopeFilteredCatalog.isEmpty())
+                        ? scopeFilteredCatalog
+                        : (allCatalog != null ? allCatalog : List.of());
+                List<String> opts = new ArrayList<>();
+                for (int i = 0; i < Math.min(3, pool.size()); i++) {
+                    PackageCatalogService.PackageSummary p = pool.get(i);
+                    if (p != null && !p.isAddon()) {
+                        opts.add(formatPackageClarificationOption(p, unitNoun));
+                    }
+                }
+                String optText = opts.size() >= 2
+                        ? String.join(" hay ", opts)
+                        : ("các " + unitNoun + " " + shopRef + " vừa tư vấn");
+                String datePrefix = (bookingState.bookingDate() != null && !bookingState.bookingDate().isBlank())
+                        ? ("Dạ cho mốc " + bookingState.bookingDate() + ", ")
+                        : "Dạ ";
+                String timeAsk = (bookingState.bookingTime() == null || bookingState.bookingTime().isBlank())
+                        ? " và khung giờ thuận tiện"
+                        : "";
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        datePrefix + cp + " muốn đặt " + optText + timeAsk + " để " + sp + " hỗ trợ chuẩn xác cho " + cp + " ạ?",
+                        0
+                ));
+            }
+            if (st == ConversationState.BookingStatus.AWAITING_DATE_OR_TIME && activeTurnPkg != null) {
+                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+                String price = activeTurnPkg.formattedPriceWithUnit();
+                if (bookingState.bookingDate() != null && !bookingState.bookingDate().isBlank()) {
+                    return List.of(new FanpageBotResponse.ReplyBubble(
+                            "Dạ " + sp + " hỗ trợ đặt " + item + " (" + price + ") cho " + cp + " vào "
+                                    + bookingState.bookingDate() + " ạ. Không biết " + bookingState.bookingDate()
+                                    + " " + cp + " tiện vào khoảng mấy giờ ạ?",
+                            0
+                    ));
+                }
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + sp + " hỗ trợ đặt " + item + " (" + price + ") cho " + cp + " ạ. Không biết "
+                                + cp + " dự kiến đặt vào ngày nào và khung giờ nào để " + shopRef + " kiểm tra lịch trống ạ?",
+                        0
+                ));
+            }
+            if (st == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK && activeTurnPkg != null) {
+                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+                String price = activeTurnPkg.formattedPriceWithUnit();
+                String bDate = bookingState.bookingDate() != null ? bookingState.bookingDate() : "ngày yêu cầu";
+                String bTime = bookingState.bookingTime() != null ? bookingState.bookingTime() : "khung giờ yêu cầu";
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + sp + " đã ghi nhận yêu cầu đặt " + item + " (" + price + ") vào " + bDate + " lúc " + bTime
+                                + " của " + cp + " ạ. Để " + shopRef + " kiểm tra lịch trống thực tế rồi gửi xác nhận chính thức ngay cho " + cp + " nhé ạ.",
+                        0
+                ));
+            }
+            if (st == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION && activeTurnPkg != null) {
+                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + shopRef + " đã kiểm tra còn lịch phù hợp cho " + item + ", " + cp + " xác nhận giúp " + sp + " để hoàn tất nhé ạ?",
+                        0
+                ));
+            }
+            if (st == ConversationState.BookingStatus.CONFIRMED && activeTurnPkg != null) {
+                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ lịch đặt " + item + " của " + cp + " đã được xác nhận chính thức, " + shopRef + " rất mong được đón tiếp " + cp + " ạ.",
+                        0
+                ));
+            }
+        }
+
+        // 3. Tôn trọng tạm dừng (STAGE_6) — không bơm bất kỳ sản phẩm mới nào
+        if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)) {
+            return List.of(
+                    new FanpageBotResponse.ReplyBubble(
+                            "Dạ vâng ạ, " + sp + " đã lưu lại thông tin trao đổi của " + cp + " rồi ạ. Khi nào thuận tiện cần hỗ trợ thêm, " + cp + " cứ nhắn " + sp + " nhé.",
+                            0
+                    ),
+                    new FanpageBotResponse.ReplyBubble(
+                            "Chúc " + cp + " một ngày nhiều niềm vui và thuận lợi ạ!",
+                            2000
+                    )
+            );
+        }
+
+        // 4. Có sản phẩm cấu trúc phù hợp trong Catalog
+        PackageCatalogService.PackageSummary groundedPkg = activeTurnPkg;
+        if (groundedPkg == null && scopeFilteredCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : scopeFilteredCatalog) {
+                if (p != null && !p.isAddon()) {
+                    groundedPkg = p;
+                    break;
+                }
+            }
+        }
+        if (groundedPkg != null) {
+            return buildDeterministicQuotedPackageReplyBubbles(
+                    groundedPkg,
+                    customerMessage,
+                    sp,
+                    cp,
+                    personaConfig
+            );
+        }
+
+        // 5. Fallback trung tính khi chưa có sản phẩm khớp trực tiếp
+        return List.of(new FanpageBotResponse.ReplyBubble(
+                "Dạ hiện kết nối hệ thống của " + shopRef + " đang phản hồi chậm, " + cp + " nhắn giúp " + sp
+                        + " nhu cầu hoặc tên " + unitNoun + " đang quan tâm để đội ngũ " + careActor + " hỗ trợ " + cp + " chuẩn xác nhất nhé ạ.",
+                0
+        ));
     }
 
     private static PackageCatalogService.PackageSummary resolveReferencedPackageForBubble(
@@ -1498,11 +1809,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 : (allCatalog != null ? allCatalog : List.of());
         if (bubbleText != null && !bubbleText.isBlank() && !searchPool.isEmpty()) {
             String low = bubbleText.toLowerCase(Locale.ROOT);
-            Matcher pm = ReplyContractValidator.PRICE_PATTERN.matcher(bubbleText);
+            Matcher pm = CLEAN_PRICE_MENTION_PATTERN.matcher(bubbleText);
             while (pm.find()) {
-                java.math.BigDecimal bd = ConversationState.parsePriceToBigDecimal(pm.group());
-                if (bd != null) {
-                    long vnd = bd.longValue();
+                Long vnd = parseCleanPriceMentionToVnd(pm.group());
+                if (vnd != null && vnd > 0L) {
                     for (PackageCatalogService.PackageSummary p : searchPool) {
                         if (p != null && p.priceVnd() == vnd) {
                             return p;
@@ -1801,7 +2111,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             sb.append("- CHƯA XÁC ĐỊNH RÕ GÓI TRONG TIN NHẮN REPLY: TUYỆT ĐỐI CẤM tự mặc định trả lời cho 1 gói đơn lẻ. BẮT BUỘC đặt câu hỏi xác nhận lịch sự theo đúng hướng dẫn trong <AGENT_BRAIN_INSIGHT> (nếu lịch sử có >=2 gói thì hỏi xác nhận giữa các gói đó; nếu có 1 gói thì hỏi gói đó hay gói khác; nếu lịch sử trống thì hỏi mở không đoán mò giá).\n");
         }
         if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PROMO_POLICY_FABRICATION"))) {
-            sb.append("- TUYỆT ĐỐI CẤM tự bịa chương trình giảm giá %, voucher hay combo tặng buổi ngoài dữ liệu <SCOPE_FILTERED_CATALOG>. Hãy báo trung thực mức giá hiện tại là giá niêm yết trọn gói, không phát sinh phụ phí.\n");
+            sb.append("- TUYỆT ĐỐI CẤM tự bịa chương trình giảm giá %, voucher hay combo tặng thêm ngoài dữ liệu <SCOPE_FILTERED_CATALOG>. Hãy báo trung thực mức giá hiện tại theo đúng bảng giá niêm yết của Page.\n");
         }
         if (violations.stream().anyMatch(v -> v.startsWith("PRICE_ENTITY_MISMATCH:"))) {
             sb.append("- PHÁT HIỆN RÂU ÔNG NỌ CẮM CẰM BÀ KIA (`PRICE_ENTITY_MISMATCH`): Tuyệt đối KHÔNG ghép tên gói này với mức giá/thời lượng của gói khác (ví dụ: cấm nói 'Massage cơ bản 60 phút' có giá '239k' vì 239k là 'Gói dưỡng sinh cơ bản 60 phút', còn 'Massage cơ bản 60 phút' có giá 399k). BẮT BUỘC đối chiếu đúng từng bộ (tên gói, thời lượng, mức giá) trong <SCOPE_FILTERED_CATALOG>.\n");

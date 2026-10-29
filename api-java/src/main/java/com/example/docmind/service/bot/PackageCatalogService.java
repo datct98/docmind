@@ -205,8 +205,27 @@ public final class PackageCatalogService {
             @JsonProperty("formatted_specs_summary") String formattedSpecsSummary,
             @JsonProperty("scope_label") String scopeLabel,
             @JsonProperty("format_or_space_label") String formatOrSpaceLabel,
-            @JsonProperty("customer_facing_format_note") String customerFacingFormatNote
+            @JsonProperty("customer_facing_format_note") String customerFacingFormatNote,
+            @JsonProperty("unit_noun") String unitNoun
     ) {
+        public CatalogDisplayData(
+                String priceLabel,
+                String formattedPriceWithUnit,
+                String formattedSpecsSummary,
+                String scopeLabel,
+                String formatOrSpaceLabel,
+                String customerFacingFormatNote
+        ) {
+            this(
+                    priceLabel,
+                    formattedPriceWithUnit,
+                    formattedSpecsSummary,
+                    scopeLabel,
+                    formatOrSpaceLabel,
+                    customerFacingFormatNote,
+                    "Vùng chăm sóc".equals(scopeLabel) ? "gói" : "sản phẩm"
+            );
+        }
     }
 
     public record ParsedPrice(
@@ -293,7 +312,7 @@ public final class PackageCatalogService {
                     buildCompatSource(code, displayName, priceDisplay, durationLabel, roomType),
                     buildCompatNormalized(packageUid, code, displayName, priceVnd, priceDisplay, durationMinutes, durationLabel),
                     buildCompatInferred(code, region, serviceFamily, bodyAreas, isAddon),
-                    buildCompatDisplay(priceVnd, priceDisplay, durationMinutes, durationLabel, roomType, bodyAreas)
+                    buildCompatDisplay(displayName, priceVnd, priceDisplay, durationMinutes, durationLabel, roomType, bodyAreas)
             );
         }
 
@@ -371,6 +390,29 @@ public final class PackageCatalogService {
                 return display.formattedSpecsSummary();
             }
             return durationLabel != null ? durationLabel.strip() : "";
+        }
+
+        public String unitNoun() {
+            if (display != null && display.unitNoun() != null && !display.unitNoun().isBlank()) {
+                return display.unitNoun().strip();
+            }
+            return "sản phẩm";
+        }
+
+        public String displayWithUnitNoun(String overrideUnitNoun) {
+            String effectiveUnit = (overrideUnitNoun != null && !overrideUnitNoun.isBlank())
+                    ? overrideUnitNoun.strip()
+                    : unitNoun();
+            String label = canonicalLabel();
+            if (label.isEmpty()) {
+                return effectiveUnit;
+            }
+            String lowLabel = label.toLowerCase(Locale.ROOT);
+            String lowUnit = effectiveUnit.toLowerCase(Locale.ROOT);
+            if (lowLabel.startsWith(lowUnit + " ") || lowLabel.equals(lowUnit)) {
+                return label;
+            }
+            return effectiveUnit + " " + label;
         }
 
         public String canonicalLabel() {
@@ -490,6 +532,7 @@ public final class PackageCatalogService {
     }
 
     private static CatalogDisplayData buildCompatDisplay(
+            String displayName,
             long priceVnd,
             String priceDisplay,
             Integer durationMinutes,
@@ -506,7 +549,7 @@ public final class PackageCatalogService {
         String formattedPrice = (priceDisplay != null && !priceDisplay.isBlank())
                 ? priceDisplay.strip()
                 : formatPriceWithUnit(priceVnd, pt, bUnit);
-        String specSummary = (durationLabel != null && !durationLabel.isBlank())
+        String specSummary = (durationLabel != null && durationLabel.strip().length() > 0)
                 ? ((durationMinutes != null && durationMinutes > 0 ? "Thời lượng: " : "Quy cách: ") + durationLabel.strip())
                 : "";
         boolean hasAnatomical = bodyAreas != null && bodyAreas.stream()
@@ -524,7 +567,43 @@ public final class PackageCatalogService {
         String fLabel = (roomType != null && roomType.toLowerCase(Locale.ROOT).contains("phòng"))
                 ? "Không gian"
                 : "Hình thức";
-        return new CatalogDisplayData(pLabel, formattedPrice, specSummary, sLabel, fLabel, fNote);
+        String uNoun = inferUnitNoun(displayName, bUnit, durationLabel, durationMinutes, List.of(), hasAnatomical);
+        return new CatalogDisplayData(pLabel, formattedPrice, specSummary, sLabel, fLabel, fNote, uNoun);
+    }
+
+    private static String inferUnitNoun(
+            String rawName,
+            String billingUnit,
+            String specText,
+            Integer durationMin,
+            List<String> headingPath,
+            boolean hasAnatomicalScope
+    ) {
+        String nameLow = rawName != null ? rawName.strip().toLowerCase(Locale.ROOT) : "";
+        String unitLow = billingUnit != null ? billingUnit.strip().toLowerCase(Locale.ROOT) : "";
+        String specLow = specText != null ? specText.strip().toLowerCase(Locale.ROOT) : "";
+        String headLow = headingPath != null ? String.join(" ", headingPath).toLowerCase(Locale.ROOT) : "";
+
+        if (nameLow.startsWith("khóa ") || nameLow.startsWith("khoá ") || nameLow.startsWith("lớp ")
+                || unitLow.contains("khóa") || unitLow.contains("khoá") || unitLow.contains("học viên")
+                || headLow.contains("khóa học") || headLow.contains("khoá học") || headLow.contains("lộ trình học")
+                || nameLow.contains("ielts") || nameLow.contains("toeic") || nameLow.contains("giao tiếp")
+                || (specLow.contains("buổi") && !hasAnatomicalScope && (durationMin == null || durationMin <= 0))) {
+            return "khóa";
+        }
+        if (nameLow.startsWith("mẫu ") || nameLow.startsWith("gạch ")
+                || unitLow.contains("m²") || unitLow.contains("m2") || unitLow.contains("thùng")
+                || unitLow.contains("viên") || unitLow.contains("hộp")
+                || headLow.contains("gạch") || headLow.contains("ốp lát") || headLow.contains("vật liệu")
+                || specLow.matches(".*\\d+\\s*[x×]\\s*\\d+\\s*(?:mm|cm|m).*")) {
+            return "mẫu";
+        }
+        if (nameLow.startsWith("gói ") || hasAnatomicalScope || (durationMin != null && durationMin > 0)
+                || unitLow.contains("gói") || unitLow.contains("trọn gói")
+                || headLow.contains("spa") || headLow.contains("dịch vụ")) {
+            return "gói";
+        }
+        return "sản phẩm";
     }
 
     private static RegionScope inferRegionScopeFromCode(String region) {
@@ -1407,6 +1486,14 @@ public final class PackageCatalogService {
         String customerFacingFormatNote = roomLower.contains("phòng chung")
                 ? "không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo"
                 : normalizedSpaceOrFormat;
+        String unitNoun = inferUnitNoun(
+                entry.rawName,
+                parsedPrice.billingUnit(),
+                primarySpecLabel,
+                durationMin,
+                entry.headingPath,
+                hasAnatomicalScope
+        );
 
         CatalogDisplayData displayLayer = new CatalogDisplayData(
                 priceLabel,
@@ -1414,7 +1501,8 @@ public final class PackageCatalogService {
                 specsSummary,
                 scopeLabel,
                 formatLabel,
-                customerFacingFormatNote
+                customerFacingFormatNote,
+                unitNoun
         );
 
         return new PackageSummary(

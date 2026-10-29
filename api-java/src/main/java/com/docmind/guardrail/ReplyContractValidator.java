@@ -33,7 +33,7 @@ public final class ReplyContractValidator {
     }
 
     public static final Pattern PRICE_PATTERN = Pattern.compile(
-            "(?iU)\\b\\d{2,3}(?:\\.\\d{3})*\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b)"
+            "(?iU)(?<![\\d.,])(?:\\d{1,3}(?:\\.\\d{3})+|\\d{2,4})\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b)|(?<![\\d.,])\\d{1,3}(?:[.,]\\d{1,2})?\\s*(?:triệu|tr)\\b"
     );
     private static final Pattern INTERNAL_LEAK_PATTERN = Pattern.compile(
             "(?isU).*(?:system\\s+prompt|chunk_id|document_id|<document_context>|<experience_library>|template_id|reasoning_brief|<think>).*"
@@ -1757,15 +1757,16 @@ public final class ReplyContractValidator {
         boolean hasInterrogativeStructure = s.matches("(?iu).*(?:^|[\\s,;.!])(?:"
                 + "phải\\s+không|đúng\\s+không|được\\s+không|hợp\\s+[^?]*\\s+(?:không|chưa)|"
                 + "có\\s+[^?]*\\s+(?:không|chưa)|"
-                + "không\\s+ạ|chưa\\s+ạ|sao\\s+ạ|thế\\s+nào|như\\s+nào|nào|"
+                + "(?:không\\s+biết|chưa\\s+biết)\\s+[^?]*\\s+hay\\s+[^?]+|"
+                + "không\\s+ạ|chưa\\s+ạ|sao\\s+ạ|vậy\\s+ạ|thế\\s+nào|như\\s+nào|nào|"
                 + "mấy\\s+giờ|mấy\\s+buổi|mấy\\s+lần|mấy\\s+phút|bao\\s+lâu|bao\\s+nhiêu|khi\\s+nào|ở\\s+đâu|"
                 + "là\\s+gì|là\\s+j|món\\s+gì|những\\s+gì|gì\\s+ạ|hả|nhỉ|sao"
                 + ")(?:[\\s,;.!?]|$).*");
         if (hasInterrogativeStructure) {
             return true;
         }
-        // 2. Câu hỏi lựa chọn A hay B (không khớp nhầm "hay bị", "hay đau", "hay mỏi", "hay nhức", "hay tê", "hay căng", "hay ngồi", "hay chuột rút")
-        boolean hasChoiceHay = s.matches("(?iu).*(?:^|[\\s,;.!])hay\\s+(?!bị(?:[\\s,;.!?]|$)|đau(?:[\\s,;.!?]|$)|mỏi(?:[\\s,;.!?]|$)|nhức(?:[\\s,;.!?]|$)|tê(?:[\\s,;.!?]|$)|căng(?:[\\s,;.!?]|$)|ngồi(?:[\\s,;.!?]|$)|mất\\s+ngủ|khó\\s+ngủ|chuột\\s+rút)(?:là|mình|chị|anh|bạn|em|mới|đã|lâu|gần\\s+đây|sáng|chiều|tối|hôm\\s+nay|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|buổi|gói|\\d+)(?:[\\s,;.!?]|$).*");
+        // 2. Câu hỏi lựa chọn A hay B đa ngành (không khớp nhầm "hay bị", "hay đau", "hay mỏi", "hay nhức", "hay tê", "hay căng", "hay ngồi", "hay chuột rút")
+        boolean hasChoiceHay = s.matches("(?iu).*(?:^|[\\s,;.!])hay\\s+(?!bị(?:[\\s,;.!?]|$)|đau(?:[\\s,;.!?]|$)|mỏi(?:[\\s,;.!?]|$)|nhức(?:[\\s,;.!?]|$)|tê(?:[\\s,;.!?]|$)|căng(?:[\\s,;.!?]|$)|ngồi(?:[\\s,;.!?]|$)|mất\\s+ngủ|khó\\s+ngủ|chuột\\s+rút)(?:là|mình|chị|anh|bạn|em|mới|đã|lâu|gần\\s+đây|sáng|chiều|tối|hôm\\s+nay|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|buổi|gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|mục|loại|dòng|hạng\\s+mục|món|combo|dịch\\s+vụ|một|\\d+)(?:[\\s,;.!?]|$).*");
         if (hasChoiceHay) {
             return true;
         }

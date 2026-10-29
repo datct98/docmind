@@ -63,9 +63,45 @@ public record PagePersonaConfig(
         @JsonProperty("safety_red_flags")
         List<String> safetyRedFlags,
         @JsonProperty("query_synonyms")
-        Map<String, List<String>> querySynonyms
+        Map<String, List<String>> querySynonyms,
+        @JsonProperty("unit_noun")
+        String unitNoun
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    public PagePersonaConfig(
+            String industryCode,
+            String botName,
+            String selfPronoun,
+            String defaultCustomerPronoun,
+            String toneStyle,
+            String emojiLevel,
+            List<String> forbiddenWords,
+            List<String> domainKeywords,
+            String closingAction,
+            String ctaTemplate,
+            List<String> openingBubbles,
+            Integer postPriceDelayMs,
+            String preferenceDiscoveryPrompt,
+            String conditionDiscoveryPrompt,
+            String conditionDiscoveryPromptAlt,
+            String activePromptCompact,
+            List<String> symptomKeywords,
+            List<String> bodyAreaKeywords,
+            Map<String, List<String>> serviceFamilyKeywords,
+            Map<String, Object> emotionSignals,
+            String careActor,
+            List<String> scopeTaxonomy,
+            List<String> safetyRedFlags,
+            Map<String, List<String>> querySynonyms
+    ) {
+        this(industryCode, botName, selfPronoun, defaultCustomerPronoun,
+                toneStyle, emojiLevel, forbiddenWords, domainKeywords, closingAction, ctaTemplate,
+                openingBubbles, postPriceDelayMs, preferenceDiscoveryPrompt,
+                conditionDiscoveryPrompt, conditionDiscoveryPromptAlt, activePromptCompact,
+                symptomKeywords, bodyAreaKeywords, serviceFamilyKeywords, emotionSignals,
+                careActor, scopeTaxonomy, safetyRedFlags, querySynonyms, null);
+    }
 
     public PagePersonaConfig(
             String industryCode,
@@ -213,7 +249,32 @@ public record PagePersonaConfig(
                 || (careActor != null && !careActor.isBlank())
                 || (scopeTaxonomy != null && !scopeTaxonomy.isEmpty())
                 || (safetyRedFlags != null && !safetyRedFlags.isEmpty())
-                || (querySynonyms != null && !querySynonyms.isEmpty());
+                || (querySynonyms != null && !querySynonyms.isEmpty())
+                || (unitNoun != null && !unitNoun.isBlank());
+    }
+
+    public String resolvedUnitNoun() {
+        if (unitNoun != null && !unitNoun.isBlank()) {
+            return unitNoun.strip();
+        }
+        String ind = industryCode != null ? industryCode.strip().toLowerCase(Locale.ROOT) : "";
+        String joinedKws = String.join(" ", safeDomainKeywords()).toLowerCase(Locale.ROOT);
+        if (ind.contains("edu") || ind.contains("academy") || ind.contains("language") || ind.contains("course")
+                || joinedKws.contains("khóa học") || joinedKws.contains("khoá học")
+                || joinedKws.contains("ielts") || joinedKws.contains("toeic") || joinedKws.contains("học viên")) {
+            return "khóa";
+        }
+        if (ind.contains("tile") || ind.contains("material") || ind.contains("building") || ind.contains("interior")
+                || joinedKws.contains("gạch") || joinedKws.contains("ốp lát") || joinedKws.contains("porcelain")
+                || joinedKws.contains("granite") || joinedKws.contains("vật liệu")) {
+            return "mẫu";
+        }
+        if (ind.contains("spa") || ind.contains("wellness") || ind.contains("beauty")
+                || ind.contains("clinic") || ind.contains("dental") || ind.contains("nha_khoa")
+                || joinedKws.contains("massage") || joinedKws.contains("dưỡng sinh") || joinedKws.contains("trị liệu")) {
+            return "gói";
+        }
+        return "sản phẩm";
     }
 
     public int resolvedPostPriceDelayMs() {

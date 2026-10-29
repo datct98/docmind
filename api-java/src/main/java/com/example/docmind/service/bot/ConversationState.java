@@ -4458,6 +4458,10 @@ public record ConversationState(
         if (rawPrice == null || rawPrice.isBlank()) {
             return null;
         }
+        PackageCatalogService.ParsedPrice structured = PackageCatalogService.parseStructuredPrice(rawPrice);
+        if (structured != null && structured.priceAmountVnd() > 0L) {
+            return BigDecimal.valueOf(structured.priceAmountVnd());
+        }
         String lower = rawPrice.toLowerCase(Locale.ROOT).strip();
         String digits = lower.replaceAll("\\D", "");
         if (digits.isEmpty()) {
@@ -4465,7 +4469,7 @@ public record ConversationState(
         }
         try {
             long val = Long.parseLong(digits);
-            if (val < 10_000L && lower.contains("k")) {
+            if (val < 1_000_000L && lower.contains("k")) {
                 val *= 1000L;
             }
             return BigDecimal.valueOf(val);
