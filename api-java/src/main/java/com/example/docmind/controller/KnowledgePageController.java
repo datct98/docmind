@@ -10,7 +10,10 @@ import com.example.docmind.exception.ResourceNotFoundException;
 import com.example.docmind.repository.DocumentRepository;
 import com.example.docmind.repository.KnowledgePageRepository;
 import com.example.docmind.repository.LearnedRuleRepository;
+import com.example.docmind.service.graph.MapOfContentService;
+import com.example.docmind.service.graph.ObsidianMetadataCache;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +41,12 @@ public class KnowledgePageController {
     private final KnowledgePageRepository pageRepository;
     private final DocumentRepository documentRepository;
     private final LearnedRuleRepository learnedRuleRepository;
+
+    @Autowired(required = false)
+    private ObsidianMetadataCache obsidianMetadataCache;
+
+    @Autowired(required = false)
+    private MapOfContentService mapOfContentService;
 
     public KnowledgePageController(KnowledgePageRepository pageRepository,
                                    DocumentRepository documentRepository,
@@ -106,8 +115,10 @@ public class KnowledgePageController {
             entity.setDescription(request.description().strip());
         }
         if (request.personaConfig() != null) {
+            PagePersonaConfig existingRaw = PagePersonaConfig.fromJson(entity.getPersonaConfigJson());
+            PagePersonaConfig mergedOverlay = PagePersonaConfig.mergeWithOverlay(existingRaw, request.personaConfig());
             PagePersonaConfig effectiveConfig = IndustryPersonaTemplates.resolveEffectiveConfig(
-                    request.personaConfig(),
+                    mergedOverlay,
                     entity.getName(),
                     entity.getIndustry(),
                     entity.getTargetAudience(),
@@ -117,6 +128,7 @@ public class KnowledgePageController {
         }
         entity.setUpdatedAt(OffsetDateTime.now());
         KnowledgePageEntity saved = pageRepository.save(entity);
+        invalidatePageCaches(id);
         long docCount = documentRepository.countByPageId(id);
         long ruleCount = learnedRuleRepository.countByPageId(id);
         return ResponseEntity.ok(KnowledgePageDto.fromEntity(saved, docCount, ruleCount));
@@ -134,6 +146,19 @@ public class KnowledgePageController {
         }
         documentRepository.saveAll(docs);
         pageRepository.delete(entity);
+        invalidatePageCaches(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private void invalidatePageCaches(UUID pageId) {
+        if (pageId == null) {
+            return;
+        }
+        if (obsidianMetadataCache != null) {
+            obsidianMetadataCache.invalidatePage(pageId);
+        }
+        if (mapOfContentService != null) {
+            mapOfContentService.invalidateCache(pageId);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.example.docmind.controller;
 
+import com.example.docmind.dto.DocumentChunkDto;
 import com.example.docmind.dto.DocumentLifecycleUpdateRequest;
 import com.example.docmind.dto.DocumentPageAssignRequest;
 import com.example.docmind.dto.DocumentStatusResponse;
@@ -65,6 +66,11 @@ public class DocumentController {
     @GetMapping("/{id}")
     public ResponseEntity<DocumentStatusResponse> status(@PathVariable("id") String id) {
         return ResponseEntity.ok(documentService.getStatus(id));
+    }
+
+    @GetMapping("/{id}/chunks")
+    public ResponseEntity<List<DocumentChunkDto>> chunks(@PathVariable("id") String id) {
+        return ResponseEntity.ok(documentService.getDocumentChunks(id));
     }
 
     @PutMapping("/{id}/page")

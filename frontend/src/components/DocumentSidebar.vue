@@ -1,7 +1,7 @@
 <template>
-  <aside class="sidebar-container">
-    <!-- Sources Panel Header (NotebookLM Left Bento Header) -->
-    <div class="sidebar-header">
+  <aside class="sidebar-container" :class="{ 'is-embedded': embedded }">
+    <!-- Sources Panel Header (NotebookLM Left Bento Header - hidden when embedded inside Inbox tab) -->
+    <div v-if="!embedded" class="sidebar-header">
       <div class="sources-title-group">
         <div class="sources-icon-box">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -31,7 +31,7 @@
     </div>
 
     <!-- Collapsible 1-Level Knowledge Pages / Folders Switcher -->
-    <div v-if="showPagesList" class="pages-section">
+    <div v-if="!embedded && showPagesList" class="pages-section">
       <div class="pages-header-row">
         <h3 class="section-title">
           📂 Chuyển nhanh Fanpage
@@ -162,7 +162,7 @@
     </div>
 
     <!-- Active Page Persona Banner (When a Page is active) -->
-    <div v-if="activePageObj && !showPagesList" class="active-page-summary-card">
+    <div v-if="!embedded && activePageObj && !showPagesList" class="active-page-summary-card">
       <div class="ap-top-row">
         <span class="ap-badge-industry">🏷️ {{ activePageObj.industry || 'Đa ngành' }}</span>
         <span v-if="activePageObj.target_audience" class="ap-badge-audience">
@@ -271,7 +271,9 @@
         :doc="doc"
         :pages="pages"
         :is-selected="selectedDocIds.includes(doc.document_id)"
+        :is-inspecting="inspectingDocId === doc.document_id"
         @toggle-select="$emit('toggle-select', $event)"
+        @inspect-doc="$emit('inspect-doc', $event)"
         @view-detail="$emit('view-detail', $event)"
         @delete-doc="$emit('delete-doc', $event)"
         @assign-page="$emit('assign-page', $event)"
@@ -331,6 +333,14 @@ const props = defineProps({
   isConnected: {
     type: Boolean,
     default: true
+  },
+  embedded: {
+    type: Boolean,
+    default: false
+  },
+  inspectingDocId: {
+    type: String,
+    default: null
   }
 })
 
@@ -339,6 +349,7 @@ const emit = defineEmits([
   'toggle-select',
   'toggle-select-all',
   'refresh-documents',
+  'inspect-doc',
   'view-detail',
   'delete-doc',
   'open-playbook',
@@ -454,7 +465,34 @@ const submitPageForm = () => {
   display: flex;
   flex-direction: column;
   user-select: none;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  box-sizing: border-box;
+}
+
+.sidebar-container.is-embedded {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sidebar-container.is-embedded .upload-section {
+  padding: 10px 12px 8px;
+}
+
+.sidebar-container.is-embedded .documents-header {
+  padding: 0 12px 8px;
+}
+
+.sidebar-container.is-embedded .documents-list {
+  padding: 4px 12px 12px;
+}
+
+.sidebar-container.is-embedded .sidebar-playbook-bar {
+  padding: 8px 12px 10px;
 }
 
 .sidebar-header {
@@ -933,10 +971,10 @@ const submitPageForm = () => {
 
 .filter-pills {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   margin-bottom: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  min-width: 0;
 }
 
 .pill-btn {
@@ -979,10 +1017,13 @@ const submitPageForm = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.73rem;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.72rem;
   color: var(--text-dim);
   padding-top: 6px;
   border-top: 1px solid #EEF2F6;
+  min-width: 0;
 }
 
 .btn-text {

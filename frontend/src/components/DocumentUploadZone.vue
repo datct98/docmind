@@ -177,12 +177,15 @@ const validateAndEmit = (file) => {
 .upload-container {
   border: 1.5px dashed #A8C7FA;
   border-radius: var(--radius-md);
-  padding: 12px 12px 10px;
+  padding: 10px 10px 9px;
   background: #F8FAFD;
   cursor: pointer;
   transition: all 0.18s ease;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .upload-container:hover {
@@ -208,19 +211,21 @@ const validateAndEmit = (file) => {
 .upload-content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .upload-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
   border-radius: var(--radius-md);
   background: #D3E3FD;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-primary);
+  flex-shrink: 0;
 }
 
 .upload-icon {
@@ -242,14 +247,17 @@ const validateAndEmit = (file) => {
 
 .upload-text {
   flex: 1;
+  min-width: 0;
   text-align: left;
 }
 
 .upload-title {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-main);
   margin-bottom: 2px;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .upload-title .highlight {
@@ -260,8 +268,10 @@ const validateAndEmit = (file) => {
 }
 
 .upload-subtitle {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--text-dim);
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .text-indigo {
@@ -269,17 +279,19 @@ const validateAndEmit = (file) => {
 }
 
 .template-actions-bar {
-  margin-top: 9px;
+  margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed #DDE3EA;
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .btn-template {
-  flex: 1;
-  font-size: 0.7rem;
+  flex: 1 1 118px;
+  min-width: 0;
+  font-size: 0.69rem;
   font-weight: 600;
   padding: 5px 7px;
   border-radius: var(--radius-sm);
@@ -288,7 +300,9 @@ const validateAndEmit = (file) => {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
 }
 
 .btn-template:hover:not(:disabled) {

@@ -45,7 +45,7 @@ public class ConversationInboxService {
     private final FastApiAgentService fastApiAgentService;
     private final MetaLearningService metaLearningService;
     private final LearnedRuleRepository learnedRuleRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Autowired
     public ConversationInboxService(
@@ -563,12 +563,30 @@ public class ConversationInboxService {
             meta.put("sales_stage", resp.salesStage());
             meta.put("confidence_score", resp.confidenceScore());
             meta.put("triggered_hooks", resp.triggeredHooks() != null ? resp.triggeredHooks() : List.of());
-            meta.put("active_skills", resp.activeSkills() != null ? resp.activeSkills() : List.of());
-            meta.put("applied_rules", resp.appliedRules() != null ? resp.appliedRules() : List.of());
+            meta.put("active_skills", resp.activeSkills() != null
+                    ? resp.activeSkills().stream()
+                            .filter(s -> s != null)
+                            .map(s -> s.code() != null ? s.code() : s.name())
+                            .filter(s -> s != null && !s.isBlank())
+                            .toList()
+                    : List.of());
+            meta.put("applied_rules", resp.appliedRules() != null
+                    ? resp.appliedRules().stream()
+                            .filter(r -> r != null && r.id() != null)
+                            .map(r -> r.id().toString())
+                            .toList()
+                    : List.of());
             meta.put("needs_human_handoff", resp.needsHumanHandoff());
             meta.put("handoff_reason", resp.handoffReason());
+            meta.put("reply_bubbles", resp.replyBubbles() != null
+                    ? resp.replyBubbles().stream()
+                            .filter(b -> b != null && b.text() != null && !b.text().isBlank())
+                            .map(FanpageBotResponse.ReplyBubble::text)
+                            .toList()
+                    : List.of());
             return objectMapper.writeValueAsString(meta);
         } catch (Exception e) {
+            log.warn("Không thể tuần tự hóa metadata tin nhắn AI_BOT: {}", e.getMessage());
             return "{}";
         }
     }
@@ -659,6 +677,9 @@ public class ConversationInboxService {
                     }
                     if (meta.get("triggered_hooks") != null) {
                         item.put("triggered_hooks", meta.get("triggered_hooks"));
+                    }
+                    if (meta.get("reply_bubbles") != null) {
+                        item.put("reply_bubbles", meta.get("reply_bubbles"));
                     }
                 } catch (Exception ignored) {
                 }

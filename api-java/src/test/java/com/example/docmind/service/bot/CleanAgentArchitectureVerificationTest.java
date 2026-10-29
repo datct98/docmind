@@ -4924,4 +4924,86 @@ class CleanAgentArchitectureVerificationTest {
         assertFalse(combinedD.contains("239k"),
                 "Tuyệt đối không được lọt cặp tên gói 'Massage cơ bản 60 phút' đi với giá sai '239k' ra Facebook: " + combinedD);
     }
+
+    @Test
+    void testDentalTurn1OpeningBubblesSyncAndHotReload() {
+        UUID dentalPageId = UUID.fromString("d3000000-0000-0000-0000-000000000001");
+        java.util.concurrent.atomic.AtomicInteger llmCalls = new java.util.concurrent.atomic.AtomicInteger(0);
+        com.example.docmind.service.llm.LlmClient failIfCalledLlm = new com.example.docmind.service.llm.LlmClient() {
+            @Override
+            public String name() {
+                return "qwen:qwen3.5-plus";
+            }
+
+            @Override
+            public String complete(String prompt) {
+                llmCalls.incrementAndGet();
+                return "LLM tự sinh sai lời chào";
+            }
+        };
+
+        CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(failIfCalledLlm, null, null);
+
+        List<String> initialDentalBubbles = List.of(
+                "Dạ chào mình, em là Minh Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ.",
+                "Bên em chuyên sâu các dịch vụ chăm sóc, phục hình răng sứ thẩm mỹ và điều trị răng miệng êm ái, nhẹ nhàng, giúp mình yên tâm không lo đau buốt.",
+                "Hôm nay răng mình đang gặp tình trạng ê buốt, sứt mẻ hay mình muốn cải thiện thẩm mỹ nụ cười ở vùng răng nào để em hỗ trợ thông tin chi tiết nhất ạ?"
+        );
+        com.example.docmind.dto.PagePersonaConfig cfg1 = new com.example.docmind.dto.PagePersonaConfig(
+                "DENTAL_CLINIC", "Minh Anh", "em", "mình", "Ân cần, chuẩn y khoa", "LOW",
+                List.of(), List.of("nha khoa"), null, null, initialDentalBubbles, 10000, null
+        );
+        PromptBuilder.PagePersona persona1 = new PromptBuilder.PagePersona(
+                "Nha Khoa Tỏa Sáng", "DENTAL_CLINIC", "Khách hàng nha khoa", "Ân cần", cfg1
+        );
+
+        String sender1 = "psid-dental-turn1-" + UUID.randomUUID();
+        FanpageBotRequest req1 = new FanpageBotRequest(
+                dentalPageId.toString(), sender1, "Khách Test 1", "Tư vấn", null, List.of(), null, 5, null, null, null, null
+        );
+        FanpageBotResponse resp1 = orchestrator.executeCleanAgentTurn(
+                dentalPageId, req1, "Tư vấn", "mình", persona1,
+                ConversationState.initial(), ConversationState.initial(),
+                List.of(), List.of(), null, null, List.of(), List.of(),
+                FanpageBotPromptBuilder.SalesStage.DISCOVERY, 0, System.nanoTime(), 5L
+        );
+
+        assertEquals(0, llmCalls.get(), "Turn 1 'Tư vấn' phải dùng trực tiếp 3 opening_bubbles đã cấu hình, không gọi LLM sinh tự do");
+        assertEquals(3, resp1.replyBubbles().size());
+        assertEquals(initialDentalBubbles.get(0), resp1.replyBubbles().get(0).text());
+        assertEquals(initialDentalBubbles.get(1), resp1.replyBubbles().get(1).text());
+        assertEquals(initialDentalBubbles.get(2), resp1.replyBubbles().get(2).text());
+
+        // Sửa 1 chữ trong opening_bubbles (Minh Anh -> Ngọc Anh) -> khách mới nhắn "Tư vấn" nhận ngay 3 bong bóng mới
+        com.example.docmind.dto.PagePersonaConfig updatedOverlay = new com.example.docmind.dto.PagePersonaConfig(
+                "DENTAL_CLINIC", "Ngọc Anh", "em", "mình", "Ân cần, chuẩn y khoa", "LOW",
+                List.of(), List.of("nha khoa"), null, null,
+                List.of(
+                        "Dạ chào mình, em là Ngọc Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ.",
+                        initialDentalBubbles.get(1),
+                        initialDentalBubbles.get(2)
+                ),
+                null, null
+        );
+        com.example.docmind.dto.PagePersonaConfig mergedCfg = com.example.docmind.dto.PagePersonaConfig.mergeWithOverlay(cfg1, updatedOverlay);
+        PromptBuilder.PagePersona persona2 = new PromptBuilder.PagePersona(
+                "Nha Khoa Tỏa Sáng", "DENTAL_CLINIC", "Khách hàng nha khoa", "Ân cần", mergedCfg
+        );
+        String sender2 = "psid-dental-turn1-" + UUID.randomUUID();
+        FanpageBotRequest req2 = new FanpageBotRequest(
+                dentalPageId.toString(), sender2, "Khách Test 2", "Tư vấn", null, List.of(), null, 5, null, null, null, null
+        );
+        FanpageBotResponse resp2 = orchestrator.executeCleanAgentTurn(
+                dentalPageId, req2, "Tư vấn", "mình", persona2,
+                ConversationState.initial(), ConversationState.initial(),
+                List.of(), List.of(), null, null, List.of(), List.of(),
+                FanpageBotPromptBuilder.SalesStage.DISCOVERY, 0, System.nanoTime(), 5L
+        );
+
+        assertEquals(0, llmCalls.get());
+        assertEquals(3, resp2.replyBubbles().size());
+        assertEquals("Dạ chào mình, em là Ngọc Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ.", resp2.replyBubbles().get(0).text());
+        assertEquals(initialDentalBubbles.get(1), resp2.replyBubbles().get(1).text());
+        assertEquals(initialDentalBubbles.get(2), resp2.replyBubbles().get(2).text());
+    }
 }

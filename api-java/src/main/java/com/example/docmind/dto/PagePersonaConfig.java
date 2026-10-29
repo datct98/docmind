@@ -587,4 +587,81 @@ public record PagePersonaConfig(
             return "{}";
         }
     }
+
+    /**
+     * Hợp nhất cấu hình Persona mới từ UI/API lên trên cấu hình hiện có trong DB,
+     * đảm bảo giữ nguyên toàn bộ các trường chuyên sâu (active_prompt_compact, symptom_keywords,
+     * body_area_keywords, service_family_keywords, care_actor, scope_taxonomy, safety_red_flags,
+     * query_synonyms, post_price_delay_ms, ...) khi người dùng cập nhật từ Modal "Cấu hình Page".
+     */
+    public static PagePersonaConfig mergeWithOverlay(PagePersonaConfig existing, PagePersonaConfig incoming) {
+        PagePersonaConfig base = existing != null ? existing : empty();
+        if (incoming == null) {
+            return base;
+        }
+        List<String> resolvedOpening = incoming.openingBubbles() != null
+                ? incoming.openingBubbles().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(String::strip)
+                    .toList()
+                : base.openingBubbles();
+        return new PagePersonaConfig(
+                firstNonBlank(incoming.industryCode(), base.industryCode()),
+                firstNonBlank(incoming.botName(), base.botName()),
+                firstNonBlank(incoming.selfPronoun(), base.selfPronoun()),
+                firstNonBlank(incoming.defaultCustomerPronoun(), base.defaultCustomerPronoun()),
+                firstNonBlank(incoming.toneStyle(), base.toneStyle()),
+                firstNonBlank(incoming.emojiLevel(), base.emojiLevel()),
+                incoming.forbiddenWords() != null ? sanitizeStringList(incoming.forbiddenWords()) : base.forbiddenWords(),
+                incoming.domainKeywords() != null ? sanitizeStringList(incoming.domainKeywords()) : base.domainKeywords(),
+                firstNonBlank(incoming.closingAction(), base.closingAction()),
+                firstNonBlank(incoming.ctaTemplate(), base.ctaTemplate()),
+                resolvedOpening,
+                incoming.postPriceDelayMs() != null ? incoming.postPriceDelayMs() : base.postPriceDelayMs(),
+                firstNonBlank(incoming.preferenceDiscoveryPrompt(), base.preferenceDiscoveryPrompt()),
+                firstNonBlank(incoming.conditionDiscoveryPrompt(), base.conditionDiscoveryPrompt()),
+                firstNonBlank(incoming.conditionDiscoveryPromptAlt(), base.conditionDiscoveryPromptAlt()),
+                firstNonBlank(incoming.activePromptCompact(), base.activePromptCompact()),
+                nonEmptyListOrFallback(incoming.symptomKeywords(), base.symptomKeywords()),
+                nonEmptyListOrFallback(incoming.bodyAreaKeywords(), base.bodyAreaKeywords()),
+                nonEmptyMapOrFallback(incoming.serviceFamilyKeywords(), base.serviceFamilyKeywords()),
+                nonEmptyMapOrFallback(incoming.emotionSignals(), base.emotionSignals()),
+                firstNonBlank(incoming.careActor(), base.careActor()),
+                nonEmptyListOrFallback(incoming.scopeTaxonomy(), base.scopeTaxonomy()),
+                nonEmptyListOrFallback(incoming.safetyRedFlags(), base.safetyRedFlags()),
+                nonEmptyMapOrFallback(incoming.querySynonyms(), base.querySynonyms()),
+                firstNonBlank(incoming.unitNoun(), base.unitNoun())
+        );
+    }
+
+    private static String firstNonBlank(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred.strip();
+        }
+        return fallback;
+    }
+
+    private static List<String> sanitizeStringList(List<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        return raw.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::strip)
+                .toList();
+    }
+
+    private static List<String> nonEmptyListOrFallback(List<String> preferred, List<String> fallback) {
+        if (preferred != null && !preferred.isEmpty()) {
+            return sanitizeStringList(preferred);
+        }
+        return fallback != null ? fallback : List.of();
+    }
+
+    private static <K, V> Map<K, V> nonEmptyMapOrFallback(Map<K, V> preferred, Map<K, V> fallback) {
+        if (preferred != null && !preferred.isEmpty()) {
+            return preferred;
+        }
+        return fallback != null ? fallback : Map.of();
+    }
 }

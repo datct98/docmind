@@ -3,14 +3,15 @@
     class="doc-card"
     :class="{ 
       'is-selected': isSelected,
+      'is-inspecting': isInspecting,
       'is-parsing': doc.status === 'PARSING',
       'is-failed': doc.status === 'FAILED'
     }"
-    @click="$emit('toggle-select', doc.document_id)"
+    @click="$emit('inspect-doc', doc)"
   >
-    <div class="card-left">
-      <!-- Checkbox (only clickable for READY documents) -->
-      <label class="checkbox-wrapper" @click.stop>
+    <!-- Top Row: Checkbox + File Type Badge + Full-Width Wrapped Filename -->
+    <div class="doc-top-row">
+      <label class="checkbox-wrapper" title="Chọn/Bỏ chọn tài liệu này cho RAG" @click.stop>
         <input 
           type="checkbox" 
           :checked="isSelected" 
@@ -20,107 +21,107 @@
         <span class="custom-checkbox" :class="{ 'disabled': doc.status !== 'READY' }"></span>
       </label>
 
-      <!-- File Type Icon -->
       <div class="file-icon-badge" :class="fileTypeClass">
         {{ fileExtension }}
       </div>
+
+      <h4 class="doc-name" :title="doc.filename">{{ doc.filename }}</h4>
     </div>
 
-    <div class="card-center">
-      <div class="doc-header">
-        <h4 class="doc-name" :title="doc.filename">{{ doc.filename }}</h4>
+    <!-- Middle Row: Status, Lifecycle & Page Assignment -->
+    <div class="doc-meta">
+      <!-- Status Badge -->
+      <span v-if="doc.status === 'READY'" class="badge badge-ready">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Sẵn sàng ({{ doc.pages || 0 }} trang)
+      </span>
+
+      <span v-else-if="doc.status === 'PARSING'" class="badge badge-parsing">
+        <span class="pulsing-indicator"></span>
+        Đang phân tích...
+      </span>
+
+      <span v-else class="badge badge-failed">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Lỗi phân tích
+      </span>
+
+      <!-- Lifecycle / Time-Bound Knowledge Badges -->
+      <span v-if="doc.is_active === false" class="badge badge-paused" title="Tài liệu đang tạm ngưng tra cứu RAG">
+        ⏸️ Tạm ngưng
+      </span>
+      <span v-else-if="doc.is_expired" class="badge badge-expired" title="Tài liệu khuyến mãi/bảng giá đã quá hạn hiệu lực">
+        ⌛ Đã hết hạn
+      </span>
+      <span v-else-if="doc.effective_to" class="badge badge-timebound" :title="'Hiệu lực đến: ' + formatShortDate(doc.effective_to)">
+        📅 Đến {{ formatShortDate(doc.effective_to) }}
+      </span>
+
+      <!-- Page / Folder Assignment Badge & Quick Switcher -->
+      <div v-if="pages && pages.length > 0" class="page-assign-wrapper" @click.stop>
+        <select 
+          class="page-assign-select" 
+          :class="{ 'is-unassigned': !doc.page_id }"
+          :value="doc.page_id || ''"
+          title="Chuyển tài liệu sang Page / Thư mục tri thức khác"
+          @change="$emit('assign-page', { documentId: doc.document_id, docId: doc.document_id, pageId: $event.target.value || null })"
+        >
+          <option value="">📁 Chưa phân loại</option>
+          <option v-for="p in pages" :key="p.id" :value="p.id">
+            📂 {{ p.name }}
+          </option>
+        </select>
       </div>
 
-      <div class="doc-meta">
-        <!-- Status Badge -->
-        <span v-if="doc.status === 'READY'" class="badge badge-ready">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          Sẵn sàng ({{ doc.pages || 0 }} trang)
+      <!-- Engine Breakdown pills if ready -->
+      <div v-if="doc.engine_breakdown && Object.keys(doc.engine_breakdown).length > 0" class="engine-tags">
+        <span 
+          v-for="(count, engine) in doc.engine_breakdown" 
+          :key="engine"
+          class="engine-pill"
+        >
+          {{ engine }}: {{ count }}
         </span>
-
-        <span v-else-if="doc.status === 'PARSING'" class="badge badge-parsing">
-          <span class="pulsing-indicator"></span>
-          Đang phân tích...
-        </span>
-
-        <span v-else class="badge badge-failed">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          Lỗi phân tích
-        </span>
-
-        <!-- Lifecycle / Time-Bound Knowledge Badges -->
-        <span v-if="doc.is_active === false" class="badge badge-paused" title="Tài liệu đang tạm ngưng tra cứu RAG">
-          ⏸️ Tạm ngưng
-        </span>
-        <span v-else-if="doc.is_expired" class="badge badge-expired" title="Tài liệu khuyến mãi/bảng giá đã quá hạn hiệu lực">
-          ⌛ Đã hết hạn
-        </span>
-        <span v-else-if="doc.effective_to" class="badge badge-timebound" :title="'Hiệu lực đến: ' + formatShortDate(doc.effective_to)">
-          📅 Đến {{ formatShortDate(doc.effective_to) }}
-        </span>
-
-        <!-- Page / Folder Assignment Badge & Quick Switcher -->
-        <div v-if="pages && pages.length > 0" class="page-assign-wrapper" @click.stop>
-          <select 
-            class="page-assign-select" 
-            :class="{ 'is-unassigned': !doc.page_id }"
-            :value="doc.page_id || ''"
-            title="Chuyển tài liệu sang Page / Thư mục tri thức khác"
-            @change="$emit('assign-page', { documentId: doc.document_id, docId: doc.document_id, pageId: $event.target.value || null })"
-          >
-            <option value="">📁 Chưa phân loại</option>
-            <option v-for="p in pages" :key="p.id" :value="p.id">
-              📂 {{ p.name }}
-            </option>
-          </select>
-        </div>
-
-        <!-- Engine Breakdown pills if ready -->
-        <div v-if="doc.engine_breakdown && Object.keys(doc.engine_breakdown).length > 0" class="engine-tags">
-          <span 
-            v-for="(count, engine) in doc.engine_breakdown" 
-            :key="engine"
-            class="engine-pill"
-          >
-            {{ engine }}: {{ count }}
-          </span>
-        </div>
       </div>
     </div>
 
-    <!-- Quick action / ID preview & Delete -->
-    <div class="card-right" @click.stop>
-      <button 
-        class="btn-icon" 
-        title="Xem chi tiết tài liệu"
-        @click="$emit('view-detail', doc)"
+    <!-- Bottom Row: Aligned Action Buttons (Never overflows narrow sidebars) -->
+    <div class="doc-actions-row" @click.stop>
+      <button
+        type="button"
+        class="btn-doc-action btn-doc-inspect"
+        :class="{ active: isInspecting }"
+        title="Xem nội dung chi tiết, danh sách Chunks & Bảng giá ở khung lớn bên phải"
+        @click="$emit('inspect-doc', doc)"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="1"/>
-          <circle cx="19" cy="12" r="1"/>
-          <circle cx="5" cy="12" r="1"/>
-        </svg>
+        <span>📑 Xem nội dung / Chunks</span>
       </button>
 
-      <button 
-        class="btn-icon btn-delete" 
-        title="Xóa tài liệu & dữ liệu embedding"
-        @click="$emit('delete-doc', doc)"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"/>
-          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
-        </svg>
-      </button>
+      <div class="doc-actions-right">
+        <button 
+          type="button"
+          class="btn-doc-action" 
+          title="Cấu hình thời hạn hiệu lực & thông tin tài liệu"
+          @click="$emit('view-detail', doc)"
+        >
+          ⚙️ Hiệu lực
+        </button>
+
+        <button 
+          type="button"
+          class="btn-doc-action btn-doc-delete" 
+          title="Xóa tài liệu & dữ liệu embedding"
+          @click="$emit('delete-doc', doc)"
+        >
+          🗑️ Xóa
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -137,13 +138,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  isInspecting: {
+    type: Boolean,
+    default: false
+  },
   pages: {
     type: Array,
     default: () => []
   }
 })
 
-defineEmits(['toggle-select', 'view-detail', 'delete-doc', 'assign-page'])
+defineEmits(['toggle-select', 'inspect-doc', 'view-detail', 'delete-doc', 'assign-page'])
 
 const fileExtension = computed(() => {
   const parts = (props.doc.filename || '').split('.')
@@ -176,15 +181,20 @@ const formatShortDate = (iso) => {
 <style scoped>
 .doc-card {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 11px;
   background: #F8FAFD;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   transition: all 0.16s cubic-bezier(0.2, 0, 0, 1);
   cursor: pointer;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .doc-card:hover {
@@ -193,8 +203,14 @@ const formatShortDate = (iso) => {
 }
 
 .doc-card.is-selected {
-  border-color: #A8C7FA;
+  border-color: #C2D7F8;
+  background: #F4F8FF;
+}
+
+.doc-card.is-inspecting {
+  border-color: var(--accent-primary);
   background: #E8F0FE;
+  box-shadow: 0 0 0 1px rgba(11, 87, 208, 0.16);
 }
 
 .doc-card.is-parsing {
@@ -207,10 +223,11 @@ const formatShortDate = (iso) => {
   background: #FFF8F7;
 }
 
-.card-left {
+.doc-top-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
 }
 
 /* Custom Checkbox */
@@ -218,6 +235,8 @@ const formatShortDate = (iso) => {
   position: relative;
   display: inline-flex;
   cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .checkbox-wrapper input {
@@ -267,13 +286,15 @@ const formatShortDate = (iso) => {
 /* File icon badges */
 .file-icon-badge {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-radius: 6px;
   letter-spacing: 0.04em;
-  min-width: 38px;
+  min-width: 36px;
   text-align: center;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .type-pdf {
@@ -312,19 +333,20 @@ const formatShortDate = (iso) => {
   border: 1px solid #DDE3EA;
 }
 
-.card-center {
+.doc-name {
   flex: 1;
   min-width: 0;
-}
-
-.doc-name {
-  font-size: 0.83rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
   color: var(--text-main);
-  white-space: nowrap;
+  line-height: 1.35;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .doc-meta {
@@ -332,16 +354,20 @@ const formatShortDate = (iso) => {
   align-items: center;
   flex-wrap: wrap;
   gap: 5px;
+  min-width: 0;
 }
 
 .engine-tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
 .page-assign-wrapper {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-assign-select {
@@ -352,7 +378,10 @@ const formatShortDate = (iso) => {
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 6px;
-  max-width: 155px;
+  max-width: 145px;
+  min-width: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
   outline: none;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -402,31 +431,63 @@ const formatShortDate = (iso) => {
   border: 1px solid #BFDBFE;
 }
 
-.card-right {
+.doc-actions-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #DDE3EA;
+  min-width: 0;
 }
 
-.btn-icon {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  padding: 5px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
+.doc-actions-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.btn-doc-action {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: var(--text-secondary);
+  font-size: 0.69rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.btn-icon:hover {
+.btn-doc-action:hover {
   color: var(--text-main);
   background: #E9EEF6;
+  border-color: #94A3B8;
 }
 
-.btn-delete:hover {
+.btn-doc-inspect {
+  color: var(--accent-primary);
+  border-color: #A8C7FA;
+  background: #FFFFFF;
+}
+
+.btn-doc-inspect.active,
+.btn-doc-inspect:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #FFFFFF;
+}
+
+.btn-doc-delete:hover {
   color: #C5221F;
   background: #FCE8E6;
+  border-color: #F6AEA9;
 }
 </style>

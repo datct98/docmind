@@ -6,10 +6,12 @@ import com.example.docmind.client.model.CanonicalDocument;
 import com.example.docmind.client.model.JobStatusResponse;
 import com.example.docmind.client.model.ParseSubmitResponse;
 import com.example.docmind.config.DocServiceProperties;
+import com.example.docmind.dto.DocumentChunkDto;
 import com.example.docmind.dto.DocumentLifecycleUpdateRequest;
 import com.example.docmind.dto.DocumentStatusResponse;
 import com.example.docmind.dto.DocumentUploadResponse;
 import com.example.docmind.entity.BlockEntity;
+import com.example.docmind.entity.ChunkEntity;
 import com.example.docmind.entity.DocumentEntity;
 import com.example.docmind.exception.DocServiceException;
 import com.example.docmind.exception.ResourceNotFoundException;
@@ -320,6 +322,101 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
         return toStatusResponse(doc);
+    }
+
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public List<DocumentChunkDto> getDocumentChunks(String documentIdRaw) {
+        UUID documentId = safeUuid(documentIdRaw);
+        DocumentEntity doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document không tồn tại: " + documentIdRaw));
+        List<ChunkEntity> chunks = chunkRepository.findByDocumentId(doc.getId());
+        if (chunks == null || chunks.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Integer> blockOrderMap = new java.util.HashMap<>();
+        try {
+            List<BlockEntity> blocks = blockRepository.findByDocumentIdOrderByBlockOrderAsc(doc.getId());
+            if (blocks != null) {
+                for (BlockEntity b : blocks) {
+                    if (b != null && b.getId() != null) {
+                        blockOrderMap.put(b.getId(), b.getBlockOrder());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        List<ChunkEntity> sorted = new ArrayList<>(chunks);
+        sorted.sort((a, b) -> {
+            int pageCmp = Integer.compare(a.getPage(), b.getPage());
+            if (pageCmp != 0) {
+                return pageCmp;
+            }
+            int orderA = firstBlockOrder(a.getSourceBlockIds(), blockOrderMap);
+            int orderB = firstBlockOrder(b.getSourceBlockIds(), blockOrderMap);
+            int ordCmp = Integer.compare(orderA, orderB);
+            if (ordCmp != 0) {
+                return ordCmp;
+            }
+            return String.valueOf(a.getId()).compareTo(String.valueOf(b.getId()));
+        });
+
+        java.util.regex.Pattern pricePattern = java.util.regex.Pattern.compile(
+                "(?iu)(?:\\b\\d{2,4}\\s*k\\b|\\b\\d{1,3}(?:[.,]\\d{3})+\\s*(?:đ|vnđ|vnd|đồng)?\\b|\\bgiá\\b|\\bbảng giá\\b)");
+
+        List<DocumentChunkDto> out = new ArrayList<>(sorted.size());
+        for (int i = 0; i < sorted.size(); i++) {
+            ChunkEntity c = sorted.get(i);
+            String txt = c.getText() != null ? c.getText() : "";
+            List<String> headings = new ArrayList<>();
+            if (c.getHeadingPath() != null) {
+                for (String h : c.getHeadingPath()) {
+                    if (h != null && !h.isBlank()) {
+                        headings.add(h.strip());
+                    }
+                }
+            }
+            Map<String, Object> meta = Map.of();
+            if (c.getChunkMetadataJson() != null && !c.getChunkMetadataJson().isBlank()) {
+                try {
+                    Map<String, Object> parsed = objectMapper.readValue(c.getChunkMetadataJson(), Map.class);
+                    if (parsed != null) {
+                        meta = parsed;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            boolean hasTable = txt.contains("|") && (txt.contains("---") || txt.split("\\|", -1).length >= 4);
+            boolean hasPricing = pricePattern.matcher(txt).find()
+                    || (meta.get("match_prices") instanceof List<?> lp && !lp.isEmpty())
+                    || "PRICING".equalsIgnoreCase(String.valueOf(meta.getOrDefault("chunk_type", "")));
+            out.add(new DocumentChunkDto(
+                    c.getId() != null ? c.getId().toString() : String.valueOf(i + 1),
+                    doc.getId().toString(),
+                    i + 1,
+                    c.getPage(),
+                    headings,
+                    txt,
+                    hasTable,
+                    hasPricing,
+                    meta
+            ));
+        }
+        return out;
+    }
+
+    private static int firstBlockOrder(UUID[] blockIds, Map<UUID, Integer> blockOrderMap) {
+        if (blockIds == null || blockIds.length == 0 || blockOrderMap == null || blockOrderMap.isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        int min = Integer.MAX_VALUE;
+        for (UUID id : blockIds) {
+            if (id != null && blockOrderMap.containsKey(id)) {
+                min = Math.min(min, blockOrderMap.get(id));
+            }
+        }
+        return min;
     }
 
     @Transactional

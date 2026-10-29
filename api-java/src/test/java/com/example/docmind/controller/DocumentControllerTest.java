@@ -1,5 +1,6 @@
 package com.example.docmind.controller;
 
+import com.example.docmind.dto.DocumentChunkDto;
 import com.example.docmind.dto.DocumentStatusResponse;
 import com.example.docmind.dto.DocumentUploadResponse;
 import com.example.docmind.service.DocumentService;
@@ -127,5 +128,28 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$.document_id").value("doc-123"))
                 .andExpect(jsonPath("$.is_active").value(true))
                 .andExpect(jsonPath("$.is_expired").value(false));
+    }
+
+    @Test
+    void getChunksReturnsExtractedChunksForDocument() throws Exception {
+        when(documentService.getDocumentChunks("doc-123"))
+                .thenReturn(java.util.List.of(new DocumentChunkDto(
+                        "chunk-1",
+                        "doc-123",
+                        1,
+                        1,
+                        java.util.List.of("Bảng giá dịch vụ"),
+                        "| Dịch vụ | Đơn giá |\n|---|---|\n| Tẩy trắng răng | 900.000đ |",
+                        true,
+                        true,
+                        Map.of("chunk_type", "PRICING")
+                )));
+
+        mockMvc.perform(get("/api/documents/doc-123/chunks"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].chunk_id").value("chunk-1"))
+                .andExpect(jsonPath("$[0].has_table").value(true))
+                .andExpect(jsonPath("$[0].has_pricing").value(true));
     }
 }

@@ -38,7 +38,6 @@
           </div>
           <div class="brand-text-col">
             <span class="brand-name">DocMind</span>
-            <span class="brand-badge-sub">Sales NotebookLM</span>
           </div>
         </div>
 
@@ -66,9 +65,6 @@
 
           <span v-if="activePage && activePage.industry" class="topbar-industry-pill">
             🏷️ {{ activePage.industry }}
-          </span>
-          <span v-if="activePage && activePage.target_audience" class="topbar-audience-pill" :title="'Tệp khách hàng: ' + activePage.target_audience">
-            👥 {{ activePage.target_audience }}
           </span>
 
           <button
@@ -361,29 +357,37 @@
     <!-- VIEW 2: PAGE WORKSPACE SCREEN (Omnichannel Inbox + Floating Bubbles)  -->
     <!-- ===================================================================== -->
     <div v-else class="main-layout">
-      <!-- Primary 3-Column Omnichannel Conversation Inbox (Left: KH List + Docs Tab | Center: Messenger Thread | Right: Customer Insight) -->
+      <!-- Primary 3-Column Omnichannel Conversation Inbox (Left: KH List + Docs Tab | Center: Messenger Thread or Doc Chunks Inspector | Right: Customer Insight) -->
       <LiveConversationInbox
         ref="inboxRef"
         :active-page="activePage"
-        :active-page-id="activePage ? activePage.id : null"
+        :active-page-id="activePageId"
+        :documents="documents"
         :scoped-doc-count="selectedDocuments.length"
+        :active-inspect-doc-id="activeInspectDocId"
         :is-connected="isConnected"
         @teach-ai="openTeachAi"
         @open-playbook="showPlaybookModal = true"
+        @select-inspect-doc="activeInspectDocId = $event"
+        @view-doc-detail="inspectingDoc = $event"
+        @delete-doc="confirmDeleteDoc"
         @toast="showToast($event.message, $event.type || 'info')"
       >
         <template #document-sidebar>
           <DocumentSidebar
+            :embedded="true"
             :documents="documents"
             :pages="pages"
             :active-page-id="activePageId"
             :selected-doc-ids="selectedDocIds"
+            :inspecting-doc-id="activeInspectDocId"
             :is-uploading="isUploading"
             :is-connected="isConnected"
             @upload-file="handleUpload"
             @toggle-select="handleToggleSelect"
             @toggle-select-all="handleToggleSelectAll"
             @refresh-documents="fetchDocuments"
+            @inspect-doc="handleInspectDocInWorkspace"
             @view-detail="inspectingDoc = $event"
             @delete-doc="confirmDeleteDoc"
             @open-playbook="showPlaybookModal = true"
@@ -556,10 +560,17 @@
               <div class="form-field-group">
                 <label class="field-label">Danh xưng KH mặc định</label>
                 <select v-model="pageModalForm.default_customer_pronoun" class="modal-input">
+                  <option value="mình">mình (Thân thiện / Nha khoa &amp; Spa)</option>
                   <option value="Chị">Chị (Nữ giới / Spa)</option>
                   <option value="Bạn">Bạn (Thời trang / GenZ)</option>
                   <option value="Anh">Anh (Nam giới / Tech)</option>
                   <option value="Anh/Chị">Anh/Chị (Đa ngành / B2B)</option>
+                  <option
+                    v-if="pageModalForm.default_customer_pronoun && !['mình', 'Chị', 'Bạn', 'Anh', 'Anh/Chị'].includes(pageModalForm.default_customer_pronoun)"
+                    :value="pageModalForm.default_customer_pronoun"
+                  >
+                    {{ pageModalForm.default_customer_pronoun }}
+                  </option>
                 </select>
               </div>
             </div>
@@ -586,6 +597,47 @@
             </div>
           </div>
 
+          <!-- 3 Bong bóng chào mở đầu (Turn 1 Opening Bubbles) -->
+          <div class="opening-bubbles-config-box">
+            <div class="opening-bubbles-header">
+              <div class="persona-skin-title">💬 3 Bong bóng chào mở đầu (Turn 1 Opening Bubbles)</div>
+              <span class="opening-bubbles-sync-tag">⚡ Đồng bộ Turn 1 Runtime</span>
+            </div>
+            <span class="field-helper">
+              Ở lượt chào đầu tiên (VD: khi khách mới nhắn "Tư vấn", "Xin chào"), Bot sẽ gửi chính xác 3 bong bóng này theo thứ tự mà không gọi LLM tự bịa lời chào khác.
+            </span>
+
+            <div class="form-field-group">
+              <label class="field-label">1️⃣ Bong bóng 1 — Chào &amp; Giới thiệu tên</label>
+              <textarea
+                v-model="pageModalForm.opening_bubble_1"
+                rows="2"
+                class="modal-input modal-textarea-bubble"
+                placeholder="VD: Dạ chào mình, em là Minh Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ."
+              ></textarea>
+            </div>
+
+            <div class="form-field-group">
+              <label class="field-label">2️⃣ Bong bóng 2 — Điểm chạm giá trị/Trấn an tâm lý</label>
+              <textarea
+                v-model="pageModalForm.opening_bubble_2"
+                rows="2"
+                class="modal-input modal-textarea-bubble"
+                placeholder="VD: Bên em chuyên sâu các dịch vụ chăm sóc, phục hình răng sứ thẩm mỹ và điều trị răng miệng êm ái, nhẹ nhàng, giúp mình yên tâm không lo đau buốt."
+              ></textarea>
+            </div>
+
+            <div class="form-field-group">
+              <label class="field-label">3️⃣ Bong bóng 3 — Câu hỏi khám phá nhu cầu</label>
+              <textarea
+                v-model="pageModalForm.opening_bubble_3"
+                rows="2"
+                class="modal-input modal-textarea-bubble"
+                placeholder="VD: Hôm nay răng mình đang gặp tình trạng ê buốt, sứt mẻ hay mình muốn cải thiện thẩm mỹ nụ cười ở vùng răng nào để em hỗ trợ thông tin chi tiết nhất ạ?"
+              ></textarea>
+            </div>
+          </div>
+
           <div class="form-field-group">
             <label class="field-label">🎭 Page Persona & Phong cách Tư vấn Chốt Sale</label>
             <textarea
@@ -607,7 +659,7 @@
             :disabled="!pageModalForm.name.trim()"
             @click="submitPageModal"
           >
-            {{ editingPageId ? 'Lưu cập nhật Fanpage' : 'Tạo Fanpage & Mở Không gian' }}
+            {{ editingPageId ? 'Lưu cấu hình' : 'Tạo Fanpage & Mở Không gian' }}
           </button>
         </div>
       </div>
@@ -962,6 +1014,8 @@ const runLlmLivePing = async () => {
 // Create / Edit Page Modal state
 const showPageModal = ref(false)
 const editingPageId = ref(null)
+const editingBasePersonaConfig = ref(null)
+const activeInspectDocId = ref(null)
 const industryPresets = ref([
   {
     code: 'BEAUTY_SPA',
@@ -1071,7 +1125,10 @@ const pageModalForm = ref({
   default_customer_pronoun: 'Chị',
   tone_style: '',
   domain_keywords_str: '',
-  forbidden_words_str: ''
+  forbidden_words_str: '',
+  opening_bubble_1: '',
+  opening_bubble_2: '',
+  opening_bubble_3: ''
 })
 
 const pollingTimers = new Map()
@@ -1207,42 +1264,72 @@ const applyIndustryPreset = (preset) => {
   pageModalForm.value.tone_style = cfg.tone_style || ''
   pageModalForm.value.domain_keywords_str = Array.isArray(cfg.domain_keywords) ? cfg.domain_keywords.join(', ') : ''
   pageModalForm.value.forbidden_words_str = Array.isArray(cfg.forbidden_words) ? cfg.forbidden_words.join(', ') : ''
+  if (Array.isArray(cfg.opening_bubbles) && cfg.opening_bubbles.length > 0) {
+    pageModalForm.value.opening_bubble_1 = cfg.opening_bubbles[0] || ''
+    pageModalForm.value.opening_bubble_2 = cfg.opening_bubbles[1] || ''
+    pageModalForm.value.opening_bubble_3 = cfg.opening_bubbles[2] || ''
+  }
 }
 
 const openCreatePageModal = () => {
   editingPageId.value = null
+  editingBasePersonaConfig.value = null
   const defaultPreset = industryPresets.value[0]
+  const bubbles = Array.isArray(defaultPreset?.persona_config?.opening_bubbles)
+    ? defaultPreset.persona_config.opening_bubbles
+    : []
   pageModalForm.value = {
     name: '',
-    industry: defaultPreset?.sample_industry || '',
-    target_audience: defaultPreset?.sample_target_audience || '',
-    description: defaultPreset?.sample_description || '',
-    industry_preset: defaultPreset?.code || 'BEAUTY_SPA',
+    industry: defaultPreset?.default_industry || defaultPreset?.sample_industry || '',
+    target_audience: defaultPreset?.default_target_audience || defaultPreset?.sample_target_audience || '',
+    description: defaultPreset?.default_description || defaultPreset?.sample_description || '',
+    industry_preset: defaultPreset?.industry_code || defaultPreset?.code || 'BEAUTY_SPA',
     bot_name: defaultPreset?.persona_config?.bot_name || 'Chuyên viên Tư vấn',
     self_pronoun: defaultPreset?.persona_config?.self_pronoun || 'em / bên em',
     default_customer_pronoun: defaultPreset?.persona_config?.default_customer_pronoun || 'Chị',
     tone_style: defaultPreset?.persona_config?.tone_style || '',
     domain_keywords_str: (defaultPreset?.persona_config?.domain_keywords || []).join(', '),
-    forbidden_words_str: (defaultPreset?.persona_config?.forbidden_words || []).join(', ')
+    forbidden_words_str: (defaultPreset?.persona_config?.forbidden_words || []).join(', '),
+    opening_bubble_1: bubbles[0] || '',
+    opening_bubble_2: bubbles[1] || '',
+    opening_bubble_3: bubbles[2] || ''
   }
   showPageModal.value = true
 }
 
+const parsePersonaConfigObject = (rawCfg) => {
+  if (!rawCfg) return {}
+  if (typeof rawCfg === 'string') {
+    try {
+      const parsed = JSON.parse(rawCfg)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  return typeof rawCfg === 'object' ? rawCfg : {}
+}
+
 const openEditPageModal = (page) => {
   editingPageId.value = page.id
-  const cfg = page.persona_config || {}
+  const cfg = parsePersonaConfigObject(page.persona_config)
+  editingBasePersonaConfig.value = { ...cfg }
+  const bubbles = Array.isArray(cfg.opening_bubbles) ? cfg.opening_bubbles : []
   pageModalForm.value = {
     name: page.name || '',
     industry: page.industry || '',
     target_audience: page.target_audience || '',
     description: page.description || '',
-    industry_preset: cfg.industry_preset || 'GENERAL_SERVICE',
+    industry_preset: cfg.industry_code || cfg.industry_preset || page.industry || 'GENERAL_SERVICE',
     bot_name: cfg.bot_name || 'Chuyên viên Tư vấn',
     self_pronoun: cfg.self_pronoun || 'em / bên em',
     default_customer_pronoun: cfg.default_customer_pronoun || 'Chị',
     tone_style: cfg.tone_style || '',
     domain_keywords_str: Array.isArray(cfg.domain_keywords) ? cfg.domain_keywords.join(', ') : '',
-    forbidden_words_str: Array.isArray(cfg.forbidden_words) ? cfg.forbidden_words.join(', ') : ''
+    forbidden_words_str: Array.isArray(cfg.forbidden_words) ? cfg.forbidden_words.join(', ') : '',
+    opening_bubble_1: bubbles[0] || '',
+    opening_bubble_2: bubbles[1] || '',
+    opening_bubble_3: bubbles[2] || ''
   }
   showPageModal.value = true
 }
@@ -1250,6 +1337,7 @@ const openEditPageModal = (page) => {
 const closePageModal = () => {
   showPageModal.value = false
   editingPageId.value = null
+  editingBasePersonaConfig.value = null
 }
 
 const parseCsvList = (str) => {
@@ -1262,24 +1350,35 @@ const parseCsvList = (str) => {
 
 const submitPageModal = async () => {
   if (!pageModalForm.value.name.trim()) return
+  const isEditing = !!editingPageId.value
+  const targetId = editingPageId.value
+  const baseCfg = isEditing && editingBasePersonaConfig.value ? { ...editingBasePersonaConfig.value } : {}
+  const openingBubbles = [
+    pageModalForm.value.opening_bubble_1,
+    pageModalForm.value.opening_bubble_2,
+    pageModalForm.value.opening_bubble_3
+  ]
+    .map(s => String(s || '').trim())
+    .filter(Boolean)
+
   const payload = {
     name: pageModalForm.value.name.trim(),
     industry: pageModalForm.value.industry.trim(),
     target_audience: pageModalForm.value.target_audience.trim(),
     description: pageModalForm.value.description.trim(),
     persona_config: {
-      industry_code: pageModalForm.value.industry_preset || 'GENERAL_SERVICE',
+      ...baseCfg,
+      industry_code: pageModalForm.value.industry_preset || baseCfg.industry_code || 'GENERAL_SERVICE',
       bot_name: (pageModalForm.value.bot_name || 'Chuyên viên Tư vấn').trim(),
       self_pronoun: (pageModalForm.value.self_pronoun || 'em / bên em').trim(),
       default_customer_pronoun: (pageModalForm.value.default_customer_pronoun || 'Chị').trim(),
       tone_style: (pageModalForm.value.tone_style || pageModalForm.value.description || '').trim(),
-      emoji_level: 'LOW',
+      emoji_level: baseCfg.emoji_level || 'LOW',
       domain_keywords: parseCsvList(pageModalForm.value.domain_keywords_str),
-      forbidden_words: parseCsvList(pageModalForm.value.forbidden_words_str)
+      forbidden_words: parseCsvList(pageModalForm.value.forbidden_words_str),
+      opening_bubbles: openingBubbles
     }
   }
-  const isEditing = !!editingPageId.value
-  const targetId = editingPageId.value
   closePageModal()
 
   if (isEditing) {
@@ -1290,6 +1389,12 @@ const submitPageModal = async () => {
       openPageWorkspace(created.id)
     }
   }
+}
+
+const handleInspectDocInWorkspace = (doc) => {
+  if (!doc || !doc.document_id) return
+  activeInspectDocId.value = doc.document_id
+  inboxRef.value?.openDocInspectorOnMobile?.()
 }
 
 const handleDocumentLifecycleUpdated = (updatedDoc) => {
@@ -1697,43 +1802,48 @@ onUnmounted(() => {
 }
 
 /* ========================================================================= */
-/* TOP HEADER BAR (NotebookLM Style)                                         */
+/* TOP HEADER BAR (NotebookLM Style - Clean & Responsive)                    */
 /* ========================================================================= */
 .notebook-topbar {
-  height: 60px;
-  min-height: 60px;
-  padding: 0 20px;
+  min-height: 58px;
+  height: auto;
+  padding: 8px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+  overflow-x: hidden;
   background: var(--bg-canvas);
   z-index: 20;
+  box-sizing: border-box;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
 }
 
 .btn-back-hub {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 13px;
+  padding: 6px 12px;
   border-radius: var(--radius-full);
   background: #FFFFFF;
   border: 1px solid var(--border-subtle);
   color: var(--accent-primary);
-  font-size: 0.8rem;
+  font-size: 0.79rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.16s ease;
   box-shadow: var(--shadow-sm);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-back-hub:hover {
@@ -1745,11 +1855,12 @@ onUnmounted(() => {
 .brand-identity {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: var(--radius-md);
   transition: background 0.15s ease;
+  flex-shrink: 0;
 }
 
 .brand-identity:hover {
@@ -1757,8 +1868,8 @@ onUnmounted(() => {
 }
 
 .brand-logo-notebook {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 10px;
   background: var(--accent-primary);
   color: #FFFFFF;
@@ -1766,35 +1877,29 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(11, 87, 208, 0.25);
+  flex-shrink: 0;
 }
 
 .brand-text-col {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 6px;
 }
 
 .brand-name {
-  font-size: 1.08rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--text-main);
   letter-spacing: -0.02em;
-}
-
-.brand-badge-sub {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--accent-primary);
-  background: var(--accent-pill-bg);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
+  white-space: nowrap;
 }
 
 .topbar-divider {
   color: #C4C7C5;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 400;
-  margin: 0 2px;
+  margin: 0 1px;
+  flex-shrink: 0;
 }
 
 .workspace-page-switcher {
@@ -1806,6 +1911,8 @@ onUnmounted(() => {
   padding: 4px 12px;
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-dot-indicator {
@@ -1813,6 +1920,7 @@ onUnmounted(() => {
   height: 8px;
   border-radius: 50%;
   background: var(--accent-primary);
+  flex-shrink: 0;
 }
 
 .page-dot-indicator.is-global {
@@ -1824,47 +1932,39 @@ onUnmounted(() => {
   background: transparent;
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   font-weight: 700;
   outline: none;
   cursor: pointer;
-  max-width: 260px;
+  max-width: 240px;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 .topbar-industry-pill {
-  font-size: 0.74rem;
-  font-weight: 600;
+  font-size: 0.73rem;
+  font-weight: 700;
   color: #0D652D;
   background: #CEEAD6;
   padding: 3px 10px;
   border-radius: var(--radius-full);
   white-space: nowrap;
-}
-
-.topbar-audience-pill {
-  font-size: 0.74rem;
-  font-weight: 500;
-  color: #444746;
-  background: #E9EEF6;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  max-width: 190px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .btn-config-page {
-  background: transparent;
+  background: #FFFFFF;
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: 0.75rem;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 5px 11px;
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-config-page:hover {
@@ -1876,8 +1976,11 @@ onUnmounted(() => {
 .topbar-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .btn-sm {
@@ -2579,6 +2682,41 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.opening-bubbles-config-box {
+  background: #F4F8FF;
+  border: 1px solid #BFDBFE;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.opening-bubbles-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.opening-bubbles-sync-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #0D652D;
+  background: #CEEAD6;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.modal-textarea-bubble {
+  resize: vertical;
+  min-height: 58px;
+  line-height: 1.45;
+  background: #FFFFFF;
+}
+
 .persona-skin-title {
   font-size: 0.78rem;
   font-weight: 700;
@@ -3117,19 +3255,14 @@ onUnmounted(() => {
 @media (max-width: 1360px) {
   .notebook-topbar {
     height: auto;
-    min-height: 56px;
-    padding: 8px 16px;
+    min-height: 54px;
+    padding: 8px 14px;
     flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .topbar-audience-pill,
-  .brand-badge-sub {
-    display: none;
+    gap: 8px;
   }
 
   .topbar-page-select {
-    max-width: 220px;
+    max-width: 210px;
   }
 }
 
@@ -3156,10 +3289,7 @@ onUnmounted(() => {
     justify-content: flex-start;
   }
 
-  .brand-badge-sub,
-  .topbar-divider,
-  .topbar-industry-pill,
-  .topbar-audience-pill {
+  .topbar-divider {
     display: none;
   }
 

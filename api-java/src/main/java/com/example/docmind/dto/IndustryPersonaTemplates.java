@@ -239,7 +239,10 @@ public final class IndustryPersonaTemplates {
                             : baseCfg.safetyRedFlags(),
                     explicitConfig.querySynonyms() != null && !explicitConfig.querySynonyms().isEmpty()
                             ? explicitConfig.querySynonyms()
-                            : baseCfg.querySynonyms()
+                            : baseCfg.querySynonyms(),
+                    explicitConfig.unitNoun() != null && !explicitConfig.unitNoun().isBlank()
+                            ? explicitConfig.unitNoun().strip()
+                            : baseCfg.unitNoun()
             );
         }
 

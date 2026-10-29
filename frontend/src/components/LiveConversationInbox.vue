@@ -10,9 +10,15 @@
         :class="{ active: mobilePane === 'list' }"
         @click="mobilePane = 'list'"
       >
-        <span>📋 DS Khách</span>
-        <span class="m-tab-badge">{{ conversations.length }}</span>
-        <span v-if="handoffCount > 0" class="m-tab-urgent">{{ handoffCount }}</span>
+        <template v-if="leftTab === 'documents'">
+          <span>📄 DS Tài liệu</span>
+          <span class="m-tab-badge">{{ scopedDocuments.length }}</span>
+        </template>
+        <template v-else>
+          <span>📋 DS Khách</span>
+          <span class="m-tab-badge">{{ conversations.length }}</span>
+          <span v-if="handoffCount > 0" class="m-tab-urgent">{{ handoffCount }}</span>
+        </template>
       </button>
 
       <button
@@ -21,13 +27,20 @@
         :class="{ active: mobilePane === 'chat' }"
         @click="mobilePane = 'chat'"
       >
-        <span>💬 Chat</span>
-        <span v-if="activeSession" class="m-tab-sub">
-          {{ getShortCustomerName(activeSession.customer_name) }}
-        </span>
+        <template v-if="leftTab === 'documents'">
+          <span>📑 Chi tiết &amp; Chunks</span>
+          <span v-if="docChunks.length > 0" class="m-tab-badge">{{ docChunks.length }}</span>
+        </template>
+        <template v-else>
+          <span>💬 Chat</span>
+          <span v-if="activeSession" class="m-tab-sub">
+            {{ getShortCustomerName(activeSession.customer_name) }}
+          </span>
+        </template>
       </button>
 
       <button
+        v-if="leftTab === 'conversations'"
         type="button"
         class="mobile-inbox-tab"
         :class="{ active: mobilePane === 'insight' }"
@@ -63,7 +76,7 @@
           @click="leftTab = 'documents'"
         >
           <span>📄 Tài liệu Page</span>
-          <span class="tab-pill-count">{{ scopedDocCount }}</span>
+          <span class="tab-pill-count">{{ scopedDocuments.length || scopedDocCount }}</span>
         </button>
       </div>
 
@@ -222,10 +235,253 @@
     </aside>
 
     <!-- =================================================================== -->
-    <!-- CỘT GIỮA: CHI TIẾT CUỘC TRÒ CHUYỆN KIỂU MESSENGER (KH - AI - SALE)  -->
+    <!-- CỘT GIỮA / KHUNG LỚN BÊN PHẢI: CHAT MESSENGER HOẶC CHI TIẾT TÀI LIỆU -->
     <!-- =================================================================== -->
-    <section class="inbox-center-thread">
-      <template v-if="activeSession">
+    <section class="inbox-center-thread" :class="{ 'is-doc-inspector-mode': leftTab === 'documents' }">
+      <!-- MODE A: XEM CHI TIẾT NỘI DUNG TÀI LIỆU / CHUNKS / BẢNG GIÁ (KHI Ở TAB TÀI LIỆU PAGE) -->
+      <div v-if="leftTab === 'documents'" class="doc-inspector-workspace">
+        <template v-if="selectedInspectDoc">
+          <!-- Top Document Inspector Header -->
+          <header class="doc-inspector-header">
+            <div class="doc-inspector-title-group">
+              <button
+                type="button"
+                class="btn-mobile-back-list"
+                title="Quay lại danh sách tài liệu"
+                @click="mobilePane = 'list'"
+              >
+                ←
+              </button>
+
+              <div class="doc-inspector-ext-badge">
+                {{ getDocExtension(selectedInspectDoc.filename) }}
+              </div>
+
+              <div class="doc-inspector-meta-col">
+                <h3 class="doc-inspector-filename" :title="selectedInspectDoc.filename">
+                  {{ selectedInspectDoc.filename }}
+                </h3>
+                <div class="doc-inspector-pills-row">
+                  <span v-if="selectedInspectDoc.status === 'READY'" class="doc-stat-pill pill-ready">
+                    ✅ Sẵn sàng ({{ selectedInspectDoc.pages || 1 }} trang)
+                  </span>
+                  <span v-else-if="selectedInspectDoc.status === 'PARSING'" class="doc-stat-pill pill-parsing">
+                    ⏳ Đang phân tích tài liệu...
+                  </span>
+                  <span v-else class="doc-stat-pill pill-failed">
+                    ⚠️ Lỗi phân tích
+                  </span>
+
+                  <span class="doc-stat-pill pill-chunks">
+                    📑 {{ docChunks.length }} chunks đã trích xuất
+                  </span>
+
+                  <span v-if="pricingOrTableChunksCount > 0" class="doc-stat-pill pill-pricing">
+                    💰 {{ pricingOrTableChunksCount }} chunk bảng giá / bảng biểu
+                  </span>
+
+                  <span v-if="selectedInspectDoc.is_active === false" class="doc-stat-pill pill-paused">
+                    ⏸️ Tạm ngưng tra cứu
+                  </span>
+                  <span v-else-if="selectedInspectDoc.is_expired" class="doc-stat-pill pill-failed">
+                    ⌛ Đã hết hạn hiệu lực
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="doc-inspector-header-actions">
+              <button
+                type="button"
+                class="btn-doc-header-act"
+                :disabled="isLoadingChunks"
+                title="Tải lại danh sách Chunks & Bảng giá từ máy chủ"
+                @click="loadSelectedDocumentChunks"
+              >
+                🔄 Làm mới
+              </button>
+              <button
+                type="button"
+                class="btn-doc-header-act"
+                title="Cấu hình thời hạn hiệu lực & trạng thái hoạt động của tài liệu"
+                @click="$emit('view-doc-detail', selectedInspectDoc)"
+              >
+                ⚙️ Cài đặt hiệu lực
+              </button>
+              <button
+                type="button"
+                class="btn-doc-header-act btn-doc-header-del"
+                title="Xóa tài liệu này khỏi kho tri thức"
+                @click="$emit('delete-doc', selectedInspectDoc)"
+              >
+                🗑️ Xóa
+              </button>
+            </div>
+          </header>
+
+          <!-- Filter Tabs & Search Bar for Chunks / Pricing Tables -->
+          <div class="doc-inspector-toolbar">
+            <div class="doc-chunk-filter-tabs">
+              <button
+                type="button"
+                class="chunk-filter-tab"
+                :class="{ active: chunkFilterMode === 'ALL' }"
+                @click="chunkFilterMode = 'ALL'"
+              >
+                📑 Tất cả nội dung / Chunks ({{ docChunks.length }})
+              </button>
+              <button
+                type="button"
+                class="chunk-filter-tab"
+                :class="{ active: chunkFilterMode === 'PRICING' }"
+                @click="chunkFilterMode = 'PRICING'"
+              >
+                💰 Bảng giá &amp; Bảng biểu ({{ pricingOrTableChunksCount }})
+              </button>
+            </div>
+
+            <div class="doc-chunk-search-box">
+              <input
+                v-model="chunkSearchQuery"
+                type="text"
+                class="doc-chunk-search-input"
+                placeholder="Tìm nhanh dịch vụ, mã gói, đơn giá, quy định trong tài liệu..."
+              />
+              <button v-if="chunkSearchQuery" type="button" class="doc-chunk-search-clear" @click="chunkSearchQuery = ''">
+                ×
+              </button>
+            </div>
+          </div>
+
+          <!-- Extracted Chunks & Pricing Tables Body -->
+          <div class="doc-chunks-scroll">
+            <div v-if="selectedInspectDoc.status === 'PARSING'" class="doc-chunks-state-box">
+              <div class="placeholder-icon">⏳</div>
+              <h4>Tài liệu đang được phân tích &amp; tách Chunks...</h4>
+              <p>Hệ thống sẽ tự động hiển thị nội dung chi tiết và bảng giá ngay khi hoàn tất.</p>
+            </div>
+
+            <div v-else-if="isLoadingChunks" class="doc-chunks-state-box">
+              <div class="placeholder-icon">⏳</div>
+              <h4>Đang tải nội dung tài liệu &amp; danh sách Chunks...</h4>
+            </div>
+
+            <div v-else-if="chunksError" class="doc-chunks-state-box is-error">
+              <div class="placeholder-icon">⚠️</div>
+              <h4>Không thể tải danh sách Chunks</h4>
+              <p>{{ chunksError }}</p>
+              <button type="button" class="btn-doc-header-act" @click="loadSelectedDocumentChunks">
+                🔄 Thử lại
+              </button>
+            </div>
+
+            <div v-else-if="filteredDocChunks.length === 0" class="doc-chunks-state-box">
+              <div class="placeholder-icon">📄</div>
+              <h4>Không có chunk nào khớp bộ lọc hiện tại</h4>
+              <p v-if="chunkSearchQuery || chunkFilterMode !== 'ALL'">
+                Thử xóa từ khóa tìm kiếm hoặc chuyển về tab <strong>"Tất cả nội dung / Chunks"</strong>.
+              </p>
+              <p v-else>Tài liệu này hiện chưa có đoạn văn bản nào được trích xuất.</p>
+            </div>
+
+            <article
+              v-for="(chunk, cIdx) in filteredDocChunks"
+              :key="chunk.chunk_id || cIdx"
+              class="doc-chunk-card"
+              :class="{ 'has-pricing-highlight': chunk.has_pricing || chunk.has_table }"
+            >
+              <div class="chunk-card-header">
+                <div class="chunk-breadcrumb-row">
+                  <span class="chunk-idx-badge">#{{ (chunk.chunk_index ?? cIdx) + 1 }}</span>
+                  <span class="chunk-page-tag">Trang {{ chunk.page || 1 }}</span>
+                  <span v-if="chunk.heading_path && chunk.heading_path.length > 0" class="chunk-heading-path">
+                    {{ chunk.heading_path.join(' › ') }}
+                  </span>
+                </div>
+
+                <div class="chunk-semantic-tags">
+                  <span v-if="chunk.has_pricing" class="chunk-tag tag-pricing">💰 Đơn giá / Bảng giá</span>
+                  <span v-if="chunk.has_table" class="chunk-tag tag-table">📊 Bảng biểu</span>
+                  <span v-if="chunk.metadata && chunk.metadata.chunk_type" class="chunk-tag tag-type">
+                    {{ chunk.metadata.chunk_type }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Extracted Price / Code Metadata Chips if available -->
+              <div
+                v-if="hasChunkExtractedMeta(chunk)"
+                class="chunk-extracted-meta-bar"
+              >
+                <span
+                  v-for="(code, codeIdx) in getChunkMetaArray(chunk, 'match_codes')"
+                  :key="'code-' + codeIdx"
+                  class="meta-extract-chip chip-code"
+                >
+                  🏷️ Mã: {{ code }}
+                </span>
+                <span
+                  v-for="(price, prIdx) in getChunkMetaArray(chunk, 'match_prices').slice(0, 8)"
+                  :key="'pr-' + prIdx"
+                  class="meta-extract-chip chip-price"
+                >
+                  💵 {{ formatVndChip(price) }}
+                </span>
+              </div>
+
+              <!-- Structured Content Blocks (Markdown Tables + Headings + Lists + Paragraphs) -->
+              <div class="chunk-content-body">
+                <template v-for="(block, bIdx) in parseChunkBlocks(chunk.text)" :key="bIdx">
+                  <div v-if="block.type === 'table'" class="chunk-table-wrap">
+                    <table class="chunk-md-table">
+                      <thead>
+                        <tr>
+                          <th v-for="(hCell, hIdx) in block.headers" :key="'h-' + hIdx">
+                            {{ hCell }}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(row, rIdx) in block.rows" :key="'r-' + rIdx">
+                          <td v-for="(cell, cellIdx) in row" :key="'c-' + cellIdx">
+                            {{ cell }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <h4 v-else-if="block.type === 'heading'" class="chunk-block-heading">
+                    {{ block.text }}
+                  </h4>
+
+                  <ul v-else-if="block.type === 'list'" class="chunk-block-list">
+                    <li v-for="(item, lIdx) in block.items" :key="'li-' + lIdx">
+                      {{ item }}
+                    </li>
+                  </ul>
+
+                  <p v-else class="chunk-block-para">
+                    {{ block.text }}
+                  </p>
+                </template>
+              </div>
+            </article>
+          </div>
+        </template>
+
+        <!-- Empty State when active Page has 0 documents -->
+        <div v-else class="thread-empty-placeholder">
+          <div class="placeholder-icon">📄</div>
+          <h3>Chưa có tài liệu nào trong không gian này</h3>
+          <p>
+            Hãy tải lên tệp <strong>PDF, DOCX, XLSX, MD</strong> ở khung Upload bên cột trái để hệ thống tự động tách Chunks và trích xuất Bảng giá tại đây.
+          </p>
+        </div>
+      </div>
+
+      <!-- MODE B: CHI TIẾT CUỘC TRÒ CHUYỆN MESSENGER (KHI Ở TAB HỘI THOẠI KH) -->
+      <template v-else-if="activeSession">
         <!-- Messenger Top Header -->
         <header class="thread-header">
           <div class="thread-header-left">
@@ -366,10 +622,14 @@
                 <span class="msg-time-label">{{ formatTimeOnly(msg.created_at) }}</span>
               </div>
 
-              <!-- Message Bubble Content -->
-              <div class="msg-bubble-box">
+              <!-- Message Bubble Content (Supports Multi-Bubble Messenger Output) -->
+              <div
+                v-for="(bubbleText, bIdx) in getMessageBubbles(msg)"
+                :key="bIdx"
+                class="msg-bubble-box"
+              >
                 <p
-                  v-for="(para, pIdx) in splitParagraphs(msg.content)"
+                  v-for="(para, pIdx) in splitParagraphs(bubbleText)"
                   :key="pIdx"
                   class="msg-para"
                 >
@@ -504,7 +764,7 @@
     <!-- =================================================================== -->
     <!-- CỘT PHẢI: RADAR THẤU HIỂU INSIGHT KHÁCH HÀNG & ĐÀO TẠO COLD PATH     -->
     <!-- =================================================================== -->
-    <aside v-if="(showInsightPanel || mobilePane === 'insight') && activeSession" class="inbox-right-insight">
+    <aside v-if="leftTab === 'conversations' && (showInsightPanel || mobilePane === 'insight') && activeSession" class="inbox-right-insight">
       <div class="insight-panel-header">
         <div class="insight-header-title">
           <button
@@ -679,6 +939,14 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  documents: {
+    type: Array,
+    default: () => []
+  },
+  activeInspectDocId: {
+    type: String,
+    default: null
+  },
   isConnected: {
     type: Boolean,
     default: true
@@ -688,7 +956,10 @@ const props = defineProps({
 const emit = defineEmits([
   'teach-ai',
   'open-playbook',
-  'toast'
+  'toast',
+  'select-inspect-doc',
+  'view-doc-detail',
+  'delete-doc'
 ])
 
 const leftTab = ref('conversations')
@@ -1083,6 +1354,252 @@ const splitParagraphs = (text) => {
   return String(text).split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
 }
 
+const getMessageBubbles = (msg) => {
+  if (!msg) return ['']
+  if (Array.isArray(msg.reply_bubbles) && msg.reply_bubbles.length > 0) {
+    const clean = msg.reply_bubbles
+      .map(b => (b && typeof b === 'object' ? String(b.text || '') : String(b || '')).trim())
+      .filter(Boolean)
+    if (clean.length > 0) return clean
+  }
+  if (msg.sender_role === 'AI_BOT' && msg.content) {
+    const parts = String(msg.content).split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+  }
+  return [msg.content || '']
+}
+
+// =========================================================================
+// DOCUMENT INSPECTOR & CHUNKS / PRICING VIEWER (FOR "📄 TÀI LIỆU PAGE" TAB)
+// =========================================================================
+const docChunks = ref([])
+const isLoadingChunks = ref(false)
+const chunksError = ref('')
+const chunkFilterMode = ref('ALL') // 'ALL' | 'PRICING'
+const chunkSearchQuery = ref('')
+let latestChunksReqId = 0
+
+const scopedDocuments = computed(() => {
+  const list = Array.isArray(props.documents) ? props.documents : []
+  if (!props.activePageId) return list
+  if (props.activePageId === '__unassigned__') {
+    return list.filter(d => !d.page_id)
+  }
+  return list.filter(d => d.page_id === props.activePageId)
+})
+
+const selectedInspectDoc = computed(() => {
+  if (scopedDocuments.value.length === 0) return null
+  if (props.activeInspectDocId) {
+    const found = scopedDocuments.value.find(d => d.document_id === props.activeInspectDocId)
+    if (found) return found
+  }
+  return scopedDocuments.value[0]
+})
+
+const ensureValidInspectedDoc = () => {
+  if (scopedDocuments.value.length === 0) {
+    if (props.activeInspectDocId !== null) {
+      emit('select-inspect-doc', null)
+    }
+    docChunks.value = []
+    return
+  }
+  const exists = props.activeInspectDocId && scopedDocuments.value.some(d => d.document_id === props.activeInspectDocId)
+  if (!exists) {
+    emit('select-inspect-doc', scopedDocuments.value[0].document_id)
+  }
+}
+
+const loadSelectedDocumentChunks = async () => {
+  const doc = selectedInspectDoc.value
+  if (!doc || !doc.document_id) {
+    docChunks.value = []
+    chunksError.value = ''
+    return
+  }
+  if (doc.status !== 'READY') {
+    docChunks.value = []
+    chunksError.value = ''
+    return
+  }
+  const reqId = ++latestChunksReqId
+  isLoadingChunks.value = true
+  chunksError.value = ''
+  try {
+    const list = await api.getDocumentChunks(doc.document_id)
+    if (reqId === latestChunksReqId) {
+      docChunks.value = Array.isArray(list) ? list : []
+    }
+  } catch (err) {
+    if (reqId === latestChunksReqId) {
+      chunksError.value = err.message || 'Lỗi tải dữ liệu chunks'
+      docChunks.value = []
+    }
+  } finally {
+    if (reqId === latestChunksReqId) {
+      isLoadingChunks.value = false
+    }
+  }
+}
+
+const pricingOrTableChunksCount = computed(() => {
+  return docChunks.value.filter(c => c.has_pricing || c.has_table).length
+})
+
+const filteredDocChunks = computed(() => {
+  return docChunks.value.filter(c => {
+    if (chunkFilterMode.value === 'PRICING' && !(c.has_pricing || c.has_table)) {
+      return false
+    }
+    if (chunkSearchQuery.value.trim()) {
+      const q = chunkSearchQuery.value.trim().toLowerCase()
+      const heading = Array.isArray(c.heading_path) ? c.heading_path.join(' ') : ''
+      const hay = `${heading} ${c.text || ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+})
+
+const getDocExtension = (filename) => {
+  const parts = String(filename || '').split('.')
+  return parts.length > 1 ? parts.pop().toUpperCase().slice(0, 4) : 'DOC'
+}
+
+const getChunkMetaArray = (chunk, key) => {
+  const val = chunk?.metadata?.[key]
+  return Array.isArray(val) ? val : []
+}
+
+const hasChunkExtractedMeta = (chunk) => {
+  return getChunkMetaArray(chunk, 'match_codes').length > 0 || getChunkMetaArray(chunk, 'match_prices').length > 0
+}
+
+const formatVndChip = (val) => {
+  const num = Number(val)
+  if (!Number.isFinite(num) || num <= 0) return String(val)
+  return num.toLocaleString('vi-VN') + 'đ'
+}
+
+const isMarkdownTableSeparator = (line) => {
+  const trimmed = line.trim()
+  if (!trimmed.includes('|') || !trimmed.includes('-')) return false
+  return /^\|?[\s:|-]+\|?$/.test(trimmed)
+}
+
+const splitMarkdownTableRow = (line) => {
+  let trimmed = line.trim()
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1)
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1)
+  return trimmed.split('|').map(cell => cell.trim().replace(/\*\*/g, ''))
+}
+
+const cleanInlineMarkdown = (str) => {
+  return String(str || '').replace(/\*\*(.*?)\*\*/g, '$1').trim()
+}
+
+const parseChunkBlocks = (rawText) => {
+  if (!rawText) return []
+  const lines = String(rawText).split(/\r?\n/)
+  const blocks = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      i++
+      continue
+    }
+
+    // 1. Markdown Table Detection
+    if (
+      trimmed.includes('|') &&
+      i + 1 < lines.length &&
+      isMarkdownTableSeparator(lines[i + 1])
+    ) {
+      const headers = splitMarkdownTableRow(trimmed)
+      i += 2
+      const rows = []
+      while (i < lines.length && lines[i].trim().includes('|')) {
+        if (!isMarkdownTableSeparator(lines[i])) {
+          rows.push(splitMarkdownTableRow(lines[i]))
+        }
+        i++
+      }
+      blocks.push({ type: 'table', headers, rows })
+      continue
+    }
+
+    // 2. Markdown Heading
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (headingMatch) {
+      blocks.push({
+        type: 'heading',
+        level: headingMatch[1].length,
+        text: cleanInlineMarkdown(headingMatch[2])
+      })
+      i++
+      continue
+    }
+
+    // 3. Bullet List
+    if (/^[-*+]\s+/.test(trimmed)) {
+      const items = []
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i].trim())) {
+        items.push(cleanInlineMarkdown(lines[i].trim().replace(/^[-*+]\s+/, '')))
+        i++
+      }
+      blocks.push({ type: 'list', items })
+      continue
+    }
+
+    // 4. Normal Paragraph
+    const paraLines = []
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^(#{1,4})\s+/.test(lines[i].trim()) &&
+      !/^[-*+]\s+/.test(lines[i].trim()) &&
+      !(lines[i].trim().includes('|') && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1]))
+    ) {
+      paraLines.push(cleanInlineMarkdown(lines[i].trim()))
+      i++
+    }
+    if (paraLines.length > 0) {
+      blocks.push({ type: 'paragraph', text: paraLines.join(' ') })
+    }
+  }
+
+  return blocks
+}
+
+watch(leftTab, (newTab) => {
+  if (newTab === 'documents') {
+    ensureValidInspectedDoc()
+    loadSelectedDocumentChunks()
+  }
+})
+
+watch(
+  () => [selectedInspectDoc.value?.document_id, selectedInspectDoc.value?.status],
+  () => {
+    chunkSearchQuery.value = ''
+    chunkFilterMode.value = 'ALL'
+    if (leftTab.value === 'documents') {
+      loadSelectedDocumentChunks()
+    }
+  }
+)
+
+watch(scopedDocuments, () => {
+  if (leftTab.value === 'documents') {
+    ensureValidInspectedDoc()
+  }
+})
+
 const getInitials = (name) => {
   if (!name) return 'KH'
   const parts = name.trim().split(/\s+/)
@@ -1188,7 +1705,12 @@ onMounted(() => {
 })
 
 defineExpose({
-  refreshInbox: () => loadConversations(true)
+  refreshInbox: () => loadConversations(true),
+  openDocInspectorOnMobile: () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
+      mobilePane.value = 'chat'
+    }
+  }
 })
 </script>
 
@@ -1293,15 +1815,20 @@ defineExpose({
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
+.documents-tab-body :deep(.sidebar-container),
 .documents-tab-body :deep(.sidebar) {
   width: 100% !important;
+  min-width: 0 !important;
   max-width: 100% !important;
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
+  overflow-x: hidden !important;
 }
 
 .conv-search-bar-row {
@@ -1874,7 +2401,12 @@ defineExpose({
 .msg-bubble-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.msg-ai-bot .msg-bubble-col,
+.msg-human-sale .msg-bubble-col {
+  align-items: flex-end;
 }
 
 .msg-meta-header {
@@ -2444,6 +2976,446 @@ defineExpose({
 }
 
 /* ========================================================================= */
+/* DOCUMENT CONTENT, CHUNKS & PRICING TABLE INSPECTOR (RIGHT PANE)           */
+/* ========================================================================= */
+.doc-inspector-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.doc-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafd;
+  flex-wrap: wrap;
+}
+
+.doc-inspector-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-inspector-ext-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: #e8f0fe;
+  color: #0b57d0;
+  border: 1px solid #c2d7f8;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+
+.doc-inspector-meta-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doc-inspector-filename {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.doc-inspector-pills-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.doc-stat-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pill-ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pill-parsing {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.pill-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.pill-paused {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.pill-chunks {
+  background: #e8f0fe;
+  color: #0b57d0;
+}
+
+.pill-pricing {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.doc-inspector-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.btn-doc-header-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-doc-header-act:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.btn-doc-header-del:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.doc-inspector-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #eef2f6;
+  background: #ffffff;
+}
+
+.doc-chunk-filter-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chunk-filter-tab {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.chunk-filter-tab:hover {
+  background: #f1f5f9;
+}
+
+.chunk-filter-tab.active {
+  background: #0b57d0;
+  border-color: #0b57d0;
+  color: #ffffff;
+}
+
+.doc-chunk-search-box {
+  position: relative;
+  flex: 1 1 240px;
+  max-width: 380px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+}
+
+.doc-chunk-search-input {
+  width: 100%;
+  padding: 7px 28px 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.doc-chunk-search-input:focus {
+  background: #ffffff;
+  border-color: #0b57d0;
+}
+
+.doc-chunk-search-clear {
+  position: absolute;
+  right: 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.doc-chunks-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 18px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #f8fafc;
+}
+
+.doc-chunks-state-box {
+  padding: 36px 20px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  color: #475569;
+}
+
+.doc-chunks-state-box h4 {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  color: #0f172a;
+}
+
+.doc-chunks-state-box p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.doc-chunk-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  min-width: 0;
+}
+
+.doc-chunk-card.has-pricing-highlight {
+  border-color: #93c5fd;
+  box-shadow: 0 2px 8px rgba(11, 87, 208, 0.06);
+}
+
+.chunk-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.chunk-breadcrumb-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chunk-idx-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.chunk-page-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.chunk-heading-path {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0b57d0;
+  word-break: break-word;
+}
+
+.chunk-semantic-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chunk-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.tag-pricing {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tag-table {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tag-type {
+  background: #f1f5f9;
+  color: #334155;
+  font-family: var(--font-mono, monospace);
+}
+
+.chunk-extracted-meta-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.meta-extract-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.chip-code {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.chip-price {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.chunk-content-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+.chunk-block-heading {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.chunk-block-para {
+  margin: 0;
+  word-break: break-word;
+}
+
+.chunk-block-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chunk-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.chunk-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 480px;
+}
+
+.chunk-md-table th {
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 800;
+  text-align: left;
+  padding: 8px 11px;
+  border-bottom: 1.5px solid #bfdbfe;
+  white-space: nowrap;
+}
+
+.chunk-md-table td {
+  padding: 8px 11px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: top;
+}
+
+.chunk-md-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.chunk-md-table tbody tr:nth-child(even) {
+  background: #f8fafd;
+}
+
+/* ========================================================================= */
 /* MOBILE NAVIGATION & RESPONSIVE BREAKPOINTS (<= 1280px, <= 1024px, <= 640px) */
 /* ========================================================================= */
 .mobile-inbox-tabs {
@@ -2457,9 +3429,9 @@ defineExpose({
 
 @media (max-width: 1280px) {
   .inbox-left-panel {
-    width: 290px;
-    min-width: 260px;
-    max-width: 310px;
+    width: 300px;
+    min-width: 275px;
+    max-width: 320px;
   }
 
   .inbox-right-insight {
@@ -2605,10 +3577,22 @@ defineExpose({
 
   /* Prevent iOS Safari / Android Chrome auto-zoom on input focus */
   .conv-search-input,
+  .doc-chunk-search-input,
   .new-cust-input,
   .new-cust-textarea,
   .composer-textarea {
     font-size: 16px !important;
+  }
+
+  .doc-inspector-header,
+  .doc-inspector-toolbar,
+  .doc-chunks-scroll {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .doc-chunk-search-box {
+    max-width: 100%;
   }
 }
 

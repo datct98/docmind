@@ -183,6 +183,21 @@ export const api = {
   },
 
   /**
+   * Lấy danh sách Chunks & Bảng giá đã trích xuất của một tài liệu
+   * GET /api/documents/:id/chunks
+   */
+  async getDocumentChunks(docId) {
+    const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/chunks`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể tải nội dung chunks của tài liệu (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  /**
    * Upload tài liệu mới (gán trực tiếp vào Page nếu có pageId, kèm tùy chọn hiệu lực thời gian)
    * POST /api/documents
    * multipart/form-data: file, page_id, effective_from, effective_to, is_active

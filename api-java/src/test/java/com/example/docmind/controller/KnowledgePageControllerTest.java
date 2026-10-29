@@ -1,6 +1,7 @@
 package com.example.docmind.controller;
 
 import com.example.docmind.dto.KnowledgePageRequest;
+import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.entity.KnowledgePageEntity;
 import com.example.docmind.repository.DocumentRepository;
 import com.example.docmind.repository.KnowledgePageRepository;
@@ -153,5 +154,76 @@ class KnowledgePageControllerTest {
                 .andExpect(jsonPath("$[0].industry_code").value("BEAUTY_SPA"))
                 .andExpect(jsonPath("$[2].industry_code").value("FASHION_APPAREL"))
                 .andExpect(jsonPath("$[2].persona_config.default_customer_pronoun").value("Bạn"));
+    }
+
+    @Test
+    void updatePageUpdatesOpeningBubblesAndPreservesDeepPersonaConfig() throws Exception {
+        UUID pageId = UUID.fromString("d3000000-0000-0000-0000-000000000001");
+        String existingJson = """
+                {
+                  "industry_code": "DENTAL_CLINIC",
+                  "bot_name": "Minh Anh",
+                  "self_pronoun": "em",
+                  "default_customer_pronoun": "mình",
+                  "care_actor": "bác sĩ",
+                  "post_price_delay_ms": 10000,
+                  "active_prompt_compact": "BẠN LÀ: Minh Anh, trợ lý tư vấn Nha Khoa Tỏa Sáng.",
+                  "symptom_keywords": ["ê buốt", "ố vàng"],
+                  "opening_bubbles": ["Câu chào cũ 1", "Câu chào cũ 2"]
+                }
+                """;
+        KnowledgePageEntity existing = KnowledgePageEntity.builder()
+                .id(pageId)
+                .name("Nha Khoa Tỏa Sáng")
+                .industry("DENTAL_CLINIC")
+                .targetAudience("Khách hàng chăm sóc & thẩm mỹ răng miệng")
+                .description("Ân cần, chuyên nghiệp")
+                .personaConfigJson(existingJson)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(knowledgePageRepository.findById(pageId)).thenReturn(Optional.of(existing));
+        when(knowledgePageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(documentRepository.countByPageId(pageId)).thenReturn(1L);
+        when(learnedRuleRepository.countByPageId(pageId)).thenReturn(0L);
+
+        PagePersonaConfig incomingCfg = new PagePersonaConfig(
+                "DENTAL_CLINIC",
+                "Minh Anh",
+                "em",
+                "mình",
+                "Ân cần, chuẩn y khoa",
+                "LOW",
+                List.of("massage"),
+                List.of("nha khoa", "răng sứ"),
+                null,
+                null,
+                List.of(
+                        "Dạ chào mình, em là Minh Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ.",
+                        "Bên em chuyên sâu các dịch vụ chăm sóc, phục hình răng sứ thẩm mỹ và điều trị răng miệng êm ái, nhẹ nhàng, giúp mình yên tâm không lo đau buốt.",
+                        "Hôm nay răng mình đang gặp tình trạng ê buốt, sứt mẻ hay mình muốn cải thiện thẩm mỹ nụ cười ở vùng răng nào để em hỗ trợ thông tin chi tiết nhất ạ?"
+                ),
+                null,
+                null
+        );
+        KnowledgePageRequest updateReq = new KnowledgePageRequest(
+                "Nha Khoa Tỏa Sáng",
+                "DENTAL_CLINIC",
+                "Khách hàng chăm sóc & thẩm mỹ răng miệng",
+                "Ân cần, chuyên nghiệp",
+                incomingCfg
+        );
+
+        mockMvc.perform(put("/api/pages/" + pageId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.persona_config.opening_bubbles.length()").value(3))
+                .andExpect(jsonPath("$.persona_config.opening_bubbles[0]").value("Dạ chào mình, em là Minh Anh — trợ lý bác sĩ tại Nha Khoa Tỏa Sáng ạ."))
+                .andExpect(jsonPath("$.persona_config.opening_bubbles[2]").value("Hôm nay răng mình đang gặp tình trạng ê buốt, sứt mẻ hay mình muốn cải thiện thẩm mỹ nụ cười ở vùng răng nào để em hỗ trợ thông tin chi tiết nhất ạ?"))
+                .andExpect(jsonPath("$.persona_config.care_actor").value("bác sĩ"))
+                .andExpect(jsonPath("$.persona_config.post_price_delay_ms").value(10000))
+                .andExpect(jsonPath("$.persona_config.active_prompt_compact").value("BẠN LÀ: Minh Anh, trợ lý tư vấn Nha Khoa Tỏa Sáng."));
     }
 }
