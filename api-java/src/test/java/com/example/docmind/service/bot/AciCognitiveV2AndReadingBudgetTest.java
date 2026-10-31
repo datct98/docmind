@@ -4900,4 +4900,129 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(rebuiltEdu).hasSize(1);
         assertThat(rebuiltEdu.get(0).text()).contains("3.900k/khóa").doesNotContain("2.500k");
     }
+
+    @Test
+    @DisplayName("P2.2: V34 Precondition 64-Char SHA-256 Hash Guard & 3-Chunk Room Space Normalization on Live Postgres")
+    void testP22_V34PreconditionHashGuardAndRoomSpaceNormalizationOnLivePostgres() throws Exception {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+
+        String v34Sql;
+        try (var in = getClass().getClassLoader().getResourceAsStream(
+                "db/migration/V34__p22_normalize_room_space_chunks_provenance.sql")) {
+            assertThat(in).as("V34 migration SQL must exist on classpath").isNotNull();
+            v34Sql = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        int doStart = v34Sql.indexOf("DO $$");
+        int doEnd = v34Sql.indexOf("END $$;");
+        assertThat(doStart).isGreaterThanOrEqualTo(0);
+        assertThat(doEnd).isGreaterThan(doStart);
+        String preconditionDoBlock = v34Sql.substring(doStart, doEnd + "END $$;".length());
+
+        // Verify all 3 exact 64-char SHA-256 baseline hashes are enforced in the DO $$ guard block
+        assertThat(preconditionDoBlock)
+                .contains("09ec67428c1517f07c299c352909bbe784307d2f9a9500de88df9bb4e9696c1f")
+                .contains("9d7a8a70bf7ae89ba54ddff134c2f22da7e5f88a22177f080c0da5321e2eb0fb")
+                .contains("1bd8874c6b574bb3cb0ee88823f95d7f7c9419f6922e4af96c960a279850932b")
+                .contains("[V34_PRECONDITION_HASH_MISMATCH]");
+
+        Integer v34AppliedCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '34' AND success = true",
+                Integer.class
+        );
+
+        // 1. Pre-migration negative test (when V34 has not yet run): 1-char tamper MUST raise [V34_PRECONDITION_HASH_MISMATCH] & rollback cleanly
+        if (v34AppliedCount == null || v34AppliedCount == 0) {
+            try (java.sql.Connection conn = ds.getConnection()) {
+                conn.setAutoCommit(false);
+                try (java.sql.Statement stmt = conn.createStatement()) {
+                    stmt.execute("UPDATE public.chunks SET text = text || '!' "
+                            + "WHERE id = '5c6c56f3-f99d-42d3-89de-9cddf336cb54' "
+                            + "AND page_id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'");
+                    org.assertj.core.api.Assertions.assertThatThrownBy(() -> stmt.execute(preconditionDoBlock))
+                            .hasMessageContaining("[V34_PRECONDITION_HASH_MISMATCH]");
+                } finally {
+                    conn.rollback();
+                }
+            }
+        }
+
+        // 2. Execute real Flyway migration up to current target against live docmind-postgres (:5433)
+        var flyway = org.flywaydb.core.Flyway.configure()
+                .dataSource(ds)
+                .baselineOnMigrate(true)
+                .locations("classpath:db/migration")
+                .load();
+        flyway.migrate();
+
+        Integer v34AfterMigrate = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '34' AND success = true",
+                Integer.class
+        );
+        assertThat(v34AfterMigrate).isEqualTo(1);
+
+        // 3. Post-migration negative test: running the V34 precondition guard on altered content MUST raise [V34_PRECONDITION_HASH_MISMATCH]
+        try (java.sql.Connection conn = ds.getConnection()) {
+            conn.setAutoCommit(false);
+            try (java.sql.Statement stmt = conn.createStatement()) {
+                org.assertj.core.api.Assertions.assertThatThrownBy(() -> stmt.execute(preconditionDoBlock))
+                        .hasMessageContaining("[V34_PRECONDITION_HASH_MISMATCH]");
+            } finally {
+                conn.rollback();
+            }
+        }
+
+        // 4. Verify all 3 chunks are normalized with provenance tags, synced content/text/tsv/tsv_content/chunk_metadata, and preserved Tip policy
+        List<String> targetChunkIds = List.of(
+                "5c6c56f3-f99d-42d3-89de-9cddf336cb54",
+                "a83e5421-cb0a-49e1-b9f8-f10d3fc745c8",
+                "db248346-59e7-48ff-a0c9-93c98486a973"
+        );
+        for (String cid : targetChunkIds) {
+            var row = jdbc.queryForMap(
+                    "SELECT text, content, tsv::text AS tsv_str, tsv_content::text AS tsv_content_str, "
+                            + "chunk_metadata->>'provenance_normalized' AS prov_norm, "
+                            + "chunk_metadata->>'special_room_merge_status' AS merge_status "
+                            + "FROM public.chunks WHERE id = ?::uuid AND page_id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'::uuid",
+                    cid
+            );
+            String text = (String) row.get("text");
+            String content = (String) row.get("content");
+            assertThat(content).isEqualTo(text);
+            assertThat(text)
+                    .contains("[CONFIRMED — branch_scope: HANOI | package_code: DS01..DS06, NS01 (399k/60p), NS02 (530k/80p)]")
+                    .contains("mỗi giường đều có rèm che riêng kín đáo")
+                    .contains("[CONFIRMED — branch_scope: HANOI | package_code: NS03 (580k/100p) trở lên]")
+                    .contains("Phòng VIP riêng khép kín")
+                    .contains("[PENDING_CONFIRMATION — yêu cầu ghép phòng đặc biệt / ngoài danh mục niêm yết]");
+            assertThat((String) row.get("tsv_str")).isNotBlank().isEqualTo((String) row.get("tsv_content_str"));
+            assertThat(row.get("prov_norm")).isEqualTo("V34_P22");
+            assertThat(row.get("merge_status")).isEqualTo("PENDING_CONFIRMATION");
+        }
+
+        String tipPolicyChunkText = jdbc.queryForObject(
+                "SELECT content FROM public.chunks WHERE id = '5c6c56f3-f99d-42d3-89de-9cddf336cb54'::uuid",
+                String.class
+        );
+        assertThat(tipPolicyChunkText)
+                .contains("| Quy định về tip | Tiền tip chưa bao gồm trong giá dịch vụ và hoàn toàn tùy tâm |")
+                .contains("| Trẻ em đi cùng | Có nhận khách đi cùng trẻ em |");
+
+        // 5. Verify Nàng Sen skills & learned_rules eliminated fabricated social proof, sappy clichés, and forced CTA on style feedback
+        String safetyRuleText = jdbc.queryForObject(
+                "SELECT generalized_rule FROM public.learned_rules WHERE id = 'ac601093-402d-4eae-aeef-c4aca7bce34d'::uuid",
+                String.class
+        );
+        assertThat(safetyRuleText)
+                .contains("không tự suy diễn mặc định rằng khách cần mua gói massage đầu cổ")
+                .doesNotContain("nhiều khách bên em chia sẻ");
+
+        String emotionalRepairRuleText = jdbc.queryForObject(
+                "SELECT generalized_rule FROM public.learned_rules WHERE id = '250bf6a0-f16c-4bb8-bb43-c0054a6a1f3a'::uuid",
+                String.class
+        );
+        assertThat(emotionalRepairRuleText)
+                .contains("NO_CTA")
+                .doesNotContain("Câu hỏi gợi mở:");
+    }
 }
