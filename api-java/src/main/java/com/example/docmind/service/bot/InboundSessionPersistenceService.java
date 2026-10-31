@@ -1,6 +1,8 @@
 package com.example.docmind.service.bot;
 
 import com.example.docmind.dto.bot.FanpageBotRequest;
+import com.example.docmind.entity.ConversationSessionEntity;
+import com.example.docmind.repository.ConversationSessionRepository;
 import com.example.docmind.service.bot.InboundEventIdResolver.InboundChannel;
 import com.example.docmind.service.bot.InboundEventIdResolver.ResolvedInboundEvent;
 import jakarta.annotation.PostConstruct;
@@ -19,7 +21,9 @@ import java.text.Normalizer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
 
 /**
@@ -100,8 +104,9 @@ public class InboundSessionPersistenceService {
     );
 
     private final JdbcTemplate jdbcTemplate;
-    private final TransactionTemplate requiresNewTx;
+    private final TransactionTemplate jdbcRequiresNewTx;
     private final DurableInboundWalRecoveryStore walRecoveryStore;
+    private volatile ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator;
 
     @Value("${docmind.security.atomic-state-guard.enabled:true}")
     private volatile boolean atomicStateGuardEnabled = true;
@@ -153,13 +158,41 @@ public class InboundSessionPersistenceService {
     public InboundSessionPersistenceService(
             JdbcTemplate jdbcTemplate,
             PlatformTransactionManager transactionManager,
-            DurableInboundWalRecoveryStore walRecoveryStore
+            DurableInboundWalRecoveryStore walRecoveryStore,
+            ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator
     ) {
         this.jdbcTemplate = jdbcTemplate;
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.requiresNewTx = tx;
+        this.jdbcRequiresNewTx = tx;
         this.walRecoveryStore = walRecoveryStore;
+        this.sessionMergeCoordinator = sessionMergeCoordinator;
+    }
+
+    public InboundSessionPersistenceService(
+            JdbcTemplate jdbcTemplate,
+            PlatformTransactionManager transactionManager,
+            DurableInboundWalRecoveryStore walRecoveryStore
+    ) {
+        this(jdbcTemplate, transactionManager, walRecoveryStore, null);
+    }
+
+    private ConversationSessionOptimisticMergeCoordinator resolveMergeCoordinator() {
+        ConversationSessionOptimisticMergeCoordinator existing = this.sessionMergeCoordinator;
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (this) {
+            if (this.sessionMergeCoordinator == null) {
+                this.sessionMergeCoordinator = ConversationSessionOptimisticMergeCoordinator
+                        .forStandaloneDataSource(this.jdbcTemplate.getDataSource());
+            }
+            return this.sessionMergeCoordinator;
+        }
+    }
+
+    private <T> T executeInJpaRequiresNew(Callable<T> action) {
+        return resolveMergeCoordinator().executeInRequiresNew(action);
     }
 
     @PostConstruct
@@ -254,7 +287,7 @@ public class InboundSessionPersistenceService {
         boolean guardEnabled = this.atomicStateGuardEnabled;
 
         try {
-            EntryEvaluation eval = requiresNewTx.execute(status -> {
+            EntryEvaluation eval = executeWithOptimisticRetry(() -> {
                 SessionSnapshot session = findOrCreateSessionInTx(requestedPageId, psid, customerName);
                 Instant now = Instant.now();
                 boolean inserted = false;
@@ -392,7 +425,7 @@ public class InboundSessionPersistenceService {
         }
         String psid = normalizePsid(rawSenderId);
         try {
-            Boolean permitted = requiresNewTx.execute(status -> {
+            Boolean permitted = executeInJpaRequiresNew(() -> {
                 UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
                 List<SessionSnapshot> rows = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
                 if (rows.isEmpty()) {
@@ -423,7 +456,7 @@ public class InboundSessionPersistenceService {
         String psid = normalizePsid(rawSenderId);
         boolean guardEnabled = this.atomicStateGuardEnabled;
         try {
-            Boolean allowed = requiresNewTx.execute(status -> {
+            Boolean allowed = executeInJpaRequiresNew(() -> {
                 UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
                 List<SessionSnapshot> rows = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
                 if (rows.isEmpty()) {
@@ -456,32 +489,28 @@ public class InboundSessionPersistenceService {
 
     /**
      * Reads fresh {@code REQUIRES_NEW} guard &amp; opt-out audit columns by {@code sessionId}
-     * so JPA callers ({@code ConversationInboxService}) never clobber concurrent {@code REQUIRES_NEW} updates.
+     * via JPA {@link ConversationSessionRepository} so callers never clobber concurrent updates.
      */
     public FreshSessionGuardState readFreshSessionGuardState(UUID sessionId) {
         if (sessionId == null) {
             return null;
         }
         try {
-            return requiresNewTx.execute(status -> {
-                List<FreshSessionGuardState> list = jdbcTemplate.query(
-                        "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_at, re_opt_in_source, re_opt_in_evidence "
-                                + "FROM conversation_sessions WHERE id = ?",
-                        (rs, rowNum) -> new FreshSessionGuardState(
-                                UUID.fromString(rs.getString("id")),
-                                rs.getString("control_mode"),
-                                rs.getBoolean("opted_out"),
-                                toInstantOrNull(rs.getTimestamp("opted_out_at")),
-                                toInstantOrNull(rs.getTimestamp("re_opt_in_at")),
-                                rs.getString("re_opt_in_source"),
-                                rs.getString("re_opt_in_evidence")
-                        ),
-                        sessionId
-                );
-                return list.isEmpty() ? null : list.get(0);
-            });
+            return executeInJpaRequiresNew(() ->
+                    resolveMergeCoordinator().repository().findById(sessionId)
+                            .map(s -> new FreshSessionGuardState(
+                                    s.getId(),
+                                    s.getControlMode(),
+                                    s.isOptedOut(),
+                                    s.getOptedOutAt(),
+                                    s.getReOptInAt(),
+                                    s.getReOptInSource(),
+                                    s.getReOptInEvidence()
+                            ))
+                            .orElse(null)
+            );
         } catch (Exception ex) {
-            log.debug("Non-fatal: unable to read V33 fresh session guard state for {}: {}", sessionId, ex.getMessage());
+            log.debug("Non-fatal: unable to read V33/V35 fresh session guard state for {}: {}", sessionId, ex.getMessage());
             return null;
         }
     }
@@ -500,7 +529,7 @@ public class InboundSessionPersistenceService {
             return false;
         }
         try {
-            Boolean inserted = requiresNewTx.execute(status ->
+            Boolean inserted = jdbcRequiresNewTx.execute(status ->
                     insertCustomerMessageOnConflictDoNothingInTx(
                             sessionId,
                             content,
@@ -529,7 +558,7 @@ public class InboundSessionPersistenceService {
                 ? Instant.ofEpochMilli(record.receivedAtEpochMs())
                 : Instant.now();
 
-        requiresNewTx.executeWithoutResult(status -> {
+        executeWithOptimisticRetry(() -> {
             SessionSnapshot session = findOrCreateSessionInTx(requestedPageId, psid, record.customerName());
             boolean inserted = insertCustomerMessageOnConflictDoNothingInTx(
                     session.id(),
@@ -543,7 +572,23 @@ public class InboundSessionPersistenceService {
             if (this.atomicStateGuardEnabled && isExplicitCustomerOptOutCommand(record.verbatimText())) {
                 recordSessionOptOutInTx(session.id(), record.verbatimText(), receivedAt);
             }
+            return null;
         });
+    }
+
+    private <T> T executeWithOptimisticRetry(Callable<T> action) {
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                return executeInJpaRequiresNew(action);
+            } catch (RuntimeException ex) {
+                if (!ConversationSessionOptimisticMergeCoordinator.isOptimisticLockConflict(ex) || attempt >= 5) {
+                    throw ex;
+                }
+                log.info("[ACI-P24-INBOUND-RETRY] attempt={} conflict={} -> retrying atomic inbound transaction",
+                        attempt, ex.getClass().getSimpleName());
+            }
+        }
+        throw new IllegalStateException("Exhausted inbound JPA optimistic retries");
     }
 
     private EntryEvaluation handleDbFailureFailClosed(
@@ -601,35 +646,18 @@ public class InboundSessionPersistenceService {
     }
 
     private List<SessionSnapshot> queryLatestSessionSnapshotInTx(UUID effectiveDbPageId, String psid) {
-        if (effectiveDbPageId != null) {
-            return jdbcTemplate.query(
-                    "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_source FROM conversation_sessions "
-                            + "WHERE page_id = ? AND customer_psid = ? "
-                            + "ORDER BY updated_at DESC LIMIT 1",
-                    (rs, rowNum) -> new SessionSnapshot(
-                            UUID.fromString(rs.getString("id")),
-                            rs.getString("control_mode"),
-                            rs.getBoolean("opted_out"),
-                            toInstantOrNull(rs.getTimestamp("opted_out_at")),
-                            rs.getString("re_opt_in_source")
-                    ),
-                    effectiveDbPageId,
-                    psid
-            );
-        }
-        return jdbcTemplate.query(
-                "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_source FROM conversation_sessions "
-                        + "WHERE customer_psid = ? "
-                        + "ORDER BY updated_at DESC LIMIT 1",
-                (rs, rowNum) -> new SessionSnapshot(
-                        UUID.fromString(rs.getString("id")),
-                        rs.getString("control_mode"),
-                        rs.getBoolean("opted_out"),
-                        toInstantOrNull(rs.getTimestamp("opted_out_at")),
-                        rs.getString("re_opt_in_source")
-                ),
-                psid
-        );
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        Optional<ConversationSessionEntity> found = effectiveDbPageId != null
+                ? repo.findFirstByPageIdAndCustomerPsidOrderByUpdatedAtDesc(effectiveDbPageId, psid)
+                : repo.findFirstByCustomerPsidOrderByUpdatedAtDesc(psid);
+        return found.map(s -> List.of(new SessionSnapshot(
+                        s.getId(),
+                        s.getControlMode(),
+                        s.isOptedOut(),
+                        s.getOptedOutAt(),
+                        s.getReOptInSource()
+                )))
+                .orElseGet(List::of);
     }
 
     private SessionSnapshot findOrCreateSessionInTx(UUID requestedPageId, String psid, String customerName) {
@@ -637,78 +665,99 @@ public class InboundSessionPersistenceService {
         jdbcTemplate.queryForObject("SELECT pg_advisory_xact_lock(hashtext(?))", Object.class, lockKey);
 
         UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
-        List<SessionSnapshot> existing = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        Optional<ConversationSessionEntity> existing = effectiveDbPageId != null
+                ? repo.findFirstByPageIdAndCustomerPsidOrderByUpdatedAtDesc(effectiveDbPageId, psid)
+                : repo.findFirstByCustomerPsidOrderByUpdatedAtDesc(psid);
 
-        if (!existing.isEmpty()) {
-            SessionSnapshot found = existing.get(0);
+        if (existing.isPresent()) {
+            ConversationSessionEntity found = existing.get();
             if (customerName != null && !customerName.isBlank()
                     && !"Khách hàng".equalsIgnoreCase(customerName.strip())) {
-                jdbcTemplate.update(
-                        "UPDATE conversation_sessions SET customer_name = ? WHERE id = ?",
-                        customerName.strip(),
-                        found.id()
-                );
+                found.setCustomerName(customerName.strip());
+                found = repo.saveAndFlush(found);
             }
-            return found;
+            return new SessionSnapshot(
+                    found.getId(),
+                    found.getControlMode(),
+                    found.isOptedOut(),
+                    found.getOptedOutAt(),
+                    found.getReOptInSource()
+            );
         }
 
         UUID newSessionId = UUID.randomUUID();
         String displayName = (customerName != null && !customerName.isBlank())
                 ? customerName.strip()
                 : "Khách Messenger (" + psid + ")";
-        Timestamp nowTs = Timestamp.from(Instant.now());
+        Instant now = Instant.now();
 
-        jdbcTemplate.update(
-                "INSERT INTO conversation_sessions ("
-                        + "id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, "
-                        + "control_mode, buying_temperature, temperature_delta, temperature_label, momentum, "
-                        + "buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, "
-                        + "opted_out, last_message_preview, last_sender_role, last_message_at, created_at, updated_at"
-                        + ") VALUES (?, ?, ?, ?, 'mình', 'Tư vấn dịch vụ', 'GENERAL', "
-                        + "'BOT_ACTIVE', 45, 0, 'WARM', 'STABLE', "
-                        + "'EXPLORING_CONSULTATION', 'Đang tìm hiểu giải pháp', 'DISCOVERY', FALSE, FALSE, "
-                        + "FALSE, '', 'CUSTOMER', ?, ?, ?)",
-                newSessionId,
-                effectiveDbPageId,
-                psid,
-                displayName,
-                nowTs,
-                nowTs,
-                nowTs
-        );
-        return new SessionSnapshot(newSessionId, "BOT_ACTIVE", false, null, null);
+        ConversationSessionEntity created = ConversationSessionEntity.builder()
+                .id(newSessionId)
+                .pageId(effectiveDbPageId)
+                .customerPsid(psid)
+                .customerName(displayName)
+                .honorific("mình")
+                .activeTopic("Tư vấn dịch vụ")
+                .topicFamily("GENERAL")
+                .controlMode("BOT_ACTIVE")
+                .buyingTemperature(45)
+                .temperatureDelta(0)
+                .temperatureLabel("WARM")
+                .momentum("STABLE")
+                .buyerArchetype("EXPLORING_CONSULTATION")
+                .archetypeLabel("Đang tìm hiểu giải pháp")
+                .salesStage("DISCOVERY")
+                .hasHumanSaleReply(false)
+                .learnedInColdPath(false)
+                .optedOut(false)
+                .lastMessagePreview("")
+                .lastSenderRole("CUSTOMER")
+                .lastMessageAt(now)
+                .createdAt(now)
+                .updatedAt(now)
+                .aciMemoryStateJson("{}")
+                .build();
+        ConversationSessionEntity saved = repo.saveAndFlush(created);
+        return new SessionSnapshot(saved.getId(), saved.getControlMode(), saved.isOptedOut(), null, null);
     }
 
     private void recordSessionOptOutInTx(UUID sessionId, String previewText, Instant now) {
-        Timestamp ts = Timestamp.from(now);
-        jdbcTemplate.update(
-                "UPDATE conversation_sessions "
-                        + "SET opted_out = TRUE, opted_out_at = ?, "
-                        + "    re_opt_in_at = NULL, re_opt_in_source = NULL, re_opt_in_evidence = NULL, "
-                        + "    last_message_preview = ?, last_sender_role = 'CUSTOMER', "
-                        + "    last_message_at = GREATEST(last_message_at, ?), updated_at = ? "
-                        + "WHERE id = ?",
-                ts,
-                previewText != null ? previewText : "",
-                ts,
-                ts,
-                sessionId
-        );
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        ConversationSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Session not found: " + sessionId));
+        entity.setOptedOut(true);
+        entity.setOptedOutAt(now);
+        entity.setReOptInAt(null);
+        entity.setReOptInSource(null);
+        entity.setReOptInEvidence(null);
+        entity.setLastMessagePreview(previewText != null ? previewText : "");
+        entity.setLastSenderRole("CUSTOMER");
+        if (entity.getLastMessageAt() == null || now.isAfter(entity.getLastMessageAt())) {
+            entity.setLastMessageAt(now);
+        }
+        entity.setUpdatedAt(now);
+        AciCustomerBrainMemorySnapshot snap = AciCustomerBrainMemorySnapshot.fromJson(entity.getAciMemoryStateJson());
+        if (snap != null) {
+            entity.setAciMemoryStateJson(snap.withAlignedRowOptOut(true).toJson());
+        }
+        repo.saveAndFlush(entity);
     }
 
     private void recordSessionReconsentInTx(UUID sessionId, String source, String evidence, Instant now) {
-        Timestamp ts = Timestamp.from(now);
-        jdbcTemplate.update(
-                "UPDATE conversation_sessions "
-                        + "SET opted_out = FALSE, re_opt_in_at = ?, re_opt_in_source = ?, re_opt_in_evidence = ?, "
-                        + "    updated_at = ? "
-                        + "WHERE id = ?",
-                ts,
-                source,
-                evidence,
-                ts,
-                sessionId
-        );
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        ConversationSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Session not found: " + sessionId));
+        entity.setOptedOut(false);
+        entity.setReOptInAt(now);
+        entity.setReOptInSource(source);
+        entity.setReOptInEvidence(evidence);
+        entity.setUpdatedAt(now);
+        AciCustomerBrainMemorySnapshot snap = AciCustomerBrainMemorySnapshot.fromJson(entity.getAciMemoryStateJson());
+        if (snap != null) {
+            entity.setAciMemoryStateJson(snap.withAlignedRowOptOut(false).toJson());
+        }
+        repo.saveAndFlush(entity);
     }
 
     private static String buildReconsentEvidence(String channelTag, String externalMid, String text) {
@@ -719,10 +768,6 @@ public class InboundSessionPersistenceService {
             excerpt = excerpt.substring(0, 260);
         }
         return safeChannel + ":" + safeMid + " | " + excerpt;
-    }
-
-    private static Instant toInstantOrNull(Timestamp ts) {
-        return ts != null ? ts.toInstant() : null;
     }
 
     private UUID resolveExistingPageIdOrNullInTx(UUID requestedPageId) {
@@ -757,33 +802,31 @@ public class InboundSessionPersistenceService {
     }
 
     private void updateSessionCustomerPreviewInTx(UUID sessionId, String previewText, Instant now) {
-        Timestamp ts = Timestamp.from(now);
-        jdbcTemplate.update(
-                "UPDATE conversation_sessions "
-                        + "SET last_message_preview = ?, last_sender_role = 'CUSTOMER', "
-                        + "    last_message_at = ?, updated_at = ? "
-                        + "WHERE id = ?",
-                previewText,
-                ts,
-                ts,
-                sessionId
-        );
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        ConversationSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Session not found: " + sessionId));
+        entity.setLastMessagePreview(previewText != null ? previewText : "");
+        entity.setLastSenderRole("CUSTOMER");
+        entity.setLastMessageAt(now);
+        entity.setUpdatedAt(now);
+        repo.saveAndFlush(entity);
     }
 
     private void updateSessionCustomerPreviewIfNewerInTx(UUID sessionId, String previewText, Instant receivedAt) {
-        Timestamp ts = Timestamp.from(receivedAt);
-        jdbcTemplate.update(
-                "UPDATE conversation_sessions "
-                        + "SET last_message_preview = ?, last_sender_role = 'CUSTOMER', "
-                        + "    last_message_at = GREATEST(last_message_at, ?), "
-                        + "    updated_at = GREATEST(updated_at, ?) "
-                        + "WHERE id = ? AND last_message_at <= ?",
-                previewText,
-                ts,
-                ts,
-                sessionId,
-                ts
-        );
+        ConversationSessionRepository repo = resolveMergeCoordinator().repository();
+        ConversationSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Session not found: " + sessionId));
+        if (entity.getLastMessageAt() == null || !entity.getLastMessageAt().isAfter(receivedAt)) {
+            entity.setLastMessagePreview(previewText != null ? previewText : "");
+            entity.setLastSenderRole("CUSTOMER");
+            if (entity.getLastMessageAt() == null || receivedAt.isAfter(entity.getLastMessageAt())) {
+                entity.setLastMessageAt(receivedAt);
+            }
+            if (entity.getUpdatedAt() == null || receivedAt.isAfter(entity.getUpdatedAt())) {
+                entity.setUpdatedAt(receivedAt);
+            }
+            repo.saveAndFlush(entity);
+        }
     }
 
     private void drainPendingWalQuietly() {

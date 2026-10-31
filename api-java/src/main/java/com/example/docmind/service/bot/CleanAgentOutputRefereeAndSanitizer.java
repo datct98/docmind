@@ -867,7 +867,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
     private static final Pattern BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN = Pattern.compile(
             "(?isU)\\b(?:gói|liệu\\s+trình|khóa|mẫu)\\s+\\d[\\d.,]*\\s*(?:k|nghìn|ngàn|triệu|tr|đ|vnđ|vnd|đồng)\\b[^.!?;,\\n]{0,45}?"
-            + "\\b(?:kéo\\s+dài\\s+\\d{2,3}\\s*(?:phút|p)|có\\s+thời\\s+lượng\\s+\\d{2,3}\\s*(?:phút|p)|bao\\s+gồm|gồm\\s+có|tặng\\s+kèm|ăn\\s+nhẹ|bên\\s+em|của\\s+bên\\s+em)\\b"
+            + "\\b(?:kéo\\s+dài\\s+\\d{1,3}\\s*(?:phút|p)|(?:có\\s+)?thời\\s+lượng\\s+\\d{1,3}\\s*(?:phút|p)|trong\\s+\\d{1,3}\\s*(?:phút|p)|bao\\s+gồm|gồm\\s+có|tặng\\s+kèm)\\b"
+    );
+
+    private static final Pattern BOT_EXPLICIT_PRICE_DELTA_OR_CONTRAST_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bso\\s+với\\b|\\b(?:cao|nhỉnh|chênh|vượt|thấp|rẻ|ít)\\s+hơn\\b|\\bchênh\\s+lệch\\b)"
     );
 
     public static CustomerSessionPriceProvenance extractCustomerSessionPriceProvenance(
@@ -945,6 +949,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String bubbleText,
             int matchStart,
             int matchEnd,
+            long priceVnd,
+            Set<Long> allowedPrices,
             boolean isExternalComparisonProvenance
     ) {
         int sentStart = 0;
@@ -993,6 +999,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String suffixAfterPrice = java.text.Normalizer.normalize(
                 localSubClause.substring(subRelEnd), java.text.Normalizer.Form.NFC);
 
+        boolean hasExternalOrCustomerAttribution = BOT_EXTERNAL_OR_CUSTOMER_ATTRIBUTION_PATTERN.matcher(normSub).find();
+        // Ngay cả khi câu có từ phủ định ("chưa áp dụng"), nếu bot bịa đặt thời lượng/quyền lợi cho gói không tồn tại
+        // (VD Case 4: "Gói 100k có thời lượng 60 phút hiện bên em chưa áp dụng") thì vẫn bắt buộc chặn là BOT_UNGROUNDED_PRICE!
+        if ((!isExternalComparisonProvenance || !hasExternalOrCustomerAttribution)
+                && BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN.matcher(normSub).find()) {
+            return true;
+        }
         if (BOT_NEGATION_IN_SUBCLAUSE_PATTERN.matcher(normSub).find()) {
             return false;
         }
@@ -1002,24 +1015,27 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (BOT_OWN_PACKAGE_AFTER_PRICE_PATTERN.matcher(suffixAfterPrice).find()) {
             return true;
         }
-        boolean hasExternalOrCustomerAttribution = BOT_EXTERNAL_OR_CUSTOMER_ATTRIBUTION_PATTERN.matcher(normSub).find();
-        if (hasExternalOrCustomerAttribution) {
+        if (isExternalComparisonProvenance) {
             return false;
         }
-        if (BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN.matcher(normSub).find()) {
+        // inAsked (USER_ASKED_PRICE):
+        // - Nếu bot đối chiếu độ chênh rõ ràng ("so với mức 100k", "nhỉnh hơn 100k") -> hợp lệ.
+        // - Nếu Catalog có ít nhất 1 gói nằm trong tầm ngân sách khách hỏi (p <= priceVnd, VD khách hỏi "tầm 250k" và có gói 239k)
+        //   và bot đặt trong ngữ cảnh ngân sách ("với ngân sách tầm 250k...") -> hợp lệ.
+        // - Ngược lại, nếu giá khách hỏi THẤP HƠN toàn bộ gói hợp lệ trong Catalog (VD khách hỏi "gói 100k" khi thấp nhất là 239k)
+        //   mà bot nhắc lấp lửng không phủ định và không đối chiếu độ chênh (VD Case 6: "Dạ với mức 100k mình đang quan tâm thì bên em có...") -> chặn!
+        if (BOT_EXPLICIT_PRICE_DELTA_OR_CONTRAST_PATTERN.matcher(normSub).find()) {
+            return false;
+        }
+        boolean hasCatalogPackageWithinAskedBudget = allowedPrices != null
+                && allowedPrices.stream().anyMatch(p -> p != null && p > 0L && p <= priceVnd);
+        if (!hasCatalogPackageWithinAskedBudget) {
             return true;
         }
-        // Nếu là USER_ASKED_PRICE (ngân sách khách hỏi) mà bot không phủ định ("chưa có") và cũng không đặt trong ngữ cảnh
-        // ngân sách/so sánh ("tầm 250k của mình", "dưới 250k", "so với 250k"), tức là bot tự công bố giá đó như gói thật -> chặn!
-        if (!isExternalComparisonProvenance) {
-            String lowSub = normSub.toLowerCase(Locale.ROOT);
-            boolean hasBudgetOrComparativePreposition = lowSub.matches(
-                    "(?isU).*(?:\\b(?:tầm|khoảng|quanh|dưới|trên|mức|với)\\s+\\d|\\bso\\s+với\\b).*");
-            if (!hasBudgetOrComparativePreposition) {
-                return true;
-            }
-        }
-        return false;
+        String lowSub = normSub.toLowerCase(Locale.ROOT);
+        boolean hasBudgetPreposition = lowSub.matches(
+                "(?isU).*(?:\\b(?:ngân\\s+sách|tầm\\s+giá|tầm\\s+tài\\s+chính|khoảng\\s+giá|tầm|khoảng|quanh|dưới|trong\\s+mức|với\\s+mức)\\b).*");
+        return !hasBudgetPreposition;
     }
 
     public static final Pattern CLEAN_PRICE_MENTION_PATTERN = Pattern.compile(
@@ -1109,13 +1125,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
         }
         if (inComparison) {
-            if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, true)) {
+            if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, priceVnd, allowedPrices, true)) {
                 return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
             }
             return PriceMentionSemanticRole.USER_PROVIDED_COMPARISON_PRICE;
         }
         // inAsked == true
-        if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, false)) {
+        if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, priceVnd, allowedPrices, false)) {
             return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
         }
         return PriceMentionSemanticRole.USER_ASKED_PRICE;
@@ -2620,11 +2636,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         CustomerSessionPriceProvenance safeProvenance = customerPriceProvenance != null
                                 ? customerPriceProvenance
                                 : CustomerSessionPriceProvenance.empty();
+                        Set<Long> sortedCatalogPrices = sortedCatalog.stream()
+                                .filter(p -> p != null && p.priceAmountVnd() > 0L)
+                                .map(PackageCatalogService.PackageSummary::priceAmountVnd)
+                                .collect(java.util.stream.Collectors.toSet());
                         boolean customerProvidedContrastPrice = safeProvenance.isCustomerProvidedPrice(priceVnd)
                                 && !isBotClaimingPriceAsOwnOffering(
                                         clause,
                                         pm.start(),
                                         pm.end(),
+                                        priceVnd,
+                                        sortedCatalogPrices,
                                         safeProvenance.userProvidedComparisonPrices().contains(priceVnd)
                                 );
                         String clauseLower = clause.toLowerCase(Locale.ROOT);

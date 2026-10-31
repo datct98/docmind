@@ -3,12 +3,17 @@ package com.example.docmind.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -145,4 +150,75 @@ public class ConversationSessionEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "aci_memory_state", nullable = false)
+    private String aciMemoryStateJson = "{}";
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
+    @PrePersist
+    @PreUpdate
+    void normalizeBeforeSave() {
+        if (aciMemoryStateJson == null || aciMemoryStateJson.isBlank()) {
+            aciMemoryStateJson = "{}";
+        }
+        Instant now = Instant.now();
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        if (lastMessageAt == null) {
+            lastMessageAt = now;
+        }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    public ConversationSessionEntity copySnapshot() {
+        return ConversationSessionEntity.builder()
+                .id(this.id)
+                .pageId(this.pageId)
+                .customerPsid(this.customerPsid)
+                .customerName(this.customerName)
+                .honorific(this.honorific)
+                .activeTopic(this.activeTopic)
+                .topicFamily(this.topicFamily)
+                .controlMode(this.controlMode)
+                .handoffCategory(this.handoffCategory)
+                .handoffReason(this.handoffReason)
+                .capturedPhone(this.capturedPhone)
+                .preferredTime(this.preferredTime)
+                .buyingTemperature(this.buyingTemperature)
+                .previousTemperature(this.previousTemperature)
+                .temperatureDelta(this.temperatureDelta)
+                .temperatureLabel(this.temperatureLabel)
+                .momentum(this.momentum)
+                .buyerArchetype(this.buyerArchetype)
+                .archetypeLabel(this.archetypeLabel)
+                .extractedPains(this.extractedPains)
+                .hiddenConcerns(this.hiddenConcerns)
+                .recommendedStrategy(this.recommendedStrategy)
+                .salesStage(this.salesStage)
+                .hasHumanSaleReply(this.hasHumanSaleReply)
+                .learnedInColdPath(this.learnedInColdPath)
+                .optedOut(this.optedOut)
+                .optedOutAt(this.optedOutAt)
+                .reOptInAt(this.reOptInAt)
+                .reOptInSource(this.reOptInSource)
+                .reOptInEvidence(this.reOptInEvidence)
+                .lastMessagePreview(this.lastMessagePreview)
+                .lastSenderRole(this.lastSenderRole)
+                .lastMessageAt(this.lastMessageAt)
+                .createdAt(this.createdAt)
+                .updatedAt(this.updatedAt)
+                .aciMemoryStateJson(this.aciMemoryStateJson != null && !this.aciMemoryStateJson.isBlank()
+                        ? this.aciMemoryStateJson
+                        : "{}")
+                .version(this.version)
+                .build();
+    }
 }

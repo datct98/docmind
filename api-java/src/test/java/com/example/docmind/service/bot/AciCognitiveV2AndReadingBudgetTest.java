@@ -2583,6 +2583,9 @@ class AciCognitiveV2AndReadingBudgetTest {
     // UNIT P0.1 — V32 Atomic ON CONFLICT, Pure-mid Idempotency, 8-Cond WAL & 503
     // =========================================================================
 
+    private static final java.util.concurrent.atomic.AtomicBoolean LIVE_FLYWAY_MIGRATED_ONCE =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private static org.springframework.jdbc.datasource.DriverManagerDataSource buildLivePostgresDataSource() {
         String jdbcUrl = System.getProperty(
                 "spring.datasource.url",
@@ -2602,6 +2605,14 @@ class AciCognitiveV2AndReadingBudgetTest {
         ds.setUrl(jdbcUrl);
         ds.setUsername(jdbcUser);
         ds.setPassword(jdbcPass);
+        if (LIVE_FLYWAY_MIGRATED_ONCE.compareAndSet(false, true)) {
+            org.flywaydb.core.Flyway.configure()
+                    .dataSource(ds)
+                    .locations("classpath:db/migration")
+                    .baselineOnMigrate(true)
+                    .load()
+                    .migrate();
+        }
         return ds;
     }
 
@@ -5191,5 +5202,508 @@ class AciCognitiveV2AndReadingBudgetTest {
                 "Dạ gói 239k kéo dài 60 phút ạ. Hay mình tham khảo thêm gói massage toàn thân 399k để thả lỏng sâu hơn ạ?",
                 "239k đắt quá",
                 fullPkgs)).isTrue();
+    }
+
+    // =========================================================================
+    // UNIT P2.4 — Flyway V35 aci_memory_state JSONB + @Version Optimistic Locking
+    // + Monotonic Merge Concurrency + Restart Simulation & Lazy Hydration
+    // =========================================================================
+
+    @Test
+    @DisplayName("P2.4: Live Flyway V35 Migration, Empirical @Version ObjectOptimisticLockingFailureException Monotonic Merge & Restart Lazy Hydration")
+    void testP24_V35FlywayMigrationOptimisticMonotonicMergeAndRestartLazyHydration(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempWalDir
+    ) throws Exception {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+
+        // 1. Verify Flyway V35 is applied and recorded in flyway_schema_history on live docmind-postgres (:5433)
+        Integer v35SuccessCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '35' AND success = TRUE",
+                Integer.class
+        );
+        assertThat(v35SuccessCount).isEqualTo(1);
+
+        List<java.util.Map<String, Object>> v35Cols = jdbc.queryForList(
+                "SELECT column_name, data_type, is_nullable "
+                        + "FROM information_schema.columns "
+                        + "WHERE table_schema = 'public' AND table_name = 'conversation_sessions' "
+                        + "AND column_name IN ('aci_memory_state', 'version') "
+                        + "ORDER BY column_name"
+        );
+        assertThat(v35Cols).hasSize(2);
+        assertThat(v35Cols.get(0).get("column_name")).isEqualTo("aci_memory_state");
+        assertThat(v35Cols.get(0).get("data_type")).isEqualTo("jsonb");
+        assertThat(v35Cols.get(0).get("is_nullable")).isEqualTo("NO");
+        assertThat(v35Cols.get(1).get("column_name")).isEqualTo("version");
+        assertThat(v35Cols.get(1).get("data_type")).isEqualTo("bigint");
+        assertThat(v35Cols.get(1).get("is_nullable")).isEqualTo("NO");
+
+        var coordinator = ConversationSessionOptimisticMergeCoordinator.forStandaloneDataSource(ds);
+        var persistenceSvc = AciSessionMemoryPersistenceService.forStandaloneDataSource(ds);
+
+        UUID conflictSessionId = UUID.randomUUID();
+        UUID convertedSessionId = UUID.randomUUID();
+        UUID barrierSessionId = UUID.randomUUID();
+        String conflictPsid = "psid-p24-conflict-" + UUID.randomUUID();
+        String convertedPsid = "psid-p24-converted-" + UUID.randomUUID();
+        String barrierPsid = "psid-p24-barrier-" + UUID.randomUUID();
+        String restartPsid = "psid-p24-restart-" + UUID.randomUUID();
+
+        try {
+            // 2. EMPIRICAL @Version ObjectOptimisticLockingFailureException + MONOTONIC MERGE ON LIVE POSTGRES:
+            //    Seed initial session at version = 0 (BOT_ACTIVE, opted_out = false)
+            Instant t0 = Instant.parse("2026-10-31T10:00:00Z");
+            Instant t1 = Instant.parse("2026-10-31T10:00:05Z");
+            Instant t2 = Instant.parse("2026-10-31T10:00:12Z");
+
+            var initialEntity = com.example.docmind.entity.ConversationSessionEntity.builder()
+                    .id(conflictSessionId)
+                    .pageId(PAGE_ID)
+                    .customerPsid(conflictPsid)
+                    .customerName("Chị Lan Conflict")
+                    .honorific("chị")
+                    .activeTopic("Tư vấn dưỡng sinh")
+                    .topicFamily("GENERAL")
+                    .controlMode("BOT_ACTIVE")
+                    .buyingTemperature(50)
+                    .temperatureDelta(0)
+                    .temperatureLabel("WARM")
+                    .momentum("STABLE")
+                    .buyerArchetype("CONSULTATIVE_SEEKER")
+                    .archetypeLabel("Đang tìm hiểu")
+                    .salesStage("DISCOVERY")
+                    .hasHumanSaleReply(false)
+                    .learnedInColdPath(false)
+                    .optedOut(false)
+                    .reOptInAt(t0)
+                    .lastMessagePreview("Tư vấn giúp chị")
+                    .lastSenderRole("CUSTOMER")
+                    .lastMessageAt(t0)
+                    .createdAt(t0)
+                    .updatedAt(t0)
+                    .aciMemoryStateJson("{}")
+                    .build();
+
+            var createdRes = coordinator.saveCandidateWithMonotonicMerge(
+                    initialEntity,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
+            assertThat(createdRes.entity().getVersion()).isEqualTo(0L);
+            assertThat(createdRes.optimisticRetries()).isEqualTo(0);
+
+            // Capture stale Turn T1 snapshot BEFORE Turn T2 & Human Operator commit to DB (stale @Version = 0!)
+            var staleTurn1Candidate = createdRes.entity().copySnapshot();
+            var staleTurn1Mem = new AgentBrainService.CustomerBrainMemory();
+            staleTurn1Mem.hydrateFromPersistedSnapshot(
+                    new AciCustomerBrainMemorySnapshot(
+                            1, "T1", 1, t1.toString(),
+                            "SERVICE_INQUIRY", List.of("SERVICE_INQUIRY"),
+                            List.of(new AciCustomerBrainMemorySnapshot.PersistedUnresolvedRequest(
+                                    "Có chỗ đỗ ô tô không?", "OPEN", "T1", "T1", t1.toString()
+                            )),
+                            List.of("DS02"), "Direct Answer",
+                            "SERVICE_INQUIRY", "RELIEVE_NECK_PAIN",
+                            List.of(
+                                    new AciCustomerBrainMemorySnapshot.PersistedVersionedFact(
+                                            "preferred_package", "DS02", "CONFIRMED", "CUSTOMER_MESSAGE",
+                                            "T1", "T1", t1.toString(), "CURRENT", "HIGH"
+                                    ),
+                                    new AciCustomerBrainMemorySnapshot.PersistedVersionedFact(
+                                            "budget_note", "tầm 300k", "CONFIRMED", "CUSTOMER_MESSAGE",
+                                            "T1", "T1", t1.toString(), "CURRENT", "HIGH"
+                                    )
+                            ),
+                            List.of(new AciCustomerBrainMemorySnapshot.PersistedVersionedFact(
+                                    "self_reported_symptom", "đau đầu", "CONFIRMED", "CUSTOMER_MESSAGE",
+                                    "T1", "T1", t1.toString(), "CURRENT", "HIGH"
+                            )),
+                            null, null, "STANDARD", "STANDARD", "OPEN", "DS02", null,
+                            0, false, false, null, "chị", 0.92, "T1", null,
+                            List.of(), null, List.of(),
+                            new AciCustomerBrainMemorySnapshot.PersistedOperationalState(
+                                    "NONE", "NONE", false, null, null, "STANDARD"
+                            ),
+                            null, List.of(), List.of("budget_note=tầm 300k"), List.of(), List.of(), List.of(),
+                            "Khách quan tâm gội dưỡng sinh", "Direct Answer", null
+                    ),
+                    conflictSessionId,
+                    0L,
+                    false
+            );
+            staleTurn1Candidate.setControlMode("BOT_ACTIVE");
+            staleTurn1Candidate.setOptedOut(false);
+            staleTurn1Candidate.setCapturedPhone(null);
+            staleTurn1Candidate.setPreferredTime(null);
+            staleTurn1Candidate.setAciMemoryStateJson(staleTurn1Mem.toPersistedSnapshot().toJson());
+
+            // Meanwhile, newer Turn T2 + Operator commits first -> bumps DB @Version from 0 -> 1:
+            // - control_mode = HUMAN_TAKEOVER
+            // - opted_out = true (opted_out_at = t2 > re_opt_in_at = t0)
+            // - captured_phone = "0912345678", preferred_time = "19h tối nay"
+            // - preferred_package DS02 marked NEGATED at T2
+            // - self_reported_symptom "đau đầu" marked SUPERSEDED at T2
+            // - unresolved_request "Có chỗ đỗ ô tô không?" marked ANSWERED at T2
+            var newerTurn2Snapshot = new AciCustomerBrainMemorySnapshot(
+                    1, "T2", 2, t2.toString(),
+                    "BOOKING_HANDOFF", List.of("SERVICE_INQUIRY", "BOOKING_HANDOFF"),
+                    List.of(new AciCustomerBrainMemorySnapshot.PersistedUnresolvedRequest(
+                            "Có chỗ đỗ ô tô không?", "ANSWERED", "T1", "T2", t2.toString()
+                    )),
+                    List.of("NS01"), "Respectful Pause",
+                    "REVISE_NEED", "FULL_BODY_RELAX",
+                    List.of(new AciCustomerBrainMemorySnapshot.PersistedVersionedFact(
+                            "preferred_package", "DS02", "NEGATED", "CUSTOMER_MESSAGE",
+                            "T1", "T2", t2.toString(), "NEGATED", "HIGH"
+                    )),
+                    List.of(new AciCustomerBrainMemorySnapshot.PersistedVersionedFact(
+                            "self_reported_symptom", "đau đầu", "SUPERSEDED", "CUSTOMER_MESSAGE",
+                            "T1", "T2", t2.toString(), "SUPERSEDED", "HIGH"
+                    )),
+                    null, null, "CONCISE", "CONCISE", "PAUSED", "NS01", null,
+                    1, true, false,
+                    new AciCustomerBrainMemorySnapshot.PersistedBookingState(
+                            "NS01", "Massage cơ bản 60 phút", "hôm nay", "2026-10-31",
+                            "19:00", "Asia/Ho_Chi_Minh", "AWAITING_AVAILABILITY_CHECK", List.of("NS01")
+                    ),
+                    "chị", 0.95, "T2", "2 tuần",
+                    List.of(), null, List.of(),
+                    new AciCustomerBrainMemorySnapshot.PersistedOperationalState(
+                            "AWAITING_AVAILABILITY_CHECK", "HANDOFF_CREATED", true, "TICKET-P24", null, "CONCISE"
+                    ),
+                    null, List.of(), List.of(), List.of("preferred_package=DS02"), List.of(), List.of(),
+                    "Khách đổi sang cần tư vấn nhân viên trực tiếp", "Respectful Pause", null
+            );
+
+            var newerCommit = coordinator.mutateByIdWithMonotonicMerge(
+                    conflictSessionId,
+                    s -> {
+                        s.setControlMode("HUMAN_TAKEOVER");
+                        s.setOptedOut(true);
+                        s.setOptedOutAt(t2);
+                        s.setCapturedPhone("0912345678");
+                        s.setPreferredTime("19h tối nay");
+                        s.setLastMessageAt(t2);
+                        s.setLastMessagePreview("Cho chị gặp nhân viên lúc 19h tối nay nhé");
+                        s.setAciMemoryStateJson(newerTurn2Snapshot.toJson());
+                    },
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.EXPLICIT_OPERATOR_CONTROL_MODE
+            );
+            assertThat(newerCommit.entity().getVersion()).isEqualTo(1L);
+
+            // Now stale Turn T1 (@Version = 0!) finishes late and flushes -> MUST hit ObjectOptimisticLockingFailureException
+            // and resolve via Monotonic Merge to @Version = 2!
+            long retriesBeforeStaleFlush = coordinator.totalOptimisticMergeRetries();
+            var mergedAfterConflict = coordinator.saveCandidateWithMonotonicMerge(
+                    staleTurn1Candidate,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
+            assertThat(mergedAfterConflict.optimisticRetries()).isGreaterThanOrEqualTo(1);
+            assertThat(coordinator.totalOptimisticMergeRetries()).isGreaterThan(retriesBeforeStaleFlush);
+            assertThat(mergedAfterConflict.entity().getVersion()).isEqualTo(2L);
+
+            // Priority invariants verified on committed DB row:
+            var reloadedRow = coordinator.executeInRequiresNew(() ->
+                    coordinator.repository().findById(conflictSessionId).orElseThrow().copySnapshot()
+            );
+            assertThat(reloadedRow.getVersion()).isEqualTo(2L);
+            assertThat(reloadedRow.getControlMode()).isEqualTo("HUMAN_TAKEOVER");
+            assertThat(reloadedRow.isOptedOut()).isTrue();
+            assertThat(reloadedRow.getCapturedPhone()).isEqualTo("0912345678");
+            assertThat(reloadedRow.getPreferredTime()).isEqualTo("19h tối nay");
+
+            AciCustomerBrainMemorySnapshot mergedJsonSnap =
+                    AciCustomerBrainMemorySnapshot.fromJson(reloadedRow.getAciMemoryStateJson());
+            assertThat(mergedJsonSnap).isNotNull();
+            assertThat(mergedJsonSnap.lastUpdatedTurnSeq()).isEqualTo(2);
+            assertThat(mergedJsonSnap.operationalState().optedOut()).isTrue();
+            assertThat(mergedJsonSnap.structuredBookingState().bookingTime()).isEqualTo("19:00");
+            assertThat(mergedJsonSnap.structuredBookingState().selectedProductId()).isEqualTo("NS01");
+
+            // NEGATED / SUPERSEDED / ANSWERED from T2 MUST NEVER revert to CURRENT / OPEN from late T1:
+            assertThat(mergedJsonSnap.confirmedFacts())
+                    .anySatisfy(f -> {
+                        assertThat(f.key()).isEqualTo("preferred_package");
+                        assertThat(f.validity()).isEqualTo("NEGATED");
+                    })
+                    // Non-conflicting fact from T1 ('budget_note = tầm 300k') IS preserved monotonically!
+                    .anySatisfy(f -> {
+                        assertThat(f.key()).isEqualTo("budget_note");
+                        assertThat(f.value()).isEqualTo("tầm 300k");
+                        assertThat(f.validity()).isEqualTo("CURRENT");
+                    });
+            assertThat(mergedJsonSnap.selfReportedSymptoms())
+                    .anySatisfy(s -> {
+                        assertThat(s.value()).containsIgnoringCase("đau đầu");
+                        assertThat(s.validity()).isEqualTo("SUPERSEDED");
+                    });
+            assertThat(mergedJsonSnap.unresolvedRequests())
+                    .anySatisfy(r -> {
+                        assertThat(r.item()).containsIgnoringCase("đỗ ô tô");
+                        assertThat(r.status()).isEqualTo("ANSWERED");
+                    });
+
+            // 3. Also verify CONVERTED beats BOT_ACTIVE on stale @Version conflict:
+            var convertedSeed = initialEntity.copySnapshot();
+            convertedSeed.setId(convertedSessionId);
+            convertedSeed.setCustomerPsid(convertedPsid);
+            convertedSeed.setControlMode("CONVERTED");
+            convertedSeed.setCapturedPhone("0988777666");
+            convertedSeed.setPreferredTime("Sáng mai 10h");
+            convertedSeed.setVersion(null);
+            var savedConverted = coordinator.saveCandidateWithMonotonicMerge(
+                    convertedSeed,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.EXPLICIT_OPERATOR_CONTROL_MODE
+            ).entity();
+            var staleBotAttempt = savedConverted.copySnapshot();
+            coordinator.mutateByIdWithMonotonicMerge(
+                    convertedSessionId,
+                    s -> s.setLastMessagePreview("Đã chốt lịch thành công"),
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
+            staleBotAttempt.setControlMode("BOT_ACTIVE");
+            staleBotAttempt.setCapturedPhone(null);
+            staleBotAttempt.setPreferredTime(null);
+            var mergedConverted = coordinator.saveCandidateWithMonotonicMerge(
+                    staleBotAttempt,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
+            assertThat(mergedConverted.optimisticRetries()).isGreaterThanOrEqualTo(1);
+            assertThat(mergedConverted.entity().getControlMode()).isEqualTo("CONVERTED");
+            assertThat(mergedConverted.entity().getCapturedPhone()).isEqualTo("0988777666");
+            assertThat(mergedConverted.entity().getPreferredTime()).isEqualTo("Sáng mai 10h");
+
+            // 4. True 2-Thread CyclicBarrier(2) Concurrent JPA @Version Flush Race on Live Postgres:
+            var barrierSeed = initialEntity.copySnapshot();
+            barrierSeed.setId(barrierSessionId);
+            barrierSeed.setCustomerPsid(barrierPsid);
+            barrierSeed.setVersion(null);
+            var v0Barrier = coordinator.saveCandidateWithMonotonicMerge(
+                    barrierSeed,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            ).entity();
+
+            var racerA = v0Barrier.copySnapshot();
+            racerA.setCapturedPhone("0901112233");
+            racerA.setAciMemoryStateJson(staleTurn1Mem.toPersistedSnapshot().toJson());
+
+            var racerB = v0Barrier.copySnapshot();
+            racerB.setControlMode("HUMAN_TAKEOVER");
+            racerB.setPreferredTime("Chiều thứ 7 lúc 15h");
+            racerB.setAciMemoryStateJson(newerTurn2Snapshot.toJson());
+
+            var barrier = new java.util.concurrent.CyclicBarrier(2);
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                var futA = pool.submit(() -> {
+                    barrier.await(5, TimeUnit.SECONDS);
+                    return coordinator.saveCandidateWithMonotonicMerge(
+                            racerA,
+                            ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+                    );
+                });
+                var futB = pool.submit(() -> {
+                    barrier.await(5, TimeUnit.SECONDS);
+                    return coordinator.saveCandidateWithMonotonicMerge(
+                            racerB,
+                            ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+                    );
+                });
+                var outA = futA.get(10, TimeUnit.SECONDS);
+                var outB = futB.get(10, TimeUnit.SECONDS);
+                assertThat(outA.optimisticRetries() + outB.optimisticRetries()).isGreaterThanOrEqualTo(1);
+            } finally {
+                pool.shutdownNow();
+            }
+
+            var finalBarrierRow = coordinator.executeInRequiresNew(() ->
+                    coordinator.repository().findById(barrierSessionId).orElseThrow().copySnapshot()
+            );
+            assertThat(finalBarrierRow.getVersion()).isEqualTo(2L);
+            assertThat(finalBarrierRow.getControlMode()).isEqualTo("HUMAN_TAKEOVER");
+            assertThat(finalBarrierRow.getCapturedPhone()).isEqualTo("0901112233");
+            assertThat(finalBarrierRow.getPreferredTime()).isEqualTo("Chiều thứ 7 lúc 15h");
+
+            // 5. EMPIRICAL JVM RESTART SIMULATION + LAZY HYDRATION (CustomerBrainMemory + Prior Turns incl. "50k"):
+            var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+            var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_p24_restart"), 67_108_864L);
+            var inboundPersistence = new InboundSessionPersistenceService(jdbc, txMgr, walStore, coordinator);
+
+            AgentBrainService brainBeforeRestart = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+            brainBeforeRestart.setAciSessionMemoryPersistenceService(persistenceSvc);
+            brainBeforeRestart.setAciDbPersistenceEnabled(true);
+
+            var capturedRestartPrompts = new java.util.concurrent.CopyOnWriteArrayList<String>();
+            var nextRestartJson = new java.util.concurrent.atomic.AtomicReference<>("""
+                    {
+                      "brain_reflection": {
+                        "current_topic": "PRICE_COMPARISON",
+                        "conversation_goal": "RELIEVE_HEAD_NECK_TENSION",
+                        "customer_understanding": {
+                          "detected_intent": "PRICE_OBJECTION",
+                          "inferred_customer_pronoun": "chị",
+                          "pronoun_confidence": 0.94,
+                          "cost_concern_expressed": true,
+                          "communication_style_preference": "CONCISE",
+                          "verified_symptom_duration": "thỉnh thoảng bị lại",
+                          "confirmed_facts_delta": [
+                            {"op": "ADD", "key": "self_reported_symptom", "value": "đau mỏi vai gáy", "validity": "CURRENT", "confidence": "HIGH"},
+                            {"op": "ADD", "key": "comparison_anchor", "value": "khách so sánh gội đầu 50k bên ngoài", "validity": "CURRENT", "confidence": "HIGH"}
+                          ]
+                        },
+                        "unresolved_requests_delta": [
+                          {"item": "Hỏi thời lượng gói 239k", "status": "ANSWERED"}
+                        ],
+                        "working_hypothesis": {
+                          "op": "ADJUST",
+                          "content": "Khách đang đối chiếu gội nhanh 50k bên ngoài với liệu trình dưỡng sinh 60 phút",
+                          "confidence": 0.84,
+                          "evidence_turn_ids": ["T1"]
+                        },
+                        "priority": {"primary": "VALUE_ALIGNMENT"},
+                        "strategy": {"chosen": "Value Clarification", "previous_outcome": "NOT_APPLICABLE", "evidence_turn_ids": ["T1"]},
+                        "response_plan": {
+                          "objective": "Giải thích nhẹ nhàng khác biệt thời lượng và quy trình",
+                          "strategy": "Value Clarification",
+                          "tone": "LEVEL_1_NATURAL",
+                          "depth": "CONCISE",
+                          "cta_level": "NO_CTA",
+                          "next_action": "NO_ADDITIONAL_ACTION"
+                        }
+                      },
+                      "bubbles": [
+                        "Dạ mức 50k mình nhắc thường là gội làm sạch tóc nhanh, còn gói dưỡng sinh 60 phút (239k) bên em gồm gội thảo dược ấm kết hợp ấn huyệt cổ vai gáy thư giãn ạ."
+                      ]
+                    }
+                    """);
+
+            FanpageBotService botBeforeRestart = createIsolatedBotServiceWithBrain(
+                    AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                    brainBeforeRestart,
+                    (prompt, budget) -> {
+                        capturedRestartPrompts.add(prompt);
+                        return nextRestartJson.get();
+                    }
+            );
+            botBeforeRestart.setInboundSessionPersistenceService(inboundPersistence);
+            botBeforeRestart.setAciSessionMemoryPersistenceService(persistenceSvc);
+
+            // Turn before restart: Customer compares "chỗ khác gội đầu có 50k"
+            FanpageBotResponse preRestartResp = botBeforeRestart.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), restartPsid, "Chị Hương",
+                    "Chị hay đau mỏi vai gáy nhưng sao 239k đắt thế chỗ khác gội đầu có 50k",
+                    List.of(), List.of(), List.of(DOC_ID), 4
+            ));
+            assertThat(preRestartResp.needsHumanHandoff()).isFalse();
+            assertThat(preRestartResp.replyText()).contains("50k").contains("239k");
+
+            // Persist the bot reply into conversation_messages (mirroring FanpageBotController / ConversationInboxService)
+            UUID restartSessionId = jdbc.queryForObject(
+                    "SELECT id FROM conversation_sessions WHERE customer_psid = ? ORDER BY updated_at DESC LIMIT 1",
+                    UUID.class,
+                    restartPsid
+            );
+            assertThat(restartSessionId).isNotNull();
+            jdbc.update(
+                    "INSERT INTO conversation_messages (id, session_id, sender_role, content, created_at) "
+                            + "VALUES (?, ?, 'AI_BOT', ?, NOW())",
+                    UUID.randomUUID(),
+                    restartSessionId,
+                    preRestartResp.replyText()
+            );
+
+            // Verify JSONB aci_memory_state was written to PostgreSQL!
+            String persistedJsonBeforeRestart = jdbc.queryForObject(
+                    "SELECT aci_memory_state::text FROM conversation_sessions WHERE id = ?",
+                    String.class,
+                    restartSessionId
+            );
+            assertThat(persistedJsonBeforeRestart)
+                    .contains("comparison_anchor")
+                    .contains("đau mỏi vai gáy");
+            assertThat(persistedJsonBeforeRestart.toLowerCase(java.util.Locale.ROOT)).contains("chị");
+
+            // === SIMULATE JVM / CONTAINER RESTART ===
+            // Evict old RAM cache, clear ConversationState + SentBubbleLedger RAM, and create a BRAND-NEW AgentBrainService + FanpageBotService!
+            brainBeforeRestart.evictAllInMemoryCachesOnly();
+            SentBubbleLedger.reset(SentBubbleLedger.key(PAGE_ID.toString(), restartPsid, null));
+
+            AgentBrainService freshRestartedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+            freshRestartedBrain.setAciSessionMemoryPersistenceService(persistenceSvc);
+            freshRestartedBrain.setAciDbPersistenceEnabled(true);
+            assertThat(freshRestartedBrain.hasInMemoryCacheEntry(PAGE_ID, restartPsid)).isFalse();
+
+            // Lazy Hydration check BEFORE any mutation:
+            assertThat(freshRestartedBrain.getInferredCustomerPronoun(PAGE_ID, restartPsid)).isEqualToIgnoringCase("chị");
+            assertThat(freshRestartedBrain.hasInMemoryCacheEntry(PAGE_ID, restartPsid)).isTrue();
+            assertThat(freshRestartedBrain.getPriceObjectionCount(PAGE_ID, restartPsid)).isEqualTo(1);
+            assertThat(freshRestartedBrain.getVerifiedSymptomDuration(PAGE_ID, restartPsid)).isEqualTo("thỉnh thoảng bị lại");
+            var hydratedDraft2 = freshRestartedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, restartPsid);
+            assertThat(hydratedDraft2.consultativeProfile().confirmedFacts())
+                    .anyMatch(f -> "comparison_anchor".equals(f.key()));
+            assertThat(hydratedDraft2.consultativeProfile().selfReportedSymptoms())
+                    .anyMatch(s -> s.value().contains("vai gáy"));
+
+            // Send next stateless turn ("Ok", history = []) to fresh FanpageBotService after restart:
+            // - Prior history ("chỗ khác gội đầu có 50k") is hydrated from conversation_messages
+            // - Bot echoes "50k" as customer comparison reference without Referee blocking
+            // - BookingStatus stays NONE on bare "Ok"!
+            nextRestartJson.set("""
+                    {
+                      "brain_reflection": {
+                        "current_topic": "RESPECTFUL_SPACE",
+                        "customer_understanding": {
+                          "detected_intent": "BARE_ACKNOWLEDGMENT",
+                          "inferred_customer_pronoun": "chị",
+                          "pronoun_confidence": 0.94,
+                          "cost_concern_expressed": false,
+                          "buying_signal": "NONE"
+                        },
+                        "proposed_booking_patch": {"selected_package_id": "DS02", "preferred_date": "hôm nay"},
+                        "response_plan": {
+                          "objective": "Tôn trọng nhịp suy nghĩ của khách, không tự chốt lịch khi khách chỉ nhắn Ok",
+                          "strategy": "Respectful Space",
+                          "tone": "LEVEL_1_NATURAL",
+                          "depth": "CONCISE",
+                          "cta_level": "NO_CTA",
+                          "next_action": "NO_ADDITIONAL_ACTION"
+                        }
+                      },
+                      "bubbles": [
+                        "Dạ chị cứ thong thả cân nhắc thêm so với mức gội nhanh 50k bên ngoài nhé, khi nào cần hỗ trợ thêm thông tin gói dưỡng sinh chị cứ nhắn em ạ."
+                      ]
+                    }
+                    """);
+
+            FanpageBotService freshRestartedBot = createIsolatedBotServiceWithBrain(
+                    AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                    freshRestartedBrain,
+                    (prompt, budget) -> {
+                        capturedRestartPrompts.add(prompt);
+                        return nextRestartJson.get();
+                    }
+            );
+            freshRestartedBot.setInboundSessionPersistenceService(inboundPersistence);
+            freshRestartedBot.setAciSessionMemoryPersistenceService(persistenceSvc);
+
+            FanpageBotResponse postRestartOkResp = freshRestartedBot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), restartPsid, "Chị Hương",
+                    "Ok",
+                    List.of(), List.of(), List.of(DOC_ID), 4
+            ));
+            assertThat(postRestartOkResp.needsHumanHandoff()).isFalse();
+            assertThat(postRestartOkResp.replyText()).contains("50k");
+            assertThat(freshRestartedBrain.recallBookingState(PAGE_ID, restartPsid).status())
+                    .isEqualTo(ConversationState.BookingStatus.NONE);
+            String postRestartPrompt = capturedRestartPrompts.get(capturedRestartPrompts.size() - 1);
+            assertThat(postRestartPrompt)
+                    .contains("comparison_anchor")
+                    .contains("chỗ khác gội đầu có 50k");
+        } finally {
+            jdbc.update(
+                    "DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?, ?, ?)",
+                    conflictPsid, convertedPsid, barrierPsid, restartPsid
+            );
+        }
     }
 }

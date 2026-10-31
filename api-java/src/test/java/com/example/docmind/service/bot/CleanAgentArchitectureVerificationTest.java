@@ -5005,4 +5005,87 @@ class CleanAgentArchitectureVerificationTest {
         assertEquals(initialDentalBubbles.get(1), resp2.replyBubbles().get(1).text());
         assertEquals(initialDentalBubbles.get(2), resp2.replyBubbles().get(2).text());
     }
+
+    @Test
+    void testP24_ZeroWritePathsToConversationSessionsBypassJpaVersionOptimisticLocking() throws Exception {
+        // 1. Verify ConversationSessionEntity carries JPA @Version on 'version' and JSONB mapping on 'aci_memory_state'
+        java.lang.reflect.Field versionField =
+                com.example.docmind.entity.ConversationSessionEntity.class.getDeclaredField("version");
+        assertNotNull(versionField.getAnnotation(jakarta.persistence.Version.class),
+                "ConversationSessionEntity.version MUST declare @jakarta.persistence.Version");
+        assertEquals(Long.class, versionField.getType(),
+                "ConversationSessionEntity.version MUST be boxed Long (null before first persist so Spring Data JPA treats new assigned-UUID rows as isNew=true)");
+
+        java.lang.reflect.Field memoryField =
+                com.example.docmind.entity.ConversationSessionEntity.class.getDeclaredField("aciMemoryStateJson");
+        jakarta.persistence.Column memoryCol = memoryField.getAnnotation(jakarta.persistence.Column.class);
+        assertNotNull(memoryCol, "ConversationSessionEntity.aciMemoryStateJson MUST declare @Column");
+        assertEquals("aci_memory_state", memoryCol.name());
+        org.hibernate.annotations.JdbcTypeCode jdbcType =
+                memoryField.getAnnotation(org.hibernate.annotations.JdbcTypeCode.class);
+        assertNotNull(jdbcType, "ConversationSessionEntity.aciMemoryStateJson MUST declare @JdbcTypeCode(SqlTypes.JSON)");
+        assertEquals(org.hibernate.type.SqlTypes.JSON, jdbcType.value());
+
+        // 2. Verify ConversationSessionRepository declares ZERO @Modifying methods (which would bypass JPA @Version)
+        for (java.lang.reflect.Method method :
+                com.example.docmind.repository.ConversationSessionRepository.class.getDeclaredMethods()) {
+            assertNull(
+                    method.getAnnotation(org.springframework.data.jpa.repository.Modifying.class),
+                    "ConversationSessionRepository MUST NOT declare @Modifying bulk query bypassing @Version: " + method.getName()
+            );
+        }
+
+        // 3. Exhaustive source-tree scan across 100% of api-java/src/main/java:
+        //    (a) Zero raw SQL INSERT/UPDATE/DELETE/MERGE/TRUNCATE targeting conversation_sessions.
+        //    (b) Zero @Modifying queries in ANY repository referencing ConversationSessionEntity or conversation_sessions.
+        //    (c) Direct sessionRepository.save* / delete* calls exist ONLY inside ConversationSessionOptimisticMergeCoordinator
+        //        and AciSessionMemoryPersistenceService (initial advisory-locked insert inside coordinator REQUIRES_NEW).
+        java.nio.file.Path mainJavaRoot = java.nio.file.Paths.get("src/main/java");
+        if (!java.nio.file.Files.isDirectory(mainJavaRoot)) {
+            mainJavaRoot = java.nio.file.Paths.get("api-java/src/main/java");
+        }
+        assertTrue(java.nio.file.Files.isDirectory(mainJavaRoot),
+                "Unable to locate src/main/java for P2.4 write-path architecture audit");
+
+        java.util.regex.Pattern forbiddenRawSqlWrite = java.util.regex.Pattern.compile(
+                "(?is)\\b(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|MERGE\\s+INTO|TRUNCATE(?:\\s+TABLE)?)\\s+(?:public\\.)?conversation_sessions\\b"
+        );
+        java.util.regex.Pattern directSessionRepoWrite = java.util.regex.Pattern.compile(
+                "\\bsessionRepository\\s*\\.\\s*(?:save|saveAndFlush|saveAll|saveAllAndFlush|delete|deleteById|deleteAll|deleteAllById|deleteAllInBatch|deleteInBatch)\\s*\\("
+        );
+        java.util.Set<String> allowedRepoWriters = java.util.Set.of(
+                "ConversationSessionOptimisticMergeCoordinator.java",
+                "AciSessionMemoryPersistenceService.java"
+        );
+
+        java.util.List<String> violations = new java.util.ArrayList<>();
+        int scannedFiles = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(mainJavaRoot)) {
+            for (java.nio.file.Path file : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
+                scannedFiles++;
+                String fileName = file.getFileName().toString();
+                String src = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+                String strippedComments = src
+                        .replaceAll("(?s)/\\*.*?\\*/", " ")
+                        .replaceAll("(?m)//.*$", " ");
+
+                if (forbiddenRawSqlWrite.matcher(strippedComments).find()) {
+                    violations.add("FORBIDDEN_RAW_SQL_WRITE_BYPASSING_VERSION in " + file);
+                }
+                if (strippedComments.contains("@Modifying")
+                        && (strippedComments.contains("ConversationSessionEntity")
+                            || strippedComments.toLowerCase(java.util.Locale.ROOT).contains("conversation_sessions"))) {
+                    violations.add("FORBIDDEN_MODIFYING_BULK_QUERY_ON_CONVERSATION_SESSIONS in " + file);
+                }
+                if (!allowedRepoWriters.contains(fileName)
+                        && directSessionRepoWrite.matcher(strippedComments).find()) {
+                    violations.add("UNCOORDINATED_DIRECT_SESSION_REPOSITORY_WRITE in " + file
+                            + " (must route through ConversationSessionOptimisticMergeCoordinator)");
+                }
+            }
+        }
+        assertTrue(scannedFiles > 50, "Expected full Java source scan (>50 files), scanned=" + scannedFiles);
+        assertTrue(violations.isEmpty(),
+                "Unit P2.4 Architecture Lock failed — found write paths bypassing JPA @Version + Monotonic Merge: " + violations);
+    }
 }

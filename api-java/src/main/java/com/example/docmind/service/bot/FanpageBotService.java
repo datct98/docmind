@@ -315,6 +315,8 @@ public class FanpageBotService {
     private CleanAgentOrchestratorService cleanAgentOrchestratorService;
     @Autowired(required = false)
     private InboundSessionPersistenceService inboundSessionPersistenceService;
+    @Autowired(required = false)
+    private AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService;
 
     @Autowired
     public FanpageBotService(RetrievalService retrievalService,
@@ -355,6 +357,19 @@ public class FanpageBotService {
 
     public AgentBrainService getAgentBrainService() {
         return agentBrainService;
+    }
+
+    public void setAciSessionMemoryPersistenceService(
+            AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService
+    ) {
+        this.aciSessionMemoryPersistenceService = aciSessionMemoryPersistenceService;
+        if (this.agentBrainService != null && this.agentBrainService.getAciSessionMemoryPersistenceService() == null) {
+            this.agentBrainService.setAciSessionMemoryPersistenceService(aciSessionMemoryPersistenceService);
+        }
+    }
+
+    public AciSessionMemoryPersistenceService getAciSessionMemoryPersistenceService() {
+        return aciSessionMemoryPersistenceService;
     }
 
     public void setQueryComplexityClassifier(QueryComplexityClassifier queryComplexityClassifier) {
@@ -496,6 +511,10 @@ public class FanpageBotService {
 
     static void markProvenanceV38Logged() {
         PROVENANCE_V38_LOGGED.set(true);
+    }
+
+    static String getCurrentInboundExternalMid() {
+        return CURRENT_INBOUND_EXTERNAL_MID.get();
     }
 
     static FanpageBotResponse buildSilentSuppressedResponse(String hookCode, String inboundExternalMid) {
@@ -832,6 +851,30 @@ public class FanpageBotService {
         }
         if (v2Mode && request.isResetSessionRequested() && agentBrainService != null) {
             agentBrainService.clearCustomerMemory(pageId, request.senderId());
+        } else if (v2Mode && !request.isResetSessionRequested()) {
+            if (agentBrainService != null) {
+                agentBrainService.refreshTurnBaseFromDb(pageId, request.senderId());
+            }
+            if ((request.history() == null || request.history().isEmpty())
+                    && aciSessionMemoryPersistenceService != null
+                    && aciSessionMemoryPersistenceService.isDbPersistenceEnabled()) {
+                List<FanpageBotRequest.ConversationTurn> hydratedHistory =
+                        aciSessionMemoryPersistenceService.loadPriorConversationTurns(
+                                pageId,
+                                request.senderId(),
+                                CURRENT_INBOUND_EXTERNAL_MID.get()
+                        );
+                if (!hydratedHistory.isEmpty()) {
+                    request = new FanpageBotRequest(
+                            request.pageId(), request.senderId(), request.customerName(), request.message(),
+                            request.messages(), hydratedHistory, request.documentIds(), request.topK(),
+                            request.previousTemperature(), request.replyDelaySeconds(), request.idleSeconds(),
+                            request.action(), request.splitPriceBubbles(), request.pendingTurnSequence(),
+                            request.priceBubbleSentAtNs(), request.conversationId(), request.resetSession(),
+                            request.replyToMid(), request.quotedMessageText()
+                    );
+                }
+            }
         }
         PromptBuilder.PagePersona pagePersona = resolvePagePersona(pageId);
         String honorific = v2Mode

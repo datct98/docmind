@@ -250,6 +250,30 @@ public class AgentBrainService {
     private final AgentBrainClient client;
     private final String baseUrl;
 
+    @Autowired(required = false)
+    private volatile AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService;
+
+    @Value("${docmind.aci.db-persistence.enabled:true}")
+    private volatile boolean aciDbPersistenceEnabled = true;
+
+    public void setAciSessionMemoryPersistenceService(
+            AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService
+    ) {
+        this.aciSessionMemoryPersistenceService = aciSessionMemoryPersistenceService;
+    }
+
+    public AciSessionMemoryPersistenceService getAciSessionMemoryPersistenceService() {
+        return this.aciSessionMemoryPersistenceService;
+    }
+
+    public boolean isAciDbPersistenceEnabled() {
+        return this.aciDbPersistenceEnabled && this.aciSessionMemoryPersistenceService != null;
+    }
+
+    public void setAciDbPersistenceEnabled(boolean aciDbPersistenceEnabled) {
+        this.aciDbPersistenceEnabled = aciDbPersistenceEnabled;
+    }
+
     @Autowired
     public AgentBrainService(
             @Value("${agent.brain.base-url:${AGENT_BRAIN_BASE_URL:http://localhost:8095}}") String configuredBaseUrl) {
@@ -306,7 +330,7 @@ public class AgentBrainService {
         String customerId = (senderId != null && !senderId.isBlank()) ? senderId.strip() : "anonymous_customer";
         String conversationId = tenantId + ":" + customerId;
 
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(conversationId, k -> new CustomerBrainMemory());
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, customerId);
         double boundedRetrieval = Math.max(0.0, Math.min(1.0, retrievalQuality));
         double boundedGroundedness = Math.max(0.0, Math.min(1.0, groundedness));
 
@@ -435,6 +459,267 @@ public class AgentBrainService {
         private String draft2InterestedPackageId = null;
         private AdaptiveConversationIntelligence.AdaptiveResponsePlan draft2LastResponsePlan =
                 AdaptiveConversationIntelligence.AdaptiveResponsePlan.empty();
+
+        // === Unit P2.4 (V35): Optimistic Version & Turn Monotonicity Tracking ===
+        private UUID lastSyncedSessionId = null;
+        private Long lastSyncedDbVersion = null;
+        private String lastUpdatedTurnId = "T0";
+        private int highestObservedTurnSeq = 0;
+
+        public synchronized UUID lastSyncedSessionIdSnapshot() {
+            return lastSyncedSessionId;
+        }
+
+        public synchronized Long lastSyncedDbVersionSnapshot() {
+            return lastSyncedDbVersion;
+        }
+
+        public synchronized int highestObservedTurnSeqSnapshot() {
+            return highestObservedTurnSeq;
+        }
+
+        public synchronized AciCustomerBrainMemorySnapshot toPersistedSnapshot() {
+            String nowIso = Instant.now().toString();
+            List<AciCustomerBrainMemorySnapshot.PersistedUnresolvedRequest> persistedReqs = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.UnresolvedRequestItem r : draft2UnresolvedRequests) {
+                if (r != null) {
+                    persistedReqs.add(AciCustomerBrainMemorySnapshot.PersistedUnresolvedRequest.fromDomain(r, nowIso));
+                }
+            }
+            List<AciCustomerBrainMemorySnapshot.PersistedVersionedFact> persistedConfirmed = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.VersionedCustomerFact f : draft2ConfirmedFacts) {
+                if (f != null) {
+                    persistedConfirmed.add(AciCustomerBrainMemorySnapshot.PersistedVersionedFact.fromDomain(f));
+                }
+            }
+            List<AciCustomerBrainMemorySnapshot.PersistedVersionedFact> persistedSymptoms = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.VersionedCustomerFact s : draft2SelfReportedSymptoms) {
+                if (s != null) {
+                    persistedSymptoms.add(AciCustomerBrainMemorySnapshot.PersistedVersionedFact.fromDomain(s));
+                }
+            }
+            List<AciCustomerBrainMemorySnapshot.PersistedCustomerStatement> persistedStmts = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.CustomerStatementRecord st : customerStatements) {
+                if (st != null) {
+                    persistedStmts.add(AciCustomerBrainMemorySnapshot.PersistedCustomerStatement.fromDomain(st));
+                }
+            }
+            List<AciCustomerBrainMemorySnapshot.PersistedBusinessFact> persistedBizFacts = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.VerifiedBusinessFact bf : authoritativeBusinessFacts) {
+                if (bf != null) {
+                    persistedBizFacts.add(AciCustomerBrainMemorySnapshot.PersistedBusinessFact.fromDomain(bf));
+                }
+            }
+            List<AciCustomerBrainMemorySnapshot.PersistedCommitment> persistedCmts = new ArrayList<>();
+            for (AdaptiveConversationIntelligence.CommitmentRecord c : sessionCommitments) {
+                if (c != null) {
+                    persistedCmts.add(AciCustomerBrainMemorySnapshot.PersistedCommitment.fromDomain(c));
+                }
+            }
+            return new AciCustomerBrainMemorySnapshot(
+                    AciCustomerBrainMemorySnapshot.CURRENT_SCHEMA_VERSION,
+                    lastUpdatedTurnId,
+                    highestObservedTurnSeq,
+                    nowIso,
+                    draft2CurrentTopic,
+                    List.copyOf(draft2TopicHistory),
+                    List.copyOf(persistedReqs),
+                    List.copyOf(draft2PendingReferences),
+                    draft2LastBotAction,
+                    draft2LastTurnIntent,
+                    draft2ConversationGoal,
+                    List.copyOf(persistedConfirmed),
+                    List.copyOf(persistedSymptoms),
+                    AciCustomerBrainMemorySnapshot.PersistedBarrierHypothesis.fromDomain(draft2BarrierHypothesis),
+                    AciCustomerBrainMemorySnapshot.PersistedEmotion.fromDomain(draft2Emotion),
+                    communicationStylePreference != null ? communicationStylePreference : "STANDARD",
+                    draft2EffectiveTurnDepth != null ? draft2EffectiveTurnDepth : "STANDARD",
+                    draft2InteractionPermission != null
+                            ? draft2InteractionPermission.name()
+                            : AdaptiveConversationIntelligence.InteractionPermission.OPEN.name(),
+                    draft2InterestedPackageId,
+                    AciCustomerBrainMemorySnapshot.PersistedResponsePlan.fromDomain(draft2LastResponsePlan),
+                    priceObjectionCount,
+                    inPriceObjectionContext,
+                    hasPresentedDownsell,
+                    AciCustomerBrainMemorySnapshot.PersistedBookingState.fromDomain(structuredBookingState),
+                    inferredCustomerPronoun,
+                    inferredPronounConfidence,
+                    inferredPronounEvidenceTurnId,
+                    verifiedSymptomDuration,
+                    List.copyOf(persistedStmts),
+                    AciCustomerBrainMemorySnapshot.PersistedWorkingHypothesis.fromDomain(aciWorkingHypothesis),
+                    List.copyOf(persistedBizFacts),
+                    AciCustomerBrainMemorySnapshot.PersistedOperationalState.fromDomain(operationalState),
+                    AciCustomerBrainMemorySnapshot.PersistedPreviousStrategy.fromDomain(previousStrategyRecord),
+                    List.copyOf(persistedCmts),
+                    List.copyOf(verifiedFacts),
+                    List.copyOf(supersededOrRetractedFacts),
+                    List.copyOf(uncertainExplorations),
+                    List.copyOf(careNotes),
+                    workingHypothesis,
+                    lastActualSentSpeechAct,
+                    null
+            );
+        }
+
+        public synchronized void hydrateFromPersistedSnapshot(
+                AciCustomerBrainMemorySnapshot snap,
+                UUID dbSessionId,
+                Long dbVersion,
+                boolean rowOptedOut
+        ) {
+            if (dbSessionId != null) {
+                this.lastSyncedSessionId = dbSessionId;
+            }
+            if (dbVersion != null) {
+                this.lastSyncedDbVersion = dbVersion;
+            }
+            if (snap == null) {
+                if (rowOptedOut && this.operationalState != null && !this.operationalState.optedOut()) {
+                    this.operationalState = new AdaptiveConversationIntelligence.OperationalStateSnapshot(
+                            this.operationalState.bookingStatus(),
+                            this.operationalState.handoffStatus(),
+                            true,
+                            this.operationalState.activeHandoffTicketId(),
+                            this.operationalState.lastHandoffError(),
+                            this.operationalState.communicationStylePreference()
+                    );
+                }
+                return;
+            }
+            this.lastUpdatedTurnId = snap.lastUpdatedTurnId() != null ? snap.lastUpdatedTurnId() : "T0";
+            this.highestObservedTurnSeq = Math.max(this.highestObservedTurnSeq, snap.lastUpdatedTurnSeq());
+
+            this.draft2CurrentTopic = snap.currentTopic() != null ? snap.currentTopic() : "INITIAL";
+            this.draft2TopicHistory.clear();
+            if (snap.topicHistory() != null) {
+                this.draft2TopicHistory.addAll(snap.topicHistory());
+            }
+            this.draft2UnresolvedRequests.clear();
+            if (snap.unresolvedRequests() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedUnresolvedRequest r : snap.unresolvedRequests()) {
+                    if (r != null) {
+                        this.draft2UnresolvedRequests.add(r.toDomain());
+                    }
+                }
+            }
+            this.draft2PendingReferences.clear();
+            if (snap.pendingReferences() != null) {
+                this.draft2PendingReferences.addAll(snap.pendingReferences());
+            }
+            this.draft2LastBotAction = snap.lastBotAction() != null ? snap.lastBotAction() : "NONE";
+            this.draft2LastTurnIntent = snap.lastTurnIntent() != null ? snap.lastTurnIntent() : "";
+            this.draft2ConversationGoal = snap.conversationGoal() != null ? snap.conversationGoal() : "EXPLORE_SERVICES";
+
+            this.draft2ConfirmedFacts.clear();
+            if (snap.confirmedFacts() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedVersionedFact f : snap.confirmedFacts()) {
+                    if (f != null) {
+                        this.draft2ConfirmedFacts.add(f.toDomain());
+                    }
+                }
+            }
+            this.draft2SelfReportedSymptoms.clear();
+            if (snap.selfReportedSymptoms() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedVersionedFact s : snap.selfReportedSymptoms()) {
+                    if (s != null) {
+                        this.draft2SelfReportedSymptoms.add(s.toDomain());
+                    }
+                }
+            }
+            this.draft2BarrierHypothesis = snap.barrierHypothesis() != null
+                    ? snap.barrierHypothesis().toDomain()
+                    : AdaptiveConversationIntelligence.BarrierHypothesis.initialNone();
+            this.draft2Emotion = snap.emotion() != null
+                    ? snap.emotion().toDomain()
+                    : AdaptiveConversationIntelligence.EmotionalState.empty();
+            this.communicationStylePreference = snap.communicationStylePreference() != null
+                    ? snap.communicationStylePreference()
+                    : "STANDARD";
+            this.draft2EffectiveTurnDepth = snap.effectiveTurnDepth() != null
+                    ? snap.effectiveTurnDepth()
+                    : "STANDARD";
+            this.draft2InteractionPermission = AdaptiveConversationIntelligence.InteractionPermission
+                    .fromStringOrDefault(snap.interactionPermission(),
+                            AdaptiveConversationIntelligence.InteractionPermission.OPEN);
+            this.draft2InterestedPackageId = snap.interestedPackageId();
+            this.draft2LastResponsePlan = snap.lastResponsePlan() != null
+                    ? snap.lastResponsePlan().toDomain()
+                    : AdaptiveConversationIntelligence.AdaptiveResponsePlan.empty();
+
+            this.priceObjectionCount = Math.max(0, snap.priceObjectionCount());
+            this.inPriceObjectionContext = snap.inPriceObjectionContext();
+            this.hasPresentedDownsell = snap.hasPresentedDownsell();
+            this.structuredBookingState = snap.structuredBookingState() != null
+                    ? snap.structuredBookingState().toDomain()
+                    : ConversationState.StructuredBookingState.none();
+            this.inferredCustomerPronoun = snap.inferredCustomerPronoun();
+            this.inferredPronounConfidence = snap.inferredPronounConfidence();
+            this.inferredPronounEvidenceTurnId = snap.inferredPronounEvidenceTurnId();
+            this.verifiedSymptomDuration = snap.verifiedSymptomDuration();
+
+            this.customerStatements.clear();
+            if (snap.customerStatements() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedCustomerStatement st : snap.customerStatements()) {
+                    if (st != null) {
+                        this.customerStatements.add(st.toDomain());
+                    }
+                }
+            }
+            this.aciWorkingHypothesis = snap.aciWorkingHypothesis() != null
+                    ? snap.aciWorkingHypothesis().toDomain()
+                    : AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty();
+            this.authoritativeBusinessFacts.clear();
+            if (snap.authoritativeBusinessFacts() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedBusinessFact bf : snap.authoritativeBusinessFacts()) {
+                    if (bf != null) {
+                        this.authoritativeBusinessFacts.add(bf.toDomain());
+                    }
+                }
+            }
+            AdaptiveConversationIntelligence.OperationalStateSnapshot hydratedOp = snap.operationalState() != null
+                    ? snap.operationalState().toDomain()
+                    : AdaptiveConversationIntelligence.OperationalStateSnapshot.initial();
+            this.operationalState = new AdaptiveConversationIntelligence.OperationalStateSnapshot(
+                    hydratedOp.bookingStatus(),
+                    hydratedOp.handoffStatus(),
+                    hydratedOp.optedOut() || rowOptedOut,
+                    hydratedOp.activeHandoffTicketId(),
+                    hydratedOp.lastHandoffError(),
+                    hydratedOp.communicationStylePreference()
+            );
+            this.previousStrategyRecord = snap.previousStrategyRecord() != null
+                    ? snap.previousStrategyRecord().toDomain()
+                    : AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone();
+            this.sessionCommitments.clear();
+            if (snap.sessionCommitments() != null) {
+                for (AciCustomerBrainMemorySnapshot.PersistedCommitment c : snap.sessionCommitments()) {
+                    if (c != null) {
+                        this.sessionCommitments.add(c.toDomain());
+                    }
+                }
+            }
+
+            this.verifiedFacts.clear();
+            if (snap.verifiedFacts() != null) {
+                this.verifiedFacts.addAll(snap.verifiedFacts());
+            }
+            this.supersededOrRetractedFacts.clear();
+            if (snap.supersededOrRetractedFacts() != null) {
+                this.supersededOrRetractedFacts.addAll(snap.supersededOrRetractedFacts());
+            }
+            this.uncertainExplorations.clear();
+            if (snap.uncertainExplorations() != null) {
+                this.uncertainExplorations.addAll(snap.uncertainExplorations());
+            }
+            this.careNotes.clear();
+            if (snap.careNotes() != null) {
+                this.careNotes.addAll(snap.careNotes());
+            }
+            this.workingHypothesis = snap.workingHypothesis() != null ? snap.workingHypothesis() : "";
+            this.lastActualSentSpeechAct = snap.lastActualSentSpeechAct() != null ? snap.lastActualSentSpeechAct() : "";
+        }
 
         public synchronized List<String> verifiedFactsSnapshot() {
             return List.copyOf(verifiedFacts);
@@ -604,28 +889,153 @@ public class AgentBrainService {
         return tenantId + ":" + customerId;
     }
 
+    /**
+     * Unit P2.4 (V35): Lazily hydrates {@link CustomerBrainMemory} from {@code conversation_sessions.aci_memory_state}
+     * ({@code JSONB}) on a RAM cache miss when {@code docmind.aci.db-persistence.enabled=true}.
+     */
+    private CustomerBrainMemory resolveMemoryReadOnly(UUID pageId, String senderId) {
+        String convKey = toConversationMemoryKey(pageId, senderId);
+        CustomerBrainMemory cached = customerMemoryStore.get(convKey);
+        if (cached != null) {
+            return cached;
+        }
+        if (!isAciDbPersistenceEnabled() || senderId == null || senderId.isBlank()) {
+            return null;
+        }
+        AciSessionMemoryPersistenceService.HydratedSessionRecord hydrated =
+                aciSessionMemoryPersistenceService.loadLatestSessionMemory(pageId, senderId);
+        if (hydrated == null) {
+            return null;
+        }
+        return customerMemoryStore.computeIfAbsent(convKey, k -> {
+            CustomerBrainMemory mem = new CustomerBrainMemory();
+            mem.hydrateFromPersistedSnapshot(
+                    hydrated.snapshot(),
+                    hydrated.sessionId(),
+                    hydrated.dbVersion(),
+                    hydrated.optedOut()
+            );
+            return mem;
+        });
+    }
+
+    private CustomerBrainMemory getOrHydrateMemoryForMutation(UUID pageId, String senderId) {
+        CustomerBrainMemory resolved = resolveMemoryReadOnly(pageId, senderId);
+        if (resolved != null) {
+            return resolved;
+        }
+        return customerMemoryStore.computeIfAbsent(
+                toConversationMemoryKey(pageId, senderId),
+                k -> new CustomerBrainMemory()
+        );
+    }
+
+    /**
+     * Synchronizes the turn-start JPA {@code @Version} baseline and merges any external DB updates
+     * (e.g. {@code opted_out}, {@code HUMAN_TAKEOVER}, or another JVM replica's commit) before executing an ACI turn.
+     */
+    public void refreshTurnBaseFromDb(UUID pageId, String senderId) {
+        if (!isAciDbPersistenceEnabled() || senderId == null || senderId.isBlank()) {
+            return;
+        }
+        AciSessionMemoryPersistenceService.HydratedSessionRecord hydrated =
+                aciSessionMemoryPersistenceService.loadLatestSessionMemory(pageId, senderId);
+        if (hydrated == null) {
+            return;
+        }
+        String convKey = toConversationMemoryKey(pageId, senderId);
+        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(convKey, k -> new CustomerBrainMemory());
+        synchronized (mem) {
+            AciCustomerBrainMemorySnapshot merged = AciCustomerBrainMemorySnapshot.monotonicMerge(
+                    hydrated.snapshot(),
+                    mem.toPersistedSnapshot()
+            );
+            mem.hydrateFromPersistedSnapshot(
+                    merged != null ? merged : hydrated.snapshot(),
+                    hydrated.sessionId(),
+                    hydrated.dbVersion(),
+                    hydrated.optedOut()
+            );
+        }
+    }
+
+    private AciSessionMemoryPersistenceService.PersistedSessionOutcome persistMemoryToDbIfEnabled(
+            UUID pageId,
+            String senderId,
+            String customerName,
+            CustomerBrainMemory mem
+    ) {
+        if (!isAciDbPersistenceEnabled() || mem == null || senderId == null || senderId.isBlank()) {
+            return null;
+        }
+        UUID knownSessionId;
+        Long expectedBaseVersion;
+        AciCustomerBrainMemorySnapshot candidateSnapshot;
+        synchronized (mem) {
+            knownSessionId = mem.lastSyncedSessionId;
+            expectedBaseVersion = mem.lastSyncedDbVersion;
+            candidateSnapshot = mem.toPersistedSnapshot();
+        }
+        AciSessionMemoryPersistenceService.PersistedSessionOutcome outcome =
+                aciSessionMemoryPersistenceService.persistMemorySnapshot(
+                        pageId,
+                        senderId,
+                        customerName,
+                        knownSessionId,
+                        expectedBaseVersion,
+                        candidateSnapshot
+                );
+        if (outcome != null) {
+            synchronized (mem) {
+                mem.hydrateFromPersistedSnapshot(
+                        outcome.mergedSnapshot(),
+                        outcome.sessionId(),
+                        outcome.dbVersion(),
+                        outcome.optedOut()
+                );
+            }
+        }
+        return outcome;
+    }
+
+    /**
+     * Evicts only the in-JVM cache entry without touching PostgreSQL {@code aci_memory_state},
+     * used to simulate JVM / container restarts in empirical Lazy Hydration tests.
+     */
+    public void evictInMemoryCacheOnly(UUID pageId, String senderId) {
+        customerMemoryStore.remove(toConversationMemoryKey(pageId, senderId));
+    }
+
+    public void evictAllInMemoryCachesOnly() {
+        customerMemoryStore.clear();
+    }
+
+    public boolean hasInMemoryCacheEntry(UUID pageId, String senderId) {
+        return customerMemoryStore.containsKey(toConversationMemoryKey(pageId, senderId));
+    }
+
     public String getInferredCustomerPronoun(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.inferredCustomerPronounSnapshot() : null;
     }
 
     public double getInferredPronounConfidence(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.inferredPronounConfidenceSnapshot() : 0.0;
     }
 
     public String getInferredPronounEvidenceTurnId(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.inferredPronounEvidenceTurnIdSnapshot() : null;
     }
 
     public String getVerifiedSymptomDuration(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.verifiedSymptomDurationSnapshot() : null;
     }
 
     public String getCommunicationStylePreference(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.communicationStylePreferenceSnapshot() : "STANDARD";
     }
 
@@ -633,57 +1043,57 @@ public class AgentBrainService {
             UUID pageId,
             String senderId
     ) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.draft2Snapshot() : AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial();
     }
 
     public List<String> getRecalledCareNotes(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.careNotesSnapshot() : List.of();
     }
 
     public List<String> getRecalledVerifiedFacts(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.verifiedFactsSnapshot() : List.of();
     }
 
     public List<FactMutationRecord> getFactMutationHistory(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.factMutationsSnapshot() : List.of();
     }
 
     public List<String> getSupersededOrRetractedFacts(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.supersededOrRetractedFactsSnapshot() : List.of();
     }
 
     public List<String> getUncertainExplorations(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.uncertainExplorationsSnapshot() : List.of();
     }
 
     public String getRecalledWorkingHypothesis(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.workingHypothesisSnapshot() : "";
     }
 
     public LivingHypothesisState getLivingHypothesisState(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.livingHypothesisStateSnapshot() : LivingHypothesisState.initialUnknown();
     }
 
     public BrainReasoningProvenance getLastReasoningProvenance(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.lastReasoningProvenanceSnapshot() : null;
     }
 
     public String getRecalledActualSentSpeechAct(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.lastActualSentSpeechActSnapshot() : "";
     }
 
     public int getRecalledPriceObjectionCount(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.priceObjectionCountSnapshot() : 0;
     }
 
@@ -692,12 +1102,12 @@ public class AgentBrainService {
     }
 
     public boolean isRecalledInPriceObjectionContext(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null && mem.inPriceObjectionContextSnapshot();
     }
 
     public boolean hasRecalledPresentedDownsell(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null && mem.hasPresentedDownsellSnapshot();
     }
 
@@ -707,15 +1117,13 @@ public class AgentBrainService {
             int priceObjectionCount,
             boolean inPriceObjectionContext,
             boolean hasPresentedDownsell) {
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(
-                toConversationMemoryKey(pageId, senderId),
-                k -> new CustomerBrainMemory()
-        );
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         synchronized (mem) {
             mem.priceObjectionCount = Math.max(0, priceObjectionCount);
             mem.inPriceObjectionContext = inPriceObjectionContext;
             mem.hasPresentedDownsell = hasPresentedDownsell;
         }
+        persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
     public void recordBookingState(
@@ -725,17 +1133,15 @@ public class AgentBrainService {
         if (bookingState == null) {
             return;
         }
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(
-                toConversationMemoryKey(pageId, senderId),
-                k -> new CustomerBrainMemory()
-        );
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         synchronized (mem) {
             mem.structuredBookingState = bookingState;
         }
+        persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
     public ConversationState.StructuredBookingState recallBookingState(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null && mem.structuredBookingStateSnapshot() != null
                 ? mem.structuredBookingStateSnapshot()
                 : ConversationState.StructuredBookingState.none();
@@ -743,6 +1149,9 @@ public class AgentBrainService {
 
     public void clearCustomerMemory(UUID pageId, String senderId) {
         customerMemoryStore.remove(toConversationMemoryKey(pageId, senderId));
+        if (isAciDbPersistenceEnabled()) {
+            aciSessionMemoryPersistenceService.resetPersistedMemory(pageId, senderId);
+        }
     }
 
     // =========================================================================
@@ -750,37 +1159,37 @@ public class AgentBrainService {
     // =========================================================================
 
     public List<AdaptiveConversationIntelligence.CustomerStatementRecord> getAciCustomerStatements(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.customerStatementsSnapshot() : List.of();
     }
 
     public AdaptiveConversationIntelligence.WorkingHypothesisRecord getAciWorkingHypothesis(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.aciWorkingHypothesisSnapshot() : AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty();
     }
 
     public List<AdaptiveConversationIntelligence.UnverifiedParserCandidate> getLatestUnverifiedParserCandidates(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.latestUnverifiedParserCandidatesSnapshot() : List.of();
     }
 
     public List<AdaptiveConversationIntelligence.VerifiedBusinessFact> getAuthoritativeBusinessFacts(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.authoritativeBusinessFactsSnapshot() : List.of();
     }
 
     public AdaptiveConversationIntelligence.OperationalStateSnapshot getAciOperationalState(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.operationalStateSnapshot() : AdaptiveConversationIntelligence.OperationalStateSnapshot.initial();
     }
 
     public AdaptiveConversationIntelligence.PreviousStrategyRecord getPreviousStrategyRecord(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.previousStrategyRecordSnapshot() : AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone();
     }
 
     public List<AdaptiveConversationIntelligence.CommitmentRecord> getSessionCommitments(UUID pageId, String senderId) {
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         return mem != null ? mem.sessionCommitmentsSnapshot() : List.of();
     }
 
@@ -798,10 +1207,7 @@ public class AgentBrainService {
         if (factKey == null || factKey.isBlank() || factValue == null || factValue.isBlank()) {
             return;
         }
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(
-                toConversationMemoryKey(pageId, senderId),
-                k -> new CustomerBrainMemory()
-        );
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         synchronized (mem) {
             mem.authoritativeBusinessFacts.removeIf(f -> f != null && factKey.strip().equalsIgnoreCase(f.factKey()));
             mem.authoritativeBusinessFacts.add(new AdaptiveConversationIntelligence.VerifiedBusinessFact(
@@ -813,6 +1219,7 @@ public class AgentBrainService {
                     Instant.now()
             ));
         }
+        persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
     /**
@@ -829,11 +1236,12 @@ public class AgentBrainService {
                 || verificationEvidence == null || verificationEvidence.isBlank()) {
             return false;
         }
-        CustomerBrainMemory mem = customerMemoryStore.get(toConversationMemoryKey(pageId, senderId));
+        CustomerBrainMemory mem = resolveMemoryReadOnly(pageId, senderId);
         if (mem == null) {
             return false;
         }
         String key = commitmentIdOrTaskId.strip();
+        boolean updated = false;
         synchronized (mem) {
             for (int i = 0; i < mem.sessionCommitments.size(); i++) {
                 AdaptiveConversationIntelligence.CommitmentRecord c = mem.sessionCommitments.get(i);
@@ -852,11 +1260,15 @@ public class AgentBrainService {
                             verificationEvidence.strip(),
                             Instant.now()
                     ));
-                    return true;
+                    updated = true;
+                    break;
                 }
             }
         }
-        return false;
+        if (updated) {
+            persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
+        }
+        return updated;
     }
 
     /**
@@ -866,8 +1278,7 @@ public class AgentBrainService {
         if (senderId == null || senderId.isBlank()) {
             return;
         }
-        String convKey = toConversationMemoryKey(pageId, senderId);
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(convKey, k -> new CustomerBrainMemory());
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         synchronized (mem) {
             AdaptiveConversationIntelligence.OperationalStateSnapshot prev = mem.operationalState;
             if (prev != null) {
@@ -890,6 +1301,7 @@ public class AgentBrainService {
                 );
             }
         }
+        persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
     /**
@@ -917,14 +1329,22 @@ public class AgentBrainService {
             String verifiedPageSlaPolicy,
             String actualSentSpeechAct
     ) {
-        String convKey = toConversationMemoryKey(pageId, senderId);
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(convKey, k -> new CustomerBrainMemory());
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         String safeTurnId = (currentTurnId != null && !currentTurnId.isBlank()) ? currentTurnId.strip() : "T_CURRENT";
         String cleanVerifiedSla = (verifiedPageSlaPolicy != null && !verifiedPageSlaPolicy.isBlank())
                 ? verifiedPageSlaPolicy.strip()
                 : null;
 
         synchronized (mem) {
+            java.util.OptionalInt explicitTurnOrder = AciCustomerBrainMemorySnapshot.extractTurnOrder(safeTurnId);
+            if (explicitTurnOrder.isPresent()) {
+                mem.lastUpdatedTurnId = safeTurnId;
+                mem.highestObservedTurnSeq = explicitTurnOrder.getAsInt();
+            } else {
+                mem.highestObservedTurnSeq = mem.highestObservedTurnSeq + 1;
+                mem.lastUpdatedTurnId = "T" + mem.highestObservedTurnSeq;
+            }
+
             // Tier 3: Unverified Parser Candidates (chỉ lưu làm ứng viên chưa xác minh, cấm ghi sang verifiedFacts / authoritativeBusinessFacts)
             mem.latestUnverifiedParserCandidates = unverifiedParserCandidates != null
                     ? List.copyOf(unverifiedParserCandidates)
@@ -1246,6 +1666,7 @@ public class AgentBrainService {
                     actualSentSpeechAct
             );
         }
+        persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
     private static void applyDraft2CustomerUnderstandingUpdatesLocked(
@@ -2127,11 +2548,15 @@ public class AgentBrainService {
             String rawFactOrUtterance,
             String customerUtteranceContext
     ) {
-        String conversationId = toConversationMemoryKey(pageId, senderId);
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(conversationId, k -> new CustomerBrainMemory());
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
+        FactMutationRecord rec;
         synchronized (mem) {
-            return applyFactMemoryMutationLocked(mem, rawFactOrUtterance, customerUtteranceContext, MAX_VERIFIED_FACTS_PER_CUSTOMER);
+            rec = applyFactMemoryMutationLocked(mem, rawFactOrUtterance, customerUtteranceContext, MAX_VERIFIED_FACTS_PER_CUSTOMER);
         }
+        if (rec != null) {
+            persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
+        }
+        return rec;
     }
 
     private static FactMutationRecord applyFactMemoryMutationLocked(
@@ -2797,7 +3222,7 @@ public class AgentBrainService {
         String conversationId = tenantId + ":" + customerId;
         String resolvedActor = (careActor != null && !careActor.isBlank()) ? careActor.strip() : "chuyên viên phụ trách";
 
-        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(conversationId, k -> new CustomerBrainMemory());
+        CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, customerId);
         List<ConversationState.CustomerCareNoteArtifact> effectiveArtifacts;
         FactMutationRecord mutationThisTurn = null;
         LivingHypothesisState updatedHypState;
@@ -2894,6 +3319,7 @@ public class AgentBrainService {
         }
 
         this.lastRetainedCareNotes = effectiveArtifacts;
+        persistMemoryToDbIfEnabled(pageId, customerId, customerName, mem);
         log.info("[AgentBrainProvenance:Retain] page={} sender={} factOp={} verifiedFacts={}/{} careNotes={}/{} "
                         + "actualSentSpeechAct=\"{}\" hypothesisStatus={} confidence={} hypothesis=\"{}\" (reason={})",
                 pageId,
@@ -3152,7 +3578,7 @@ public class AgentBrainService {
                 ? localSpeechAct
                 : base.lastActualSentSpeechAct();
         CustomerBrainMemory storedMem = (pageId != null || senderId != null)
-                ? customerMemoryStore.get(toConversationMemoryKey(pageId, senderId))
+                ? resolveMemoryReadOnly(pageId, senderId)
                 : null;
         int resolvedPriceObjectionCount = storedMem != null
                 ? Math.max(base.priceObjectionCount(), storedMem.priceObjectionCountSnapshot())

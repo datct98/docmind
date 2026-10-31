@@ -1720,7 +1720,9 @@ public final class AdaptiveConversationIntelligence {
             }
             JsonNode factsNode = cuNode.has("confirmed_facts_delta")
                     ? cuNode.get("confirmed_facts_delta")
-                    : (cuNode.has("fact_deltas") ? cuNode.get("fact_deltas") : cuNode.get("confirmed_facts"));
+                    : (cuNode.has("fact_deltas")
+                        ? cuNode.get("fact_deltas")
+                        : (cuNode.has("confirmed_facts") ? cuNode.get("confirmed_facts") : b.get("confirmed_facts_delta")));
             parseFactDeltaProposals(factsNode, confirmedFactsDelta, needRevisionDetected);
             // Tương thích ngược cho test cũ vẫn truyền mảng self_reported_symptoms rời
             JsonNode symNode = cuNode.get("self_reported_symptoms");

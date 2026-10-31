@@ -50,6 +50,8 @@ public class ConversationInboxService {
     private KnowledgePageRepository knowledgePageRepository;
     @Autowired(required = false)
     private InboundSessionPersistenceService inboundSessionPersistenceService;
+    @Autowired(required = false)
+    private ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator;
     @Value("${docmind.security.atomic-state-guard.enabled:true}")
     private volatile boolean atomicStateGuardEnabled = true;
     @Value("${docmind.fanpage.default-page-id:}")
@@ -177,6 +179,27 @@ public class ConversationInboxService {
         this.inboundSessionPersistenceService = inboundSessionPersistenceService;
     }
 
+    public void setSessionMergeCoordinator(ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator) {
+        this.sessionMergeCoordinator = sessionMergeCoordinator;
+    }
+
+    private ConversationSessionOptimisticMergeCoordinator resolveMergeCoordinator() {
+        ConversationSessionOptimisticMergeCoordinator existing = this.sessionMergeCoordinator;
+        if (existing != null) {
+            return existing;
+        }
+        return ConversationSessionOptimisticMergeCoordinator.forMockOrPassthroughRepository(this.sessionRepository);
+    }
+
+    private ConversationSessionEntity saveSessionMonotonically(
+            ConversationSessionEntity detachedCandidate,
+            ConversationSessionOptimisticMergeCoordinator.WriteOptions options
+    ) {
+        return resolveMergeCoordinator()
+                .saveCandidateWithMonotonicMerge(detachedCandidate, options)
+                .entity();
+    }
+
     public void setAtomicStateGuardEnabled(boolean atomicStateGuardEnabled) {
         this.atomicStateGuardEnabled = atomicStateGuardEnabled;
     }
@@ -227,7 +250,7 @@ public class ConversationInboxService {
                     ? botResponse.inboundExternalMid()
                     : InboundEventIdResolver.resolveForCurrentContext(request, custMsg).externalMid();
 
-            ConversationSessionEntity session = findOrCreateSession(pageId, psid, request.customerName());
+            ConversationSessionEntity session = findOrCreateSession(pageId, psid, request.customerName()).copySnapshot();
             syncFreshGuardFieldsFromDb(session);
             Instant now = Instant.now();
 
@@ -236,7 +259,10 @@ public class ConversationInboxService {
                 session.setLastSenderRole("CUSTOMER");
                 session.setLastMessageAt(now);
                 session.setUpdatedAt(now);
-                session = sessionRepository.saveAndFlush(session);
+                session = saveSessionMonotonically(
+                        session,
+                        ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+                );
                 if (inboundSessionPersistenceService != null) {
                     inboundSessionPersistenceService.persistCustomerMessageForExistingSession(
                             session.getId(), custMsg, inboundExtMid, now
@@ -256,7 +282,10 @@ public class ConversationInboxService {
             }
 
             applyBotResponseToSession(session, custMsg, botResponse);
-            session = sessionRepository.saveAndFlush(session);
+            session = saveSessionMonotonically(
+                    session,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
 
             if (inboundSessionPersistenceService != null) {
                 inboundSessionPersistenceService.persistCustomerMessageForExistingSession(
@@ -288,7 +317,6 @@ public class ConversationInboxService {
         }
     }
 
-    @Transactional
     public Map<String, Object> sendCustomerTurnInSession(UUID sessionId, String customerMessage) {
         if (customerMessage == null || customerMessage.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tin nhắn không được để trống.");
@@ -297,6 +325,7 @@ public class ConversationInboxService {
         List<ConversationMessageEntity> existingMsgs;
         try {
             session = sessionRepository.findById(sessionId)
+                    .map(ConversationSessionEntity::copySnapshot)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
             existingMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         } catch (ResponseStatusException rse) {
@@ -365,7 +394,10 @@ public class ConversationInboxService {
             session.setLastSenderRole("CUSTOMER");
             session.setLastMessageAt(now);
             session.setUpdatedAt(now);
-            sessionRepository.save(session);
+            session = saveSessionMonotonically(
+                    session,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
             List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
             Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
             detail.put("latest_bot_message_id", null);
@@ -399,7 +431,10 @@ public class ConversationInboxService {
             session.setLastSenderRole("CUSTOMER");
             session.setLastMessageAt(now);
             session.setUpdatedAt(now);
-            sessionRepository.save(session);
+            session = saveSessionMonotonically(
+                    session,
+                    ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+            );
             List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
             Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
             detail.put("latest_bot_message_id", null);
@@ -419,7 +454,10 @@ public class ConversationInboxService {
         messageRepository.save(botEntity);
 
         applyBotResponseToSession(session, trimmedCustomerMessage, botResp);
-        sessionRepository.save(session);
+        session = saveSessionMonotonically(
+                session,
+                ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+        );
 
         List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
@@ -438,6 +476,7 @@ public class ConversationInboxService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nội dung phản hồi của Sale không được để trống.");
         }
         ConversationSessionEntity session = sessionRepository.findById(sessionId)
+                .map(ConversationSessionEntity::copySnapshot)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
 
         Instant now = Instant.now();
@@ -462,7 +501,10 @@ public class ConversationInboxService {
         } else if (!"CONVERTED".equalsIgnoreCase(session.getControlMode())) {
             session.setControlMode("HUMAN_TAKEOVER");
         }
-        sessionRepository.save(session);
+        session = saveSessionMonotonically(
+                session,
+                ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+        );
         if (atomicStateGuardEnabled) {
             InboundSessionPersistenceService.supersedeEpochForSender(
                     session.getPageId(),
@@ -478,6 +520,7 @@ public class ConversationInboxService {
     @Transactional
     public Map<String, Object> updateControlMode(UUID sessionId, String controlMode) {
         ConversationSessionEntity session = sessionRepository.findById(sessionId)
+                .map(ConversationSessionEntity::copySnapshot)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
         String normalized = controlMode != null ? controlMode.trim().toUpperCase(Locale.ROOT) : "BOT_ACTIVE";
         if (!List.of("BOT_ACTIVE", "NEEDS_HANDOFF", "HUMAN_TAKEOVER", "CONVERTED").contains(normalized)) {
@@ -485,7 +528,10 @@ public class ConversationInboxService {
         }
         session.setControlMode(normalized);
         session.setUpdatedAt(Instant.now());
-        sessionRepository.save(session);
+        session = saveSessionMonotonically(
+                session,
+                ConversationSessionOptimisticMergeCoordinator.WriteOptions.EXPLICIT_OPERATOR_CONTROL_MODE
+        );
         if (atomicStateGuardEnabled
                 && ("HUMAN_TAKEOVER".equalsIgnoreCase(normalized) || "CONVERTED".equalsIgnoreCase(normalized))) {
             InboundSessionPersistenceService.supersedeEpochForSender(
@@ -498,7 +544,6 @@ public class ConversationInboxService {
         return toSessionDetailMap(session, msgs);
     }
 
-    @Transactional
     public Map<String, Object> createNewCustomerSession(UUID pageId, String customerName, String initialMessage) {
         String name = (customerName != null && !customerName.isBlank())
                 ? customerName.strip()
@@ -527,7 +572,10 @@ public class ConversationInboxService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
-        session = sessionRepository.saveAndFlush(session);
+        session = saveSessionMonotonically(
+                session,
+                ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+        );
 
         if (initialMessage != null && !initialMessage.isBlank()) {
             return sendCustomerTurnInSession(session.getId(), initialMessage.strip());
@@ -538,6 +586,7 @@ public class ConversationInboxService {
     @Transactional
     public Map<String, Object> extractRuleFromSession(UUID sessionId) {
         ConversationSessionEntity session = sessionRepository.findById(sessionId)
+                .map(ConversationSessionEntity::copySnapshot)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
         List<ConversationMessageEntity> msgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
 
@@ -615,7 +664,10 @@ public class ConversationInboxService {
 
         session.setLearnedInColdPath(true);
         session.setUpdatedAt(Instant.now());
-        sessionRepository.save(session);
+        saveSessionMonotonically(
+                session,
+                ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC
+        );
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session_id", sessionId);
