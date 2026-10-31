@@ -4505,7 +4505,10 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append(", effective_customer_pronoun: \"").append(custPronoun).append("\" }\n")
           .append("    mandatory_pronouns: { self: \"").append(selfPronoun)
           .append("\", customer: \"").append(custPronoun).append("\" }\n");
-        if (isOpeningTurn && resolvedCfg.openingBubbles() != null && !resolvedCfg.openingBubbles().isEmpty()) {
+        if (isOpeningTurn
+                && !isDirectTurnOnePriceOrOperationalQuestion(verbatimOriginal)
+                && resolvedCfg.openingBubbles() != null
+                && !resolvedCfg.openingBubbles().isEmpty()) {
             List<String> resolvedOpening = resolvedCfg.resolvedOpeningBubbles(
                     brandName,
                     pagePersona != null ? pagePersona.description() : null,
@@ -4935,8 +4938,8 @@ public final class CleanAgentCatalogAndPromptBuilder {
             sb.append("    enabled_agent_skills:\n");
             for (AgentSkillDto s : activeSkills) {
                 String code = (s.code() != null && !s.code().isBlank()) ? s.code().strip() : "skill";
-                String coreDirective = extractCompactSkillDirective(s, 110);
-                String anti = compactSingleLine(s.antiPattern(), 50);
+                String coreDirective = extractCompactSkillDirective(s, 220);
+                String anti = compactCompleteClause(s.antiPattern(), 240);
                 sb.append("      - [").append(code).append("] ").append(coreDirective);
                 if (!anti.isEmpty()) {
                     sb.append(" | Tránh: ").append(anti);
@@ -4951,12 +4954,27 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 String code = (r.ruleCode() != null && !r.ruleCode().isBlank())
                         ? r.ruleCode().strip()
                         : ((r.category() != null && !r.category().isBlank()) ? r.category().strip() : "RULE");
-                String doText = compactSingleLine(
-                        (r.doActions() != null && !r.doActions().isBlank()) ? r.doActions() : r.generalizedRule(),
-                        130
-                );
-                String dontText = compactSingleLine(r.dontActions(), 55);
-                sb.append("      - [").append(code).append("] ").append(doText);
+                String genRaw = r.generalizedRule() != null ? r.generalizedRule().strip() : "";
+                String doRaw = r.doActions() != null ? r.doActions().strip() : "";
+                String ruleBody;
+                if (!genRaw.isEmpty() && !doRaw.isEmpty()) {
+                    String genCompact = compactCompleteClause(genRaw, 260);
+                    String genNorm = genRaw.toLowerCase(Locale.ROOT);
+                    String doNorm = doRaw.toLowerCase(Locale.ROOT);
+                    if (genNorm.contains(doNorm)) {
+                        ruleBody = genCompact;
+                    } else if (doNorm.contains(genNorm)) {
+                        ruleBody = compactCompleteClause(doRaw, 260);
+                    } else {
+                        ruleBody = genCompact + " | Nên: " + compactCompleteClause(doRaw, 220);
+                    }
+                } else if (!genRaw.isEmpty()) {
+                    ruleBody = compactCompleteClause(genRaw, 260);
+                } else {
+                    ruleBody = compactCompleteClause(doRaw, 240);
+                }
+                String dontText = compactCompleteClause(r.dontActions(), 240);
+                sb.append("      - [").append(code).append("] ").append(ruleBody);
                 if (!dontText.isEmpty()) {
                     sb.append(" | Cấm: ").append(dontText);
                 }
@@ -4964,6 +4982,23 @@ public final class CleanAgentCatalogAndPromptBuilder {
             }
         }
         sb.append("  </PAGE_PLAYBOOK_COMPACT_DIRECTIVES>\n\n");
+    }
+
+    static boolean isDirectTurnOnePriceOrOperationalQuestion(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ");
+        // Hỏi thẳng giá / chi phí / bảng giá / con số giá cụ thể ở lượt 1 (VD: "Massage toàn thân mấy tiền?", "Gói 60p bao nhiêu?", "Giá?")
+        if (norm.matches("(?isU)^giá\\s*[?？!.]*$")
+                || norm.matches("(?isU).*\\b(mấy\\s+tiền|bao\\s+nhiêu\\s+tiền|bao\\s+nhiêu\\s+1|bao\\s+nhiêu\\s+một|giá\\s+bao\\s+nhiêu|giá\\s+sao|giá\\s+thế\\s+nào|giá\\s+như\\s+nào|giá\\s+ntn|bảng\\s+giá|chi\\s+phí|rổ\\s+giá|\\d{2,4}\\s*k\\b).*")
+                || norm.matches("(?isU).*\\b(giá|gói)\\b.*\\b(bao\\s+nhiêu|bn)\\b.*")) {
+            return true;
+        }
+        // Hỏi thẳng thông tin vận hành cụ thể ở lượt 1 (địa chỉ, cơ sở, giờ mở/đóng cửa, chỗ đỗ xe)
+        return norm.matches("(?isU).*\\b(địa\\s+chỉ|ở\\s+đâu|chi\\s+nhánh|cơ\\s+sở\\s+nào|mấy\\s+giờ\\s+(mở|đóng|nghỉ)|giờ\\s+mở\\s+cửa|đỗ\\s+(xe|ô\\s*tô)|gửi\\s+xe)\\b.*");
     }
 
     private static String extractCompactSkillDirective(AgentSkillDto skill, int maxChars) {
@@ -4980,10 +5015,47 @@ public final class CleanAgentCatalogAndPromptBuilder {
             core = core.replaceFirst("^\\[Tình huống[^\\]]*\\]\\s*", "Khi: ")
                     .replaceAll("->\\s*\\[Nghệ thuật[^\\]]*\\]\\s*", "-> ");
             if (!core.isEmpty()) {
-                return compactSingleLine(core, Math.max(maxChars, 145));
+                return compactCompleteClause(core, Math.max(maxChars, 220));
             }
         }
-        return compactSingleLine(skill.description(), maxChars);
+        return compactCompleteClause(skill.description(), maxChars);
+    }
+
+    /**
+     * Unit P1.2: Nén chuỗi trên 1 dòng theo ranh giới câu / mệnh đề hoàn chỉnh ({@code 220-260} ký tự),
+     * tuyệt đối không cắt cứng {@code 50-55} ký tự giữa chừng từ ngữ/mệnh đề phủ định.
+     */
+    static String compactCompleteClause(String raw, int maxChars) {
+        if (raw == null || raw.isBlank() || maxChars <= 0) {
+            return "";
+        }
+        String collapsed = raw.replaceAll("[\\r\\n\\t]+", " ")
+                .replaceAll("\\s{2,}", " ")
+                .replace("\"", "'")
+                .strip();
+        if (collapsed.length() <= maxChars) {
+            return collapsed;
+        }
+        int minBoundary = Math.max(40, (maxChars * 55) / 100);
+        String window = collapsed.substring(0, maxChars);
+        int bestCut = -1;
+        for (String sep : List.of(". ", "; ", " — ", ", ")) {
+            int idx = window.lastIndexOf(sep);
+            if (idx >= minBoundary) {
+                int endIdx = sep.equals(". ") ? (idx + 1) : idx;
+                if (endIdx > bestCut) {
+                    bestCut = endIdx;
+                }
+            }
+        }
+        if (bestCut >= minBoundary) {
+            return collapsed.substring(0, bestCut).strip();
+        }
+        int lastSpace = window.lastIndexOf(' ');
+        if (lastSpace >= minBoundary) {
+            return collapsed.substring(0, lastSpace).strip() + "…";
+        }
+        return window.strip() + "…";
     }
 
     private static String compactSingleLine(String raw, int maxChars) {

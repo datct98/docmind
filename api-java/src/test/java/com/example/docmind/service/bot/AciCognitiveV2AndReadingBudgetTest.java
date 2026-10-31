@@ -4268,4 +4268,104 @@ class AciCognitiveV2AndReadingBudgetTest {
             jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid = ?", splitPsid);
         }
     }
+
+    @Test
+    @DisplayName("Unit P1.2: Khôi phục generalized_rule kết hợp do_actions/dont_actions, gỡ bỏ cắt cứng 50-55 ký tự trên anti_pattern và bỏ configured_opening_bubbles khi lượt 1 hỏi thẳng giá")
+    void testP12_GeneralizedRuleAndAntiPatternPreservedWithout50CharTruncationAndDirectTurn1PriceSkipsOpeningBubbles() {
+        com.example.docmind.dto.LearnedRuleDto openRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(),
+                "OPENING",
+                "Hi shop",
+                "",
+                "Khi khách mới mở đầu cuộc trò chuyện (như Hi shop, Tôi cần tư vấn), đón tiếp nhiệt tình theo đúng phong cách & nhịp 2–3 bong bóng mở đầu đã cấu hình trên UI Page để tạo thiện cảm; nếu khách hỏi thẳng giá/thông tin cụ thể ngay lượt 1 thì trả lời trực diện ý đó.",
+                List.of("hi shop", "tư vấn", "giá", "mấy tiền"),
+                true,
+                PAGE_ID.toString(),
+                0.99,
+                1,
+                1,
+                0,
+                1,
+                null,
+                null,
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                "DOM",
+                "Khách mở lời lượt 1",
+                null,
+                false,
+                "APPROVED",
+                null,
+                "PB-SPA-OPEN-001",
+                "Hospitality mở đầu",
+                "OPENING",
+                "OPENING",
+                95,
+                "Đón tiếp ấm áp đúng tinh thần configured_opening_bubbles của Page (cho phép tách 2–3 bong bóng mở đầu nhịp nhàng: chào thân tình + gợi mở không gian thư giãn êm dịu + hỏi nhẹ nhu cầu thư giãn của khách).",
+                "Không hỏi vặn cụt lủn 1 câu như biểu mẫu khảo sát; không đòi số điện thoại hay ép chọn khung giờ ngay lượt đầu.",
+                "must_use_kb_document_context",
+                "none",
+                "PLAYBOOK"
+        );
+
+        com.example.docmind.dto.bot.AgentSkillDto discoverySkill = new com.example.docmind.dto.bot.AgentSkillDto(
+                UUID.randomUUID(),
+                "discovery_empathy_and_scope",
+                "Đồng cảm giác quan & Khám phá vùng mỏi",
+                "PSYCHOLOGY",
+                "Đồng điệu tinh tế và làm rõ vùng mỏi.",
+                "mệt mỏi, đau đầu, mất ngủ",
+                "[Tình huống tâm lý khách] Khách chia sẻ cơ thể rã rời, căng mỏi -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Phản chiếu tự nhiên đúng cảm giác đời thực khách nêu, không thảo mai, không mở đầu rập khuôn.",
+                null,
+                "Dùng câu cảm thán thảo mai ('thấy thương', 'em thương quá', 'thương lắm', 'khổ tâm quá'), hỏi khảo sát vòng vo khi khách muốn nói ngắn, hoặc chèn cảnh báo y tế cứng nhắc vào chia sẻ mệt mỏi thông thường.",
+                98,
+                true,
+                PAGE_ID.toString(),
+                Instant.now(),
+                Instant.now()
+        );
+
+        // Ca A: Lượt 1 chào hỏi tư vấn chung ("Hi shop, tôi cần tư vấn") -> CÓ configured_opening_bubbles, giữ trọn generalized_rule + anti_pattern
+        FanpageBotRequest greetingReq = buildBotRequest("sender-p12-greet", "Khách A", "Hi shop, tôi cần tư vấn", null, List.of());
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput greetingStreams =
+                AdaptiveConversationIntelligence.buildThreeStreamInput(
+                        greetingReq, catalogPackages, nangSenPersona.resolvedConfig(), ZoneId.of("Asia/Ho_Chi_Minh"));
+        String greetingPrompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
+                nangSenPersona, "mình", null, "mình", greetingStreams,
+                catalogPackages, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                List.of(), AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty(),
+                List.of(), ConversationState.StructuredBookingState.none(),
+                AdaptiveConversationIntelligence.OperationalStateSnapshot.initial(),
+                AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone(),
+                List.of(), null, false, catalogChunks, List.of(), List.of(discoverySkill), List.of(openRule)
+        );
+        assertThat(greetingPrompt).contains("configured_opening_bubbles");
+        assertThat(greetingPrompt).contains("nếu khách hỏi thẳng giá/thông tin cụ thể ngay lượt 1 thì trả lời trực diện ý đó");
+        assertThat(greetingPrompt).contains("không đòi số điện thoại hay ép chọn khung giờ ngay lượt đầu");
+        assertThat(greetingPrompt)
+                .contains("'thấy thương'")
+                .contains("'em thương quá'")
+                .contains("'thương lắm'")
+                .contains("chèn cảnh báo y tế cứng nhắc vào chia sẻ mệt mỏi thông thường");
+
+        // Ca B: Lượt 1 hỏi thẳng giá cụ thể ("Massage toàn thân mấy tiền?") -> KHÔNG tiêm configured_opening_bubbles để CONCISE trả lời thẳng 1-2 bubbles
+        FanpageBotRequest directPriceReq = buildBotRequest("sender-p12-price", "Khách B", "Massage toàn thân mấy tiền?", null, List.of());
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput directPriceStreams =
+                AdaptiveConversationIntelligence.buildThreeStreamInput(
+                        directPriceReq, catalogPackages, nangSenPersona.resolvedConfig(), ZoneId.of("Asia/Ho_Chi_Minh"));
+        String directPricePrompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
+                nangSenPersona, "mình", null, "mình", directPriceStreams,
+                catalogPackages, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                List.of(), AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty(),
+                List.of(), ConversationState.StructuredBookingState.none(),
+                AdaptiveConversationIntelligence.OperationalStateSnapshot.initial(),
+                AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone(),
+                List.of(), null, false, catalogChunks, List.of(), List.of(discoverySkill), List.of(openRule)
+        );
+        assertThat(directPricePrompt).doesNotContain("configured_opening_bubbles (Dùng linh hoạt cho Hospitality");
+        assertThat(directPricePrompt).contains("nếu khách hỏi thẳng giá/thông tin cụ thể ngay lượt 1 thì trả lời trực diện ý đó");
+    }
 }
