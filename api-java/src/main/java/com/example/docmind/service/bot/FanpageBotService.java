@@ -923,30 +923,30 @@ public class FanpageBotService {
                     .toList();
         }
 
-        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION TRỰC TIẾP TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ Ở V2)
+        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION & META-PROBE TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ Ở V2)
         String promptBoundSecurityTarget = (v2Mode && verbatimOriginalMessage != null)
                 ? verbatimOriginalMessage
                 : mergedMessage;
         if (PromptSecurityGuard.isDirectJailbreakAttempt(promptBoundSecurityTarget)) {
-            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak page_id={} len={} msg={}",
+            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak_or_meta_probe page_id={} v2_mode={} len={} msg={}",
                     pageId,
+                    v2Mode,
                     promptBoundSecurityTarget != null ? promptBoundSecurityTarget.length() : 0,
                     maskPiiInText(mergedMessage));
-            boolean isSpaPolicyV2 = (pagePersona != null
-                    && ((pagePersona.name() != null && pagePersona.name().toLowerCase(Locale.ROOT).contains("spa"))
-                        || (pagePersona.resolvedConfig().openingBubbles() != null && !pagePersona.resolvedConfig().openingBubbles().isEmpty())))
-                    || "mình".equalsIgnoreCase(honorific);
-            boolean repeatedInjection = request.history() != null && request.history().stream()
-                    .anyMatch(t -> t != null && "user".equalsIgnoreCase(t.role())
-                            && PromptSecurityGuard.isDirectJailbreakAttempt(t.content()));
-            if (isSpaPolicyV2 && !repeatedInjection) {
-                String politeRefusal = "Dạ em không hỗ trợ nội dung này ạ. Hôm nay " + honorific
-                        + " đang cần tư vấn dịch vụ hay đặt lịch thư giãn để em hỗ trợ " + honorific + " nha?";
+            if (v2Mode) {
+                String rawSelfPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
+                        ? pagePersona.resolvedConfig().resolvedSelfPronoun()
+                        : "em";
+                String neutralSelfPronoun = (rawSelfPronoun != null && !rawSelfPronoun.isBlank())
+                        ? rawSelfPronoun.strip().toLowerCase(Locale.ROOT)
+                        : "em";
+                String neutralNoCtaRefusal = "Dạ " + neutralSelfPronoun
+                        + " chỉ hỗ trợ cung cấp thông tin dịch vụ và lịch hẹn thực tế của bên mình thôi ạ.";
                 List<FanpageBotResponse.ReplyBubble> singleBubble = List.of(
-                        new FanpageBotResponse.ReplyBubble(politeRefusal, 900)
+                        new FanpageBotResponse.ReplyBubble(neutralNoCtaRefusal, 900)
                 );
                 return new FanpageBotResponse(
-                        politeRefusal,
+                        neutralNoCtaRefusal,
                         singleBubble,
                         List.of(900),
                         "DISCOVERY",
@@ -957,7 +957,7 @@ public class FanpageBotService {
                         extractedLead,
                         List.of(),
                         customerInsight,
-                        activeSkills,
+                        List.of(),
                         List.of("SECURITY_PROMPT_INJECTION_REFUSAL")
                 );
             }

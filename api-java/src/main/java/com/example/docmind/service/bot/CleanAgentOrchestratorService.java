@@ -4568,7 +4568,8 @@ public class CleanAgentOrchestratorService {
                         verifiedPageSlaPolicy,
                         handoffDecision,
                         reflection,
-                        fused != null ? fused : List.of()
+                        fused != null ? fused : List.of(),
+                        pagePersona != null ? pagePersona.name() : null
                 )
         );
 
@@ -4662,12 +4663,27 @@ public class CleanAgentOrchestratorService {
                     verifiedPageSlaPolicy,
                     handoffDecision,
                     reflection,
-                    fused != null ? fused : List.of()
+                    fused != null ? fused : List.of(),
+                    pagePersona != null ? pagePersona.name() : null
             );
             if (!postRepairViolations.isEmpty()) {
+                boolean hasSecurityOrCrossTenantLeak = postRepairViolations.stream()
+                        .anyMatch(v -> v != null && (v.startsWith("INTERNAL_POLICY_OR_PROMPT_LEAKAGE")
+                                || v.startsWith("CROSS_TENANT_BRAND_OR_CATALOG_LEAKAGE")));
                 boolean hasUngroundedPrice = postRepairViolations.stream()
                         .anyMatch(v -> v != null && v.startsWith("UNGROUNDED_PRICE_MENTIONED:"));
-                if (hasUngroundedPrice) {
+                if (hasSecurityOrCrossTenantLeak) {
+                    log.warn("[ACI-V2] Post-repair still has internal/cross-tenant leakage ({}) -> building neutral NO_CTA scope response", postRepairViolations);
+                    candidateBubbles = buildSafeAciAuthorityFallbackBubbles(
+                            postRepairViolations,
+                            selfPronoun,
+                            safeHonorific,
+                            authoritativeBookingState,
+                            handoffDecision,
+                            originalVerbatim
+                    );
+                    repairApplied = true;
+                } else if (hasUngroundedPrice) {
                     log.warn("[ACI-V2] Post-repair still has UNGROUNDED_PRICE_MENTIONED ({}) -> triggering SAFE_HANDOFF", postRepairViolations);
                     candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(FanpageBotService.SAFE_HANDOFF_BUBBLE_TEXT, 0));
                     usedSafeHandoffFallback = true;
@@ -5422,6 +5438,16 @@ public class CleanAgentOrchestratorService {
             AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision,
             String originalCustomerMessage
     ) {
+        if (violations != null && violations.stream().anyMatch(v -> v != null
+                && (v.startsWith("INTERNAL_POLICY_OR_PROMPT_LEAKAGE")
+                    || v.startsWith("CROSS_TENANT_BRAND_OR_CATALOG_LEAKAGE")))) {
+            String lowerSelf = (selfPronoun != null && !selfPronoun.isBlank())
+                    ? selfPronoun.strip().toLowerCase(Locale.ROOT)
+                    : "em";
+            String neutralScopeText = "Dạ " + lowerSelf
+                    + " chỉ hỗ trợ cung cấp thông tin dịch vụ và lịch hẹn thực tế của bên mình thôi ạ.";
+            return List.of(new FanpageBotResponse.ReplyBubble(neutralScopeText, 0));
+        }
         if (AdaptiveConversationIntelligence.isPaymentClaimMessage(originalCustomerMessage)
                 || violations.contains("UNVERIFIED_PAYMENT_CONFIRMATION_CLAIM")) {
             String bookingSuffix = (bookingState != null && bookingState.bookingTime() != null)

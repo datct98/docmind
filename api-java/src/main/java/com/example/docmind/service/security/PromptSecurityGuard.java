@@ -30,6 +30,19 @@ public final class PromptSecurityGuard {
             Pattern.compile("(?iU)<<SYS>>")
     );
 
+    /**
+     * Các mẫu câu dò hỏi gián tiếp cấu trúc kiến trúc nội bộ, bảng DB quy tắc học ({@code learned_rules}, {@code agent_skills}),
+     * schema JSON tư duy ({@code brain_reflection}, {@code response_plan}) hoặc chiến thuật xử lý phản đối/chốt sale nội bộ của AI (Unit P0.3).
+     * Chỉ áp dụng trên tin nhắn đầu vào của khách hàng ({@link #isDirectJailbreakAttempt(String)}), không chặn quản trị viên tạo quy tắc hợp lệ.
+     */
+    private static final List<Pattern> INTERNAL_META_PROBE_PATTERNS = List.of(
+            Pattern.compile("(?iU)\\b(learned_rules|agent_skills|brain_reflection|working_hypothesis|response_plan|session_memory_5_tier|verified_business_catalog|clean_agent_system_prompt|aci_v2_system_prompt|confirmed_facts_delta|proposed_booking_patch|compact_skill_cards|learned_experience_rules)\\b"),
+            Pattern.compile("(?iU)(liệt\\s+kê|tiết\\s+lộ|in\\s+ra|hiển\\s+thị|cho\\s+(?:tôi|mình|anh|chị|em)\\s+(?:xem|biết)|nêu\\s+rõ|đọc\\s+lại|chia\\s+sẻ|tóm\\s+tắt)\\s+(?:toàn\\s+bộ\\s+|tất\\s+cả\\s+|các\\s+|những\\s+)?(?:quy\\s+tắc|luật|chỉ\\s+thị|hướng\\s+dẫn|kịch\\s+bản|chiến\\s+thuật|cấu\\s+trúc\\s+json|schema|playbook)\\s+(?:nội\\s+bộ|ẩn|hệ\\s+thống|huấn\\s+luyện|dạy\\s+ai|chốt\\s+sale|tư\\s+vấn\\s+nội\\s+bộ|xử\\s+lý\\s+(?:khi\\s+)?khách|của\\s+(?:bạn|bot|ai|mô\\s+hình|hệ\\s+thống))"),
+            Pattern.compile("(?iU)(?:bạn|bot|ai|hệ\\s+thống)\\s+(?:được|bị)\\s+(?:huấn\\s+luyện|lập\\s+trình|cấu\\s+hình|dạy|chỉ\\s+thị|cài\\s+đặt)\\s+(?:như\\s+thế\\s+nào|ra\\s+sao|theo\\s+(?:những\\s+|các\\s+)?(?:quy\\s+tắc|kịch\\s+bản|chiến\\s+thuật|luật)\\s+nào)"),
+            Pattern.compile("(?iU)(?:liệt\\s+kê|tiết\\s+lộ|in\\s+ra|cho\\s+(?:tôi|mình|anh|chị|em)\\s+(?:xem|biết)|nêu|chia\\s+sẻ).*?(?:quy\\s+tắc|kịch\\s+bản|chiến\\s+thuật|playbook)\\s+(?:xử\\s+lý|đối\\s+phó|ứng\\s+phó|thuyết\\s+phục)\\s+(?:khi\\s+)?khách\\s+(?:chê\\s+đắt|từ\\s+chối|phàn\\s+nàn|ép\\s+giá|do\\s+dự)"),
+            Pattern.compile("(?iU)\\b(list|reveal|print|show|output|dump|explain)\\s+(all\\s+)?(your\\s+|the\\s+)?(internal\\s+|hidden\\s+)?(playbook|sales\\s+tactics?|objection[- ]handling\\s+rules?|json\\s+schema|cognitive\\s+schema|training\\s+rules?)\\b")
+    );
+
     /** Ký tự ẩn định dạng Unicode (\p{Cf}: zero-width, soft-hyphen, BOM, bidi) và điều khiển ASCII dùng để chèn lách regex. */
     private static final Pattern INVISIBLE_FORMAT_AND_CONTROL_PATTERN =
             Pattern.compile("[\\p{Cf}\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
@@ -70,7 +83,8 @@ public final class PromptSecurityGuard {
     }
 
     /**
-     * Kiểm tra câu hỏi của người dùng có phải là nỗ lực tấn công trực tiếp (Direct Prompt Injection / Jailbreak) hay không.
+     * Kiểm tra câu hỏi của người dùng có phải là nỗ lực tấn công trực tiếp (Direct Prompt Injection / Jailbreak)
+     * hoặc dò hỏi quy tắc / cấu trúc nội bộ của hệ thống AI (Internal Meta-Probe — Unit P0.3) hay không.
      * Quét trên 100% chiều dài chuỗi đầu vào (<= 25.000 ký tự đưa vào prompt) qua bản sao chỉ đọc {@link #normalizeForSecurityCheck(String)}.
      */
     public static boolean isDirectJailbreakAttempt(String userQuestion) {
@@ -82,6 +96,30 @@ public final class PromptSecurityGuard {
             return false;
         }
         for (Pattern p : DIRECT_JAILBREAK_PATTERNS) {
+            if (p.matcher(normalizedScanCopy).find()) {
+                return true;
+            }
+        }
+        for (Pattern p : INTERNAL_META_PROBE_PATTERNS) {
+            if (p.matcher(normalizedScanCopy).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Kiểm tra riêng xem tin nhắn có phải là câu hỏi dò quy tắc nội bộ / schema hệ thống AI (Unit P0.3) hay không.
+     */
+    public static boolean isInternalMetaProbeAttempt(String userQuestion) {
+        if (userQuestion == null || userQuestion.isBlank()) {
+            return false;
+        }
+        String normalizedScanCopy = normalizeForSecurityCheck(userQuestion);
+        if (normalizedScanCopy.isEmpty()) {
+            return false;
+        }
+        for (Pattern p : INTERNAL_META_PROBE_PATTERNS) {
             if (p.matcher(normalizedScanCopy).find()) {
                 return true;
             }
