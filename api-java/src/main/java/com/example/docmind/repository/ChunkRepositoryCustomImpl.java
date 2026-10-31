@@ -99,6 +99,8 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
         );
     }
 
+    private static final int DEFAULT_IVFFLAT_PROBES = 100;
+
     @Override
     public List<RetrievedChunk> searchByVector(List<UUID> documentIds, float[] queryEmbedding, int limit) {
         return searchByVector(documentIds, queryEmbedding, limit, null);
@@ -131,19 +133,63 @@ public class ChunkRepositoryCustomImpl implements ChunkRepositoryCustom {
                 LIMIT ?
                 """.formatted(inClause, pageFilter);
 
-        Object[] args = new Object[1 + documentIds.size() + (pageId != null ? 1 : 0) + 2];
-        int i = 0;
-        args[i++] = vectorLiteral;
-        for (UUID d : documentIds) {
-            args[i++] = d;
-        }
-        if (pageId != null) {
-            args[i++] = pageId;
-        }
-        args[i++] = vectorLiteral;
-        args[i] = limit;
+        return jdbc.execute((java.sql.Connection connection) -> {
+            ensureIvfflatProbes(connection, DEFAULT_IVFFLAT_PROBES);
+            try (var ps = connection.prepareStatement(sql)) {
+                int paramIdx = 1;
+                ps.setString(paramIdx++, vectorLiteral);
+                for (UUID d : documentIds) {
+                    ps.setObject(paramIdx++, d);
+                }
+                if (pageId != null) {
+                    ps.setObject(paramIdx++, pageId);
+                }
+                ps.setString(paramIdx++, vectorLiteral);
+                ps.setInt(paramIdx, limit);
+                try (var rs = ps.executeQuery()) {
+                    List<RetrievedChunk> out = new ArrayList<>();
+                    int rowNum = 0;
+                    while (rs.next()) {
+                        out.add(mapRow(rs, rowNum++));
+                    }
+                    return out;
+                }
+            }
+        });
+    }
 
-        return jdbc.query(sql, this::mapRow, args);
+    /**
+     * Unit P3.2: Ngăn PostgreSQL generic PreparedStatement plan (kích hoạt từ lần thực thi thứ 6 trở đi)
+     * quét {@code idx_chunks_embedding} ({@code ivfflat lists=100}) với {@code ivfflat.probes = 1} mặc định
+     * làm tụt {@code vector_candidates} từ 78 xuống 1 trên các truy vấn ngắn.
+     */
+    static void ensureIvfflatProbes(java.sql.Connection connection, int probes) {
+        if (connection == null || probes <= 1) {
+            return;
+        }
+        int safeProbes = Math.max(1, Math.min(1000, probes));
+        java.sql.Savepoint sp = null;
+        boolean inTransaction = false;
+        try {
+            inTransaction = !connection.getAutoCommit();
+            if (inTransaction) {
+                sp = connection.setSavepoint("p32_ivfflat_probes");
+            }
+            try (var stmt = connection.createStatement()) {
+                stmt.execute((inTransaction ? "SET LOCAL ivfflat.probes = " : "SET ivfflat.probes = ") + safeProbes);
+            }
+            if (sp != null) {
+                connection.releaseSavepoint(sp);
+            }
+        } catch (java.sql.SQLException ex) {
+            if (inTransaction && sp != null) {
+                try {
+                    connection.rollback(sp);
+                } catch (java.sql.SQLException ignored) {
+                    // ignore rollback failure on non-pgvector test connection
+                }
+            }
+        }
     }
 
     private static final java.util.Set<String> VI_STOP_WORDS = java.util.Set.of(

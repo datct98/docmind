@@ -5139,4 +5139,158 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(composeContent.contains("doc-service-py:") && composeContent.contains("8091:8091"),
                 "docker-compose.yml MUST preserve doc-service-py:8091 for Cold-Path Upload");
     }
+
+    @Test
+    void testP32_Float384VectorEquivalenceGateAndShortQueryVectorCandidatesRecoveryKeep8091() throws Exception {
+        // 1. Verify Cold-Path Upload parser (:8091 office_parser.py) is 100% preserved
+        java.nio.file.Path officeParserPath = java.nio.file.Paths.get("../doc-service-py/app/engines/office_parser.py");
+        if (!java.nio.file.Files.exists(officeParserPath)) {
+            officeParserPath = java.nio.file.Paths.get("doc-service-py/app/engines/office_parser.py");
+        }
+        assertTrue(java.nio.file.Files.exists(officeParserPath),
+                "Cold-Path Upload office_parser.py (:8091) MUST remain 100% preserved");
+
+        com.example.docmind.config.EmbeddingProperties embProps = new com.example.docmind.config.EmbeddingProperties();
+        embProps.setDim(384);
+        com.example.docmind.service.embedding.StubEmbeddingClient javaStub =
+                new com.example.docmind.service.embedding.StubEmbeddingClient(embProps);
+
+        List<String> shortAndConsultativeQueries = List.of(
+                "Tư vấn",
+                "tư vấn",
+                "Tôi đau đầu chóng mặt và thi thoảng hoa mắt",
+                "thi thoang bị lại",
+                "Nhưng sao đắt thế chỗ khác gội đầu có 50k",
+                "Nhưng đắt nhỉ",
+                "cổ vai gáy mỏi quá"
+        );
+        for (String q : shortAndConsultativeQueries) {
+            float[] v1 = javaStub.embed(q);
+            float[] v2 = javaStub.embed(q);
+            com.example.docmind.service.embedding.StubEmbeddingClient.VectorEquivalenceReport selfEq =
+                    com.example.docmind.service.embedding.StubEmbeddingClient.evaluateEquivalence(
+                            v1, v2, 384, 0.999999, 1e-6f
+                    );
+            assertTrue(selfEq.equivalent(), "Self vector equivalence failed for '" + q + "': " + selfEq);
+        }
+
+        // 2. Empirical verification against live PostgreSQL (:5433) and live doc-service-py (:8091)
+        String jdbcUrl = System.getProperty(
+                "spring.datasource.url",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_URL", "jdbc:postgresql://localhost:5433/docmind")
+        );
+        String jdbcUser = System.getProperty(
+                "spring.datasource.username",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_USERNAME", "docmind")
+        );
+        String jdbcPass = System.getProperty(
+                "spring.datasource.password",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_PASSWORD", "docmind")
+        );
+        org.springframework.jdbc.datasource.SingleConnectionDataSource singleConnDs =
+                new org.springframework.jdbc.datasource.SingleConnectionDataSource(jdbcUrl, jdbcUser, jdbcPass, true);
+        try {
+            org.springframework.jdbc.core.JdbcTemplate liveJdbc = new org.springframework.jdbc.core.JdbcTemplate(singleConnDs);
+            Integer ping = liveJdbc.queryForObject("SELECT 1", Integer.class);
+            assertEquals(1, ping);
+
+            UUID nangSenPageId = UUID.fromString("b23cd382-4f7a-4829-8c54-1d410da14bf8");
+            List<UUID> nangSenDocIds = liveJdbc.query(
+                    "SELECT id FROM documents WHERE page_id = ? AND is_active = true",
+                    (rs, rowNum) -> rs.getObject("id", UUID.class),
+                    nangSenPageId
+            );
+            assertFalse(nangSenDocIds.isEmpty(), "Expected active documents for Nàng Sen page in live PostgreSQL");
+
+            // 2a. Verify float[384] Vector Equivalence Gate between Java StubEmbeddingClient and live doc-service-py (:8091/v1/embed)
+            // plus stored unedited PostgreSQL chunks.embedding rows
+            java.net.http.HttpClient http11Client = java.net.http.HttpClient.newBuilder()
+                    .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                    .build();
+            org.springframework.web.client.RestClient liveEmbedRestClient = org.springframework.web.client.RestClient.builder()
+                    .requestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory(http11Client))
+                    .baseUrl(System.getenv().getOrDefault("DOC_SERVICE_BASE_URL", "http://localhost:8091"))
+                    .defaultHeader("X-Internal-Token",
+                            System.getenv().getOrDefault("INTERNAL_API_TOKEN", "docmind-internal-secret-token-2026"))
+                    .build();
+            com.example.docmind.service.embedding.RemoteEmbeddingClient liveRemoteEmbedClient =
+                    new com.example.docmind.service.embedding.RemoteEmbeddingClient(liveEmbedRestClient, embProps);
+
+            for (String q : shortAndConsultativeQueries) {
+                float[] remoteVec = liveRemoteEmbedClient.embed(q);
+                float[] javaVec = javaStub.embed(q);
+                com.example.docmind.service.embedding.StubEmbeddingClient.VectorEquivalenceReport crossServiceEq =
+                        com.example.docmind.service.embedding.StubEmbeddingClient.evaluateEquivalence(
+                                remoteVec, javaVec, 384, 0.999999, 1e-6f
+                        );
+                assertTrue(crossServiceEq.equivalent(),
+                        "Java StubEmbeddingClient drifted from live :8091/v1/embed float[384] for query '" + q + "': " + crossServiceEq);
+            }
+            long hitsBeforeRepeat = liveRemoteEmbedClient.cacheHitCount();
+            for (String q : shortAndConsultativeQueries) {
+                float[] cachedVec = liveRemoteEmbedClient.embed(q);
+                float[] javaVec = javaStub.embed(q);
+                assertTrue(com.example.docmind.service.embedding.StubEmbeddingClient
+                        .evaluateEquivalence(cachedVec, javaVec, 384, 0.999999, 1e-6f).equivalent());
+            }
+            assertEquals(hitsBeforeRepeat + shortAndConsultativeQueries.size(), liveRemoteEmbedClient.cacheHitCount(),
+                    "Expected 100% In-JVM Query Embedding Cache hits on repeat queries");
+
+            List<java.util.Map<String, Object>> storedSamples = liveJdbc.queryForList(
+                    "SELECT id, array_to_string(heading_path, ' > ') AS hp, text, embedding::text AS emb_txt "
+                            + "FROM chunks WHERE id IN ('1faed6e9-5975-4595-af8e-9b53a95616bd', '26b4fabb-b420-48c1-bbff-655a46b643b6')"
+            );
+            assertEquals(2, storedSamples.size(), "Expected baseline unedited chunk embeddings in PostgreSQL");
+            for (java.util.Map<String, Object> row : storedSamples) {
+                String hp = (String) row.get("hp");
+                String txt = (String) row.get("text");
+                String prefix = (hp == null || hp.isBlank()) ? "" : "[" + hp.trim() + "]";
+                String embeddedSource = prefix.isEmpty() ? txt : (prefix + "\n" + txt);
+                float[] javaVec = javaStub.embed(embeddedSource);
+                float[] remoteChunkVec = liveRemoteEmbedClient.embed(embeddedSource);
+
+                String rawEmb = ((String) row.get("emb_txt")).replace("[", "").replace("]", "");
+                String[] parts = rawEmb.split(",");
+                assertEquals(384, parts.length);
+                float[] dbVec = new float[384];
+                for (int i = 0; i < 384; i++) {
+                    dbVec[i] = Float.parseFloat(parts[i].trim());
+                }
+                assertTrue(com.example.docmind.service.embedding.StubEmbeddingClient
+                        .evaluateEquivalence(dbVec, javaVec, 384, 0.999999, 1e-6f).equivalent(),
+                        "Java StubEmbeddingClient drifted from stored PostgreSQL float[384] vector for chunk " + row.get("id"));
+                assertTrue(com.example.docmind.service.embedding.StubEmbeddingClient
+                        .evaluateEquivalence(dbVec, remoteChunkVec, 384, 0.999999, 1e-6f).equivalent(),
+                        "Live :8091/v1/embed drifted from stored PostgreSQL float[384] vector for chunk " + row.get("id"));
+            }
+
+            // 2b. Verify Short-Query vector_candidates recovery across 10 consecutive executions on the SAME connection
+            // (crossing PostgreSQL's 5-execution PreparedStatement generic-plan threshold) AND under force_generic_plan!
+            com.example.docmind.repository.ChunkRepositoryCustomImpl chunkRepo =
+                    new com.example.docmind.repository.ChunkRepositoryCustomImpl(liveJdbc, 384);
+
+            for (int execRound = 1; execRound <= 10; execRound++) {
+                if (execRound >= 6) {
+                    liveJdbc.execute("SET plan_cache_mode = force_generic_plan");
+                }
+                for (String shortQuery : List.of(
+                        "Tư vấn",
+                        "thi thoang bị lại",
+                        "Nhưng sao đắt thế chỗ khác gội đầu có 50k",
+                        "Nhưng đắt nhỉ"
+                )) {
+                    String normQ = com.example.docmind.service.text.VietnameseQueryNormalizer.normalize(shortQuery);
+                    float[] qVec = javaStub.embed(normQ);
+                    List<com.example.docmind.repository.RetrievedChunk> rawHits =
+                            chunkRepo.searchByVector(nangSenDocIds, qVec, 80, nangSenPageId);
+                    assertTrue(rawHits.size() >= 78,
+                            "Round " + execRound + " query='" + shortQuery + "' collapsed vector hits to "
+                                    + rawHits.size() + " (expected >= 78 with ivfflat.probes=100)");
+                }
+            }
+            liveJdbc.execute("SET plan_cache_mode = auto");
+        } finally {
+            singleConnDs.destroy();
+        }
+    }
 }

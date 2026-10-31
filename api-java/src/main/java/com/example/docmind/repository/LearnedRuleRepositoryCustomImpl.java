@@ -146,6 +146,8 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
         });
     }
 
+    private static final int DEFAULT_LEARNED_RULES_IVFFLAT_PROBES = 50;
+
     @Override
     public List<LearnedRuleEntity> searchSimilarActiveRules(float[] queryEmbedding, double minScore, int limit, UUID pageId) {
         if (queryEmbedding == null) {
@@ -170,16 +172,11 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                     LIMIT ?
                     """;
 
-            return jdbc.query(sql, (rs, rowNum) -> {
-                double score = rs.getDouble("score");
-                if (score < minScore) {
-                    return null;
-                }
-                return mapRow(rs);
-            }, vectorLiteral, vectorLiteral, limit)
-            .stream()
-            .filter(java.util.Objects::nonNull)
-            .toList();
+            return queryRulesWithIvfflatProbes(sql, minScore, ps -> {
+                ps.setString(1, vectorLiteral);
+                ps.setString(2, vectorLiteral);
+                ps.setInt(3, limit);
+            });
         } else {
             String sql = """
                     SELECT id, category, trigger_condition, root_cause, generalized_rule,
@@ -199,16 +196,12 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                     LIMIT ?
                     """;
 
-            return jdbc.query(sql, (rs, rowNum) -> {
-                double score = rs.getDouble("score");
-                if (score < minScore) {
-                    return null;
-                }
-                return mapRow(rs);
-            }, vectorLiteral, pageId, vectorLiteral, limit)
-            .stream()
-            .filter(java.util.Objects::nonNull)
-            .toList();
+            return queryRulesWithIvfflatProbes(sql, minScore, ps -> {
+                ps.setString(1, vectorLiteral);
+                ps.setObject(2, pageId);
+                ps.setString(3, vectorLiteral);
+                ps.setInt(4, limit);
+            });
         }
     }
 
@@ -238,16 +231,11 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                     LIMIT ?
                     """;
 
-            return jdbc.query(sql, (rs, rowNum) -> {
-                double score = rs.getDouble("score");
-                if (score < minScore) {
-                    return null;
-                }
-                return mapRow(rs);
-            }, vectorLiteral, vectorLiteral, limit)
-            .stream()
-            .filter(java.util.Objects::nonNull)
-            .toList();
+            return queryRulesWithIvfflatProbes(sql, minScore, ps -> {
+                ps.setString(1, vectorLiteral);
+                ps.setString(2, vectorLiteral);
+                ps.setInt(3, limit);
+            });
         } else {
             String sql = """
                     SELECT id, category, trigger_condition, root_cause, generalized_rule,
@@ -268,17 +256,37 @@ public class LearnedRuleRepositoryCustomImpl implements LearnedRuleRepositoryCus
                     LIMIT ?
                     """;
 
-            return jdbc.query(sql, (rs, rowNum) -> {
-                double score = rs.getDouble("score");
-                if (score < minScore) {
-                    return null;
-                }
-                return mapRow(rs);
-            }, vectorLiteral, pageId, vectorLiteral, limit)
-            .stream()
-            .filter(java.util.Objects::nonNull)
-            .toList();
+            return queryRulesWithIvfflatProbes(sql, minScore, ps -> {
+                ps.setString(1, vectorLiteral);
+                ps.setObject(2, pageId);
+                ps.setString(3, vectorLiteral);
+                ps.setInt(4, limit);
+            });
         }
+    }
+
+    @FunctionalInterface
+    private interface SqlParamBinder {
+        void bind(java.sql.PreparedStatement ps) throws SQLException;
+    }
+
+    private List<LearnedRuleEntity> queryRulesWithIvfflatProbes(String sql, double minScore, SqlParamBinder binder) {
+        return jdbc.execute((java.sql.Connection connection) -> {
+            ChunkRepositoryCustomImpl.ensureIvfflatProbes(connection, DEFAULT_LEARNED_RULES_IVFFLAT_PROBES);
+            try (var ps = connection.prepareStatement(sql)) {
+                binder.bind(ps);
+                try (ResultSet rs = ps.executeQuery()) {
+                    List<LearnedRuleEntity> out = new ArrayList<>();
+                    while (rs.next()) {
+                        double score = rs.getDouble("score");
+                        if (score >= minScore) {
+                            out.add(mapRow(rs));
+                        }
+                    }
+                    return out;
+                }
+            }
+        });
     }
 
     @Override

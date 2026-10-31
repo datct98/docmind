@@ -14,6 +14,15 @@ public class EmbeddingProperties {
 
     private int dim = 384;
 
+    /** Bật/tắt In-JVM Query Embedding Cache cho truy vấn ngắn/lặp lại (Unit P3.2). */
+    private boolean queryCacheEnabled = true;
+
+    /** Số lượng entry tối đa trong LRU In-JVM Query Embedding Cache. */
+    private int queryCacheMaxEntries = 512;
+
+    /** Giới hạn độ dài chuỗi tối đa được phép cache để tránh chunk lớn đẩy bật query chat. */
+    private int queryCacheMaxTextChars = 2048;
+
     /** Cấu hình gọi embedding thật qua doc-service-py (POST /v1/embed). */
     private Remote remote = new Remote();
 
