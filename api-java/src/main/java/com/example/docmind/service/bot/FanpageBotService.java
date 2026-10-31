@@ -685,11 +685,9 @@ public class FanpageBotService {
                 && "GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action());
         String rawMerged = mergeBurstMessages(request);
         boolean v2Mode = isLlmCognitiveV2Mode();
-        // Trong LLM_COGNITIVE_V2 (Mục 2.1): sửa lỗi cắt cụt tin nhắn dài (> 2.000 ký tự) xuống 300 ký tự;
-        // Original Message chỉ lọc ký tự điều khiển nguy hiểm / thẻ hệ thống và giới hạn an toàn 8.000 ký tự.
-        boolean isOversized = v2Mode
-                ? (rawMerged != null && rawMerged.length() > 25_000)
-                : (rawMerged != null && rawMerged.length() > 2000);
+        // Unit P0.2: Trong LLM_COGNITIVE_V2, giữ nguyên văn bản gốc bất biến <= 25.000 ký tự (cắt bỏ an toàn phần > 25.000 theo biên cụm Unicode)
+        // thay vì rẽ sang V1 OVERSIZED_PAYLOAD_FAST_PATH 300 ký tự, và quét bảo mật 100% cửa sổ <= 25.000 ký tự đưa vào prompt.
+        boolean isOversized = !v2Mode && (rawMerged != null && rawMerged.length() > 2000);
         String verbatimOriginalMessage = v2Mode
                 ? VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(rawMerged)
                 : null;
@@ -925,9 +923,15 @@ public class FanpageBotService {
                     .toList();
         }
 
-        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION TRỰC TIẾP
-        if (PromptSecurityGuard.isDirectJailbreakAttempt(mergedMessage)) {
-            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak page_id={} msg={}", pageId, maskPiiInText(mergedMessage));
+        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION TRỰC TIẾP TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ Ở V2)
+        String promptBoundSecurityTarget = (v2Mode && verbatimOriginalMessage != null)
+                ? verbatimOriginalMessage
+                : mergedMessage;
+        if (PromptSecurityGuard.isDirectJailbreakAttempt(promptBoundSecurityTarget)) {
+            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak page_id={} len={} msg={}",
+                    pageId,
+                    promptBoundSecurityTarget != null ? promptBoundSecurityTarget.length() : 0,
+                    maskPiiInText(mergedMessage));
             boolean isSpaPolicyV2 = (pagePersona != null
                     && ((pagePersona.name() != null && pagePersona.name().toLowerCase(Locale.ROOT).contains("spa"))
                         || (pagePersona.resolvedConfig().openingBubbles() != null && !pagePersona.resolvedConfig().openingBubbles().isEmpty())))

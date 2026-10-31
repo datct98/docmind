@@ -1,5 +1,6 @@
 package com.example.docmind.service.security;
 
+import java.text.Normalizer;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -25,8 +26,17 @@ public final class PromptSecurityGuard {
             Pattern.compile("(?iU)(system\\s+override|developer\\s+mode|dan\\s+mode|jailbreak\\s+mode)"),
             Pattern.compile("(?iU)(hãy\\s+đóng\\s+vai|giả\\s+vờ\\s+bạn\\s+là|bạn\\s+bây\\s+giờ\\s+là)\\s+(giám\\s+đốc|chủ\\s+shop|admin|hệ\\s+thống).*?(duyệt|tặng|giảm\\s+giá\\s+100%|miễn\\s+phí|0\\s*đ)"),
             Pattern.compile("(?iU)<\\|im_start\\|>\\s*system"),
+            Pattern.compile("(?iU)<\\|system\\|>"),
             Pattern.compile("(?iU)<<SYS>>")
     );
+
+    /** Ký tự ẩn định dạng Unicode (\p{Cf}: zero-width, soft-hyphen, BOM, bidi) và điều khiển ASCII dùng để chèn lách regex. */
+    private static final Pattern INVISIBLE_FORMAT_AND_CONTROL_PATTERN =
+            Pattern.compile("[\\p{Cf}\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
+
+    /** Gom mọi dạng ngắt dòng / khoảng trắng Unicode về 1 dấu cách ASCII trên bản sao quét bảo mật. */
+    private static final Pattern SECURITY_WHITESPACE_COLLAPSE_PATTERN =
+            Pattern.compile("[\\r\\n\\u2028\\u2029\\t\\u00A0\\s]+");
 
     /**
      * Các mẫu tấn công đầu độc Bộ nhớ Kinh nghiệm AI (Playbook Poisoning) khi người dùng
@@ -44,14 +54,35 @@ public final class PromptSecurityGuard {
             + "Tôi chỉ có thể hỗ trợ trả lời các câu hỏi nghiệp vụ dựa trên nội dung tài liệu đã cung cấp.";
 
     /**
+     * Tạo bản sao chuẩn hóa tạm thời CHỈ ĐỌC phục vụ quét bảo mật (Unit P0.2):
+     * (1) Xóa ký tự ẩn định dạng {@code \p{Cf}} (zero-width space, ZWJ/ZWNJ, BOM, soft hyphen) để chống chèn ký tự tàng hình giữa từ khóa tấn công,
+     * (2) Chuẩn hóa {@link Normalizer.Form#NFKC} để quy đồng chữ fullwidth / ký tự tương thích và gộp dấu tổ hợp {@code NFD} về {@code NFC},
+     * (3) Chuẩn hóa mọi ngắt dòng {@code \r\n|\n|\u2028|\u2029} và khoảng trắng liên tiếp thành 1 khoảng trắng đơn.
+     * Bản gốc {@code verbatimOriginalMessage} của khách hàng hoàn toàn KHÔNG bị thay đổi.
+     */
+    public static String normalizeForSecurityCheck(String rawText) {
+        if (rawText == null || rawText.isEmpty()) {
+            return "";
+        }
+        String withoutInvisible = INVISIBLE_FORMAT_AND_CONTROL_PATTERN.matcher(rawText).replaceAll("");
+        String nfkc = Normalizer.normalize(withoutInvisible, Normalizer.Form.NFKC);
+        return SECURITY_WHITESPACE_COLLAPSE_PATTERN.matcher(nfkc).replaceAll(" ").strip();
+    }
+
+    /**
      * Kiểm tra câu hỏi của người dùng có phải là nỗ lực tấn công trực tiếp (Direct Prompt Injection / Jailbreak) hay không.
+     * Quét trên 100% chiều dài chuỗi đầu vào (<= 25.000 ký tự đưa vào prompt) qua bản sao chỉ đọc {@link #normalizeForSecurityCheck(String)}.
      */
     public static boolean isDirectJailbreakAttempt(String userQuestion) {
         if (userQuestion == null || userQuestion.isBlank()) {
             return false;
         }
+        String normalizedScanCopy = normalizeForSecurityCheck(userQuestion);
+        if (normalizedScanCopy.isEmpty()) {
+            return false;
+        }
         for (Pattern p : DIRECT_JAILBREAK_PATTERNS) {
-            if (p.matcher(userQuestion).find()) {
+            if (p.matcher(normalizedScanCopy).find()) {
                 return true;
             }
         }
@@ -77,7 +108,11 @@ public final class PromptSecurityGuard {
         if (text == null || text.isBlank()) {
             return false;
         }
-        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        String normalizedScanCopy = normalizeForSecurityCheck(text);
+        if (normalizedScanCopy.isEmpty()) {
+            return false;
+        }
+        String lower = normalizedScanCopy.toLowerCase(java.util.Locale.ROOT);
         boolean suspicious = false;
         for (String token : FAST_PATH_POISON_TOKENS) {
             if (lower.contains(token)) {
@@ -89,11 +124,13 @@ public final class PromptSecurityGuard {
             return false;
         }
 
-        if (isDirectJailbreakAttempt(text)) {
-            return true;
+        for (Pattern p : DIRECT_JAILBREAK_PATTERNS) {
+            if (p.matcher(normalizedScanCopy).find()) {
+                return true;
+            }
         }
         for (Pattern p : PLAYBOOK_POISON_PATTERNS) {
-            if (p.matcher(text).find()) {
+            if (p.matcher(normalizedScanCopy).find()) {
                 return true;
             }
         }

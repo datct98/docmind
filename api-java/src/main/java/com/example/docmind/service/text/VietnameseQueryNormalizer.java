@@ -20,7 +20,8 @@ public final class VietnameseQueryNormalizer {
     private VietnameseQueryNormalizer() {}
 
     public static final int MAX_INPUT_LENGTH = 2000;
-    public static final int MAX_VERBATIM_LLM_INPUT_LENGTH = 8000;
+    public static final int MAX_VERBATIM_LLM_INPUT_LENGTH = 25_000;
+    private static final int MAX_CLUSTER_BACKTRACK_CODE_UNITS = 64;
 
     private static final Pattern DANGEROUS_ASCII_CONTROL_PATTERN = Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
     private static final Pattern XML_CONTRACT_TAG_SPOOF_PATTERN = Pattern.compile(
@@ -424,9 +425,83 @@ public final class VietnameseQueryNormalizer {
     }
 
     /**
+     * Cắt chuỗi tại mốc tối đa {@code maxSafeChars} UTF-16 code units mà không bao giờ làm vỡ:
+     * (1) cặp UTF-16 surrogate (emoji 4-byte),
+     * (2) dấu thanh / dấu phụ tổ hợp Unicode NFD ({@code NON_SPACING_MARK}, {@code COMBINING_SPACING_MARK}, {@code ENCLOSING_MARK}, Variation Selectors),
+     * (3) chuỗi ghép Emoji ZWJ ({@code U+200D}) hoặc Skin-Tone Modifiers ({@code U+1F3FB..U+1F3FF}).
+     */
+    public static String clipAtSafeUnicodeClusterBoundary(String text, int maxSafeChars) {
+        if (text == null) {
+            return "";
+        }
+        if (maxSafeChars <= 0) {
+            return "";
+        }
+        if (text.length() <= maxSafeChars) {
+            return text;
+        }
+        int cut = maxSafeChars;
+        int minBacktrackFloor = Math.max(0, maxSafeChars - MAX_CLUSTER_BACKTRACK_CODE_UNITS);
+
+        // Step 1: Never split a UTF-16 surrogate pair
+        if (cut > 0 && Character.isHighSurrogate(text.charAt(cut - 1))
+                && Character.isLowSurrogate(text.charAt(cut))) {
+            cut--;
+        }
+
+        // Step 2: Backtrack if cut falls inside an NFD combining sequence or ZWJ / skin-tone / variation-selector emoji cluster
+        while (cut > minBacktrackFloor && cut < text.length()) {
+            int nextCp = Character.codePointAt(text, cut);
+            int prevCp = Character.codePointBefore(text, cut);
+            boolean nextContinuesCluster = isCombiningOrEmojiContinuationCodePoint(nextCp);
+            boolean prevIsZwj = (prevCp == 0x200D);
+            if (!nextContinuesCluster && !prevIsZwj) {
+                break;
+            }
+            cut -= Character.charCount(prevCp);
+            // If we just stepped before a base char that itself had preceding ZWJ or combining marks, loop continues cleanly
+            if (!prevIsZwj && !isCombiningOrEmojiContinuationCodePoint(prevCp)) {
+                // We stepped across the base character of the split cluster; check if a preceding ZWJ joins it
+                if (cut > minBacktrackFloor && Character.codePointBefore(text, cut) == 0x200D) {
+                    continue;
+                }
+                break;
+            }
+        }
+
+        // Final surrogate guard if backtrack hit floor
+        if (cut > 0 && cut < text.length()
+                && Character.isHighSurrogate(text.charAt(cut - 1))
+                && Character.isLowSurrogate(text.charAt(cut))) {
+            cut--;
+        }
+        return text.substring(0, cut);
+    }
+
+    private static boolean isCombiningOrEmojiContinuationCodePoint(int cp) {
+        int type = Character.getType(cp);
+        if (type == Character.NON_SPACING_MARK
+                || type == Character.COMBINING_SPACING_MARK
+                || type == Character.ENCLOSING_MARK) {
+            return true;
+        }
+        if (cp == 0x200D) { // Zero-Width Joiner (ZWJ)
+            return true;
+        }
+        if (cp >= 0xFE00 && cp <= 0xFE0F) { // Variation Selectors
+            return true;
+        }
+        if (cp >= 0xE0100 && cp <= 0xE01EF) { // Variation Selectors Supplement
+            return true;
+        }
+        return cp >= 0x1F3FB && cp <= 0x1F3FF; // Emoji Fitzpatrick Skin-Tone Modifiers
+    }
+
+    /**
      * Luồng 1 (Original Message — Bất biến gửi cho LLM trong LLM_COGNITIVE_V2):
-     * Giữ nguyên 100% dấu câu, từ viết tắt, lỗi chính tả, cách diễn đạt và nhịp xuống dòng giữa các bong bóng trong burst;
-     * chỉ lọc ký tự điều khiển ASCII nguy hiểm, vô hiệu hóa giả mạo thẻ XML hệ thống và giới hạn kích thước an toàn (8.000 ký tự, không cắt cụt xuống 300 ký tự).
+     * Giữ nguyên 100% dấu câu, tiếng Việt NFC/NFD, cụm emoji ZWJ phức tạp (💆‍♀️🌿✨), ký tự copy-paste vô hại,
+     * từ viết tắt, lỗi chính tả và nhịp xuống dòng; chỉ lọc ký tự điều khiển ASCII nguy hiểm,
+     * vô hiệu hóa giả mạo thẻ XML hệ thống và cắt an toàn ở mốc 25.000 ký tự theo biên cụm ký tự Unicode.
      */
     public static String sanitizeVerbatimOriginalMessage(String text) {
         return sanitizeVerbatimOriginalMessage(text, MAX_VERBATIM_LLM_INPUT_LENGTH);
@@ -437,15 +512,15 @@ public final class VietnameseQueryNormalizer {
             return "";
         }
         int cap = maxSafeChars > 0 ? maxSafeChars : MAX_VERBATIM_LLM_INPUT_LENGTH;
-        String clipped = text.length() > cap ? text.substring(0, cap) : text;
-        String noControl = DANGEROUS_ASCII_CONTROL_PATTERN.matcher(clipped.replace("\r\n", "\n").replace('\r', '\n')).replaceAll("");
+        String normalizedLineEndings = text.replace("\r\n", "\n").replace('\r', '\n');
+        String clipped = clipAtSafeUnicodeClusterBoundary(normalizedLineEndings, cap);
+        String noControl = DANGEROUS_ASCII_CONTROL_PATTERN.matcher(clipped).replaceAll("");
         String noTagSpoof = XML_CONTRACT_TAG_SPOOF_PATTERN.matcher(noControl).replaceAll("[escaped_tag]");
-        String sanitized = sanitizeUnicodeSpaces(noTagSpoof);
-        if (sanitized.isBlank()) {
+        if (noTagSpoof.isBlank()) {
             return "";
         }
-        String[] lines = sanitized.split("\n", -1);
-        StringBuilder sb = new StringBuilder(sanitized.length());
+        String[] lines = noTagSpoof.split("\n", -1);
+        StringBuilder sb = new StringBuilder(noTagSpoof.length());
         for (String line : lines) {
             String trimmedLine = line.replaceAll("[ \\t]+", " ").strip();
             if (!trimmedLine.isEmpty()) {
@@ -455,7 +530,7 @@ public final class VietnameseQueryNormalizer {
                 sb.append(trimmedLine);
             }
         }
-        return sb.toString();
+        return clipAtSafeUnicodeClusterBoundary(sb.toString(), cap);
     }
 
     /**

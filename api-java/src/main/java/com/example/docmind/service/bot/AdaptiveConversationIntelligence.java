@@ -167,10 +167,18 @@ public final class AdaptiveConversationIntelligence {
                 : String.join("\n", burstBubbles);
         String originalVerbatim = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(rawJoined);
         List<String> sanitizedBurst = new ArrayList<>();
+        int remainingBurstBudget = VietnameseQueryNormalizer.MAX_VERBATIM_LLM_INPUT_LENGTH;
         for (String b : burstBubbles) {
-            String cleanB = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(b);
+            if (remainingBurstBudget <= 0) {
+                break;
+            }
+            String cleanB = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(b, remainingBurstBudget);
             if (!cleanB.isEmpty()) {
                 sanitizedBurst.add(cleanB);
+                remainingBurstBudget -= cleanB.length();
+                if (remainingBurstBudget > 0) {
+                    remainingBurstBudget--; // account for newline separator between burst bubbles
+                }
             }
         }
         if (sanitizedBurst.isEmpty() && !originalVerbatim.isEmpty()) {
