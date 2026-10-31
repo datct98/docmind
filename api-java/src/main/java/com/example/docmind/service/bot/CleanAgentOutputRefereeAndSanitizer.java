@@ -1,7 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.BubbleCapHook;
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
@@ -470,7 +468,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     int emittedSubPart = 0;
                     for (String block : paragraphBlocks) {
                         if (block == null || block.isBlank()) continue;
-                        String cleanBubbleText = BubbleCapHook.capitalizeFirstLetter(block.strip());
+                        String cleanBubbleText = BubbleTextSanitizer.capitalizeFirstLetter(block.strip());
                         int partDelayMs = emittedSubPart == 0 ? delayMs : 2000;
                         if (idx > 0 && prevContainsPrice && minPostPriceDelayMs > 0) {
                             partDelayMs = Math.max(partDelayMs, minPostPriceDelayMs);
@@ -3483,7 +3481,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         );
         out = out.replaceAll(
                 "(?iU)(?<=^|[.!?]\\s+)" + Pattern.quote(sp) + "\\s+thấy\\s+([^.!?]*?\\b(?:có\\s+phù\\s+hợp|phù\\s+hợp\\s+với|như\\s+thế\\s+nào|thế\\s+nào|ra\\s+sao)[^.!?]*?\\?)",
-                BubbleCapHook.capitalizeFirstLetter(cp) + " thấy $1"
+                BubbleTextSanitizer.capitalizeFirstLetter(cp) + " thấy $1"
         );
 
         if (heldPkgIsNull) {
@@ -3665,7 +3663,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String firstBubbleText = (firstPartBody.endsWith(".") || firstPartBody.endsWith("!"))
                 ? firstPartBody
                 : (firstPartBody + ".");
-        String secondBubbleText = BubbleCapHook.capitalizeFirstLetter(rawWishPart);
+        String secondBubbleText = BubbleTextSanitizer.capitalizeFirstLetter(rawWishPart);
         if (!secondBubbleText.endsWith(".") && !secondBubbleText.endsWith("!")) {
             secondBubbleText = secondBubbleText + ".";
         }

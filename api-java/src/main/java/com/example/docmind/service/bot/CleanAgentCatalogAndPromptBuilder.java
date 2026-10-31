@@ -1,7 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.BubbleCapHook;
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.bot.AgentSkillDto;
@@ -720,7 +718,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         String low = chunkText.toLowerCase(Locale.ROOT);
         int priceHits = 0;
-        Matcher pm = ReplyContractValidator.PRICE_PATTERN.matcher(chunkText);
+        Matcher pm = BubbleTextSanitizer.PRICE_PATTERN.matcher(chunkText);
         while (pm.find()) {
             priceHits++;
         }
@@ -2316,14 +2314,14 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 String p1Full = formatClarificationCandidateWithUnit(p1, u1);
                 String p2Full = formatClarificationCandidateWithUnit(p2, p2.unitNoun());
                 tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false) và dùng đại từ chỉ định. TUYỆT ĐỐI KHÔNG tự mặc định lấy held_package hay " + u1 + " gần nhất làm câu trả lời duy nhất, và KHÔNG tự bịa chính sách giảm giá combo. Hãy hỏi xác nhận ngắn gọn giữa đúng các " + u1 + " đã tư vấn trong lịch sử: " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay " + p2Full + " giá " + p2.formattedPriceWithUnit() + ".";
-                goodExample = "Dạ " + custPronoun + " đang hỏi ưu đãi cho " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay " + p2Full + " giá " + p2.formattedPriceWithUnit() + " ạ? " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " xác nhận đúng rồi báo " + custPronoun + " chính xác nhé.";
+                goodExample = "Dạ " + custPronoun + " đang hỏi ưu đãi cho " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay " + p2Full + " giá " + p2.formattedPriceWithUnit() + " ạ? " + BubbleTextSanitizer.capitalizeFirstLetter(selfPronoun) + " xác nhận đúng rồi báo " + custPronoun + " chính xác nhé.";
                 antiPattern = "Mặc định lấy " + u1 + " gần nhất làm câu trả lời duy nhất, tự bịa ưu đãi combo, hoặc ép chốt lịch khi chưa rõ khách Reply vào " + u1 + " nào.";
             } else if (candidates.size() == 1) {
                 PackageCatalogService.PackageSummary p1 = candidates.get(0);
                 String u1 = p1.unitNoun();
                 String p1Full = formatClarificationCandidateWithUnit(p1, u1);
                 tacticalFocus = "Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=" + safeQuote.replyToMid() + " found=false). Trong lịch sử mới xuất hiện 1 " + u1 + " là " + p1Full + " (" + p1.formattedPriceWithUnit() + "). TUYỆT ĐỐI KHÔNG tự mặc định khách chắc chắn hỏi " + u1 + " này — hãy hỏi xác nhận ngắn gọn xem " + custPronoun + " đang hỏi " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay một " + u1 + " khác trong bảng giá để " + selfPronoun + " kiểm tra chính xác.";
-                goodExample = "Dạ không biết " + custPronoun + " đang muốn hỏi thông tin ưu đãi của " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay một " + u1 + " khác trong bảng giá bên " + selfPronoun + " ạ? " + BubbleCapHook.capitalizeFirstLetter(custPronoun) + " xác nhận giúp " + selfPronoun + " để " + selfPronoun + " báo chính xác nhất nhé ạ.";
+                goodExample = "Dạ không biết " + custPronoun + " đang muốn hỏi thông tin ưu đãi của " + p1Full + " giá " + p1.formattedPriceWithUnit() + " hay một " + u1 + " khác trong bảng giá bên " + selfPronoun + " ạ? " + BubbleTextSanitizer.capitalizeFirstLetter(custPronoun) + " xác nhận giúp " + selfPronoun + " để " + selfPronoun + " báo chính xác nhất nhé ạ.";
                 antiPattern = "Trả lời khẳng định một chiều cho 1 " + u1 + " mà không hỏi xác nhận xem khách hỏi " + u1 + " đó hay " + u1 + " khác.";
             } else {
                 tacticalFocus = "Khách vừa Reply vào một tin nhắn ở rất xa (reply_to.mid=" + safeQuote.replyToMid() + " found=false) và hiện chưa có lịch sử sản phẩm/dịch vụ nào trong phiên. TUYỆT ĐỐI KHÔNG đoán mò bất kỳ tên sản phẩm/gói hay con số giá nào. Hãy hỏi mở lịch sự để khách nhắn lại tên sản phẩm/gói hoặc mức giá khách đang quan tâm.";
@@ -2387,7 +2385,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                     ? (" đồng thời khéo léo nhắc lại lưu ý chăm sóc đã ghi nhận (" + storedCareNotes.get(storedCareNotes.size() - 1) + ") theo đúng trạng thái: \"" + selfPronoun + " lưu lại lưu ý này để khi phục vụ, " + safeCareActor + " chuẩn bị chu đáo cho " + custPronoun + " nhé ạ\" (CẤM nói quá khứ \"" + selfPronoun + " đã dặn " + safeCareActor + "\" khi chưa xác nhận lịch)")
                     : " (nói rõ \"" + selfPronoun + " lưu lại để khi phục vụ sẽ trao đổi kỹ với " + safeCareActor + "\", CẤM nói quá khứ \"" + selfPronoun + " đã dặn " + safeCareActor + "\" khi chưa xác nhận lịch)";
             String careNoteExampleTail = !storedCareNotes.isEmpty()
-                    ? (" " + BubbleCapHook.capitalizeFirstLetter(selfPronoun) + " lưu lại lưu ý \"" + storedCareNotes.get(storedCareNotes.size() - 1) + "\" này để " + safeCareActor + " chuẩn bị chu đáo cho " + custPronoun + " nhé ạ.")
+                    ? (" " + BubbleTextSanitizer.capitalizeFirstLetter(selfPronoun) + " lưu lại lưu ý \"" + storedCareNotes.get(storedCareNotes.size() - 1) + "\" này để " + safeCareActor + " chuẩn bị chu đáo cho " + custPronoun + " nhé ạ.")
                     : "";
             ConversationState.BookingStatus bStatus = structuredBookingState != null && structuredBookingState.status() != null
                     ? structuredBookingState.status()
@@ -2589,9 +2587,9 @@ public final class CleanAgentCatalogAndPromptBuilder {
         String lowLabel = label.toLowerCase(Locale.ROOT);
         if (lowLabel.startsWith(lowUnit + " ")) {
             String rest = label.substring(effectiveUnit.length()).strip();
-            return lowUnit + " " + BubbleCapHook.capitalizeFirstLetter(rest);
+            return lowUnit + " " + BubbleTextSanitizer.capitalizeFirstLetter(rest);
         }
-        return lowUnit + " " + BubbleCapHook.capitalizeFirstLetter(label);
+        return lowUnit + " " + BubbleTextSanitizer.capitalizeFirstLetter(label);
     }
 
     public static String resolveEffectivePageUnitNoun(

@@ -1,34 +1,20 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.GuardrailPipeline;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.bot.AgentSkillDto;
 import com.example.docmind.dto.bot.CustomerInsightDto;
 import com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn;
-import com.example.docmind.dto.harness.HarnessOptimizeRequest;
-import com.example.docmind.dto.harness.HarnessOptimizeResponse;
-import com.example.docmind.entity.HarnessDimension;
-import com.example.docmind.entity.HarnessRunEntity;
-import com.example.docmind.entity.LearnedRuleEntity;
-import com.example.docmind.repository.HarnessRunRepository;
-import com.example.docmind.repository.LearnedRuleRepository;
 import com.example.docmind.repository.RetrievedChunk;
-import com.example.docmind.service.embedding.EmbeddingClient;
-import com.example.docmind.service.harness.HarnessOptimizerService;
 import com.example.docmind.service.retrieval.PromptBuilder;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class SlimPromptAntiBloatingTest {
 
@@ -160,69 +146,5 @@ class SlimPromptAntiBloatingTest {
                 .doesNotContain("nặn mụn 200k")
                 .doesNotContain("Bác sĩ Da liễu")
                 .doesNotContain("Trị Mụn Chuẩn Y Khoa");
-    }
-
-    @Test
-    @DisplayName("3. HarnessOptimizerService deduplicates and compacts overlapping rules instead of inserting duplicates")
-    void harnessOptimizerCompactsOverlappingRulesInsteadOfBloatingDatabase() {
-        HarnessRunRepository runRepository = mock(HarnessRunRepository.class);
-        LearnedRuleRepository ruleRepository = mock(LearnedRuleRepository.class);
-        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
-        when(embeddingClient.embed(any())).thenReturn(new float[]{0.1f, 0.2f, 0.3f});
-
-        List<LearnedRuleEntity> dbRules = new ArrayList<>();
-        when(ruleRepository.findByActiveTrue()).thenAnswer(inv -> new ArrayList<>(dbRules));
-        when(ruleRepository.save(any(LearnedRuleEntity.class))).thenAnswer(inv -> {
-            LearnedRuleEntity saved = inv.getArgument(0);
-            dbRules.removeIf(r -> r.getId().equals(saved.getId()));
-            dbRules.add(saved);
-            return saved;
-        });
-        when(runRepository.save(any(HarnessRunEntity.class))).thenAnswer(inv -> {
-            HarnessRunEntity run = inv.getArgument(0);
-            if (run.getId() == null) {
-                run.setId(UUID.randomUUID().toString());
-            }
-            return run;
-        });
-
-        HarnessOptimizerService optimizer = new HarnessOptimizerService(
-                runRepository,
-                ruleRepository,
-                new GuardrailPipeline(),
-                embeddingClient,
-                null
-        );
-
-        List<String> history = List.of(
-                "user: 12h30 có đươc k",
-                "assistant: Dạ 12h30 trưa được ạ.",
-                "user: 09836563213",
-                "assistant: Dạ em đã lưu số 09836563213.",
-                "user: 12h30 mai nhé",
-                "assistant: Dạ bên em giữ lịch 12h30 mai."
-        );
-
-        HarnessOptimizeRequest req1 = new HarnessOptimizeRequest(
-                null,
-                "12h30 là buổi trưa rồi còn hỏi sáng hay chiều, không lẽ đêm à",
-                "Dạ em xin lỗi Anh ạ.\n\nAnh cho em xin khung giờ tiện nhất (Sáng hay Chiều) để bên em giữ lịch ưu tiên trước cho mình ạ?",
-                null,
-                history,
-                -15,
-                List.of(),
-                "MANUAL_1CLICK",
-                null,
-                42L
-        );
-
-        HarnessOptimizeResponse resp1 = optimizer.optimize(req1);
-        assertThat(resp1.verdict()).isEqualTo("ADOPTED");
-        assertThat(dbRules).hasSize(1);
-
-        // Second optimization on the same scenario must update/compact the existing rule, NOT add a 2nd row
-        HarnessOptimizeResponse resp2 = optimizer.optimize(req1);
-        assertThat(resp2.verdict()).isEqualTo("ADOPTED");
-        assertThat(dbRules).hasSize(1);
     }
 }

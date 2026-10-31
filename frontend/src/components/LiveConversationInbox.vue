@@ -1025,7 +1025,6 @@ const cancelPendingInboxBubbleDelivery = () => {
 const isUpdatingControl = ref(false)
 const isExtractingRule = ref(false)
 const lastExtractionResult = ref(null)
-const optimizingMsgId = ref(null)
 const showLeftListPanel = ref(true)
 const showInsightPanel = ref(typeof window !== 'undefined' ? window.innerWidth > 1400 : false)
 const expandedAiDetailMap = reactive({})
@@ -1541,41 +1540,6 @@ const handleTeachAiOnMessage = (msg, mIdx) => {
     messageIndex: -1,
     appliedRuleIds: []
   })
-}
-
-const handleOptimizeMessageHarness = async (msg, mIdx) => {
-  let prevCustomerQuestion = 'Tư vấn dịch vụ Fanpage'
-  for (let i = mIdx - 1; i >= 0; i--) {
-    if (activeMessages.value[i].sender_role === 'CUSTOMER') {
-      prevCustomerQuestion = activeMessages.value[i].content
-      break
-    }
-  }
-  optimizingMsgId.value = msg.id
-  try {
-    const res = await api.optimizeHarness({
-      pageId: props.activePageId,
-      customerMessage: prevCustomerQuestion,
-      baseResponse: msg.content,
-      triggerReason: 'INBOX_1CLICK'
-    })
-    if (res && res.verdict === 'ADOPTED' && res.improved_reply) {
-      msg.content = res.improved_reply
-      emit('toast', {
-        message: '🧬 Harness² đã nâng cấp câu trả lời và lưu quy tắc mới vào Bộ nhớ AI!',
-        type: 'success'
-      })
-    } else {
-      emit('toast', {
-        message: '🧬 Harness² đánh giá câu trả lời hiện tại đã đạt chuẩn tối ưu (KEEP_BASE).',
-        type: 'info'
-      })
-    }
-  } catch (err) {
-    emit('toast', { message: `Lỗi chạy Harness²: ${err.message}`, type: 'error' })
-  } finally {
-    optimizingMsgId.value = null
-  }
 }
 
 // Formatting Helpers (No double-splitting on normalized reply_bubbles; preserve single \n inside bubble)

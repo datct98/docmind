@@ -871,156 +871,6 @@
         </div>
       </template>
 
-      <!-- ================================================================= -->
-      <!-- TAB 4: HARNESS² SELF-EVOLUTION RUN HISTORY VIEW                   -->
-      <!-- ================================================================= -->
-      <template v-else-if="activeMainTab === 'evolution'">
-        <!-- Evolution Runs Header Summary & Filters -->
-        <div class="evolution-toolbar">
-          <div class="evolution-stats-row">
-            <div class="stat-box">
-              <span class="stat-value">{{ harnessRuns.length }}</span>
-              <span class="stat-title">Tổng đợt tự tối ưu</span>
-            </div>
-            <div class="stat-box stat-emerald">
-              <span class="stat-value">{{ adoptedRunsCount }}</span>
-              <span class="stat-title">Đã tiếp thu (ADOPTED)</span>
-            </div>
-            <div class="stat-box stat-slate">
-              <span class="stat-value">{{ keepBaseRunsCount }}</span>
-              <span class="stat-title">Giữ bản gốc (KEEP_BASE)</span>
-            </div>
-            <div class="stat-box stat-blue">
-              <span class="stat-value">{{ adoptionRatePercent }}%</span>
-              <span class="stat-title">Tỷ lệ tiến hóa thành công</span>
-            </div>
-          </div>
-
-          <div class="filter-chips-row">
-            <div class="filter-group">
-              <span class="filter-group-label">Lọc theo phán quyết:</span>
-              <button 
-                class="pill-filter" 
-                :class="{ active: runVerdictFilter === 'ALL' }" 
-                @click="runVerdictFilter = 'ALL'"
-              >
-                Tất cả ({{ harnessRuns.length }})
-              </button>
-              <button 
-                class="pill-filter pill-emerald" 
-                :class="{ active: runVerdictFilter === 'ADOPTED' }" 
-                @click="runVerdictFilter = 'ADOPTED'"
-              >
-                ✅ ADOPTED ({{ adoptedRunsCount }})
-              </button>
-              <button 
-                class="pill-filter pill-dim" 
-                :class="{ active: runVerdictFilter === 'KEEP_BASE' }" 
-                @click="runVerdictFilter = 'KEEP_BASE'"
-              >
-                ⏸️ KEEP_BASE ({{ keepBaseRunsCount }})
-              </button>
-            </div>
-
-            <button class="btn btn-secondary btn-sm" @click="fetchHarnessRuns">
-              🔄 Tải lại lịch sử
-            </button>
-          </div>
-        </div>
-
-        <!-- Runs Stream Body -->
-        <div class="modal-body rules-scroll-list">
-          <div v-if="isLoadingRuns" class="loading-state">
-            <div class="btn-spinner"></div>
-            <span>Đang tải lịch sử tự tiến hóa Harness²...</span>
-          </div>
-
-          <div v-else-if="filteredHarnessRuns.length === 0" class="empty-rules-state">
-            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-              <polyline points="2 17 12 22 22 17"/>
-              <polyline points="2 12 12 17 22 12"/>
-            </svg>
-            <p class="empty-title">Chưa ghi nhận đợt tự tiến hóa Harness² nào</p>
-            <span class="empty-desc">
-              Các đợt tối ưu được tự động ghi nhận khi bạn bấm nút "🧬 Tự tối ưu Harness²" trong Giả lập Bot hoặc khi khách hạ nhiệt đột ngột (ΔTemp &le; -15%).
-            </span>
-          </div>
-
-          <div v-else class="runs-list-container">
-            <div 
-              v-for="run in filteredHarnessRuns" 
-              :key="run.id" 
-              class="harness-run-card"
-              :class="run.verdict === 'ADOPTED' ? 'run-adopted-card' : 'run-keep-base-card'"
-            >
-              <!-- Run Header -->
-              <div class="run-header-row">
-                <div class="run-header-left">
-                  <span 
-                    class="verdict-badge" 
-                    :class="run.verdict === 'ADOPTED' ? 'verdict-adopted' : 'verdict-keep'"
-                  >
-                    {{ run.verdict === 'ADOPTED' ? '✅ TIẾP THU (ADOPTED)' : '⏸️ GIỮ NGUYÊN (KEEP_BASE)' }}
-                  </span>
-
-                  <span 
-                    v-if="run.delta_score !== undefined && run.delta_score !== null"
-                    class="delta-score-badge"
-                    :class="run.delta_score > 0 ? 'score-positive' : 'score-neutral'"
-                  >
-                    ΔScore: {{ run.delta_score > 0 ? '+' : '' }}{{ Math.round(run.delta_score * 100) }}%
-                  </span>
-
-                  <span class="winner-pill">
-                    🏆 Thắng cuộc: <strong>{{ run.winner_candidate || 'Base' }}</strong>
-                  </span>
-
-                  <span class="page-scope-badge" :class="{ 'is-global': !run.page_id }">
-                    {{ getPageLabel(run.page_id) }}
-                  </span>
-                </div>
-
-                <div class="run-header-right">
-                  <span class="time-stamp">{{ formatTime(run.created_at) }}</span>
-                </div>
-              </div>
-
-              <!-- Customer Query Trigger -->
-              <div class="run-trigger-block">
-                <span class="trigger-label">💬 Tin nhắn khách hàng gây kích hoạt / hạ nhiệt:</span>
-                <p class="trigger-message">"{{ run.customer_message || 'N/A' }}"</p>
-              </div>
-
-              <!-- Candidate Duel Arena -->
-              <div class="run-duel-arena">
-                <div class="arena-col candidate-a-col">
-                  <span class="arena-col-title">Ứng viên A (Candidate A)</span>
-                  <div class="arena-bubble">{{ run.candidate_a || run.base_response }}</div>
-                </div>
-                <div class="arena-col candidate-b-col">
-                  <span class="arena-col-title">Ứng viên B (Candidate B)</span>
-                  <div class="arena-bubble">{{ run.candidate_b || 'N/A' }}</div>
-                </div>
-              </div>
-
-              <!-- Rationale Callout -->
-              <div v-if="run.rationale" class="run-rationale-box">
-                <span class="rationale-label">🧠 Phán quyết Trọng tài Đánh giá Vô danh (Anonymized Rationale):</span>
-                <p class="rationale-text">{{ run.rationale }}</p>
-              </div>
-
-              <!-- Adopted Rule Link -->
-              <div v-if="run.verdict === 'ADOPTED'" class="run-adopted-action">
-                <button class="btn-view-adopted-rule" @click="viewAdoptedInPlaybook(run)">
-                  ✨ Đã đúc kết thành quy tắc kinh nghiệm trong Playbook → Xem ngay
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-
       <!-- Delete Confirmation Modal Dialog -->
       <div v-if="deletingTargetRule" class="confirm-overlay" @click.self="deletingTargetRule = null">
         <div class="confirm-box">
@@ -1090,11 +940,6 @@ const selectedBudgetFilter = ref('all') // 'all' | 'always_on' | 'on_demand'
 const selectedCategory = ref('')
 const selectedPageFilter = ref(props.activePageId || 'ALL')
 const statusFilter = ref('active') // 'all' | 'active' | 'inactive'
-
-// Harness Evolution Runs State
-const harnessRuns = ref([])
-const isLoadingRuns = ref(false)
-const runVerdictFilter = ref('ALL') // 'ALL' | 'ADOPTED' | 'KEEP_BASE'
 
 // Create / Edit Form State
 const isCreating = ref(false)
@@ -1245,33 +1090,6 @@ const canSaveForm = computed(() => {
 })
 
 // =========================================================================
-// COMPUTED PROPERTIES FOR HARNESS EVOLUTION RUNS
-// =========================================================================
-
-const adoptedRunsCount = computed(() => {
-  return harnessRuns.value.filter(r => r.verdict === 'ADOPTED').length
-})
-
-const keepBaseRunsCount = computed(() => {
-  return harnessRuns.value.filter(r => r.verdict === 'KEEP_BASE').length
-})
-
-const adoptionRatePercent = computed(() => {
-  if (harnessRuns.value.length === 0) return 0
-  const rate = (adoptedRunsCount.value / harnessRuns.value.length) * 100
-  return Math.round(rate * 10) / 10
-})
-
-const filteredHarnessRuns = computed(() => {
-  return harnessRuns.value.filter(r => {
-    if (runVerdictFilter.value !== 'ALL') {
-      if (r.verdict !== runVerdictFilter.value) return false
-    }
-    return true
-  })
-})
-
-// =========================================================================
 // HELPER METHODS
 // =========================================================================
 
@@ -1403,26 +1221,6 @@ const fetchRules = async () => {
     rules.value = []
   } finally {
     isLoading.value = false
-  }
-}
-
-const fetchHarnessRuns = async () => {
-  isLoadingRuns.value = true
-  try {
-    const runs = await api.getHarnessRuns({ page_id: props.activePageId, limit: 40 })
-    harnessRuns.value = runs || []
-  } catch (err) {
-    console.error('Fetch harness runs error:', err)
-    harnessRuns.value = []
-  } finally {
-    isLoadingRuns.value = false
-  }
-}
-
-const switchTabToEvolution = () => {
-  activeMainTab.value = 'evolution'
-  if (harnessRuns.value.length === 0) {
-    fetchHarnessRuns()
   }
 }
 
@@ -1648,13 +1446,6 @@ const executeDelete = async () => {
   }
 }
 
-const viewAdoptedInPlaybook = (run) => {
-  activeMainTab.value = 'rules'
-  if (run.customer_message) {
-    searchQuery.value = run.customer_message.slice(0, 20)
-  }
-}
-
 // =========================================================================
 // SAMPLE DIALOGUES & PLAYBOOK UPLOAD (.YAML / .MD / .JSON)
 // =========================================================================
@@ -1768,7 +1559,6 @@ const handleClose = () => {
 onMounted(() => {
   fetchRules()
   fetchSampleDialogues()
-  fetchHarnessRuns()
 })
 </script>
 

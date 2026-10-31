@@ -12,7 +12,6 @@ import com.example.docmind.repository.KnowledgePageRepository;
 import com.example.docmind.service.llm.LlmClient;
 import com.example.docmind.service.retrieval.PromptBuilder;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
-import com.docmind.guardrail.BubbleCapHook;
 import com.docmind.guardrail.GuardrailContext;
 import com.docmind.guardrail.GuardrailPipeline;
 import com.docmind.guardrail.GuardrailResult;
@@ -22,7 +21,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.docmind.service.retrieval.RetrievalService;
 import com.example.docmind.service.security.PromptSecurityGuard;
 import com.example.docmind.service.text.VietnameseQueryNormalizer;
-import com.example.docmind.service.harness.HarnessOptimizerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -299,7 +297,6 @@ public class FanpageBotService {
     private AgentSkillService agentSkillService;
     private com.example.docmind.service.MetaLearningService metaLearningService;
     private final GuardrailPipeline guardrailPipeline;
-    private final HarnessOptimizerService harnessOptimizerService;
     private FastApiAgentService fastApiAgentService;
     private MapOfContentService mapOfContentService;
     private QueryComplexityClassifier queryComplexityClassifier;
@@ -332,23 +329,6 @@ public class FanpageBotService {
                              @Autowired(required = false) FastApiAgentService fastApiAgentService,
                              @Autowired(required = false) MapOfContentService mapOfContentService,
                              @Autowired(required = false) QueryComplexityClassifier queryComplexityClassifier) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine,
-                agentSkillService, metaLearningService, guardrailPipeline, null, fastApiAgentService, mapOfContentService, queryComplexityClassifier);
-    }
-
-    public FanpageBotService(RetrievalService retrievalService,
-                             LlmClient llmClient,
-                             ChatProperties chatProps,
-                             DocumentRepository documentRepository,
-                             KnowledgePageRepository knowledgePageRepository,
-                             CustomerInsightEngine customerInsightEngine,
-                             AgentSkillService agentSkillService,
-                             com.example.docmind.service.MetaLearningService metaLearningService,
-                             GuardrailPipeline guardrailPipeline,
-                             HarnessOptimizerService harnessOptimizerService,
-                             FastApiAgentService fastApiAgentService,
-                             MapOfContentService mapOfContentService,
-                             QueryComplexityClassifier queryComplexityClassifier) {
         this.retrievalService = retrievalService;
         this.llmClient = llmClient;
         this.chatProps = chatProps;
@@ -358,7 +338,6 @@ public class FanpageBotService {
         this.agentSkillService = agentSkillService;
         this.metaLearningService = metaLearningService;
         this.guardrailPipeline = guardrailPipeline != null ? guardrailPipeline : new GuardrailPipeline();
-        this.harnessOptimizerService = harnessOptimizerService;
         this.fastApiAgentService = fastApiAgentService != null
                 ? fastApiAgentService
                 : new FastApiAgentService(null, new com.example.docmind.config.DocServiceProperties());
@@ -454,21 +433,6 @@ public class FanpageBotService {
         return inboundSessionPersistenceService;
     }
 
-    public FanpageBotService(RetrievalService retrievalService,
-                             LlmClient llmClient,
-                             ChatProperties chatProps,
-                             DocumentRepository documentRepository,
-                             KnowledgePageRepository knowledgePageRepository,
-                             CustomerInsightEngine customerInsightEngine,
-                             AgentSkillService agentSkillService,
-                             com.example.docmind.service.MetaLearningService metaLearningService,
-                             GuardrailPipeline guardrailPipeline,
-                             HarnessOptimizerService harnessOptimizerService,
-                             FastApiAgentService fastApiAgentService) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine,
-                agentSkillService, metaLearningService, guardrailPipeline, harnessOptimizerService, fastApiAgentService, null, null);
-    }
-
     public void setMapOfContentService(MapOfContentService mapOfContentService) {
         this.mapOfContentService = mapOfContentService;
     }
@@ -481,21 +445,8 @@ public class FanpageBotService {
                              CustomerInsightEngine customerInsightEngine,
                              AgentSkillService agentSkillService,
                              com.example.docmind.service.MetaLearningService metaLearningService,
-                             GuardrailPipeline guardrailPipeline,
-                             HarnessOptimizerService harnessOptimizerService) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, guardrailPipeline, harnessOptimizerService, null);
-    }
-
-    public FanpageBotService(RetrievalService retrievalService,
-                             LlmClient llmClient,
-                             ChatProperties chatProps,
-                             DocumentRepository documentRepository,
-                             KnowledgePageRepository knowledgePageRepository,
-                             CustomerInsightEngine customerInsightEngine,
-                             AgentSkillService agentSkillService,
-                             com.example.docmind.service.MetaLearningService metaLearningService,
                              GuardrailPipeline guardrailPipeline) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, guardrailPipeline, null);
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, guardrailPipeline, null, null, null);
     }
 
     public FanpageBotService(RetrievalService retrievalService,
@@ -506,15 +457,11 @@ public class FanpageBotService {
                              CustomerInsightEngine customerInsightEngine,
                              AgentSkillService agentSkillService,
                              com.example.docmind.service.MetaLearningService metaLearningService) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, null, null);
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, null, null, null, null);
     }
 
     public GuardrailPipeline getGuardrailPipeline() {
         return guardrailPipeline;
-    }
-
-    public HarnessOptimizerService getHarnessOptimizerService() {
-        return harnessOptimizerService;
     }
 
     public FanpageBotService(RetrievalService retrievalService,
@@ -1966,7 +1913,7 @@ public class FanpageBotService {
                 && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
                 && dbReferenceValRes != null
                 && dbReferenceValRes.validatedBubbles().size() >= 2
-                && com.docmind.guardrail.ReplyContractValidator.PRICE_PATTERN
+                && BubbleTextSanitizer.PRICE_PATTERN
                         .matcher(dbReferenceValRes.validatedBubbles().get(dbReferenceValRes.validatedBubbles().size() - 2).text())
                         .find()) {
             long priceBubbleShownAtNs = System.nanoTime();
@@ -2869,36 +2816,6 @@ public class FanpageBotService {
                 );
             } catch (Exception e) {
                 log.debug("[AgentBrain] Non-fatal retainTurnAsync exception: {}", e.getMessage());
-            }
-        }
-
-        // =========================================================================
-        // HARNESS² BACKGROUND AUTO-TRIGGER HOOK (Milestone M3)
-        // =========================================================================
-        if (customerInsight != null && customerInsight.temperatureDelta() != null
-                && customerInsight.temperatureDelta() <= -15
-                && harnessOptimizerService != null) {
-            try {
-                final String pageIdStr = pageId != null ? pageId.toString() : null;
-                final String convId = request.senderId() != null ? request.senderId() : "anon";
-                final String capturedMessage = mergedMessage;
-                final String capturedResponse = finalResponse != null ? finalResponse.replyText() : finalCleanText;
-                final List<String> capturedHistory = (request.history() != null)
-                        ? request.history().stream().filter(java.util.Objects::nonNull).map(t -> t.role() + ": " + t.content()).toList()
-                        : List.of();
-                final int tempDelta = customerInsight.temperatureDelta();
-
-                harnessOptimizerService.triggerAsyncOptimization(
-                        pageIdStr,
-                        convId,
-                        capturedMessage,
-                        capturedResponse,
-                        capturedHistory,
-                        tempDelta,
-                        "TEMPERATURE_DROP_BURST"
-                );
-            } catch (Throwable t) {
-                log.warn("stage=fanpage-bot-harness-auto-trigger status=suppressed_error reason={}", t.getMessage());
             }
         }
 
@@ -6522,7 +6439,7 @@ public class FanpageBotService {
                     && !low.startsWith("bên em") && !low.startsWith(honLow)) {
                 working = "Dạ " + Character.toLowerCase(working.charAt(0)) + working.substring(1);
             }
-            working = BubbleCapHook.capitalizeFirstLetter(working);
+            working = BubbleTextSanitizer.capitalizeFirstLetter(working);
         }
         return working;
     }

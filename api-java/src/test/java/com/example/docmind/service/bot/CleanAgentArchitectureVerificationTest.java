@@ -4590,7 +4590,6 @@ class CleanAgentArchitectureVerificationTest {
                 null,
                 null,
                 new com.docmind.guardrail.GuardrailPipeline(),
-                null,
                 mockFastApi,
                 null,
                 new com.example.docmind.service.reasoning.QueryComplexityClassifier()

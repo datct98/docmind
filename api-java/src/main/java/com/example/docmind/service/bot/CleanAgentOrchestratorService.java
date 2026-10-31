@@ -1,7 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.BubbleCapHook;
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.bot.AgentSkillDto;
 import com.example.docmind.dto.bot.CustomerInsightDto;
@@ -1687,8 +1685,8 @@ public class CleanAgentOrchestratorService {
                             bookingFunnelStatus
                     );
             if (!usedSafeHandoffFallback) {
-                normText = ReplyContractValidator.normalizeDeclarativeQuestionMarks(normText);
-                normText = BubbleCapHook.capitalizeFirstLetter(normText);
+                normText = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(normText);
+                normText = BubbleTextSanitizer.capitalizeFirstLetter(normText);
             }
             int delay = (i == 0)
                     ? 0
@@ -1705,8 +1703,8 @@ public class CleanAgentOrchestratorService {
                     heldPkgIsNull,
                     bookingFunnelStatus
             );
-            fallbackText = ReplyContractValidator.normalizeDeclarativeQuestionMarks(fallbackText);
-            fallbackText = BubbleCapHook.capitalizeFirstLetter(fallbackText);
+            fallbackText = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(fallbackText);
+            fallbackText = BubbleTextSanitizer.capitalizeFirstLetter(fallbackText);
             finalBubbles.add(new FanpageBotResponse.ReplyBubble(fallbackText, 0));
         }
 
@@ -2152,7 +2150,7 @@ public class CleanAgentOrchestratorService {
             String text = turn.content().strip();
             boolean isBot = "assistant".equalsIgnoreCase(turn.role()) || "bot".equalsIgnoreCase(turn.role());
             if (isBot) {
-                if (ReplyContractValidator.PRICE_PATTERN.matcher(text).find()
+                if (BubbleTextSanitizer.PRICE_PATTERN.matcher(text).find()
                         || text.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(\\d{2,3}\\s*k|gói\\s+dưỡng\\s+sinh|gói\\s+massage|liệu\\s+trình)\\b.*")) {
                     priceSeenInConversation = true;
                 }
@@ -3045,7 +3043,7 @@ public class CleanAgentOrchestratorService {
         if (message == null || message.isBlank() || packages == null || packages.isEmpty()) {
             return false;
         }
-        Matcher pm = ReplyContractValidator.PRICE_PATTERN.matcher(message);
+        Matcher pm = BubbleTextSanitizer.PRICE_PATTERN.matcher(message);
         while (pm.find()) {
             java.math.BigDecimal bd = ConversationState.parsePriceToBigDecimal(pm.group());
             if (bd != null) {
@@ -4764,8 +4762,8 @@ public class CleanAgentOrchestratorService {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = b.text().strip();
             if (!usedSafeHandoffFallback) {
-                txt = ReplyContractValidator.normalizeDeclarativeQuestionMarks(txt);
-                txt = BubbleCapHook.capitalizeFirstLetter(txt);
+                txt = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(txt);
+                txt = BubbleTextSanitizer.capitalizeFirstLetter(txt);
             }
             formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0));
         }
