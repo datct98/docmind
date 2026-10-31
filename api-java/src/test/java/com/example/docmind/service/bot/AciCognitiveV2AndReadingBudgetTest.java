@@ -3225,6 +3225,7 @@ class AciCognitiveV2AndReadingBudgetTest {
                 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
                 | NK01 | Cạo vôi răng & Đánh bóng siêu âm | 300.000VNĐ | 30 phút | Lấy cao răng siêu âm 2 hàm + đánh bóng | Ghế nha khoa vô trùng | Bác sĩ RHM | Êm ái, không ê buốt | Khám răng định kỳ |
                 | NK02 | Tẩy trắng răng Laser Whitening | 1.800.000VNĐ | 60 phút | Cách ly nướu + chiếu đèn Laser + gel chống ê | Phòng điều trị tiêu chuẩn | Bác sĩ RHM | Trắng sáng tự nhiên | Khách muốn cải thiện màu răng |
+                | NK03 | Răng sứ thẩm mỹ Zirconia chính hãng | 3.500.000VNĐ/răng | Theo phác đồ | Thăm khám + chế tác mão sứ CAD/CAM | Phòng phục hình vô trùng | Bác sĩ phục hình | Bảo hành chính hãng | Phục hình thẩm mỹ theo đơn vị răng |
                 """;
         List<ReciprocalRankFusion.FusedChunk> dentalChunks = List.of(
                 new ReciprocalRankFusion.FusedChunk(

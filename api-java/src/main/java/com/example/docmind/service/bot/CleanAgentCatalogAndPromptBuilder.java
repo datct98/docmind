@@ -4821,7 +4821,10 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         sb.append("] ").append(pkg.canonicalLabel())
           .append(" — ").append(pkg.priceDisplay());
-        if (pkg.durationMinutes() > 0 && !pkg.canonicalLabel().toLowerCase(Locale.ROOT).contains(pkg.durationLabel().toLowerCase(Locale.ROOT))) {
+        if (pkg.durationMinutes() != null && pkg.durationMinutes() > 0
+                && pkg.durationLabel() != null && !pkg.durationLabel().isBlank()
+                && (pkg.canonicalLabel() == null
+                    || !pkg.canonicalLabel().toLowerCase(Locale.ROOT).contains(pkg.durationLabel().toLowerCase(Locale.ROOT)))) {
             sb.append(" (").append(pkg.durationLabel()).append(')');
         }
         String authMatrixNote = resolveAuthoritativeNangSenVerificationNote(pkg);
