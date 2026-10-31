@@ -445,6 +445,9 @@ public class FanpageBotService {
 
     public void setInboundSessionPersistenceService(InboundSessionPersistenceService inboundSessionPersistenceService) {
         this.inboundSessionPersistenceService = inboundSessionPersistenceService;
+        if (this.cleanAgentOrchestratorService != null) {
+            this.cleanAgentOrchestratorService.setInboundSessionPersistenceService(inboundSessionPersistenceService);
+        }
     }
 
     public InboundSessionPersistenceService getInboundSessionPersistenceService() {
@@ -542,12 +545,17 @@ public class FanpageBotService {
     private static final ThreadLocal<String> CURRENT_TURN_ID = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> PROVENANCE_V38_LOGGED = new ThreadLocal<>();
     private static final ThreadLocal<String> CURRENT_INBOUND_EXTERNAL_MID = new ThreadLocal<>();
+    private static final ThreadLocal<UUID> CURRENT_EFFECTIVE_PAGE_ID = new ThreadLocal<>();
 
     static void markProvenanceV38Logged() {
         PROVENANCE_V38_LOGGED.set(true);
     }
 
     static FanpageBotResponse buildSilentSuppressedResponse(String hookCode, String inboundExternalMid) {
+        return buildSilentSuppressedResponse(hookCode != null ? List.of(hookCode) : List.of(), inboundExternalMid);
+    }
+
+    static FanpageBotResponse buildSilentSuppressedResponse(List<String> hookCodes, String inboundExternalMid) {
         return new FanpageBotResponse(
                 "",
                 List.of(),
@@ -561,7 +569,7 @@ public class FanpageBotService {
                 List.of(),
                 null,
                 List.of(),
-                hookCode != null ? List.of(hookCode) : List.of(),
+                hookCodes != null ? List.copyOf(hookCodes) : List.of(),
                 false,
                 null,
                 null,
@@ -596,8 +604,26 @@ public class FanpageBotService {
         CURRENT_TURN_ID.set(turnId);
         PROVENANCE_V38_LOGGED.set(false);
         CURRENT_INBOUND_EXTERNAL_MID.remove();
+        CURRENT_EFFECTIVE_PAGE_ID.remove();
         try {
             FanpageBotResponse resp = handleCustomerMessageInternal(request);
+            // Unit P0.4 Layer-2 Outbound Fencing (exit gate covering all V1/V2 paths & uninterruptibleSafety early returns):
+            // Re-reads fresh (control_mode, opted_out) from PostgreSQL BEFORE committing early-return ledger or returning to controller.
+            if (inboundSessionPersistenceService != null
+                    && resp != null
+                    && (!ConversationInboxService.isSilentSuppressedBotResponse(resp) || resp.needsHumanHandoff())) {
+                UUID effPageId = CURRENT_EFFECTIVE_PAGE_ID.get();
+                if (effPageId == null && request != null) {
+                    effPageId = parsePageId(request.pageId());
+                }
+                String effSenderId = request != null ? request.senderId() : null;
+                if (!inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(effPageId, effSenderId)) {
+                    log.warn("[EXIT-LAYER2-FENCE] Stale turn or safety handoff suppressed by fresh DB state lock (page_id={} sender_id={})",
+                            effPageId, effSenderId);
+                    markProvenanceV38Logged();
+                    resp = buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", CURRENT_INBOUND_EXTERNAL_MID.get());
+                }
+            }
             if (!Boolean.TRUE.equals(PROVENANCE_V38_LOGGED.get()) && resp != null) {
                 resp = enforceFinalOutputGateAndLogProvenanceV38OnEarlyReturn(request, resp);
             }
@@ -607,6 +633,7 @@ public class FanpageBotService {
             }
             return resp;
         } finally {
+            CURRENT_EFFECTIVE_PAGE_ID.remove();
             CURRENT_INBOUND_EXTERNAL_MID.remove();
             PROVENANCE_V38_LOGGED.remove();
             CURRENT_TURN_ID.remove();
@@ -722,11 +749,19 @@ public class FanpageBotService {
             }
         }
 
-        // Unit P0.1: Entry State Guard (HUMAN_TAKEOVER + Fail-Closed + Atomic ON CONFLICT inbound persistence)
+        if (pageId != null) {
+            CURRENT_EFFECTIVE_PAGE_ID.set(pageId);
+        }
+
+        // Units P0.1 & P0.4: Entry State Guard (HUMAN_TAKEOVER + 6-Scenario Opt-Out/Re-Consent + Fail-Closed + Atomic ON CONFLICT)
         if (inboundSessionPersistenceService != null) {
             if (isReengageAction) {
                 if (!inboundSessionPersistenceService.isProactiveReengageAllowed(pageId, request.senderId())) {
-                    return buildSilentSuppressedResponse("HUMAN_TAKEOVER_SILENT_HOLD", null);
+                    markProvenanceV38Logged();
+                    return buildSilentSuppressedResponse(
+                            List.of("PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD", "OPT_OUT_SILENT_HOLD"),
+                            null
+                    );
                 }
             } else if (!isGeneratePriceAnchorAction) {
                 FanpageBotRequest effectivePersistenceReq = (pageId != null && (request.pageId() == null || request.pageId().isBlank()))
@@ -754,12 +789,43 @@ public class FanpageBotService {
                     CURRENT_INBOUND_EXTERNAL_MID.set(resolvedMid);
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_HUMAN_TAKEOVER) {
+                    markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("HUMAN_TAKEOVER_SILENT_HOLD", resolvedMid);
                 }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_HUMAN_TAKEOVER_AND_OPT_OUT_RECORDED) {
+                    ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), true);
+                    if (agentBrainService != null) {
+                        agentBrainService.syncOptedOutState(pageId, request.senderId(), true);
+                    }
+                    markProvenanceV38Logged();
+                    return buildSilentSuppressedResponse(
+                            List.of("HUMAN_TAKEOVER_SILENT_HOLD", "OPT_OUT_RECORDED_UNDER_HUMAN_TAKEOVER"),
+                            resolvedMid
+                    );
+                }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_OPTED_OUT) {
+                    ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), true);
+                    if (agentBrainService != null) {
+                        agentBrainService.syncOptedOutState(pageId, request.senderId(), true);
+                    }
+                    markProvenanceV38Logged();
+                    return buildSilentSuppressedResponse(
+                            List.of("OPT_OUT_SILENT_HOLD", "EXPLICIT_OPT_OUT"),
+                            resolvedMid
+                    );
+                }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.RECONSENTED_PROCEED_TO_BOT) {
+                    ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), false);
+                    if (agentBrainService != null) {
+                        agentBrainService.syncOptedOutState(pageId, request.senderId(), false);
+                    }
+                }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.SUPPRESS_DUPLICATE_INBOUND) {
+                    markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("DUPLICATE_INBOUND_EVENT_SUPPRESSED", resolvedMid);
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_FAIL_CLOSED_WEBHOOK) {
+                    markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("STATE_GUARD_FAIL_CLOSED", resolvedMid);
                 }
             }
@@ -2657,6 +2723,14 @@ public class FanpageBotService {
                     }
                 }
             }
+        }
+
+        if (inboundSessionPersistenceService != null
+                && !inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(pageId, request.senderId())) {
+            log.warn("[LEGACY-LAYER2-FENCE] Stale turn suppressed before ledger commit (page_id={} sender_id={})",
+                    pageId, request.senderId());
+            markProvenanceV38Logged();
+            return buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", CURRENT_INBOUND_EXTERNAL_MID.get());
         }
 
         ConversationState stateAfterTurn = convState;

@@ -461,6 +461,65 @@ public record ConversationState(
         return updated;
     }
 
+    public ConversationState withOptedOut(boolean nextOptedOut) {
+        if (this.optedOut == nextOptedOut) {
+            return this;
+        }
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, knownDurationOfProblem, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, nextOptedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId,
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                knownEpisodeDuration, packageInterestAccepted, bookingIntentConfirmed, visitTime, contactInfo,
+                bookingStatus, selectedProductId, bookingDate, bookingTime, bookingStatusEnum
+        );
+    }
+
+    public static void syncOptedOutInSession(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            boolean nextOptedOut
+    ) {
+        for (String convIdCandidate : java.util.Arrays.asList(conversationId, null)) {
+            String sessionKey = buildSessionKey(pageId, senderId, convIdCandidate);
+            if (sessionKey == null) continue;
+            ConversationState current = SESSION_STORE.get(sessionKey);
+            if (current == null && !nextOptedOut) {
+                continue;
+            }
+            ConversationState base = current != null ? current : initial();
+            ConversationState updated = base.withOptedOut(nextOptedOut);
+            SESSION_STORE.put(sessionKey, updated);
+            LastTurnPreStateSnapshot snap = LAST_TURN_PRE_STATE_STORE.get(sessionKey);
+            if (snap != null) {
+                LAST_TURN_PRE_STATE_STORE.put(sessionKey, new LastTurnPreStateSnapshot(
+                        snap.historySize(),
+                        snap.normalizedUserMessage(),
+                        snap.preTurnState() != null ? snap.preTurnState().withOptedOut(nextOptedOut) : null,
+                        snap.enrichedTurnState() != null ? snap.enrichedTurnState().withOptedOut(nextOptedOut) : null,
+                        updated
+                ));
+            }
+        }
+    }
+
     public ConversationState withAuthoritativeSymptomDuration(String authoritativeDuration) {
         String normalizedDur = (authoritativeDuration != null && !authoritativeDuration.isBlank())
                 ? authoritativeDuration.strip()

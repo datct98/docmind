@@ -217,6 +217,9 @@ public class CleanAgentOrchestratorService {
     private LlmClient llmClient;
     private AgentBrainService agentBrainService;
     private AgentSkillService agentSkillService;
+    @Autowired(required = false)
+    private InboundSessionPersistenceService inboundSessionPersistenceService;
+    private volatile java.util.function.BiPredicate<UUID, String> preCommitOutboundPermitChecker = null;
     private volatile AdaptiveConversationIntelligence.CognitiveMode cognitiveMode =
             AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
     private volatile AdaptiveConversationIntelligence.HandoffEventDispatcher handoffEventDispatcher;
@@ -292,6 +295,23 @@ public class CleanAgentOrchestratorService {
 
     public void setAgentSkillService(AgentSkillService agentSkillService) {
         this.agentSkillService = agentSkillService;
+    }
+
+    public void setInboundSessionPersistenceService(InboundSessionPersistenceService inboundSessionPersistenceService) {
+        this.inboundSessionPersistenceService = inboundSessionPersistenceService;
+    }
+
+    public void setPreCommitOutboundPermitChecker(java.util.function.BiPredicate<UUID, String> checker) {
+        this.preCommitOutboundPermitChecker = checker;
+    }
+
+    private boolean isOutboundStillPermittedLayer2(UUID pageId, FanpageBotRequest request) {
+        String senderId = request != null ? request.senderId() : null;
+        if (preCommitOutboundPermitChecker != null && !preCommitOutboundPermitChecker.test(pageId, senderId)) {
+            return false;
+        }
+        return inboundSessionPersistenceService == null
+                || inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(pageId, senderId);
     }
 
     public ThinkingModePolicy.TurnTelemetry getLastTurnTelemetry() {
@@ -450,6 +470,12 @@ public class CleanAgentOrchestratorService {
                         request != null ? request.senderId() : null,
                         SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
                     return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
+                if (!isOutboundStillPermittedLayer2(pageId, request)) {
+                    log.warn("[CLEAN-INTRO-LAYER2-FENCE] Stale intro suppressed before ledger commit (page_id={} sender_id={})",
+                            pageId, request != null ? request.senderId() : null);
+                    FanpageBotService.markProvenanceV38Logged();
+                    return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
                 }
                 String introText = String.join("\n\n", introBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
                 String ledgerKeyIntro = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
@@ -1716,6 +1742,12 @@ public class CleanAgentOrchestratorService {
                 request != null ? request.senderId() : null,
                 SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
             return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+        if (!isOutboundStillPermittedLayer2(pageId, request)) {
+            log.warn("[CLEAN-V1-LAYER2-FENCE] Stale turn suppressed before ledger commit (page_id={} sender_id={})",
+                    pageId, request != null ? request.senderId() : null);
+            FanpageBotService.markProvenanceV38Logged();
+            return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
         }
         String ledgerKey = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
         String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, mergedMessage);
@@ -4755,6 +4787,12 @@ public class CleanAgentOrchestratorService {
                 request != null ? request.senderId() : null,
                 SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
             return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+        if (!isOutboundStillPermittedLayer2(pageId, request)) {
+            log.warn("[ACI-V2-LAYER2-FENCE] Stale turn suppressed before memory/ledger commit (page_id={} sender_id={})",
+                    pageId, senderId);
+            FanpageBotService.markProvenanceV38Logged();
+            return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
         }
 
         boolean shouldHandoff = usedSafeHandoffFallback || handoffDecision.isHandoffCreated();

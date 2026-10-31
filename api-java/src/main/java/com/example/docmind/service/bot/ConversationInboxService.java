@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +50,10 @@ public class ConversationInboxService {
     private KnowledgePageRepository knowledgePageRepository;
     @Autowired(required = false)
     private InboundSessionPersistenceService inboundSessionPersistenceService;
+    @Value("${docmind.security.atomic-state-guard.enabled:true}")
+    private volatile boolean atomicStateGuardEnabled = true;
+    @Value("${docmind.fanpage.default-page-id:}")
+    private volatile String defaultFanpageId = "";
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Autowired
@@ -172,6 +177,33 @@ public class ConversationInboxService {
         this.inboundSessionPersistenceService = inboundSessionPersistenceService;
     }
 
+    public void setAtomicStateGuardEnabled(boolean atomicStateGuardEnabled) {
+        this.atomicStateGuardEnabled = atomicStateGuardEnabled;
+    }
+
+    public void setDefaultFanpageId(String defaultFanpageId) {
+        this.defaultFanpageId = defaultFanpageId != null ? defaultFanpageId : "";
+    }
+
+    private void syncFreshGuardFieldsFromDb(ConversationSessionEntity session) {
+        if (session == null || session.getId() == null || inboundSessionPersistenceService == null) {
+            return;
+        }
+        InboundSessionPersistenceService.FreshSessionGuardState fresh =
+                inboundSessionPersistenceService.readFreshSessionGuardState(session.getId());
+        if (fresh == null) {
+            return;
+        }
+        if (fresh.controlMode() != null && !fresh.controlMode().isBlank()) {
+            session.setControlMode(fresh.controlMode());
+        }
+        session.setOptedOut(fresh.optedOut());
+        session.setOptedOutAt(fresh.optedOutAt());
+        session.setReOptInAt(fresh.reOptInAt());
+        session.setReOptInSource(fresh.reOptInSource());
+        session.setReOptInEvidence(fresh.reOptInEvidence());
+    }
+
     @Transactional
     public void recordCustomerAndBotTurn(FanpageBotRequest request, FanpageBotResponse botResponse) {
         if (request == null || botResponse == null) {
@@ -196,6 +228,7 @@ public class ConversationInboxService {
                     : InboundEventIdResolver.resolveForCurrentContext(request, custMsg).externalMid();
 
             ConversationSessionEntity session = findOrCreateSession(pageId, psid, request.customerName());
+            syncFreshGuardFieldsFromDb(session);
             Instant now = Instant.now();
 
             if (isSilentSuppressedBotResponse(botResponse)) {
@@ -317,14 +350,28 @@ public class ConversationInboxService {
 
         // Nếu đang ở chế độ HUMAN_TAKEOVER (Sale đang trực tiếp tiếp quản và đã tắt AI):
         // Chỉ lưu tin nhắn của khách hàng để Sale trả lời, AI không nhảy vào cướp lời Sale!
+        // Scenario 6 (Unit P0.4): nếu khách gửi lệnh dừng nhận tin rõ ràng dưới HUMAN_TAKEOVER, vẫn cập nhật opted_out = true + opted_out_at.
         if ("HUMAN_TAKEOVER".equalsIgnoreCase(session.getControlMode())) {
+            if (atomicStateGuardEnabled && InboundSessionPersistenceService.isExplicitCustomerOptOutCommand(trimmedCustomerMessage)) {
+                session.setOptedOut(true);
+                session.setOptedOutAt(now);
+                ConversationState.syncOptedOutInSession(session.getPageId(), session.getCustomerPsid(), null, true);
+                if (fanpageBotService != null && fanpageBotService.getAgentBrainService() != null) {
+                    fanpageBotService.getAgentBrainService().syncOptedOutState(session.getPageId(), session.getCustomerPsid(), true);
+                }
+                InboundSessionPersistenceService.supersedeEpochForSender(session.getPageId(), defaultFanpageId, session.getCustomerPsid());
+            }
             session.setLastMessagePreview(trimmedCustomerMessage);
             session.setLastSenderRole("CUSTOMER");
             session.setLastMessageAt(now);
             session.setUpdatedAt(now);
             sessionRepository.save(session);
             List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-            return toSessionDetailMap(session, updatedMsgs);
+            Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
+            detail.put("latest_bot_message_id", null);
+            detail.put("reply_bubbles", List.of());
+            detail.put("bubble_delays_ms", List.of());
+            return detail;
         }
 
         FanpageBotRequest botReq = new FanpageBotRequest(
@@ -346,6 +393,7 @@ public class ConversationInboxService {
                 resolvedEvent,
                 () -> fanpageBotService.handleCustomerMessage(botReq)
         );
+        syncFreshGuardFieldsFromDb(session);
         if (isSilentSuppressedBotResponse(botResp)) {
             session.setLastMessagePreview(trimmedCustomerMessage);
             session.setLastSenderRole("CUSTOMER");
@@ -415,6 +463,13 @@ public class ConversationInboxService {
             session.setControlMode("HUMAN_TAKEOVER");
         }
         sessionRepository.save(session);
+        if (atomicStateGuardEnabled) {
+            InboundSessionPersistenceService.supersedeEpochForSender(
+                    session.getPageId(),
+                    defaultFanpageId,
+                    session.getCustomerPsid()
+            );
+        }
 
         List<ConversationMessageEntity> msgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         return toSessionDetailMap(session, msgs);
@@ -431,6 +486,14 @@ public class ConversationInboxService {
         session.setControlMode(normalized);
         session.setUpdatedAt(Instant.now());
         sessionRepository.save(session);
+        if (atomicStateGuardEnabled
+                && ("HUMAN_TAKEOVER".equalsIgnoreCase(normalized) || "CONVERTED".equalsIgnoreCase(normalized))) {
+            InboundSessionPersistenceService.supersedeEpochForSender(
+                    session.getPageId(),
+                    defaultFanpageId,
+                    session.getCustomerPsid()
+            );
+        }
         List<ConversationMessageEntity> msgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         return toSessionDetailMap(session, msgs);
     }
@@ -847,6 +910,11 @@ public class ConversationInboxService {
         m.put("sales_stage", s.getSalesStage());
         m.put("has_human_sale_reply", s.isHasHumanSaleReply());
         m.put("learned_in_cold_path", s.isLearnedInColdPath());
+        m.put("opted_out", s.isOptedOut());
+        m.put("opted_out_at", s.getOptedOutAt());
+        m.put("re_opt_in_at", s.getReOptInAt());
+        m.put("re_opt_in_source", s.getReOptInSource());
+        m.put("re_opt_in_evidence", s.getReOptInEvidence());
         m.put("last_message_preview", s.getLastMessagePreview());
         m.put("last_sender_role", s.getLastSenderRole());
         m.put("last_message_at", s.getLastMessageAt());

@@ -114,6 +114,22 @@ public class ConversationSessionEntity {
     private boolean learnedInColdPath = false;
 
     @Builder.Default
+    @Column(name = "opted_out", nullable = false)
+    private boolean optedOut = false;
+
+    @Column(name = "opted_out_at")
+    private Instant optedOutAt;
+
+    @Column(name = "re_opt_in_at")
+    private Instant reOptInAt;
+
+    @Column(name = "re_opt_in_source", length = 64)
+    private String reOptInSource;
+
+    @Column(name = "re_opt_in_evidence", columnDefinition = "TEXT")
+    private String reOptInEvidence;
+
+    @Builder.Default
     @Column(name = "last_message_preview", nullable = false, columnDefinition = "TEXT")
     private String lastMessagePreview = "";
 

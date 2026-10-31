@@ -7,6 +7,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -14,35 +15,85 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
- * Isolated {@code REQUIRES_NEW} database persistence &amp; session state gate for inbound turns (Unit P0.1).
- * <ul>
- *   <li>Serializes first-time session creation per {@code (pageId, psid)} via {@code pg_advisory_xact_lock}
- *       so concurrent retries for brand-new customers always converge on a single {@code session_id}.</li>
- *   <li>Persists {@code CUSTOMER} rows atomically with
- *       {@code INSERT INTO conversation_messages ... ON CONFLICT (session_id, external_mid) WHERE external_mid IS NOT NULL DO NOTHING}.</li>
- *   <li>Enforces {@code HUMAN_TAKEOVER} entry block ({@code 0} LLM calls, {@code 0} outbound bubbles).</li>
- *   <li>Enforces channel-aware {@code Fail-Closed} behavior on PostgreSQL outage:
- *       {@code HTTP 503 Service Unavailable} on synchronous REST/Simulator channels vs
- *       {@link DurableInboundWalRecoveryStore} {@code fsync} + {@code STATE_GUARD_FAIL_CLOSED} on Webhook.</li>
- * </ul>
+ * Isolated {@code REQUIRES_NEW} database persistence, 6-Scenario {@code Opt-Out / Re-Consent} state machine,
+ * and 2-Layer Outbound Fencing gate for inbound turns (Units P0.1 &amp; P0.4).
  */
 @Service
 public class InboundSessionPersistenceService {
 
     private static final Logger log = LoggerFactory.getLogger(InboundSessionPersistenceService.class);
 
+    /**
+     * Explicit customer stop/opt-out commands (Scenario 5 &amp; Scenario 6).
+     * Strictly excludes polite conversational deferral S06 ("Thôi, không cần nữa").
+     */
+    private static final Pattern EXPLICIT_CUSTOMER_OPT_OUT_COMMAND_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:stop|unsubscribe|hủy\\s+đăng\\s+ký|huỷ\\s+đăng\\s+ký|ngừng\\s+đăng\\s+ký|hủy\\s+nhận\\s+tin|huỷ\\s+nhận\\s+tin)[.!?~\\s]*$"
+            + "|(?isU).*\\b(?:đừng\\s+nhắn(?:\\s+tin)?(?:\\s+nữa)?|thôi\\s+đừng\\s+nhắn(?:\\s+nữa)?|"
+            + "đừng\\s+gửi\\s+tin(?:\\s+nhắn)?(?:\\s+nữa)?|ngừng\\s+nhắn(?:\\s+tin)?|dừng\\s+nhắn(?:\\s+tin)?|"
+            + "ngừng\\s+gửi\\s+tin|ngừng\\s+liên\\s+hệ|đừng\\s+liên\\s+hệ(?:\\s+nữa)?|"
+            + "đừng\\s+làm\\s+phiền(?:\\s+(?:chị|anh|em|mình|tôi))?(?:\\s+nữa)?|"
+            + "đừng\\s+quấy\\s+rầy(?:\\s+nữa)?|làm\\s+ơn\\s+đừng\\s+nhắn|xin\\s+đừng\\s+nhắn)\\b.*"
+    );
+
+    /** Negation clauses that disqualify an utterance from being treated as active re-consent. */
+    private static final Pattern RECONSENT_NEGATION_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:không\\s+(?:muốn|cần)\\s+(?:tư\\s+vấn|nhận\\s+tin|hỏi|đặt)|"
+            + "chưa\\s+(?:muốn|cần)\\s+(?:tư\\s+vấn|đặt)|không\\s+hỏi\\s+giá|không\\s+đặt\\s+lịch)\\b.*"
+    );
+
+    /**
+     * Concrete customer-initiated re-consent patterns (Scenarios 1, 2, 3):
+     * (1) Concrete price inquiry, (2) Concrete booking / schedule availability request,
+     * (3) Concrete service / package / operational inquiry or explicit re-subscribe request.
+     * Short phatic/ambiguous messages ("ok", "ừ", "cảm ơn", "?", emoji) NEVER match (Scenario 4).
+     */
+    private static final Pattern EXPLICIT_RECONSENT_SERVICE_PRICE_BOOKING_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:start|subscribe|đăng\\s+ký\\s+lại)[.!?~\\s]*$"
+            + "|(?isU).*\\b(?:"
+            // Explicit re-consent request
+            + "tư\\s+vấn\\s+lại|hỗ\\s+trợ\\s+tư\\s+vấn\\s+lại|nhận\\s+tin\\s+(?:tư\\s+vấn\\s+)?lại"
+            // Scenario 1: Concrete price inquiry
+            + "|bảng\\s+giá|bao\\s+nhiêu\\s+tiền|mấy\\s+tiền|nhiêu\\s+tiền|chi\\s+phí\\s+(?:gói|dịch\\s+vụ|làm|khám|cạo|tẩy|bọc|massage|gội)"
+            + "|(?:giá|chi\\s+phí)\\s+.*?(?:bao\\s+nhiêu|thế\\s+nào|sao\\s+(?:em|ạ|shop))"
+            + "|(?:gói|dịch\\s+vụ|liệu\\s+trình|\\d{2,3}\\s*(?:p|phút))\\s+.*?(?:giá|bao\\s+nhiêu|mấy\\s+tiền)"
+            // Scenario 2: Concrete booking / schedule request
+            + "|đặt\\s+lịch|đặt\\s+cho\\s+(?:chị|anh|mình|tôi|cô|chú)|giữ\\s+lịch|giữ\\s+chỗ|book\\s+lịch|hẹn\\s+lịch"
+            + "|còn\\s+lịch(?:\\s+trống)?|lịch\\s+trống|còn\\s+giường|qua\\s+làm\\s+lúc|ghé\\s+lúc"
+            + "|(?:đặt|hẹn|qua|ghé|book)\\s+.*?\\b\\d{1,2}\\s*(?:h\\d{0,2}|giờ)\\b"
+            // Scenario 3: Concrete service / package / procedure / operational inquiry
+            + "|(?:gói|dịch\\s+vụ|liệu\\s+trình|quy\\s+trình)\\s+.*?(?:gồm\\s+(?:những|mấy|các)|như\\s+thế\\s+nào|thế\\s+nào|bước\\s+gì|gì\\s+(?:em|vậy|ạ))"
+            + "|quy\\s+trình\\s+(?:gội|massage|dưỡng\\s+sinh|chăm\\s+sóc|cạo\\s+vôi|lấy\\s+cao\\s+răng|tẩy\\s+trắng|bọc\\s+răng|khám)"
+            + "|bên\\s+(?:mình|em|shop|phòng\\s+khám)\\s+có\\s+(?:gói|dịch\\s+vụ|làm)\\s+\\p{L}+"
+            + "|(?:địa\\s+chỉ|cơ\\s+sở|phòng\\s+khám)\\s+.*?(?:ở\\s+đâu|chỗ\\s+nào|mở\\s+cửa|mấy\\s+giờ)"
+            + "|mở\\s+cửa\\s+(?:tới|đến)\\s+mấy\\s+giờ"
+            + ")\\b.*"
+    );
+
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate requiresNewTx;
     private final DurableInboundWalRecoveryStore walRecoveryStore;
 
+    @Value("${docmind.security.atomic-state-guard.enabled:true}")
+    private volatile boolean atomicStateGuardEnabled = true;
+
+    @Value("${docmind.fanpage.default-page-id:}")
+    private volatile String defaultFanpageId = "";
+
     public enum EntryAction {
         PROCEED_TO_BOT,
+        RECONSENTED_PROCEED_TO_BOT,
         BLOCK_HUMAN_TAKEOVER,
+        BLOCK_HUMAN_TAKEOVER_AND_OPT_OUT_RECORDED,
+        BLOCK_OPTED_OUT,
         SUPPRESS_DUPLICATE_INBOUND,
         BLOCK_FAIL_CLOSED_WEBHOOK
     }
@@ -51,8 +102,29 @@ public class InboundSessionPersistenceService {
             EntryAction action,
             UUID sessionId,
             String controlMode,
+            boolean optedOut,
             ResolvedInboundEvent resolvedEvent,
             boolean insertedCustomerRow
+    ) {
+        public EntryEvaluation(
+                EntryAction action,
+                UUID sessionId,
+                String controlMode,
+                ResolvedInboundEvent resolvedEvent,
+                boolean insertedCustomerRow
+        ) {
+            this(action, sessionId, controlMode, false, resolvedEvent, insertedCustomerRow);
+        }
+    }
+
+    public record FreshSessionGuardState(
+            UUID sessionId,
+            String controlMode,
+            boolean optedOut,
+            Instant optedOutAt,
+            Instant reOptInAt,
+            String reOptInSource,
+            String reOptInEvidence
     ) {
     }
 
@@ -76,6 +148,60 @@ public class InboundSessionPersistenceService {
         }
     }
 
+    public boolean isAtomicStateGuardEnabled() {
+        return atomicStateGuardEnabled;
+    }
+
+    public void setAtomicStateGuardEnabled(boolean atomicStateGuardEnabled) {
+        this.atomicStateGuardEnabled = atomicStateGuardEnabled;
+    }
+
+    public void setDefaultFanpageId(String defaultFanpageId) {
+        this.defaultFanpageId = defaultFanpageId != null ? defaultFanpageId : "";
+    }
+
+    /**
+     * Layer-1 Outbound Fencing helper: supersedes the active {@link SenderEpochRegistry} slot immediately
+     * so any thread sleeping in {@code awaitBubbleDelayOrSupersede} or about to dispatch subsequent bubbles
+     * wakes up and aborts remaining bubbles immediately (Tiers C1/C2/C3).
+     */
+    public static void supersedeEpochForSender(UUID pageId, String fallbackDefaultPageId, String rawPsid) {
+        String psid = normalizePsid(rawPsid);
+        if (pageId != null) {
+            SenderEpochRegistry.supersedeCurrentEpoch(pageId.toString(), psid);
+        }
+        if (fallbackDefaultPageId != null && !fallbackDefaultPageId.isBlank()) {
+            String trimmedDefault = fallbackDefaultPageId.strip();
+            if (pageId == null || !trimmedDefault.equalsIgnoreCase(pageId.toString())) {
+                SenderEpochRegistry.supersedeCurrentEpoch(trimmedDefault, psid);
+            }
+        }
+        SenderEpochRegistry.supersedeCurrentEpoch(null, psid);
+    }
+
+    public static boolean isExplicitCustomerOptOutCommand(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        return EXPLICIT_CUSTOMER_OPT_OUT_COMMAND_PATTERN.matcher(norm).matches()
+                || PrimaryActionRouter.isStrictSystemOptOutMessage(norm);
+    }
+
+    public static boolean isExplicitServicePriceOrBookingReconsent(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        if (isExplicitCustomerOptOutCommand(norm)) {
+            return false;
+        }
+        if (RECONSENT_NEGATION_CLAUSE_PATTERN.matcher(norm).matches()) {
+            return false;
+        }
+        return EXPLICIT_RECONSENT_SERVICE_PRICE_BOOKING_PATTERN.matcher(norm).matches();
+    }
+
     /**
      * Entry gate executed at the start of {@code FanpageBotService.handleCustomerMessageInternal}.
      */
@@ -89,13 +215,14 @@ public class InboundSessionPersistenceService {
         String psid = normalizePsid(request != null ? request.senderId() : null);
         String customerName = request != null ? request.customerName() : null;
         String safeText = verbatimCustomerText != null ? verbatimCustomerText : "";
+        boolean guardEnabled = this.atomicStateGuardEnabled;
 
         try {
             EntryEvaluation eval = requiresNewTx.execute(status -> {
                 SessionSnapshot session = findOrCreateSessionInTx(requestedPageId, psid, customerName);
+                Instant now = Instant.now();
                 boolean inserted = false;
                 if (!prePersistedInCaller && !safeText.isBlank()) {
-                    Instant now = Instant.now();
                     inserted = insertCustomerMessageOnConflictDoNothingInTx(
                             session.id(),
                             safeText,
@@ -107,20 +234,82 @@ public class InboundSessionPersistenceService {
                                 EntryAction.SUPPRESS_DUPLICATE_INBOUND,
                                 session.id(),
                                 session.controlMode(),
+                                session.optedOut(),
                                 resolved,
                                 false
                         );
                     }
-                    if (inserted && "HUMAN_TAKEOVER".equalsIgnoreCase(session.controlMode())) {
-                        updateSessionCustomerPreviewInTx(session.id(), safeText, now);
-                    }
                 }
 
-                if ("HUMAN_TAKEOVER".equalsIgnoreCase(session.controlMode())) {
+                boolean humanTakeover = "HUMAN_TAKEOVER".equalsIgnoreCase(session.controlMode());
+                boolean explicitOptOutCmd = guardEnabled && isExplicitCustomerOptOutCommand(safeText);
+
+                // Scenario 6: HUMAN_TAKEOVER combined with all (1)-(5)
+                if (humanTakeover) {
+                    if (explicitOptOutCmd) {
+                        recordSessionOptOutInTx(session.id(), safeText, now);
+                        return new EntryEvaluation(
+                                EntryAction.BLOCK_HUMAN_TAKEOVER_AND_OPT_OUT_RECORDED,
+                                session.id(),
+                                session.controlMode(),
+                                true,
+                                resolved,
+                                inserted
+                        );
+                    }
+                    if (inserted) {
+                        updateSessionCustomerPreviewInTx(session.id(), safeText, now);
+                    }
                     return new EntryEvaluation(
                             EntryAction.BLOCK_HUMAN_TAKEOVER,
                             session.id(),
                             session.controlMode(),
+                            session.optedOut(),
+                            resolved,
+                            inserted
+                    );
+                }
+
+                // Scenario 5: Explicit customer opt-out command -> latest refusal ALWAYS wins immediately
+                if (explicitOptOutCmd) {
+                    recordSessionOptOutInTx(session.id(), safeText, now);
+                    return new EntryEvaluation(
+                            EntryAction.BLOCK_OPTED_OUT,
+                            session.id(),
+                            session.controlMode(),
+                            true,
+                            resolved,
+                            inserted
+                    );
+                }
+
+                // Scenarios 1-4: Session currently opted_out == true (while control_mode != HUMAN_TAKEOVER)
+                if (guardEnabled && session.optedOut()) {
+                    if (isExplicitServicePriceOrBookingReconsent(safeText)) {
+                        // Scenarios 1, 2, 3: Explicit concrete price / booking / service inquiry -> audited re-consent
+                        String source = resolved.channel() != null ? resolved.channel().name() : "UNKNOWN";
+                        String evidence = buildReconsentEvidence(resolved.externalMid(), safeText);
+                        recordSessionReconsentInTx(session.id(), source, evidence, now);
+                        log.info("[OPT_OUT_RECONSENT_AUDITED] sessionId={} pageId={} psid={} source={} mid={}",
+                                session.id(), requestedPageId, psid, source, resolved.externalMid());
+                        return new EntryEvaluation(
+                                EntryAction.RECONSENTED_PROCEED_TO_BOT,
+                                session.id(),
+                                session.controlMode(),
+                                false,
+                                resolved,
+                                inserted
+                        );
+                    }
+                    // Scenario 4: Phatic / short / ambiguous message -> keep opted_out = true, 0 LLM, 0 outbound
+                    if (inserted) {
+                        updateSessionCustomerPreviewInTx(session.id(), safeText, now);
+                    }
+                    return new EntryEvaluation(
+                            EntryAction.BLOCK_OPTED_OUT,
+                            session.id(),
+                            session.controlMode(),
+                            true,
                             resolved,
                             inserted
                     );
@@ -130,10 +319,16 @@ public class InboundSessionPersistenceService {
                         EntryAction.PROCEED_TO_BOT,
                         session.id(),
                         session.controlMode(),
+                        session.optedOut(),
                         resolved,
                         inserted
                 );
             });
+
+            if (eval != null && (eval.action() == EntryAction.BLOCK_OPTED_OUT
+                    || eval.action() == EntryAction.BLOCK_HUMAN_TAKEOVER_AND_OPT_OUT_RECORDED)) {
+                supersedeEpochForSender(requestedPageId, this.defaultFanpageId, psid);
+            }
 
             // Opportunistically drain any pending WAL records once PostgreSQL is healthy
             drainPendingWalQuietly();
@@ -144,40 +339,98 @@ public class InboundSessionPersistenceService {
     }
 
     /**
+     * Layer-2 Outbound Fencing (Unit P0.4 — Tier C1):
+     * Performs a fresh {@code REQUIRES_NEW} read of {@code (control_mode, opted_out)} from PostgreSQL
+     * right after LLM generation completes and BEFORE committing {@code SentBubbleLedger} or dispatching
+     * outbound bubbles. Fails closed ({@code false}) if PostgreSQL becomes unreachable mid-turn.
+     */
+    public boolean verifyOutboundStillPermittedFresh(UUID requestedPageId, String rawSenderId) {
+        if (!this.atomicStateGuardEnabled) {
+            return true;
+        }
+        String psid = normalizePsid(rawSenderId);
+        try {
+            Boolean permitted = requiresNewTx.execute(status -> {
+                UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
+                List<SessionSnapshot> rows = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
+                if (rows.isEmpty()) {
+                    return true;
+                }
+                SessionSnapshot fresh = rows.get(0);
+                if ("HUMAN_TAKEOVER".equalsIgnoreCase(fresh.controlMode())) {
+                    return false;
+                }
+                return !fresh.optedOut();
+            });
+            return Boolean.TRUE.equals(permitted);
+        } catch (Exception dbEx) {
+            log.error("[LAYER2_OUTBOUND_FENCING_FAIL_CLOSED] pageId={} senderId={} reason={}",
+                    requestedPageId, psid, dbEx.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Checks whether proactive {@code REENGAGE} is permitted for {@code (pageId, senderId)}.
-     * Blocks proactive outreach when session is in {@code HUMAN_TAKEOVER} or DB is unreachable (Fail-Closed).
+     * Blocks proactive outreach 100% when session is in {@code HUMAN_TAKEOVER}, {@code opted_out == true},
+     * or DB is unreachable (Fail-Closed).
      */
     public boolean isProactiveReengageAllowed(UUID requestedPageId, String rawSenderId) {
         String psid = normalizePsid(rawSenderId);
+        boolean guardEnabled = this.atomicStateGuardEnabled;
         try {
             Boolean allowed = requiresNewTx.execute(status -> {
                 UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
-                List<String> modes = (effectiveDbPageId != null)
-                        ? jdbcTemplate.query(
-                                "SELECT control_mode FROM conversation_sessions "
-                                        + "WHERE page_id = ? AND customer_psid = ? "
-                                        + "ORDER BY updated_at DESC LIMIT 1",
-                                (rs, rowNum) -> rs.getString("control_mode"),
-                                effectiveDbPageId,
-                                psid
-                        )
-                        : jdbcTemplate.query(
-                                "SELECT control_mode FROM conversation_sessions "
-                                        + "WHERE customer_psid = ? "
-                                        + "ORDER BY updated_at DESC LIMIT 1",
-                                (rs, rowNum) -> rs.getString("control_mode"),
-                                psid
-                        );
-                if (modes.isEmpty()) {
+                List<SessionSnapshot> rows = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
+                if (rows.isEmpty()) {
                     return true;
                 }
-                return !"HUMAN_TAKEOVER".equalsIgnoreCase(modes.get(0));
+                SessionSnapshot latest = rows.get(0);
+                if ("HUMAN_TAKEOVER".equalsIgnoreCase(latest.controlMode())) {
+                    return false;
+                }
+                if (guardEnabled && latest.optedOut()) {
+                    return false;
+                }
+                return true;
             });
             return Boolean.TRUE.equals(allowed);
         } catch (Exception dbEx) {
             log.error("[REENGAGE_STATE_GUARD_FAIL_CLOSED] pageId={} senderId={} reason={}",
                     requestedPageId, psid, dbEx.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Reads fresh {@code REQUIRES_NEW} guard &amp; opt-out audit columns by {@code sessionId}
+     * so JPA callers ({@code ConversationInboxService}) never clobber concurrent {@code REQUIRES_NEW} updates.
+     */
+    public FreshSessionGuardState readFreshSessionGuardState(UUID sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+        try {
+            return requiresNewTx.execute(status -> {
+                List<FreshSessionGuardState> list = jdbcTemplate.query(
+                        "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_at, re_opt_in_source, re_opt_in_evidence "
+                                + "FROM conversation_sessions WHERE id = ?",
+                        (rs, rowNum) -> new FreshSessionGuardState(
+                                UUID.fromString(rs.getString("id")),
+                                rs.getString("control_mode"),
+                                rs.getBoolean("opted_out"),
+                                toInstantOrNull(rs.getTimestamp("opted_out_at")),
+                                toInstantOrNull(rs.getTimestamp("re_opt_in_at")),
+                                rs.getString("re_opt_in_source"),
+                                rs.getString("re_opt_in_evidence")
+                        ),
+                        sessionId
+                );
+                return list.isEmpty() ? null : list.get(0);
+            });
+        } catch (Exception ex) {
+            log.debug("Non-fatal: unable to read V33 fresh session guard state for {}: {}", sessionId, ex.getMessage());
+            return null;
         }
     }
 
@@ -235,6 +488,9 @@ public class InboundSessionPersistenceService {
             if (inserted) {
                 updateSessionCustomerPreviewIfNewerInTx(session.id(), record.verbatimText(), receivedAt);
             }
+            if (this.atomicStateGuardEnabled && isExplicitCustomerOptOutCommand(record.verbatimText())) {
+                recordSessionOptOutInTx(session.id(), record.verbatimText(), receivedAt);
+            }
         });
     }
 
@@ -274,6 +530,7 @@ public class InboundSessionPersistenceService {
                     EntryAction.BLOCK_FAIL_CLOSED_WEBHOOK,
                     null,
                     "FAIL_CLOSED",
+                    false,
                     resolved,
                     false
             );
@@ -291,37 +548,40 @@ public class InboundSessionPersistenceService {
         );
     }
 
+    private List<SessionSnapshot> queryLatestSessionSnapshotInTx(UUID effectiveDbPageId, String psid) {
+        if (effectiveDbPageId != null) {
+            return jdbcTemplate.query(
+                    "SELECT id, control_mode, opted_out FROM conversation_sessions "
+                            + "WHERE page_id = ? AND customer_psid = ? "
+                            + "ORDER BY updated_at DESC LIMIT 1",
+                    (rs, rowNum) -> new SessionSnapshot(
+                            UUID.fromString(rs.getString("id")),
+                            rs.getString("control_mode"),
+                            rs.getBoolean("opted_out")
+                    ),
+                    effectiveDbPageId,
+                    psid
+            );
+        }
+        return jdbcTemplate.query(
+                "SELECT id, control_mode, opted_out FROM conversation_sessions "
+                        + "WHERE customer_psid = ? "
+                        + "ORDER BY updated_at DESC LIMIT 1",
+                (rs, rowNum) -> new SessionSnapshot(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("control_mode"),
+                        rs.getBoolean("opted_out")
+                ),
+                psid
+        );
+    }
+
     private SessionSnapshot findOrCreateSessionInTx(UUID requestedPageId, String psid, String customerName) {
         String lockKey = "inbound_sess:" + (requestedPageId != null ? requestedPageId : "null") + ":" + psid;
         jdbcTemplate.queryForObject("SELECT pg_advisory_xact_lock(hashtext(?))", Object.class, lockKey);
 
         UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
-
-        List<SessionSnapshot> existing;
-        if (effectiveDbPageId != null) {
-            existing = jdbcTemplate.query(
-                    "SELECT id, control_mode FROM conversation_sessions "
-                            + "WHERE page_id = ? AND customer_psid = ? "
-                            + "ORDER BY updated_at DESC LIMIT 1",
-                    (rs, rowNum) -> new SessionSnapshot(
-                            UUID.fromString(rs.getString("id")),
-                            rs.getString("control_mode")
-                    ),
-                    effectiveDbPageId,
-                    psid
-            );
-        } else {
-            existing = jdbcTemplate.query(
-                    "SELECT id, control_mode FROM conversation_sessions "
-                            + "WHERE customer_psid = ? "
-                            + "ORDER BY updated_at DESC LIMIT 1",
-                    (rs, rowNum) -> new SessionSnapshot(
-                            UUID.fromString(rs.getString("id")),
-                            rs.getString("control_mode")
-                    ),
-                    psid
-            );
-        }
+        List<SessionSnapshot> existing = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
 
         if (!existing.isEmpty()) {
             SessionSnapshot found = existing.get(0);
@@ -347,11 +607,11 @@ public class InboundSessionPersistenceService {
                         + "id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, "
                         + "control_mode, buying_temperature, temperature_delta, temperature_label, momentum, "
                         + "buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, "
-                        + "last_message_preview, last_sender_role, last_message_at, created_at, updated_at"
+                        + "opted_out, last_message_preview, last_sender_role, last_message_at, created_at, updated_at"
                         + ") VALUES (?, ?, ?, ?, 'mình', 'Tư vấn dịch vụ', 'GENERAL', "
                         + "'BOT_ACTIVE', 45, 0, 'WARM', 'STABLE', "
                         + "'EXPLORING_CONSULTATION', 'Đang tìm hiểu giải pháp', 'DISCOVERY', FALSE, FALSE, "
-                        + "'', 'CUSTOMER', ?, ?, ?)",
+                        + "FALSE, '', 'CUSTOMER', ?, ?, ?)",
                 newSessionId,
                 effectiveDbPageId,
                 psid,
@@ -360,7 +620,51 @@ public class InboundSessionPersistenceService {
                 nowTs,
                 nowTs
         );
-        return new SessionSnapshot(newSessionId, "BOT_ACTIVE");
+        return new SessionSnapshot(newSessionId, "BOT_ACTIVE", false);
+    }
+
+    private void recordSessionOptOutInTx(UUID sessionId, String previewText, Instant now) {
+        Timestamp ts = Timestamp.from(now);
+        jdbcTemplate.update(
+                "UPDATE conversation_sessions "
+                        + "SET opted_out = TRUE, opted_out_at = ?, "
+                        + "    last_message_preview = ?, last_sender_role = 'CUSTOMER', "
+                        + "    last_message_at = GREATEST(last_message_at, ?), updated_at = ? "
+                        + "WHERE id = ?",
+                ts,
+                previewText != null ? previewText : "",
+                ts,
+                ts,
+                sessionId
+        );
+    }
+
+    private void recordSessionReconsentInTx(UUID sessionId, String source, String evidence, Instant now) {
+        Timestamp ts = Timestamp.from(now);
+        jdbcTemplate.update(
+                "UPDATE conversation_sessions "
+                        + "SET opted_out = FALSE, re_opt_in_at = ?, re_opt_in_source = ?, re_opt_in_evidence = ?, "
+                        + "    updated_at = ? "
+                        + "WHERE id = ?",
+                ts,
+                source,
+                evidence,
+                ts,
+                sessionId
+        );
+    }
+
+    private static String buildReconsentEvidence(String externalMid, String text) {
+        String safeMid = (externalMid != null && !externalMid.isBlank()) ? externalMid : "no-mid";
+        String excerpt = text != null ? text.strip() : "";
+        if (excerpt.length() > 280) {
+            excerpt = excerpt.substring(0, 280);
+        }
+        return safeMid + " | " + excerpt;
+    }
+
+    private static Instant toInstantOrNull(Timestamp ts) {
+        return ts != null ? ts.toInstant() : null;
     }
 
     private UUID resolveExistingPageIdOrNullInTx(UUID requestedPageId) {
@@ -450,6 +754,6 @@ public class InboundSessionPersistenceService {
                 : "psid-sim-default";
     }
 
-    private record SessionSnapshot(UUID id, String controlMode) {
+    private record SessionSnapshot(UUID id, String controlMode, boolean optedOut) {
     }
 }

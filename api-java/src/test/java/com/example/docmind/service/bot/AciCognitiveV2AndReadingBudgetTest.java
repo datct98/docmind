@@ -2608,9 +2608,10 @@ class AciCognitiveV2AndReadingBudgetTest {
         var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
         var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
 
-        // Apply idempotent V32 index DDL
+        // Apply idempotent V32 + V33 schema DDL so test execution order is 100% independent before Flyway boot
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
                 + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+        ensureV33OptOutColumnsIdempotent(jdbc);
 
         var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_a"), 67_108_864L);
         var persistenceSvc = new InboundSessionPersistenceService(jdbc, txMgr, walStore);
@@ -2769,6 +2770,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
                 + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+        ensureV33OptOutColumnsIdempotent(jdbc);
 
         var realPersistence = new InboundSessionPersistenceService(jdbc, txMgr, null);
 
@@ -3000,6 +3002,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         var liveJdbc = new org.springframework.jdbc.core.JdbcTemplate(liveDs);
         liveJdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
                 + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+        ensureV33OptOutColumnsIdempotent(liveJdbc);
         var liveTx = new org.springframework.jdbc.datasource.DataSourceTransactionManager(liveDs);
         var liveWal = new DurableInboundWalRecoveryStore(tempDir.resolve("live_wal"), 67_108_864L);
         var livePersistence = new InboundSessionPersistenceService(liveJdbc, liveTx, liveWal);
@@ -3469,6 +3472,490 @@ class AciCognitiveV2AndReadingBudgetTest {
             }
         } finally {
             CleanAgentCatalogAndPromptBuilder.setExternalAciPromptPathForTest(null);
+        }
+    }
+
+    // =========================================================================
+    // UNIT P0.4 — V33 6-Scenario Opt-Out / Re-Consent Matrix, uninterruptibleSafety
+    // Lock Under HUMAN_TAKEOVER & 2-Layer Outbound Fencing (Tiers C1 / C2 / C3)
+    // =========================================================================
+
+    private static void ensureV33OptOutColumnsIdempotent(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        jdbc.execute("ALTER TABLE conversation_sessions "
+                + "ADD COLUMN IF NOT EXISTS opted_out BOOLEAN NOT NULL DEFAULT FALSE, "
+                + "ADD COLUMN IF NOT EXISTS opted_out_at TIMESTAMPTZ, "
+                + "ADD COLUMN IF NOT EXISTS re_opt_in_at TIMESTAMPTZ, "
+                + "ADD COLUMN IF NOT EXISTS re_opt_in_source VARCHAR(64), "
+                + "ADD COLUMN IF NOT EXISTS re_opt_in_evidence TEXT");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_conv_sessions_page_psid_guard "
+                + "ON conversation_sessions (page_id, customer_psid, updated_at DESC)");
+    }
+
+    @Test
+    @DisplayName("P0.4-A: V33 Schema, 6-Scenario Opt-Out/Re-Consent Matrix (incl. /reengage block) & uninterruptibleSafety Lock Under HUMAN_TAKEOVER (V1+V2)")
+    void testP04_V33SixScenarioOptOutReconsentMatrixAndUninterruptibleSafetyLock(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempWalDir
+    ) {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        ensureV33OptOutColumnsIdempotent(jdbc);
+
+        // 0. Verify all 5 V33 columns exist in information_schema.columns on live docmind-postgres
+        List<String> v33Cols = jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = 'public' AND table_name = 'conversation_sessions' "
+                        + "AND column_name IN ('opted_out', 'opted_out_at', 're_opt_in_at', 're_opt_in_source', 're_opt_in_evidence') "
+                        + "ORDER BY column_name",
+                String.class
+        );
+        assertThat(v33Cols).containsExactly(
+                "opted_out", "opted_out_at", "re_opt_in_at", "re_opt_in_evidence", "re_opt_in_source"
+        );
+
+        // Polite conversational deferral (S06) MUST NOT be misclassified as explicit system opt-out
+        assertThat(InboundSessionPersistenceService.isExplicitCustomerOptOutCommand("Thôi, không cần nữa")).isFalse();
+        assertThat(InboundSessionPersistenceService.isExplicitCustomerOptOutCommand("Thôi để chị suy nghĩ thêm đã nhé")).isFalse();
+
+        var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_p04_a"), 67_108_864L);
+        var persistenceSvc = new InboundSessionPersistenceService(jdbc, txMgr, walStore);
+        walStore.setDbReplayer(persistenceSvc::replayWalRecordToDatabase);
+
+        var llmCalls = new java.util.concurrent.atomic.AtomicInteger(0);
+        var nextBubblesJson = new java.util.concurrent.atomic.AtomicReference<>(
+                "[\"Dạ gói gội dưỡng sinh thảo dược 60 phút bên em có giá 239k ạ.\"]"
+        );
+        FanpageBotService bot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                new AgentBrainService((com.example.docmind.client.AgentBrainClient) null),
+                (prompt, budget) -> {
+                    llmCalls.incrementAndGet();
+                    return """
+                            {
+                              "brain_reflection": {
+                                "customer_understanding": {"detected_intent": "SERVICE_INQUIRY", "emotion": "CALM", "buying_readiness": "EXPLORING"},
+                                "response_plan": {"strategy": "Direct Answer", "tone": "LEVEL_1_NATURAL", "depth": "CONCISE", "cta_level": "NO_CTA", "next_action": "NO_ADDITIONAL_ACTION"}
+                              },
+                              "bubbles": %s
+                            }
+                            """.formatted(nextBubblesJson.get());
+                }
+        );
+        bot.setInboundSessionPersistenceService(persistenceSvc);
+
+        String matrixPsid = "psid-p04-matrix-" + UUID.randomUUID();
+        String safetyPsid = "psid-p04-safety-" + UUID.randomUUID();
+
+        try {
+            // --- Scenario 5: Explicit customer opt-out command ("Thôi đừng nhắn nữa") -> opted_out=true, 0 LLM, 0 outbound ---
+            FanpageBotResponse optOutResp = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Thôi đừng nhắn nữa",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(0);
+            assertThat(optOutResp.replyBubbles()).isEmpty();
+            assertThat(optOutResp.needsHumanHandoff()).isFalse();
+            assertThat(optOutResp.triggeredHooks()).contains("OPT_OUT_SILENT_HOLD", "EXPLICIT_OPT_OUT");
+
+            Map<String, Object> rowAfterS5 = jdbc.queryForMap(
+                    "SELECT control_mode, opted_out, opted_out_at, re_opt_in_at FROM conversation_sessions WHERE customer_psid = ?",
+                    matrixPsid
+            );
+            assertThat(rowAfterS5.get("opted_out")).isEqualTo(true);
+            assertThat(rowAfterS5.get("opted_out_at")).isNotNull();
+            assertThat(rowAfterS5.get("re_opt_in_at")).isNull();
+
+            // Proactive /reengage MUST be 100% blocked while opted_out == true
+            FanpageBotResponse reengageBlocked = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, 600, "REENGAGE", false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(0);
+            assertThat(reengageBlocked.replyBubbles()).isEmpty();
+            assertThat(reengageBlocked.triggeredHooks()).contains("PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD", "OPT_OUT_SILENT_HOLD");
+
+            // --- Scenario 4: Phatic / short / ambiguous messages while opted_out == true -> remain opted_out=true, 0 LLM, 0 outbound ---
+            for (String phatic : List.of("ok", "ừ", "cảm ơn", "?", "💆‍♀️")) {
+                FanpageBotResponse phaticResp = bot.handleCustomerMessage(new FanpageBotRequest(
+                        PAGE_ID.toString(), matrixPsid, "Chị Hương", phatic,
+                        null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + matrixPsid, false, null, null
+                ));
+                assertThat(llmCalls.get()).isEqualTo(0);
+                assertThat(phaticResp.replyBubbles()).isEmpty();
+                assertThat(phaticResp.needsHumanHandoff()).isFalse();
+                assertThat(phaticResp.triggeredHooks()).contains("OPT_OUT_SILENT_HOLD");
+            }
+            Map<String, Object> rowAfterS4 = jdbc.queryForMap(
+                    "SELECT opted_out, re_opt_in_at FROM conversation_sessions WHERE customer_psid = ?",
+                    matrixPsid
+            );
+            assertThat(rowAfterS4.get("opted_out")).isEqualTo(true);
+            assertThat(rowAfterS4.get("re_opt_in_at")).isNull();
+
+            // --- Scenario 1: Active concrete price inquiry while opted_out == true -> audited re-consent (opted_out=false) & reply ---
+            nextBubblesJson.set("[\"Dạ gói gội dưỡng sinh thảo dược 60 phút bên em có giá 239k ạ.\"]");
+            FanpageBotResponse s1Resp;
+            try {
+                org.slf4j.MDC.put("fb_message_id", "m_p04_reconsent_s1");
+                s1Resp = bot.handleCustomerMessage(new FanpageBotRequest(
+                        PAGE_ID.toString(), matrixPsid, "Chị Hương", "Gói 60p bao nhiêu tiền?",
+                        null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + matrixPsid, false, null, null
+                ));
+            } finally {
+                org.slf4j.MDC.remove("fb_message_id");
+            }
+            assertThat(llmCalls.get()).isEqualTo(1);
+            assertThat(s1Resp.replyBubbles()).isNotEmpty();
+            assertThat(s1Resp.replyText()).contains("239k");
+            Map<String, Object> rowAfterS1 = jdbc.queryForMap(
+                    "SELECT opted_out, re_opt_in_at, re_opt_in_source, re_opt_in_evidence FROM conversation_sessions WHERE customer_psid = ?",
+                    matrixPsid
+            );
+            assertThat(rowAfterS1.get("opted_out")).isEqualTo(false);
+            assertThat(rowAfterS1.get("re_opt_in_at")).isNotNull();
+            assertThat(rowAfterS1.get("re_opt_in_source")).isEqualTo("FB_WEBHOOK");
+            assertThat(String.valueOf(rowAfterS1.get("re_opt_in_evidence")))
+                    .contains("fbmid:m_p04_reconsent_s1")
+                    .contains("Gói 60p bao nhiêu tiền?");
+
+            // --- Scenario 2: Re-opt-out ("Đừng làm phiền chị nữa") then concrete booking request ("Đặt cho chị 5h chiều nay") ---
+            bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Đừng làm phiền chị nữa",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT opted_out FROM conversation_sessions WHERE customer_psid = ?", Boolean.class, matrixPsid))
+                    .isTrue();
+
+            nextBubblesJson.set("[\"Dạ để em ghi nhận yêu cầu đặt lịch lúc 17h chiều nay, chị cho em xin gói mình muốn trải nghiệm nhé ạ.\"]");
+            FanpageBotResponse s2Resp = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Đặt cho chị 5h chiều nay",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(2);
+            assertThat(s2Resp.replyBubbles()).isNotEmpty();
+            assertThat(jdbc.queryForObject("SELECT opted_out FROM conversation_sessions WHERE customer_psid = ?", Boolean.class, matrixPsid))
+                    .isFalse();
+            assertThat(jdbc.queryForObject("SELECT re_opt_in_evidence FROM conversation_sessions WHERE customer_psid = ?", String.class, matrixPsid))
+                    .contains("Đặt cho chị 5h chiều nay");
+
+            // --- Scenario 3: Re-opt-out ("Hủy đăng ký") then concrete service inquiry ("Gói gội dưỡng sinh gồm những bước gì em?") ---
+            bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Hủy đăng ký",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(2);
+            assertThat(jdbc.queryForObject("SELECT opted_out FROM conversation_sessions WHERE customer_psid = ?", Boolean.class, matrixPsid))
+                    .isTrue();
+
+            nextBubblesJson.set("[\"Dạ gói gội dưỡng sinh thảo dược bên em gồm gội canh thang thảo mộc tươi và massage cổ vai gáy thư giãn ạ.\"]");
+            FanpageBotResponse s3Resp = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Gói gội dưỡng sinh gồm những bước gì em?",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(3);
+            assertThat(s3Resp.replyBubbles()).isNotEmpty();
+            assertThat(jdbc.queryForObject("SELECT opted_out FROM conversation_sessions WHERE customer_psid = ?", Boolean.class, matrixPsid))
+                    .isFalse();
+            assertThat(jdbc.queryForObject("SELECT re_opt_in_evidence FROM conversation_sessions WHERE customer_psid = ?", String.class, matrixPsid))
+                    .contains("Gói gội dưỡng sinh gồm những bước gì em?");
+
+            // --- Scenario 6: control_mode == HUMAN_TAKEOVER combined with ALL (1)-(5) ---
+            jdbc.update("UPDATE conversation_sessions SET control_mode = 'HUMAN_TAKEOVER', opted_out = FALSE, opted_out_at = NULL WHERE customer_psid = ?",
+                    matrixPsid);
+            for (String underTakeoverMsg : List.of(
+                    "Gói 60p bao nhiêu tiền?",
+                    "Đặt cho chị 5h chiều nay",
+                    "Gói gội dưỡng sinh gồm những bước gì em?",
+                    "ok"
+            )) {
+                FanpageBotResponse htResp = bot.handleCustomerMessage(new FanpageBotRequest(
+                        PAGE_ID.toString(), matrixPsid, "Chị Hương", underTakeoverMsg,
+                        null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + matrixPsid, false, null, null
+                ));
+                assertThat(llmCalls.get()).isEqualTo(3);
+                assertThat(htResp.replyBubbles()).isEmpty();
+                assertThat(htResp.needsHumanHandoff()).isFalse();
+                assertThat(htResp.handoffCategory()).isNull();
+                assertThat(htResp.triggeredHooks()).contains("HUMAN_TAKEOVER_SILENT_HOLD");
+            }
+            // Now send (5) explicit opt-out under HUMAN_TAKEOVER -> opted_out MUST become true while control_mode remains HUMAN_TAKEOVER!
+            FanpageBotResponse htOptOutResp = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "Thôi đừng nhắn nữa",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(3);
+            assertThat(htOptOutResp.replyBubbles()).isEmpty();
+            assertThat(htOptOutResp.needsHumanHandoff()).isFalse();
+            assertThat(htOptOutResp.handoffCategory()).isNull();
+            assertThat(htOptOutResp.triggeredHooks())
+                    .contains("HUMAN_TAKEOVER_SILENT_HOLD", "OPT_OUT_RECORDED_UNDER_HUMAN_TAKEOVER");
+            Map<String, Object> rowAfterS6 = jdbc.queryForMap(
+                    "SELECT control_mode, opted_out, opted_out_at FROM conversation_sessions WHERE customer_psid = ?",
+                    matrixPsid
+            );
+            assertThat(rowAfterS6.get("control_mode")).isEqualTo("HUMAN_TAKEOVER");
+            assertThat(rowAfterS6.get("opted_out")).isEqualTo(true);
+            assertThat(rowAfterS6.get("opted_out_at")).isNotNull();
+
+            // --- Adversarial uninterruptibleSafety Under HUMAN_TAKEOVER on BOTH LLM_COGNITIVE_V2 AND DETERMINISTIC_V1 ---
+            UUID safetySessionId = UUID.randomUUID();
+            jdbc.update(
+                    "INSERT INTO conversation_sessions ("
+                            + "id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, "
+                            + "control_mode, buying_temperature, temperature_delta, temperature_label, momentum, "
+                            + "buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, "
+                            + "opted_out, last_message_preview, last_sender_role, last_message_at, created_at, updated_at"
+                            + ") VALUES (?, ?, ?, 'Khách Cấp Cứu', 'Chị', 'Tư vấn', 'GENERAL', "
+                            + "'HUMAN_TAKEOVER', 60, 0, 'WARM', 'STABLE', "
+                            + "'EXPLORING_CONSULTATION', 'Đang tìm hiểu', 'DISCOVERY', TRUE, FALSE, "
+                            + "FALSE, 'Sale đang trực tiếp tư vấn', 'HUMAN_SALE', NOW(), NOW(), NOW())",
+                    safetySessionId, PAGE_ID, safetyPsid
+            );
+            for (AdaptiveConversationIntelligence.CognitiveMode mode : List.of(
+                    AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                    AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1
+            )) {
+                bot.setCognitiveMode(mode);
+                FanpageBotResponse emergencyUnderTakeover = bot.handleCustomerMessage(new FanpageBotRequest(
+                        PAGE_ID.toString(), safetyPsid, "Khách Cấp Cứu",
+                        "Chị đang bầu 5 tháng bị tức ngực đau đầu dữ dội",
+                        null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + safetyPsid, false, null, null
+                ));
+                assertThat(llmCalls.get()).isEqualTo(3);
+                assertThat(emergencyUnderTakeover.replyBubbles()).isEmpty();
+                assertThat(emergencyUnderTakeover.replyText()).isEmpty();
+                assertThat(emergencyUnderTakeover.needsHumanHandoff()).isFalse();
+                assertThat(emergencyUnderTakeover.handoffCategory()).isNull();
+                assertThat(emergencyUnderTakeover.handoffReason()).isNull();
+                assertThat(emergencyUnderTakeover.triggeredHooks()).contains("HUMAN_TAKEOVER_SILENT_HOLD");
+            }
+            Integer emergencyCustSaved = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages WHERE session_id = ? AND sender_role = 'CUSTOMER'",
+                    Integer.class,
+                    safetySessionId
+            );
+            assertThat(emergencyCustSaved).isEqualTo(2);
+        } finally {
+            jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?)", matrixPsid, safetyPsid);
+        }
+    }
+
+    @Test
+    @DisplayName("P0.4-B: 2-Layer Outbound Fencing Race Verification — Tier C1 (In-Flight LLM), Tier C2 (Sleep Wakeup) & Tier C3 (Wire Boundary)")
+    void testP04_TwoLayerOutboundFencingRaceTiersC1C2C3(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempWalDir
+    ) throws Exception {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        ensureV33OptOutColumnsIdempotent(jdbc);
+
+        var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_p04_b"), 67_108_864L);
+        var persistenceSvc = new InboundSessionPersistenceService(jdbc, txMgr, walStore);
+        walStore.setDbReplayer(persistenceSvc::replayWalRecordToDatabase);
+
+        String psidC1 = "psid-p04-c1-" + UUID.randomUUID();
+        String psidC2 = "psid-p04-c2-" + UUID.randomUUID();
+        String psidC3 = "psid-p04-c3-" + UUID.randomUUID();
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+
+        try {
+            // =================================================================
+            // TIER C1: In-Flight LLM Race -> Layer-2 Fresh DB Re-Read suppresses
+            // 100% of stale draft (including handoff_request) & 0 Ledger writes!
+            // =================================================================
+            var llmEntered = new java.util.concurrent.CountDownLatch(1);
+            var takeoverCommitted = new java.util.concurrent.CountDownLatch(1);
+
+            FanpageBotService c1Bot = createIsolatedBotServiceWithBrain(
+                    AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                    new AgentBrainService((com.example.docmind.client.AgentBrainClient) null),
+                    (prompt, budget) -> {
+                        llmEntered.countDown();
+                        try {
+                            takeoverCommitted.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return """
+                                {
+                                  "brain_reflection": {
+                                    "customer_understanding": {"detected_intent": "PRICE_INQUIRY", "emotion": "CALM", "buying_readiness": "EXPLORING"},
+                                    "response_plan": {"strategy": "Direct Answer", "tone": "LEVEL_1_NATURAL", "depth": "CONCISE", "cta_level": "SOFT_CTA", "next_action": "ASK_PREFERENCE"}
+                                  },
+                                  "bubbles": [
+                                    "Dạ gói massage toàn thân 60 phút bên em giá 399k ạ.",
+                                    "Chị muốn ghé khung giờ nào để em giữ lịch ạ?"
+                                  ]
+                                }
+                                """;
+                    }
+            );
+            c1Bot.setInboundSessionPersistenceService(persistenceSvc);
+            String c1ConvId = "fb_webhook_" + psidC1;
+            String c1LedgerKey = SentBubbleLedger.key(PAGE_ID.toString(), psidC1, c1ConvId);
+            SentBubbleLedger.reset(c1LedgerKey);
+
+            java.util.concurrent.Future<FanpageBotResponse> c1Future = pool.submit(() ->
+                    c1Bot.handleCustomerMessage(new FanpageBotRequest(
+                            PAGE_ID.toString(), psidC1, "Chị Mai", "Massage toàn thân mấy tiền em?",
+                            null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                            c1ConvId, false, null, null
+                    ))
+            );
+
+            assertThat(llmEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            // While LLM is in flight, Human Sale takes over in PostgreSQL + Layer-1 epoch supersede
+            int updatedC1 = jdbc.update(
+                    "UPDATE conversation_sessions SET control_mode = 'HUMAN_TAKEOVER', updated_at = NOW() WHERE customer_psid = ?",
+                    psidC1
+            );
+            assertThat(updatedC1).isEqualTo(1);
+            InboundSessionPersistenceService.supersedeEpochForSender(PAGE_ID, null, psidC1);
+            takeoverCommitted.countDown();
+
+            FanpageBotResponse c1Resp = c1Future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(c1Resp.replyBubbles()).isEmpty();
+            assertThat(c1Resp.replyText()).isEmpty();
+            assertThat(c1Resp.needsHumanHandoff()).isFalse();
+            assertThat(c1Resp.handoffCategory()).isNull();
+            assertThat(c1Resp.triggeredHooks()).contains("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
+            // 0 assistant turns committed to SentBubbleLedger!
+            List<FanpageBotRequest.ConversationTurn> c1LedgerTurns = SentBubbleLedger.reconcile(c1LedgerKey, List.of());
+            assertThat(c1LedgerTurns.stream().filter(t -> "assistant".equalsIgnoreCase(t.role())).toList()).isEmpty();
+
+            // =================================================================
+            // TIER C2: Thread sleeping in awaitBubbleDelayOrSupersede(10_000ms)
+            // wakes up immediately (< 600ms) when supersedeEpochForSender fires!
+            // =================================================================
+            var c2EpochCtx = SenderEpochRegistry.startNewBatchEpoch(PAGE_ID.toString(), psidC2);
+            SenderEpochRegistry.clearCurrentThreadTurn();
+            var c2SleepStarted = new java.util.concurrent.CountDownLatch(1);
+            long c2StartNs = System.nanoTime();
+            java.util.concurrent.Future<Boolean> c2SleepFuture = pool.submit(() -> {
+                c2SleepStarted.countDown();
+                return SenderEpochRegistry.awaitBubbleDelayOrSupersede(
+                        PAGE_ID.toString(), psidC2, c2EpochCtx.epoch(), 10_000L
+                );
+            });
+            assertThat(c2SleepStarted.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(60L);
+            InboundSessionPersistenceService.supersedeEpochForSender(PAGE_ID, null, psidC2);
+            boolean c2StillValid = c2SleepFuture.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            long c2ElapsedMs = (System.nanoTime() - c2StartNs) / 1_000_000L;
+            SenderEpochRegistry.clearCurrentThreadTurn();
+            assertThat(c2StillValid).isFalse();
+            assertThat(c2ElapsedMs).isLessThan(1_000L);
+
+            // =================================================================
+            // TIER C3: Honest Wire Boundary via FanpageBotController + CountDownLatch
+            // inside FacebookGraphApiSender.postJson: Bubble 1 (already on the wire)
+            // completes once, Bubble 2 is 100% cancelled & marked canceled in Ledger!
+            // =================================================================
+            var controller = new com.example.docmind.controller.FanpageBotController(c1Bot);
+            controller.setPageAccessToken("test-fb-page-token");
+            controller.setDefaultPageId(PAGE_ID.toString());
+            controller.setInterBubbleDelayMs(5_000L);
+
+            var bubble1OnWire = new java.util.concurrent.CountDownLatch(1);
+            var takeoverDuringWire = new java.util.concurrent.CountDownLatch(1);
+            var wireMessagePayloads = new java.util.concurrent.CopyOnWriteArrayList<String>();
+
+            controller.setGraphApiSender((url, jsonBody) -> {
+                if (jsonBody != null && jsonBody.contains("\"message\"")) {
+                    wireMessagePayloads.add(jsonBody);
+                    if (wireMessagePayloads.size() == 1) {
+                        bubble1OnWire.countDown();
+                        takeoverDuringWire.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                    }
+                    return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(
+                            200, "{\"message_id\":\"m_out_" + wireMessagePayloads.size() + "\"}"
+                    );
+                }
+                return new com.example.docmind.controller.FanpageBotController.HttpResponseResult(200, "{\"result\":\"ok\"}");
+            });
+
+            String c3ConvId = "fb_webhook_" + psidC3;
+            String c3LedgerKey = SentBubbleLedger.key(PAGE_ID.toString(), psidC3, c3ConvId);
+            SentBubbleLedger.reset(c3LedgerKey);
+            SentBubbleLedger.recordCustomerTurn(c3LedgerKey, "u-c3", "Tư vấn gói gội 60p giúp chị");
+            SentBubbleLedger.recordAssistantTurn(
+                    c3LedgerKey,
+                    "u-c3:a",
+                    List.of("Bubble 1 đang truyền trên đường mạng", "Bubble 2 chưa truyền phải bị hủy"),
+                    SentBubbleLedger.DeliveryStatus.DELIVERED,
+                    List.of()
+            );
+
+            FanpageBotResponse twoBubbleResp = new FanpageBotResponse(
+                    "Bubble 1 đang truyền trên đường mạng\n\nBubble 2 chưa truyền phải bị hủy",
+                    List.of(
+                            new FanpageBotResponse.ReplyBubble("Bubble 1 đang truyền trên đường mạng", 0),
+                            new FanpageBotResponse.ReplyBubble("Bubble 2 chưa truyền phải bị hủy", 2500)
+                    ),
+                    List.of(0, 2500),
+                    "DISCOVERY",
+                    0.95,
+                    false,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    null,
+                    List.of(),
+                    List.of()
+            );
+
+            long c3StartNs = System.nanoTime();
+            java.util.concurrent.Future<Integer> c3SendFuture = pool.submit(() -> {
+                SenderEpochRegistry.startNewBatchEpoch(PAGE_ID.toString(), psidC3);
+                try {
+                    return controller.sendSequentialBubblesToFacebook(
+                            PAGE_ID.toString(), psidC3, c3ConvId, twoBubbleResp
+                    );
+                } finally {
+                    SenderEpochRegistry.clearCurrentThreadTurn();
+                }
+            });
+
+            assertThat(bubble1OnWire.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            // Trigger Layer-1 supersede while Bubble 1 HTTP POST is already in flight on the wire
+            InboundSessionPersistenceService.supersedeEpochForSender(PAGE_ID, null, psidC3);
+            takeoverDuringWire.countDown();
+
+            int c3SentCount = c3SendFuture.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            long c3ElapsedMs = (System.nanoTime() - c3StartNs) / 1_000_000L;
+
+            assertThat(c3SentCount).isEqualTo(1);
+            assertThat(wireMessagePayloads).hasSize(1);
+            assertThat(wireMessagePayloads.get(0)).contains("Bubble 1 đang truyền trên đường mạng");
+            assertThat(c3ElapsedMs).isLessThan(2_000L); // Aborted immediately before 5,000ms interBubbleDelayMs!
+
+            List<FanpageBotRequest.ConversationTurn> c3Reconciled = SentBubbleLedger.reconcile(c3LedgerKey, List.of());
+            List<String> c3AssistantContents = c3Reconciled.stream()
+                    .filter(t -> "assistant".equalsIgnoreCase(t.role()))
+                    .map(FanpageBotRequest.ConversationTurn::content)
+                    .toList();
+            assertThat(c3AssistantContents)
+                    .hasSize(1)
+                    .first().asString()
+                    .contains("Bubble 1 đang truyền trên đường mạng")
+                    .doesNotContain("Bubble 2 chưa truyền phải bị hủy");
+        } finally {
+            pool.shutdownNow();
+            jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?, ?)", psidC1, psidC2, psidC3);
         }
     }
 }

@@ -860,6 +860,39 @@ public class AgentBrainService {
     }
 
     /**
+     * Đồng bộ tức thì cờ {@code optedOut} trong bộ nhớ phiên ACI V2 với trạng thái bền vững trên PostgreSQL (Unit P0.4).
+     */
+    public void syncOptedOutState(UUID pageId, String senderId, boolean nextOptedOut) {
+        if (senderId == null || senderId.isBlank()) {
+            return;
+        }
+        String convKey = toConversationMemoryKey(pageId, senderId);
+        CustomerBrainMemory mem = customerMemoryStore.computeIfAbsent(convKey, k -> new CustomerBrainMemory());
+        synchronized (mem) {
+            AdaptiveConversationIntelligence.OperationalStateSnapshot prev = mem.operationalState;
+            if (prev != null) {
+                mem.operationalState = new AdaptiveConversationIntelligence.OperationalStateSnapshot(
+                        prev.bookingStatus(),
+                        prev.handoffStatus(),
+                        nextOptedOut,
+                        prev.activeHandoffTicketId(),
+                        prev.lastHandoffError(),
+                        prev.communicationStylePreference()
+                );
+            } else if (nextOptedOut) {
+                mem.operationalState = new AdaptiveConversationIntelligence.OperationalStateSnapshot(
+                        "NONE",
+                        AdaptiveConversationIntelligence.HandoffLifecycleStatus.NONE,
+                        true,
+                        null,
+                        null,
+                        mem.communicationStylePreference
+                );
+            }
+        }
+    }
+
+    /**
      * Cập nhật nguyên tử ({@code synchronized} trên khóa {@code pageId + ":" + senderId}) toàn bộ 5 tầng bộ nhớ,
      * vòng đời {@code Working Hypothesis} 5 thao tác, bản ghi chiến thuật lượt trước và danh sách {@code CommitmentRecord}.
      *
