@@ -4,8 +4,11 @@ import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
 import com.example.docmind.service.sales.PriceLadderTracker;
+import com.example.docmind.service.security.PromptSecurityGuard;
+import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +29,13 @@ import java.util.regex.Pattern;
 public final class CleanAgentOutputRefereeAndSanitizer {
 
     private static final Logger log = LoggerFactory.getLogger(CleanAgentOutputRefereeAndSanitizer.class);
-    private static final ObjectMapper LLM_JSON_MAPPER = new ObjectMapper();
+    private static final ObjectMapper LLM_JSON_MAPPER = JsonMapper.builder()
+            .enable(
+                    JsonReadFeature.ALLOW_TRAILING_COMMA,
+                    JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS,
+                    JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER
+            )
+            .build();
 
     public static final String SPEECH_ACT_RESPECTED_PAUSE = "RESPECTED_PAUSE_WITH_SOFT_OPTION";
     public static final String SPEECH_ACT_OFFERED_DETAILS = "OFFERED_PACKAGE_DETAILS";
@@ -412,6 +421,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         }
                     }
                 } catch (Exception ignored) {
+                    String salvagedBrainJson = extractBalancedJsonValueAfterKey(
+                            jsonCandidate, List.of("brain_reflection", "reflection"), '{', '}');
+                    if (salvagedBrainJson != null) {
+                        reflectionChars = salvagedBrainJson.length();
+                        totalJsonChars = Math.max(reflectionChars, jsonCandidate.length());
+                    }
                 }
             }
         }
@@ -463,6 +478,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     }
                 }
                 if (text != null && !text.isBlank()) {
+                    // Unit P3.3: Chỉ lọc bảo mật trên bề mặt văn bản gửi khách (tuyệt đối không quét nhầm thẻ <DOCUMENT_CONTEXT> nội bộ trong brain_reflection)
+                    text = PromptSecurityGuard.sanitizeModelOutput(text);
+                    if (text == null || text.isBlank()) continue;
                     // Tách các đoạn văn độc lập ngăn cách bởi ngắt đoạn kép (\n\s*\n), bảo toàn xuống dòng đơn \n (bullet list)
                     String[] paragraphBlocks = DOUBLE_NEWLINE_PARAGRAPH_SPLIT_PATTERN.split(text.strip());
                     int emittedSubPart = 0;
@@ -483,7 +501,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         } else if (root.hasNonNull("reply_text") || root.hasNonNull("reply")) {
             String singleText = root.hasNonNull("reply_text") ? root.get("reply_text").asText() : root.get("reply").asText();
             if (singleText != null && !singleText.isBlank()) {
-                bubbles.addAll(splitIntoBubbles(singleText.strip()));
+                String safeSingleText = PromptSecurityGuard.sanitizeModelOutput(singleText.strip());
+                if (safeSingleText != null && !safeSingleText.isBlank()) {
+                    bubbles.addAll(splitIntoBubbles(safeSingleText.strip()));
+                }
             }
         }
         return bubbles;
@@ -521,7 +542,50 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (jsonCandidate == null || jsonCandidate.isBlank()) {
             return new StructuredLlmOutput(false, List.of(), null, null, null);
         }
+        AdaptiveConversationIntelligence.AdaptiveCognitiveReflection salvagedAciReflection =
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
+        BrainReflection salvagedBrainReflection = BrainReflection.empty();
+        Boolean salvagedShouldHandoff = null;
+        String salvagedHandoffReason = null;
+
+        String rawBrainSubtree = extractBalancedJsonValueAfterKey(
+                jsonCandidate, List.of("brain_reflection", "reflection"), '{', '}');
+        if (rawBrainSubtree != null) {
+            try {
+                JsonNode brainNode = LLM_JSON_MAPPER.readTree(rawBrainSubtree);
+                if (brainNode != null && brainNode.isObject()) {
+                    salvagedAciReflection = AdaptiveConversationIntelligence.parseAdaptiveCognitiveReflection(brainNode, null);
+                    salvagedBrainReflection = extractSafeBrainReflection(brainNode);
+                    if (salvagedAciReflection.parsedFromV2Schema()) {
+                        salvagedShouldHandoff = salvagedAciReflection.handoffRequest().requested();
+                        salvagedHandoffReason = salvagedAciReflection.handoffRequest().reason();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         try {
+            String rawBubblesArray = extractBalancedJsonValueAfterKey(
+                    jsonCandidate, List.of("reply_bubbles", "bubbles"), '[', ']');
+            if (rawBubblesArray != null) {
+                String arrJson = "{\"bubbles\":" + rawBubblesArray + "}";
+                JsonNode arrRoot = LLM_JSON_MAPPER.readTree(arrJson);
+                List<FanpageBotResponse.ReplyBubble> arrBubbles = extractBubblesFromRootNode(arrRoot, minPostPriceDelayMs);
+                if (!arrBubbles.isEmpty()) {
+                    return new StructuredLlmOutput(
+                            true,
+                            arrBubbles,
+                            salvagedShouldHandoff != null ? salvagedShouldHandoff : false,
+                            salvagedHandoffReason,
+                            null,
+                            null,
+                            null,
+                            salvagedBrainReflection,
+                            salvagedAciReflection
+                    );
+                }
+            }
             int brIdx = jsonCandidate.indexOf("\"brain_reflection\"");
             if (brIdx > 0) {
                 int commaBefore = jsonCandidate.lastIndexOf(',', brIdx);
@@ -530,22 +594,95 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     JsonNode salvagedRoot = LLM_JSON_MAPPER.readTree(salvagedJson);
                     List<FanpageBotResponse.ReplyBubble> salvagedBubbles = extractBubblesFromRootNode(salvagedRoot, minPostPriceDelayMs);
                     if (!salvagedBubbles.isEmpty()) {
-                        return new StructuredLlmOutput(true, salvagedBubbles, false, null, null, null, null, BrainReflection.empty());
+                        return new StructuredLlmOutput(
+                                true,
+                                salvagedBubbles,
+                                salvagedShouldHandoff != null ? salvagedShouldHandoff : false,
+                                salvagedHandoffReason,
+                                null,
+                                null,
+                                null,
+                                salvagedBrainReflection,
+                                salvagedAciReflection
+                        );
                     }
-                }
-            }
-            Matcher m = Pattern.compile("(?s)\"(?:reply_bubbles|bubbles)\"\\s*:\\s*(\\[.*?\\])").matcher(jsonCandidate);
-            if (m.find()) {
-                String arrJson = "{\"reply_bubbles\":" + m.group(1) + "}";
-                JsonNode arrRoot = LLM_JSON_MAPPER.readTree(arrJson);
-                List<FanpageBotResponse.ReplyBubble> arrBubbles = extractBubblesFromRootNode(arrRoot, minPostPriceDelayMs);
-                if (!arrBubbles.isEmpty()) {
-                    return new StructuredLlmOutput(true, arrBubbles, false, null, null, null, null, BrainReflection.empty());
                 }
             }
         } catch (Exception ignored) {
         }
         return new StructuredLlmOutput(false, List.of(), null, null, null);
+    }
+
+    /**
+     * Trích xuất cây con JSON cân bằng ({@code {...}} hoặc {@code [...]}) ngay sau tên khóa chỉ định,
+     * hỗ trợ đúng thứ tự Single-Pass V2 ({@code brain_reflection} đứng trước {@code bubbles}) và chuỗi chứa ngoặc bên trong.
+     */
+    static String extractBalancedJsonValueAfterKey(
+            String text,
+            List<String> candidateKeys,
+            char openChar,
+            char closeChar
+    ) {
+        if (text == null || text.isBlank() || candidateKeys == null || candidateKeys.isEmpty()) {
+            return null;
+        }
+        int len = text.length();
+        for (String key : candidateKeys) {
+            if (key == null || key.isBlank()) continue;
+            String quotedKey = "\"" + key + "\"";
+            int searchFrom = 0;
+            while (searchFrom < len) {
+                int keyIdx = text.indexOf(quotedKey, searchFrom);
+                if (keyIdx < 0) {
+                    break;
+                }
+                int cursor = keyIdx + quotedKey.length();
+                while (cursor < len && Character.isWhitespace(text.charAt(cursor))) {
+                    cursor++;
+                }
+                if (cursor >= len || text.charAt(cursor) != ':') {
+                    searchFrom = keyIdx + quotedKey.length();
+                    continue;
+                }
+                cursor++;
+                while (cursor < len && Character.isWhitespace(text.charAt(cursor))) {
+                    cursor++;
+                }
+                if (cursor >= len || text.charAt(cursor) != openChar) {
+                    searchFrom = cursor;
+                    continue;
+                }
+                int startIdx = cursor;
+                int depth = 0;
+                boolean inString = false;
+                boolean escaped = false;
+                for (int i = startIdx; i < len; i++) {
+                    char ch = text.charAt(i);
+                    if (inString) {
+                        if (escaped) {
+                            escaped = false;
+                        } else if (ch == '\\') {
+                            escaped = true;
+                        } else if (ch == '"') {
+                            inString = false;
+                        }
+                    } else {
+                        if (ch == '"') {
+                            inString = true;
+                        } else if (ch == openChar) {
+                            depth++;
+                        } else if (ch == closeChar) {
+                            depth--;
+                            if (depth == 0) {
+                                return text.substring(startIdx, i + 1);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        return null;
     }
 
     public static String stripMarkdownCodeFencesAndExtractJson(String rawText) {
@@ -563,6 +700,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String candidate = trimmed.substring(firstBrace, lastBrace + 1).strip();
             if (candidate.contains("\"reply_bubbles\"")
                     || candidate.contains("\"bubbles\"")
+                    || candidate.contains("\"brain_reflection\"")
+                    || candidate.contains("\"reflection\"")
                     || candidate.contains("\"reply_text\"")
                     || candidate.contains("\"should_handoff\"")
                     || candidate.contains("\"state_updates\"")
@@ -4700,11 +4839,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     private static final Pattern FORBIDDEN_THAO_MAI_CLICHE_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+)?(?:chia\\s+sẻ|kể|nói)\\s+thấy\\s+thương|"
-            + "thấy\\s+thương(?:\\s+(?:quá|lắm|ghê|thật))?|"
-            + "(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|"
-            + "thương\\s+(?:quá|lắm)\\b|"
-            + "xót\\s+(?:quá|lắm|xa\\s+quá)\\b|"
+            "(?isU)\\b(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+|cô\\s+|chú\\s+|bác\\s+)?(?:chia\\s+sẻ|kể|nói|tâm\\s+sự)(?:\\s+mà)?(?:\\s+(?:em|mình))?\\s+thấy\\s+thương|"
+            + "thấy\\s+thương(?!\\s+(?:hiệu|mại|lượng|gia|nhân|tổn|vong|tích)\\b)(?:\\s+(?:mình|chị|anh|bạn|cô|chú|bác))?(?:\\s+(?:quá|lắm|ghê|thật))?|"
+            + "(?:(?:em|mình)\\s+)?thương\\s+(?:(?:mình|chị|anh|bạn|cô|chú|bác)\\s+)?(?:quá|lắm|ghê)\\b|"
+            + "xót\\s+(?:(?:mình|chị|anh|bạn|cô|chú|bác)\\s+)?(?:quá|lắm|xa\\s+quá|ruột\\s+quá)\\b|"
             + "khổ\\s+tâm\\s+(?:quá|lắm))\\b"
     );
 
@@ -5082,7 +5220,127 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     /**
-     * Unit P1.3: Chốt chặn hậu kiểm nhẹ cho lượt phàn nàn giao tiếp và cụm sáo rỗng "thấy thương quá/thương lắm":
+     * Unit P3.3: Lọc tại chỗ ({@code in-place}) trên mọi lượt các cụm đặt khách vào vị trí đáng thương
+     * ({@code "nghe mình kể thấy thương"}, {@code "thấy thương"}, {@code "thương quá"}, {@code "thương lắm"}, {@code "xót quá"})
+     * theo ranh giới mệnh đề ngữ pháp tiếng Việt — tuyệt đối không để sót mẩu cụt {@code "Dạ em."} và không chèn câu đồng cảm văn mẫu cố định.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> sanitizePatronizingEmpathyPhrasesInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        boolean anyFiltered = false;
+        List<FanpageBotResponse.ReplyBubble> cleaned = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            if (!detectForbiddenThaoMaiEmpathyCliche(norm)) {
+                cleaned.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
+                continue;
+            }
+            anyFiltered = true;
+            String sanitized = sanitizePatronizingEmpathyTextInPlace(norm);
+            if (!sanitized.isBlank()) {
+                cleaned.add(new FanpageBotResponse.ReplyBubble(sanitized, b.typingDelayMs()));
+            }
+        }
+        if (cleaned.isEmpty() && anyFiltered) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + safeSelf + " nghe " + safeCust + " chia sẻ rồi ạ.",
+                    bubbles.get(0).typingDelayMs()
+            ));
+        }
+        return cleaned;
+    }
+
+    static String sanitizePatronizingEmpathyTextInPlace(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return "";
+        }
+        String norm = java.text.Normalizer.normalize(rawText.strip(), java.text.Normalizer.Form.NFC);
+        if (!detectForbiddenThaoMaiEmpathyCliche(norm)) {
+            return norm;
+        }
+        String[] rawSentences = norm.split("(?<=[.!?？])\\s+");
+        List<String> cleanSentences = new ArrayList<>();
+        boolean carryLeadingPoliteDa = false;
+        for (String s : rawSentences) {
+            String sTrim = s.strip();
+            if (sTrim.isEmpty()) continue;
+            if (!detectForbiddenThaoMaiEmpathyCliche(sTrim)) {
+                String sentenceToKeep = sTrim;
+                if (carryLeadingPoliteDa && !sentenceToKeep.matches("(?isU)^dạ\\b.*")) {
+                    sentenceToKeep = prependPoliteDaNaturally(sentenceToKeep);
+                }
+                carryLeadingPoliteDa = false;
+                cleanSentences.add(sentenceToKeep);
+                continue;
+            }
+            char lastCh = sTrim.charAt(sTrim.length() - 1);
+            boolean hasTerminalPunct = (lastCh == '.' || lastCh == '!' || lastCh == '?' || lastCh == '？');
+            char termPunct = hasTerminalPunct ? lastCh : '.';
+            String sBody = hasTerminalPunct ? sTrim.substring(0, sTrim.length() - 1).strip() : sTrim;
+            boolean sentenceHadLeadingDa = sBody.matches("(?isU)^dạ\\b.*");
+
+            String[] clauses = sBody.split("(?iU)(?:\\s*[,;–—]\\s*|\\s+-\\s+|\\s+(?:vậy\\s+nên|cho\\s+nên|nên)\\s+)");
+            List<String> keptClauses = new ArrayList<>();
+            for (String rawClause : clauses) {
+                if (rawClause == null) continue;
+                String clause = rawClause.strip();
+                if (clause.isEmpty() || detectForbiddenThaoMaiEmpathyCliche(clause)) {
+                    continue;
+                }
+                clause = clause.replaceFirst("(?isU)^(?:mà|thì|nhưng|vậy\\s+nên|cho\\s+nên|nên)\\s+", "").strip();
+                if (clause.matches("(?isU)^(?:dạ(?:\\s+vâng)?|vâng|(?:dạ\\s+)?(?:em|mình))(?:\\s+(?:ạ|nha|nhé))?\\s*$")) {
+                    continue;
+                }
+                if (!clause.isEmpty()) {
+                    keptClauses.add(clause);
+                }
+            }
+            if (keptClauses.isEmpty()) {
+                if (sentenceHadLeadingDa && cleanSentences.isEmpty()) {
+                    carryLeadingPoliteDa = true;
+                }
+            } else {
+                String rebuilt = String.join(", ", keptClauses).strip();
+                if ((sentenceHadLeadingDa || carryLeadingPoliteDa) && !rebuilt.matches("(?isU)^dạ\\b.*")) {
+                    rebuilt = prependPoliteDaNaturally(rebuilt);
+                }
+                carryLeadingPoliteDa = false;
+                rebuilt = BubbleTextSanitizer.capitalizeFirstLetter(rebuilt);
+                char endCh = rebuilt.charAt(rebuilt.length() - 1);
+                if (endCh != '.' && endCh != '!' && endCh != '?' && endCh != '？') {
+                    rebuilt = rebuilt + termPunct;
+                }
+                cleanSentences.add(rebuilt);
+            }
+        }
+        return String.join(" ", cleanSentences).strip();
+    }
+
+    private static String prependPoliteDaNaturally(String clauseOrSentence) {
+        if (clauseOrSentence == null || clauseOrSentence.isBlank()) {
+            return "";
+        }
+        String trimmed = clauseOrSentence.strip();
+        if (Character.isLowerCase(trimmed.charAt(0))) {
+            return "Dạ " + trimmed;
+        }
+        if (trimmed.matches("(?sU)^(?:Mình|Chị|Anh|Bạn|Cô|Chú|Bác|Em|Bên|Tình|Hiện|Nếu|Khi|Để|Với|Thỉnh)\\b.*")
+                && !trimmed.matches("(?sU)^(?:Chị|Anh|Bạn|Cô|Chú|Bác)\\s+\\p{Lu}.*")) {
+            return "Dạ " + Character.toLowerCase(trimmed.charAt(0)) + trimmed.substring(1);
+        }
+        return "Dạ, " + trimmed;
+    }
+
+    /**
+     * Unit P1.3 &amp; P3.3: Chốt chặn hậu kiểm nhẹ cho lượt phàn nàn giao tiếp và cụm đặt khách vào vị trí đáng thương:
      * gỡ bỏ câu hỏi mời đặt lịch/chọn gói ở cuối câu và thay mở đầu xin lỗi hành chính bị lặp từ lượt liền trước.
      */
     public static List<FanpageBotResponse.ReplyBubble> enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
@@ -5103,39 +5361,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         java.text.Normalizer.normalize(previousAssistantMessage.strip(), java.text.Normalizer.Form.NFC)
                 ).find();
 
-        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
-        for (int idx = 0; idx < bubbles.size(); idx++) {
-            FanpageBotResponse.ReplyBubble b = bubbles.get(idx);
+        // 1. Gỡ bỏ in-place trên mọi lượt các cụm đặt khách vào vị trí đáng thương ("nghe mình kể thấy thương", "thấy thương", "thương quá", "thương lắm", "xót quá")
+        List<FanpageBotResponse.ReplyBubble> empathyCleaned =
+                sanitizePatronizingEmpathyPhrasesInPlace(bubbles, safeSelf, safeCust);
+
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(empathyCleaned.size());
+        for (int idx = 0; idx < empathyCleaned.size(); idx++) {
+            FanpageBotResponse.ReplyBubble b = empathyCleaned.get(idx);
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
-
-            // 1. Gỡ bỏ in-place trên mọi lượt các cụm đặt khách vào vị trí đáng thương ("nghe mình kể thấy thương", "thấy thương", "thương quá", "thương lắm", "xót quá")
-            if (detectForbiddenThaoMaiEmpathyCliche(txt)) {
-                String[] rawSentences = txt.split("(?<=[.!?？])\\s+");
-                List<String> cleanSentences = new ArrayList<>();
-                for (String s : rawSentences) {
-                    String sTrim = s.strip();
-                    if (sTrim.isEmpty()) continue;
-                    if (!detectForbiddenThaoMaiEmpathyCliche(sTrim)) {
-                        cleanSentences.add(sTrim);
-                    } else {
-                        String clauseCleaned = sTrim.replaceAll(
-                                "(?isU)[,;–—-]?\\s*(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+)?(?:chia\\s+sẻ|kể|nói)\\s+thấy\\s+thương(?:\\s+(?:quá|lắm|ghê))?|"
-                                + "(?:em\\s+|mình\\s+)?thấy\\s+thương(?:\\s+(?:mình|chị|anh|bạn))?(?:\\s+(?:quá|lắm|ghê|thật))?|"
-                                + "(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|"
-                                + "thương\\s+(?:quá|lắm)|xót\\s+(?:quá|lắm|xa\\s+quá)|khổ\\s+tâm\\s+(?:quá|lắm))(?:\\s+(?:ạ|nha|nhé))?\\s*[,;–—-]?",
-                                ""
-                        ).replaceAll("^\\s*(?:dạ\\s+)?(?:ạ|nha|nhé)?\\s*[.!?,;:]*\\s*$", "").strip();
-                        if (!clauseCleaned.isEmpty() && !detectForbiddenThaoMaiEmpathyCliche(clauseCleaned)) {
-                            cleanSentences.add(clauseCleaned);
-                        }
-                    }
-                }
-                txt = String.join(" ", cleanSentences).strip();
-                if (txt.isEmpty()) {
-                    txt = "Dạ " + safeSelf + " ghi nhận chia sẻ của " + safeCust + " ạ.";
-                }
-            }
 
             if (isStyleComplaint) {
                 // 2. Nếu lượt liền trước đã mở đầu bằng "Dạ em xin lỗi...", cấm lặp lại cấu trúc xin lỗi hành chính

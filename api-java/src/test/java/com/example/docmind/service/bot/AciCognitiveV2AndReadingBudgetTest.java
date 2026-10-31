@@ -5706,4 +5706,206 @@ class AciCognitiveV2AndReadingBudgetTest {
             );
         }
     }
+
+    // =========================================================================
+    // UNIT P3.3 — Truy Vết & Triệt Tiêu Retry Ngầm Ở T3 (retryTriggerReason),
+    // Thu Gọn brain_reflection Bảo Toàn Thông Tin, Lọc In-Place "thấy thương"
+    // Không Vỡ Ngữ Pháp / Không Văn Mẫu & 6 Chiến Thuật Đa Tenant
+    // =========================================================================
+
+    @Test
+    @DisplayName("Unit P3.3: Triệt tiêu retry ngầm T3 (<DOCUMENT_CONTEXT> trong brain_reflection + V2 JSON salvage), telemetry retryTriggerReason tường minh, schema brain_reflection thu gọn bảo toàn 100% trạng thái & lọc in-place cụm 'thấy thương/xót quá' chuẩn ngữ pháp đa tenant")
+    void testP33_HiddenT3RetryEliminated_ExplicitRetryTriggerReason_CompactBrainReflection_AndNaturalEmpathyGuard() throws Exception {
+        // 1. Tái hiện chính xác gốc rễ retry ngầm ở T3 ("thỉnh thoảng bị lại"):
+        //    LLM viết thẻ nội bộ "<DOCUMENT_CONTEXT>" / "<CONVERSATION_HISTORY>" bên trong brain_reflection + dấu phẩy thừa JSON,
+        //    nhưng bubbles gửi khách hoàn toàn sạch -> KHÔNG bị PromptSecurityGuard xóa nhầm JSON, retryCount == 0, retryTriggerReason == "NONE"!
+        var sharedBrain = new AgentBrainService();
+        AtomicInteger t3CallCount = new AtomicInteger(0);
+        FanpageBotService t3Bot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    t3CallCount.incrementAndGet();
+                    return """
+                            {
+                              "brain_reflection": {
+                                "conversational_context": {
+                                  "current_topic": "Tần suất triệu chứng",
+                                  "unresolved_requests": []
+                                },
+                                "customer_understanding": {
+                                  "turn_intent": "CLARIFY_SYMPTOM_DETAIL",
+                                  "conversation_goal": "CLARIFY_HEALTH_STATE",
+                                  "need_revision": false,
+                                  "interaction_permission": "OPEN",
+                                  "buying_signal": "NONE",
+                                  "confirmed_facts_delta": [
+                                    {"key": "self_reported_symptom", "value": "đau đầu", "op": "ADD", "status": "CURRENT"},
+                                    {"key": "self_reported_symptom", "value": "chóng mặt", "op": "ADD", "status": "CURRENT"}
+                                  ],
+                                  "interested_package_id": null,
+                                  "emotion": "TIRED",
+                                  "inferred_customer_pronoun": null,
+                                  "pronoun_confidence": 0.0,
+                                  "cost_concern_expressed": false,
+                                  "verified_symptom_duration": "thỉnh thoảng bị lại",
+                                  "booking_readiness": "EXPLORING",
+                                  "communication_style_preference": null
+                                },
+                                "priority": "SAFETY",
+                                "working_hypothesis": {
+                                  "hypothesis": "<DOCUMENT_CONTEXT> chưa nêu nhu cầu gói",
+                                  "barrier_type": "NONE",
+                                  "confidence": 0.82,
+                                  "lifecycle_op": "ADJUST",
+                                },
+                                "response_plan": {
+                                  "strategy": "Active Listening",
+                                  "tone": "LEVEL_1_NATURAL",
+                                  "depth": "STANDARD",
+                                  "cta_level": "NO_CTA",
+                                  "next_action": "ASK_ONE_CLARIFYING_QUESTION",
+                                  "adaptation": "REFINEMENT",
+                                  "previous_outcome": "ACCEPTED",
+                                },
+                                "activated_skill_codes": ["discovery_empathy_and_scope"],
+                                "handoff_request": {"requested": false, "reason": null},
+                                "proposed_booking_patch": {"selected_product_id": null, "proposed_date": null, "proposed_time": null}
+                              },
+                              "bubbles": [
+                                "Dạ nghe mình kể thấy thương lắm ạ. Tình trạng đau đầu, chóng mặt thỉnh thoảng bị lại như vậy thì mình nhớ để ý theo dõi thêm sức khỏe nhé ạ.",
+                                "Mỗi lần xuất hiện cơn như vậy thường kéo dài lâu không hay mình đang muốn tìm hiểu hướng thư giãn nghỉ ngơi nào ạ?"
+                              ],
+                            }
+                            """;
+                }
+        );
+
+        FanpageBotResponse t3Resp = t3Bot.handleCustomerMessage(buildBotRequest(
+                "sender-p33-t3",
+                "Khách",
+                "thỉnh thoảng bị lại",
+                null,
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Tôi đau đầu chóng mặt và thi thoảng hoa mắt"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ tình trạng đau đầu, chóng mặt và hoa mắt này mình gặp lâu chưa hay mới gần đây ạ?")
+                )
+        ));
+
+        ThinkingModePolicy.AciTurnTelemetry t3Telemetry = ThinkingModePolicy.getLastAciTurnTelemetry();
+        assertThat(t3CallCount.get()).isEqualTo(1);
+        assertThat(t3Telemetry).isNotNull();
+        assertThat(t3Telemetry.retryCount()).isEqualTo(0);
+        assertThat(t3Telemetry.retryTriggerReason()).isEqualTo("NONE");
+        assertThat(t3Telemetry.refereeViolations()).isEmpty();
+        assertThat(t3Telemetry.bookingStatus()).isEqualTo("NONE");
+
+        // Cụm "nghe mình kể thấy thương lắm" đã bị lọc in-place ngay ở lượt đầu (0 retry) VÀ ngữ pháp câu còn lại trôi chảy, không còn mẩu "Dạ em."!
+        assertThat(t3Resp.replyText())
+                .doesNotContainIgnoringCase("thấy thương")
+                .doesNotContainIgnoringCase("Dạ em.")
+                .contains("thỉnh thoảng bị lại");
+        assertThat(t3Resp.replyBubbles().get(0).text())
+                .startsWith("Dạ tình trạng đau đầu, chóng mặt thỉnh thoảng bị lại");
+
+        // Bảo toàn 100% chất lượng thông tin trong brain_reflection thu gọn:
+        var t3Draft2 = sharedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, "sender-p33-t3");
+        assertThat(t3Draft2.conversationalContext().currentTopic()).isEqualTo("Tần suất triệu chứng");
+        assertThat(t3Draft2.consultativeProfile().turnIntent()).isEqualTo("CLARIFY_SYMPTOM_DETAIL");
+        assertThat(t3Draft2.consultativeProfile().emotion().primary()).isEqualTo("TIRED");
+        assertThat(t3Draft2.consultativeProfile().selfReportedSymptoms())
+                .anyMatch(s -> "đau đầu".equalsIgnoreCase(s.value()))
+                .anyMatch(s -> "chóng mặt".equalsIgnoreCase(s.value()));
+        assertThat(sharedBrain.getVerifiedSymptomDuration(PAGE_ID, "sender-p33-t3"))
+                .isEqualTo("thỉnh thoảng bị lại");
+        assertThat(t3Draft2.lastResponsePlan().strategy()).isEqualTo("Active Listening");
+        assertThat(t3Draft2.lastResponsePlan().objective()).isEqualTo("CLARIFY_SYMPTOM_DETAIL");
+        assertThat(t3Draft2.lastResponsePlan().nextAction()).isEqualTo("ASK_ONE_CLARIFYING_QUESTION");
+
+        // 2. Salvage JSON theo đúng thứ tự Single-Pass V2 (brain_reflection đứng TRƯỚC bubbles, có dấu ngoặc vuông [...] bên trong chuỗi bubble):
+        String partialV2Json = "{\"brain_reflection\":{\"customer_understanding\":{\"turn_intent\":\"PRICE_OBJECTION\",\"cost_concern_expressed\":true,\"emotion\":\"HESITANT\"},\"priority\":\"BUDGET_FIT\",\"response_plan\":{\"strategy\":\"Soft Recommendation\",\"cta_level\":\"NO_CTA\",\"next_action\":\"NO_ADDITIONAL_ACTION\"}},\"bubbles\":[\"Dạ nếu mình muốn thử nhẹ trước [không áp lực thời gian] thì bên em có gói thư giãn 40 phút 189k rất vừa vặn ạ.\"], \"broken_tail\": ";
+        var salvaged = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(partialV2Json, 0);
+        assertThat(salvaged.parsedFromJson()).isTrue();
+        assertThat(salvaged.bubbles()).hasSize(1);
+        assertThat(salvaged.bubbles().get(0).text()).contains("189k");
+        assertThat(salvaged.aciReflection().parsedFromV2Schema()).isTrue();
+        assertThat(salvaged.aciReflection().customerUnderstanding().detectedIntent()).isEqualTo("PRICE_OBJECTION");
+        assertThat(salvaged.aciReflection().customerUnderstanding().costConcernExpressed()).isTrue();
+        assertThat(salvaged.aciReflection().priority().primary()).isEqualTo("BUDGET_FIT");
+
+        // 3. Đo lường hiệu quả thu gọn schema brain_reflection (>= 30% giảm reflection chars/tokens cho cùng 1 ngữ nghĩa lượt):
+        String verboseV2Json = """
+                {"brain_reflection":{"conversational_context":{"current_topic":"Hỏi giá dịch vụ","unresolved_requests":[],"pending_references":[],"last_bot_action":"Chào mở đầu"},"customer_understanding":{"turn_intent":"ASK_PRICE","conversation_goal":"EXPLORE_MASSAGE","need_revision":false,"interaction_permission":"OPEN","buying_signal":"MODERATE","confirmed_facts_delta":[],"interested_package_id":"NS01","emotional_state":{"primary":"NEUTRAL","secondary":[],"confidence":0.85},"inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING","communication_style_preference":null},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"working_hypothesis":{"hypothesis":"Khách đang tham khảo mức giá cơ bản","barrier_type":"NONE","confidence_level":"HIGH","evidence":["T1"],"confidence":0.85,"lifecycle_op":"MAINTAIN"},"response_plan":{"objective":"Báo giá rõ ràng đúng phạm vi khách hỏi","strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"CONCISE","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK","adaptation":"CONTINUATION","previous_outcome":"NOT_APPLICABLE"},"activated_skill_codes":[],"uncertainties":[],"customer_statements":[],"commitment_delta":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Dạ gói Massage cơ bản 60 phút bên em có giá 399k ạ."]}
+                """.strip();
+        String compactV2Json = """
+                {"brain_reflection":{"conversational_context":{"current_topic":"Hỏi giá","unresolved_requests":[]},"customer_understanding":{"turn_intent":"ASK_PRICE","conversation_goal":"EXPLORE_MASSAGE","need_revision":false,"interaction_permission":"OPEN","buying_signal":"MODERATE","confirmed_facts_delta":[],"interested_package_id":"NS01","emotion":"NEUTRAL","inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING","communication_style_preference":null},"priority":"PRICE_INFORMATION","working_hypothesis":{"hypothesis":"Tham khảo giá","barrier_type":"NONE","confidence":0.85,"lifecycle_op":"MAINTAIN"},"response_plan":{"strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"CONCISE","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK","adaptation":"CONTINUATION","previous_outcome":"NOT_APPLICABLE"},"activated_skill_codes":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Dạ gói Massage cơ bản 60 phút bên em có giá 399k ạ."]}
+                """.strip();
+        int verboseTokensEst = CleanAgentOutputRefereeAndSanitizer.estimateReflectionTokensFromJsonOutput(verboseV2Json, 0, 0);
+        int compactTokensEst = CleanAgentOutputRefereeAndSanitizer.estimateReflectionTokensFromJsonOutput(compactV2Json, 0, 0);
+        assertThat(compactTokensEst).isLessThan((int) Math.round(verboseTokensEst * 0.80));
+
+        // 4. Kiểm chứng retryTriggerReason tường minh khi thực sự lỗi JSON ở lần 1:
+        AtomicInteger brokenJsonCounter = new AtomicInteger(0);
+        FanpageBotService retryTelemetryBot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> brokenJsonCounter.incrementAndGet() == 1
+                        ? "Xin lỗi hệ thống chưa trả về JSON hợp lệ"
+                        : compactV2Json
+        );
+        retryTelemetryBot.handleCustomerMessage(buildBotRequest(
+                "sender-p33-json-retry", "Khách", "Massage toàn thân mấy tiền?", null, List.of()
+        ));
+        ThinkingModePolicy.AciTurnTelemetry jsonRetryTel = ThinkingModePolicy.getLastAciTurnTelemetry();
+        assertThat(jsonRetryTel.retryCount()).isEqualTo(1);
+        assertThat(jsonRetryTel.retryTriggerReason()).isEqualTo("JSON_PARSE_FAILURE");
+
+        // 5. Kiểm chứng lọc in-place toàn bộ các cụm đặt khách vào vị trí đáng thương (chuẩn ngữ pháp, không rớt mẩu cụt, bảo toàn "thương hiệu"):
+        List<FanpageBotResponse.ReplyBubble> empathySamples = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ em nghe mình chia sẻ thấy thương lắm ạ. Tình trạng này mình gặp lâu chưa ạ?", 0),
+                new FanpageBotResponse.ReplyBubble("Dạ nghe chị kể thấy thương quá, chị nhớ nghỉ ngơi và theo dõi thêm sức khỏe nhé ạ.", 0),
+                new FanpageBotResponse.ReplyBubble("Dạ mình nghỉ ngơi sớm cho đỡ mệt nhé, nghe mình nói mà xót quá ạ.", 0),
+                new FanpageBotResponse.ReplyBubble("Thương chị quá, hiện tượng hoa mắt này thường xuất hiện vào buổi nào trong ngày ạ?", 0),
+                new FanpageBotResponse.ReplyBubble("Bên em là thương hiệu chăm sóc sức khỏe chú trọng sự tĩnh lặng và chỉn chu ạ.", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> sanitizedSamples =
+                CleanAgentOutputRefereeAndSanitizer.sanitizePatronizingEmpathyPhrasesInPlace(empathySamples, "em", "mình");
+        assertThat(sanitizedSamples).hasSize(5);
+        for (int i = 0; i < 4; i++) {
+            assertThat(CleanAgentOutputRefereeAndSanitizer.detectForbiddenThaoMaiEmpathyCliche(sanitizedSamples.get(i).text()))
+                    .as("Sample #" + i + " must have 0 patronizing empathy phrases: " + sanitizedSamples.get(i).text())
+                    .isFalse();
+            assertThat(sanitizedSamples.get(i).text())
+                    .doesNotContain("Dạ em.")
+                    .doesNotContain("mà.");
+        }
+        assertThat(sanitizedSamples.get(0).text()).isEqualTo("Dạ tình trạng này mình gặp lâu chưa ạ?");
+        assertThat(sanitizedSamples.get(1).text()).isEqualTo("Dạ chị nhớ nghỉ ngơi và theo dõi thêm sức khỏe nhé ạ.");
+        assertThat(sanitizedSamples.get(2).text()).isEqualTo("Dạ mình nghỉ ngơi sớm cho đỡ mệt nhé.");
+        assertThat(sanitizedSamples.get(4).text()).contains("thương hiệu");
+
+        // 6. Đảm bảo Đa Tenant trên config/aci_v2_system_prompt.md (0 hardcode giá Nàng Sen) & Bare "Ok" độc lập lượt 1 không nạp skill ép sale:
+        java.nio.file.Path mdPath = java.nio.file.Path.of("../config/aci_v2_system_prompt.md");
+        if (!java.nio.file.Files.isRegularFile(mdPath)) {
+            mdPath = java.nio.file.Path.of("config/aci_v2_system_prompt.md");
+        }
+        String sharedPromptBody = java.nio.file.Files.readString(mdPath, java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(sharedPromptBody)
+                .doesNotContain("50k", "189k", "239k", "339k", "399k", "530k", "580k", "670k", "990k");
+
+        List<com.example.docmind.dto.bot.AgentSkillDto> mockTenantSkills = List.of(
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "discovery_empathy_and_scope",
+                        "Discovery", "PSYCHOLOGY", "desc", "when", "tac", "good", "anti", 90, true, PAGE_ID.toString(), Instant.now(), Instant.now()),
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "graceful_pause_keep_warmth",
+                        "Pause", "PSYCHOLOGY", "desc", "when", "tac", "good", "anti", 85, true, PAGE_ID.toString(), Instant.now(), Instant.now()),
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "soft_booking_scheduling",
+                        "Booking", "CLOSING", "desc", "when", "tac", "good", "anti", 80, true, PAGE_ID.toString(), Instant.now(), Instant.now())
+        );
+        var isolatedOkSkills = CleanAgentOrchestratorService.selectPreLlmTurnRelevantSkills(
+                mockTenantSkills, "Ok", List.of(), ConversationState.StructuredBookingState.none()
+        );
+        assertThat(isolatedOkSkills)
+                .extracting(com.example.docmind.dto.bot.AgentSkillDto::code)
+                .containsExactly("graceful_pause_keep_warmth");
+    }
 }

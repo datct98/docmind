@@ -609,7 +609,8 @@ public final class ThinkingModePolicy {
             String bookingStatus,
             int reflectionTokens,
             long retrievalLatencyMs,
-            int retryCount
+            int retryCount,
+            String retryTriggerReason
     ) {
         public AciTurnTelemetry {
             cognitiveMode = cognitiveMode != null
@@ -617,6 +618,58 @@ public final class ThinkingModePolicy {
                     : AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
             thinkingMode = thinkingMode != null ? thinkingMode : ThinkingMode.FAST_NO_THINK;
             refereeViolations = refereeViolations != null ? List.copyOf(refereeViolations) : List.of();
+            retryTriggerReason = (retryTriggerReason == null || retryTriggerReason.isBlank())
+                    ? (retryCount > 0 ? "UNSPECIFIED_RETRY" : "NONE")
+                    : retryTriggerReason.strip();
+        }
+
+        public AciTurnTelemetry(
+                AdaptiveConversationIntelligence.CognitiveMode cognitiveMode,
+                ThinkingMode thinkingMode,
+                int promptChars,
+                int legacyEquivalentPromptChars,
+                int promptTokens,
+                int completionTokens,
+                int reasoningTokens,
+                long llmLatencyMs,
+                int quoteBubbleIndex,
+                long actualWaitMs,
+                long totalTurnLatencyMs,
+                boolean repairApplied,
+                List<String> refereeViolations,
+                String priorityPrimary,
+                String strategyChosen,
+                String strategyAdaptation,
+                String handoffStatus,
+                String bookingStatus,
+                int reflectionTokens,
+                long retrievalLatencyMs,
+                int retryCount
+        ) {
+            this(
+                    cognitiveMode,
+                    thinkingMode,
+                    promptChars,
+                    legacyEquivalentPromptChars,
+                    promptTokens,
+                    completionTokens,
+                    reasoningTokens,
+                    llmLatencyMs,
+                    quoteBubbleIndex,
+                    actualWaitMs,
+                    totalTurnLatencyMs,
+                    repairApplied,
+                    refereeViolations,
+                    priorityPrimary,
+                    strategyChosen,
+                    strategyAdaptation,
+                    handoffStatus,
+                    bookingStatus,
+                    reflectionTokens,
+                    retrievalLatencyMs,
+                    retryCount,
+                    retryCount > 0 ? "UNSPECIFIED_RETRY" : "NONE"
+            );
         }
 
         public AciTurnTelemetry(
@@ -660,7 +713,8 @@ public final class ThinkingModePolicy {
                     bookingStatus,
                     reasoningTokens,
                     0L,
-                    0
+                    0,
+                    "NONE"
             );
         }
 

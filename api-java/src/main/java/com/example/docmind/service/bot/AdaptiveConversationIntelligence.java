@@ -1851,6 +1851,9 @@ public final class AdaptiveConversationIntelligence {
             rawPlanStrategy = readTextOrDefault(b, "next_strategy", readTextOrDefault(b, "intended_speech_act", ""));
         }
         String normalizedStrategy = normalizePlannerStrategy(rawPlanStrategy.isBlank() ? "Direct Answer" : rawPlanStrategy);
+        if (planObjective.isBlank()) {
+            planObjective = !detectedIntent.isBlank() ? detectedIntent : normalizedStrategy;
+        }
         String planTone = hasResponsePlan ? readTextOrDefault(rpNode, "tone", "LEVEL_1_NATURAL") : "LEVEL_1_NATURAL";
         String defaultDepth = communicationStylePreference != null ? communicationStylePreference : "STANDARD";
         String planDepth = hasResponsePlan ? readTextOrDefault(rpNode, "depth", defaultDepth) : defaultDepth;
