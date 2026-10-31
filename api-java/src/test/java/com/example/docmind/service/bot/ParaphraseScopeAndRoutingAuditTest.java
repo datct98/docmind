@@ -156,11 +156,10 @@ class ParaphraseScopeAndRoutingAuditTest {
                 false, 3
         );
 
-        // Biến thể 17..19: 3 câu Frustration / Đòi giải pháp sau khi đã sửa lỗi vùng -> DIRECT_CONCRETE_SOLUTION (Mức ưu tiên 7)
+        // Biến thể 17..18: 2 câu Frustration / Đòi giải pháp sau khi đã sửa lỗi vùng -> DIRECT_CONCRETE_SOLUTION (Mức ưu tiên 7)
         String[] frustrationVariants = {
                 "Dở vừa, ns linh ta linh tinh",
-                "Rồi định chăm sóc cái j cho t, t phát bực r",
-                "Tư vấn chán thế, chẳng hiểu ý khách gì cả"
+                "Rồi định chăm sóc cái j cho t, t phát bực r"
         };
         for (String msg : frustrationVariants) {
             PrimaryActionRouter.RoutingDecision dec = PrimaryActionRouter.decide(
@@ -170,6 +169,12 @@ class ParaphraseScopeAndRoutingAuditTest {
                     "Câu bức xúc '" + msg + "' sau khi đã xin lỗi phải vào DIRECT_CONCRETE_SOLUTION");
             assertNotEquals("spa_ambiguous_confirm_once", dec.correspondingMicroSkillCode());
         }
+        // Biến thể 19: Phàn nàn cách diễn đạt mềm (R00W Soft Wording Feedback) -> GENERIC_SHORT_DISCOVERY (WORDING_FEEDBACK_REPAIR)
+        PrimaryActionRouter.RoutingDecision softStyleDec = PrimaryActionRouter.decide(
+                stateAfterT3, "Tư vấn chán thế, chẳng hiểu ý khách gì cả", false, List.of(), PagePersonaConfig.defaults()
+        );
+        assertEquals(PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY, softStyleDec.effectiveResponseAction());
+        assertNotEquals("spa_ambiguous_confirm_once", softStyleDec.correspondingMicroSkillCode());
 
         // Biến thể 20: Câu tụt cảm xúc -> MOOD_DROP_RECOVERY (Mức ưu tiên 8: 1 bubble, 0 dấu ?, không vào ambiguous_confirm_once)
         PrimaryActionRouter.RoutingDecision moodDropDec = PrimaryActionRouter.decide(

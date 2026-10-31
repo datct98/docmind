@@ -811,6 +811,21 @@ public final class PrimaryActionRouter {
         // R00-MISMATCH-CORRECTION-RESCUE (Priority 5B: Khách phản ứng vì bot tư vấn lệch vùng đau / lệch nhu cầu)
         if (classified == DetectedIntent.ENTITY_MISMATCH_CORRECTION || SentimentIntentLayer.isEntityMismatchCorrection(msg)) {
             boolean harshOrRepeated = SentimentIntentLayer.hasHarshPronouns(msg) || priorState.frustrationCount() >= 1;
+            boolean hasFullBodyHeldPackage = priorState.priceDiscussed()
+                    && priorState.heldPackage() != null
+                    && (priorState.heldPackage().contains("co_ban")
+                        || priorState.heldPackage().contains("nang_cao")
+                        || priorState.heldPackage().contains("phuc_hoi"));
+            if (!harshOrRepeated && hasFullBodyHeldPackage) {
+                return new RoutingDecision(
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
+                        false,
+                        2,
+                        "ENTITY_MISMATCH_RECONSULT",
+                        "spa_frustration_rescue"
+                );
+            }
             CatalogOption groundedRescueOpt = selectBestSingleCatalogOption(msg, enriched, fusedChunks);
             if (harshOrRepeated || groundedRescueOpt == null) {
                 return new RoutingDecision(
@@ -820,21 +835,6 @@ public final class PrimaryActionRouter {
                         1,
                         "MISMATCH_CORRECTION_HANDOFF",
                         "complaint_immediate_handoff"
-                );
-            }
-            boolean hasFullBodyHeldPackage = priorState.priceDiscussed()
-                    && priorState.heldPackage() != null
-                    && (priorState.heldPackage().contains("co_ban")
-                        || priorState.heldPackage().contains("nang_cao")
-                        || priorState.heldPackage().contains("phuc_hoi"));
-            if (hasFullBodyHeldPackage) {
-                return new RoutingDecision(
-                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
-                        PrimaryAction.RECOMMEND_ONE_PACKAGE,
-                        false,
-                        2,
-                        "ENTITY_MISMATCH_RECONSULT",
-                        "spa_frustration_rescue"
                 );
             }
             if (priorState.priceRequestedInSession()) {
@@ -947,6 +947,7 @@ public final class PrimaryActionRouter {
         }
         // R13B-TRIAL-ACCEPTANCE-BOOKING-CORRECTED (Priority 13: "Thử xem sao", "Đắt thế nhưng thôi thử xem sao")
         else if (classified == DetectedIntent.TRIAL_ACCEPTANCE
+                && !isPriceInquiryMessage(msg)
                 && (priorState.trialInviteOffered()
                     || "INVITE_ONE_SESSION_TRIAL".equals(priorState.lastQuestionIntent())
                     || priorState.downsellOffered()
@@ -3147,6 +3148,7 @@ public final class PrimaryActionRouter {
                 : nameLower;
 
         boolean hasFullBodyProcess = (combinedDetailLower.contains("massage trị liệu toàn thân")
+                || combinedDetailLower.contains("massage toàn thân")
                 || combinedDetailLower.contains("full body")
                 || combinedDetailLower.contains("tinh dầu thảo dược toàn thân")
                 || combinedDetailLower.contains("ấn huyệt toàn thân")

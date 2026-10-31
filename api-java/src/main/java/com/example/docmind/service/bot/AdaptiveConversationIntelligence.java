@@ -27,9 +27,9 @@ import java.util.regex.Pattern;
 /**
  * ACI – Adaptive Conversation Intelligence (Trí tuệ hội thoại thích ứng).
  *
- * <p>Hợp nhất toàn bộ mô hình miền và cơ chế kiểm soát quyền hạn cho chế độ {@link CognitiveMode#LLM_COGNITIVE_V2}:
+ * <p>Hợp nhất toàn bộ mô hình miền và cơ chế kiểm soát quyền hạn cho chế độ chuẩn duy nhất {@link CognitiveMode#LLM_COGNITIVE_V2}:
  * <ul>
- *   <li><b>Feature Flag ({@link CognitiveMode}):</b> {@code DETERMINISTIC_V1} vs {@code LLM_COGNITIVE_V2}.</li>
+ *   <li><b>Cognitive Mode ({@link CognitiveMode}):</b> {@code LLM_COGNITIVE_V2} (chế độ vận hành chính tắc duy nhất sau khi nghỉ hưu {@code DETERMINISTIC_V1} ở Unit P3.4).</li>
  *   <li><b>Tách biệt 3 luồng dữ liệu đầu vào ({@link ThreeStreamTurnInput}):</b>
  *       {@code Original Message} (bất biến gửi cho LLM + danh sách từng bong bóng burst gốc),
  *       {@code Normalized Query} (chỉ dùng nội bộ cho RAG/BM25), và
@@ -53,20 +53,9 @@ public final class AdaptiveConversationIntelligence {
     // =========================================================================
 
     public enum CognitiveMode {
-        DETERMINISTIC_V1,
         LLM_COGNITIVE_V2;
 
         public static CognitiveMode fromProperty(String raw) {
-            if (raw == null || raw.isBlank()) {
-                return LLM_COGNITIVE_V2;
-            }
-            String norm = raw.strip().toUpperCase(Locale.ROOT);
-            if ("DETERMINISTIC_V1".equals(norm) || "V1".equals(norm) || "LEGACY_V1".equals(norm)) {
-                return DETERMINISTIC_V1;
-            }
-            if ("LLM_COGNITIVE_V2".equals(norm) || "V2".equals(norm) || "ACI_V2".equals(norm)) {
-                return LLM_COGNITIVE_V2;
-            }
             return LLM_COGNITIVE_V2;
         }
     }
@@ -2475,6 +2464,24 @@ public final class AdaptiveConversationIntelligence {
             AdaptiveCognitiveReflection reflection,
             HandoffEventDispatcher dispatcher
     ) {
+        return evaluateAndExecuteConditionalHandoff(
+                pageId,
+                senderId,
+                originalCustomerMessage,
+                reflection,
+                null,
+                dispatcher
+        );
+    }
+
+    public static ConditionalHandoffDecision evaluateAndExecuteConditionalHandoff(
+            UUID pageId,
+            String senderId,
+            String originalCustomerMessage,
+            AdaptiveCognitiveReflection reflection,
+            com.example.docmind.service.retrieval.PromptBuilder.PagePersona pagePersona,
+            HandoffEventDispatcher dispatcher
+    ) {
         boolean llmRequested = reflection != null
                 && reflection.handoffRequest() != null
                 && reflection.handoffRequest().requested();
@@ -2482,6 +2489,13 @@ public final class AdaptiveConversationIntelligence {
                 ? reflection.handoffRequest().reason()
                 : null;
 
+        boolean llmSafetyEscalation = llmRequested
+                && reflection != null
+                && reflection.priority() != null
+                && "SAFETY".equalsIgnoreCase(reflection.priority().primary());
+        boolean safetyContraindication = pagePersona != null
+                ? FanpageBotService.shouldTriggerSafetyContraindicationHandoff(originalCustomerMessage, pagePersona)
+                : FanpageBotService.isUniversalAcuteMedicalEmergency(originalCustomerMessage);
         boolean paymentClaim = isPaymentClaimMessage(originalCustomerMessage);
         boolean staffPromise = isStaffPromiseClaimMessage(originalCustomerMessage);
         boolean concreteIncident = isConcreteServiceIncidentMessage(originalCustomerMessage);
@@ -2491,7 +2505,13 @@ public final class AdaptiveConversationIntelligence {
         String effectiveReason = llmReason;
         boolean mandatoryVerificationOrHandoff = false;
 
-        if (paymentClaim) {
+        if (safetyContraindication) {
+            mandatoryVerificationOrHandoff = true;
+            category = "MEDICAL_SAFETY_HANDOFF";
+            if (effectiveReason == null || effectiveReason.isBlank()) {
+                effectiveReason = "Khách hàng có dấu hiệu thai kỳ, triệu chứng thần kinh cấp tính hoặc cảnh báo an toàn chuyên ngành — chuyển chuyên viên hỗ trợ trực tiếp.";
+            }
+        } else if (paymentClaim) {
             mandatoryVerificationOrHandoff = true;
             category = "PAYMENT_VERIFICATION_HANDOFF";
             if (effectiveReason == null || effectiveReason.isBlank()) {
@@ -2514,6 +2534,12 @@ public final class AdaptiveConversationIntelligence {
             category = "EXPLICIT_HUMAN_REQUEST";
             if (effectiveReason == null || effectiveReason.isBlank()) {
                 effectiveReason = "Khách hàng chủ động yêu cầu gặp nhân viên/quản lý hỗ trợ trực tiếp.";
+            }
+        } else if (llmSafetyEscalation) {
+            mandatoryVerificationOrHandoff = true;
+            category = "MEDICAL_SAFETY_HANDOFF";
+            if (effectiveReason == null || effectiveReason.isBlank()) {
+                effectiveReason = "Khách hàng có dấu hiệu cảnh báo an toàn sức khỏe — chuyển chuyên viên hỗ trợ trực tiếp.";
             }
         }
 

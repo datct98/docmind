@@ -600,18 +600,30 @@ class MultiIndustryPersonaRulesAndSafetyC2CTest {
 
         String llmTileReplyJson = """
                 {
-                  "reply_bubbles": [
-                    {"text": "Dạ để đi lại an toàn chống trơn trượt, em gợi ý anh tham khảo mẫu Gạch Granite men Matt chống trơn R11 kích thước 60x60cm với đơn giá 320k/m² ạ.", "typing_delay_ms": 0},
-                    {"text": "Không biết anh đang cần lát cho khu vực phòng tắm hay sàn phòng khách khoảng bao nhiêu m² để em tính số lượng chuẩn cho mình ạ?", "typing_delay_ms": 1500}
+                  "bubbles": [
+                    "Dạ để đi lại an toàn chống trơn trượt, em gợi ý anh tham khảo mẫu Gạch Granite men Matt chống trơn R11 kích thước 60x60cm với đơn giá 320k/m² ạ.",
+                    "Không biết anh đang cần lát cho khu vực phòng tắm hay sàn phòng khách khoảng bao nhiêu m² để em tính số lượng chuẩn cho mình ạ?"
                   ],
                   "brain_reflection": {
-                    "observed_fact": "Vợ khách đang bầu, khách muốn chọn gạch chống trơn",
-                    "care_note_delta": "Gia đình có bà bầu, ưu tiên gạch chống trơn",
-                    "working_hypothesis": "Khách ưu tiên độ nhám chống trượt an toàn",
-                    "intended_speech_act": "OFFERED_PACKAGE_DETAILS",
-                    "detected_customer_intent": "SYMPTOM_OR_CONTEXT_SHARING"
-                  },
-                  "should_handoff": false
+                    "customer_understanding": {
+                      "turn_intent": "SYMPTOM_OR_CONTEXT_SHARING",
+                      "inferred_customer_pronoun": "Anh",
+                      "pronoun_confidence": 0.95,
+                      "confirmed_facts_delta": [
+                        {"key": "care_context", "value": "Gia đình có bà bầu, ưu tiên gạch chống trơn", "op": "ADD", "confidence": "HIGH"}
+                      ]
+                    },
+                    "customer_statements": ["Vợ khách đang bầu, ưu tiên gạch chống trơn"],
+                    "working_hypothesis": {
+                      "hypothesis": "Khách ưu tiên độ nhám chống trượt an toàn",
+                      "lifecycle_op": "ADJUST",
+                      "confidence": 0.85
+                    },
+                    "response_plan": {
+                      "strategy": "OFFERED_PACKAGE_DETAILS",
+                      "cta_level": "SOFT_CTA"
+                    }
+                  }
                 }
                 """;
         when(llmClient.name()).thenReturn("ollama:qwen3.8-flash");
@@ -647,8 +659,8 @@ class MultiIndustryPersonaRulesAndSafetyC2CTest {
                 "Câu 'vợ anh đang bầu muốn chọn gạch chống trơn' trên Page gạch/nội thất TUYỆT ĐỐI KHÔNG được bị chặn nhầm bởi MEDICAL_SAFETY_HANDOFF");
         assertTrue(tileResp.replyText().contains("320k/m²") || tileResp.replyText().contains("chống trơn"),
                 "Bot trên Page gạch phải tư vấn sản phẩm gạch chống trơn bình thường: " + tileResp.replyText());
-        assertFalse(brainService.getRecalledCareNotes(tilePageId, "cust-tile-preg-01").isEmpty(),
-                "CleanAgentOrchestratorService phải lưu thành công care_note_delta có căn cứ từ lời khách trên Page gạch");
+        assertFalse(brainService.getAciCustomerStatements(tilePageId, "cust-tile-preg-01").isEmpty(),
+                "CleanAgentOrchestratorService phải lưu thành công Tier-1 customer_statements có căn cứ từ lời khách trên Page gạch");
 
         // CASE 2: Trên Page Spa (BEAUTY_SPA), câu mang thai đặt lịch massage PHẢI bị chặn bởi MEDICAL_SAFETY_HANDOFF!
         FanpageBotResponse spaResp = service.handleCustomerMessage(new FanpageBotRequest(

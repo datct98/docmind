@@ -64,7 +64,7 @@ public class CustomerInsightEngine {
 
     private static final Pattern HALF_HEARTED_OR_COOLING_PATTERN = Pattern.compile(
             "(?iU)^\\s*(ừ|uk|ukm|uh|uhm|ừm|um|ok|oke|oki|okie|vâng|da|dạ|rồi|roi|the\\s+a|thế\\s+à|the\\s+ha|thế\\s+hả|vay\\s+a|vậy\\s+à)(?:\\s+(?:em|shop|ad|bạn|nhé|nha|ạ))?\\s*[.!,~?]*$"
-            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|ukm|uh|uhm|ừm|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:(?:để\\s+)?(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)(?:\\s+(?:nhé|nha|ạ))?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác)\\b"
+            + "|(?iU)(?:\\b|^\\s*)(?:ừ|uk|ukm|uh|uhm|ừm|ok|vâng|dạ)?\\s*(?:thôi\\s+)?(?:để\\s+(?:chị|anh|em|mình|t|bạn)\\s+(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)(?:\\s*(?:thêm|lại|đã|sao))?(?:\\s+(?:nhé|nha|ạ))?|(?:để\\s+)?(?:chị|anh|em|mình|t|bạn)?\\s*(?:xem|coi|nghĩ|suy\\s+nghĩ|tính)\\s*(?:thêm|lại|đã|sao)(?:\\s+(?:nhé|nha|ạ))?|thôi\\s+để\\s+khi\\s+khác|chưa\\s+cần|chưa\\s+vội|tạm\\s+thời\\s+chưa|khi\\s+khác)\\b"
     );
 
     private static final Pattern PRICE_HESITATION_PATTERN = Pattern.compile(

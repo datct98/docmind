@@ -12,10 +12,6 @@ import com.example.docmind.repository.KnowledgePageRepository;
 import com.example.docmind.service.llm.LlmClient;
 import com.example.docmind.service.retrieval.PromptBuilder;
 import com.example.docmind.service.retrieval.ReciprocalRankFusion;
-import com.docmind.guardrail.GuardrailContext;
-import com.docmind.guardrail.GuardrailPipeline;
-import com.docmind.guardrail.GuardrailResult;
-import com.docmind.guardrail.SyntaxSanitizationHook;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.docmind.service.retrieval.RetrievalService;
@@ -86,9 +82,12 @@ public class FanpageBotService {
             + "hôm\\s+qua[\\p{L}\\s,]*làm[\\p{L}\\s,]*\\bđau\\b)"
     );
 
-    /** Mẫu phát hiện cấp cứu y tế cấp tính phổ quát (luôn giữ hiệu lực ở mọi ngành). */
+    /** Mẫu phát hiện cấp cứu y tế cấp tính phổ quát (luôn giữ hiệu lực ở mọi ngành; không bắt nhầm triệu chứng nhẹ/mãn tính kiểu "hay hoa mắt chóng mặt"). */
     private static final Pattern UNIVERSAL_ACUTE_MEDICAL_EMERGENCY_PATTERN = Pattern.compile(
-            "(?iU)\\b(tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|sốt\\s+cao|vết\\s+thương\\s+hở|gãy\\s+xương|trật\\s+khớp)\\b"
+            "(?iU)\\b(tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|chóng\\s+mặt\\s+dữ\\s+dội|ngất\\s+xỉu|"
+            + "yếu\\s+liệt|liệt\\s+tay|liệt\\s+chân|liệt\\s+nửa\\s+người|tê\\s+(?:bì\\s+)?nửa\\s+người|tê\\s+một\\s+bên|"
+            + "méo\\s+miệng|miệng\\s+méo|nói\\s+khó|nói\\s+ngọng|líu\\s+lưỡi|mất\\s+cảm\\s+giác|"
+            + "sốt\\s+cao|vết\\s+thương\\s+hở|gãy\\s+xương|trật\\s+khớp)\\b"
     );
 
     /** Mẫu phát hiện chống chỉ định thể chất đặc thù ngành Spa / Y tế / Thẩm mỹ (thai kỳ, tai đau/ù, hậu phẫu...). */
@@ -106,8 +105,7 @@ public class FanpageBotService {
         if (message == null || message.isBlank()) {
             return false;
         }
-        return UNIVERSAL_ACUTE_MEDICAL_EMERGENCY_PATTERN.matcher(message).find()
-                || SentimentIntentLayer.isNeurologicalRiskMessage(message);
+        return UNIVERSAL_ACUTE_MEDICAL_EMERGENCY_PATTERN.matcher(message).find();
     }
 
     public static boolean isDomainPhysicalContraindicationGateEnabled(PromptBuilder.PagePersona pagePersona) {
@@ -296,8 +294,6 @@ public class FanpageBotService {
     private CustomerInsightEngine customerInsightEngine;
     private AgentSkillService agentSkillService;
     private com.example.docmind.service.MetaLearningService metaLearningService;
-    private final GuardrailPipeline guardrailPipeline;
-    private FastApiAgentService fastApiAgentService;
     private MapOfContentService mapOfContentService;
     private QueryComplexityClassifier queryComplexityClassifier;
     private volatile ThinkingModePolicy.BenchmarkConfigMode benchmarkConfigMode =
@@ -306,7 +302,7 @@ public class FanpageBotService {
     @org.springframework.beans.factory.annotation.Value("${docmind.bot.agent-mode:CLEAN}")
     private volatile String agentMode = "CLEAN";
     private volatile AdaptiveConversationIntelligence.CognitiveMode cognitiveMode =
-            AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+            AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
     @Autowired(required = false)
     private AgentBrainService agentBrainService;
     @Autowired(required = false)
@@ -327,8 +323,6 @@ public class FanpageBotService {
                              @Autowired(required = false) CustomerInsightEngine customerInsightEngine,
                              @Autowired(required = false) AgentSkillService agentSkillService,
                              @Autowired(required = false) com.example.docmind.service.MetaLearningService metaLearningService,
-                             @Autowired(required = false) GuardrailPipeline guardrailPipeline,
-                             @Autowired(required = false) FastApiAgentService fastApiAgentService,
                              @Autowired(required = false) MapOfContentService mapOfContentService,
                              @Autowired(required = false) QueryComplexityClassifier queryComplexityClassifier) {
         this.retrievalService = retrievalService;
@@ -339,13 +333,10 @@ public class FanpageBotService {
         this.customerInsightEngine = customerInsightEngine != null ? customerInsightEngine : new CustomerInsightEngine();
         this.agentSkillService = agentSkillService;
         this.metaLearningService = metaLearningService;
-        this.guardrailPipeline = guardrailPipeline != null ? guardrailPipeline : new GuardrailPipeline();
-        this.fastApiAgentService = fastApiAgentService != null
-                ? fastApiAgentService
-                : new FastApiAgentService(null, new com.example.docmind.config.DocServiceProperties());
         this.mapOfContentService = mapOfContentService;
         this.queryComplexityClassifier = queryComplexityClassifier != null ? queryComplexityClassifier : new QueryComplexityClassifier();
         this.cleanAgentOrchestratorService = new CleanAgentOrchestratorService(this.llmClient, this.agentBrainService, this.agentSkillService);
+        this.cleanAgentOrchestratorService.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
     }
 
     public void setAgentBrainService(AgentBrainService agentBrainService) {
@@ -417,9 +408,7 @@ public class FanpageBotService {
     }
 
     public void setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode mode) {
-        this.cognitiveMode = mode != null
-                ? mode
-                : AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+        this.cognitiveMode = AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
         if (this.cleanAgentOrchestratorService != null) {
             this.cleanAgentOrchestratorService.setCognitiveMode(this.cognitiveMode);
         }
@@ -430,7 +419,7 @@ public class FanpageBotService {
     }
 
     public boolean isLlmCognitiveV2Mode() {
-        return cognitiveMode == AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
+        return true;
     }
 
     public CleanAgentOrchestratorService getCleanAgentOrchestratorService() {
@@ -459,24 +448,8 @@ public class FanpageBotService {
                              KnowledgePageRepository knowledgePageRepository,
                              CustomerInsightEngine customerInsightEngine,
                              AgentSkillService agentSkillService,
-                             com.example.docmind.service.MetaLearningService metaLearningService,
-                             GuardrailPipeline guardrailPipeline) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, guardrailPipeline, null, null, null);
-    }
-
-    public FanpageBotService(RetrievalService retrievalService,
-                             LlmClient llmClient,
-                             ChatProperties chatProps,
-                             DocumentRepository documentRepository,
-                             KnowledgePageRepository knowledgePageRepository,
-                             CustomerInsightEngine customerInsightEngine,
-                             AgentSkillService agentSkillService,
                              com.example.docmind.service.MetaLearningService metaLearningService) {
-        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, null, null, null, null);
-    }
-
-    public GuardrailPipeline getGuardrailPipeline() {
-        return guardrailPipeline;
+        this(retrievalService, llmClient, chatProps, documentRepository, knowledgePageRepository, customerInsightEngine, agentSkillService, metaLearningService, null, null);
     }
 
     public FanpageBotService(RetrievalService retrievalService,
@@ -613,35 +586,19 @@ public class FanpageBotService {
         if (resp == null || resp.replyBubbles() == null || resp.replyBubbles().isEmpty()) {
             return resp;
         }
-        String mergedMsg = request != null ? mergeBurstMessages(request) : "";
-        if (isLlmCognitiveV2Mode()) {
-            mergedMsg = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(mergedMsg);
-        } else if (mergedMsg != null && mergedMsg.length() > 2000) {
-            mergedMsg = mergedMsg.substring(0, 300);
+        String mergedMsg = request != null
+                ? VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(mergeBurstMessages(request))
+                : "";
+        List<FanpageBotResponse.ReplyBubble> formattedBubbles = new ArrayList<>(resp.replyBubbles().size());
+        for (FanpageBotResponse.ReplyBubble b : resp.replyBubbles()) {
+            if (b != null && b.text() != null && !b.text().isBlank()) {
+                formattedBubbles.add(new FanpageBotResponse.ReplyBubble(
+                        BubbleTextSanitizer.capitalizeFirstLetter(BubbleTextSanitizer.sanitizeBubbleText(b.text())),
+                        b.typingDelayMs()
+                ));
+            }
         }
-        PrimaryActionRouter.PrimaryAction effAction = resp.needsHumanHandoff()
-                ? ("MEDICAL_SAFETY_HANDOFF".equalsIgnoreCase(resp.handoffCategory())
-                    ? PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                    : PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT)
-                : PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY;
-        com.docmind.guardrail.ReplyContractValidator.ValidationResult gateRes =
-                com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                        resp.replyBubbles(),
-                        ConversationState.initial(),
-                        mergedMsg,
-                        effAction,
-                        false,
-                        10_000,
-                        ThinkingMode.FAST_NO_THINK,
-                        null
-                );
-        String repairOutcome = "DETERMINISTIC_FAST_PATH_PASS";
-        FanpageBotResponse gatedResp = resp;
-        if (gateRes.errors() != null && !gateRes.errors().isEmpty()) {
-            List<String> gateErrors = List.copyOf(gateRes.errors());
-            log.warn("[FinalOutputGate] Early-return WARNING errors={} (preserving reply_bubbles)", gateErrors);
-            repairOutcome = "FINAL_GATE_WARNING_PRESERVED";
-        }
+        FanpageBotResponse gatedResp = formattedBubbles.isEmpty() ? resp : resp;
         if (request != null && request.senderId() != null && gatedResp.replyBubbles() != null && !gatedResp.replyBubbles().isEmpty()) {
             String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
             String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKeyNow, mergedMsg);
@@ -661,8 +618,8 @@ public class FanpageBotService {
                 CURRENT_TURN_ID.get(),
                 "DETERMINISTIC_POLICY",
                 maskSensitiveForAudit(resp.replyText()),
-                gateRes.errors() != null ? List.copyOf(gateRes.errors()) : List.of(),
-                repairOutcome,
+                List.of(),
+                "DETERMINISTIC_FAST_PATH_PASS",
                 maskSensitiveForAudit(String.join(" || ", finalTexts)));
         PROVENANCE_V38_LOGGED.set(true);
         return gatedResp;
@@ -677,24 +634,14 @@ public class FanpageBotService {
         boolean isGeneratePriceAnchorAction = request != null
                 && "GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action());
         String rawMerged = mergeBurstMessages(request);
-        boolean v2Mode = isLlmCognitiveV2Mode();
-        // Unit P0.2: Trong LLM_COGNITIVE_V2, giữ nguyên văn bản gốc bất biến <= 25.000 ký tự (cắt bỏ an toàn phần > 25.000 theo biên cụm Unicode)
-        // thay vì rẽ sang V1 OVERSIZED_PAYLOAD_FAST_PATH 300 ký tự, và quét bảo mật 100% cửa sổ <= 25.000 ký tự đưa vào prompt.
-        boolean isOversized = !v2Mode && (rawMerged != null && rawMerged.length() > 2000);
-        String verbatimOriginalMessage = v2Mode
-                ? VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(rawMerged)
-                : null;
-        String rawCustomerMessage = v2Mode
-                ? verbatimOriginalMessage
-                : VietnameseQueryNormalizer.sanitizeRawMessage(isOversized ? rawMerged.substring(0, 300) : rawMerged);
-        // Normalized Query — trong LLM_COGNITIVE_V2 CHỈ phục vụ nội bộ cho truy xuất RAG/BM25, KHÔNG thay thế Original Message gửi cho LLM!
-        String mergedMessage = VietnameseQueryNormalizer.normalize(rawCustomerMessage);
+        // Unit P0.2 & P3.4 (LLM_COGNITIVE_V2 duy nhất): giữ nguyên văn bản gốc bất biến <= 25.000 ký tự
+        // và quét bảo mật 100% cửa sổ <= 25.000 ký tự đưa vào prompt.
+        String verbatimOriginalMessage = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(rawMerged);
+        String mergedMessage = VietnameseQueryNormalizer.normalize(verbatimOriginalMessage);
         if (mergedMessage.isBlank()) {
             if (isReengageAction) {
                 mergedMessage = "Khách hàng tạm im lặng, bot chủ động gửi tin nhắn re-engage kéo lại tương tác.";
-                if (v2Mode) {
-                    verbatimOriginalMessage = mergedMessage;
-                }
+                verbatimOriginalMessage = mergedMessage;
             } else {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tin nhắn của khách hàng không được để trống.");
             }
@@ -797,10 +744,9 @@ public class FanpageBotService {
             }
         }
 
-        long currentTurnSequence = isGeneratePriceAnchorAction
-                ? (request.pendingTurnSequence() != null ? request.pendingTurnSequence() : 0L)
-                : ThinkingModePolicy.registerIncomingCustomerTurn(pageId, request.senderId());
-        if (isGeneratePriceAnchorAction && request.pendingTurnSequence() != null
+        if (!isGeneratePriceAnchorAction) {
+            ThinkingModePolicy.registerIncomingCustomerTurn(pageId, request.senderId());
+        } else if (request.pendingTurnSequence() != null
                 && ThinkingModePolicy.isPendingSecondBubbleSuperseded(pageId, request.senderId(), request.pendingTurnSequence())) {
             long totalCancelledMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
             this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
@@ -849,9 +795,10 @@ public class FanpageBotService {
                     List.of("CANCELLED_SECOND_BUBBLE")
             );
         }
-        if (v2Mode && request.isResetSessionRequested() && agentBrainService != null) {
+
+        if (request.isResetSessionRequested() && agentBrainService != null) {
             agentBrainService.clearCustomerMemory(pageId, request.senderId());
-        } else if (v2Mode && !request.isResetSessionRequested()) {
+        } else if (!request.isResetSessionRequested()) {
             if (agentBrainService != null) {
                 agentBrainService.refreshTurnBaseFromDb(pageId, request.senderId());
             }
@@ -876,384 +823,62 @@ public class FanpageBotService {
                 }
             }
         }
+
         PromptBuilder.PagePersona pagePersona = resolvePagePersona(pageId);
-        String honorific = v2Mode
-                ? resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona)
-                : FanpageBotPromptBuilder.resolveCustomerHonorific(
-                        mergedMessage, request.history(), request.customerName(), pagePersona);
-        // Unit P1.1: Khi chạy LLM_COGNITIVE_V2, bỏ qua hoàn toàn các bộ phân tích V1 thừa trước LLM
-        // (analyzeConversationBookingState, determineSalesStage, customerInsightEngine.analyzeInsight)
-        FanpageBotPromptBuilder.ConversationBookingState bookingState = v2Mode
-                ? null
-                : FanpageBotPromptBuilder.analyzeConversationBookingState(mergedMessage, request.history());
+        String honorific = resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona);
         FanpageBotResponse.ExtractedLead extractedLead = extractLeadSignal(mergedMessage, request.history());
-        FanpageBotPromptBuilder.SalesStage initialStage = v2Mode
-                ? FanpageBotPromptBuilder.SalesStage.DISCOVERY
-                : determineSalesStage(mergedMessage, request.history(), extractedLead);
-        CustomerInsightDto customerInsight = v2Mode
-                ? null
-                : customerInsightEngine.analyzeInsight(
-                        mergedMessage,
-                        request.history(),
-                        honorific,
-                        initialStage,
-                        extractedLead,
-                        request.previousTemperature(),
-                        request.replyDelaySeconds(),
-                        request.idleSeconds()
-                );
-
-        // =========================================================================
-        // PRE-RETRIEVAL FAST-PATH FOR OVERSIZED PAYLOADS (> 2,000 chars, e.g. 50k chars)
-        // Satisfies the 5.0s SLA in Test 7.2 (< 0.2s actual) by skipping FastAPI consult,
-        // pgvector dense embedding computation, full-text retrieval, and LLM completion.
-        // =========================================================================
-        if (isOversized) {
-            log.info("[LLM] Message oversized (> 2000 chars, actual={}) -> immediate pre-retrieval fast path to grounded fallback",
-                    rawMerged.length());
-            boolean isFirstTurn = request.history() == null || request.history().stream()
-                    .noneMatch(t -> "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role()));
-            ObsidianMetadataCache metaCache = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
-            String rawReply = generateGroundedFallbackReply(
-                    mergedMessage,
-                    List.of(),
-                    honorific,
-                    isFirstTurn,
-                    initialStage,
-                    request.history(),
-                    null,
-                    null,
-                    request.customerName(),
-                    metaCache,
-                    pageId
-            );
-            String sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
-            PostProcessedBotReply processed = postProcessReply(
-                    sanitizedReply,
-                    List.of(),
-                    honorific,
-                    isFirstTurn,
-                    initialStage,
-                    request.history(),
-                    mergedMessage,
-                    null
-            );
-            String finalCleanText = processed.cleanText();
-            List<FanpageBotResponse.ReplyBubble> bubbles = splitIntoBubbles(finalCleanText);
-            FanpageBotResponse fastResponse = new FanpageBotResponse(
-                    finalCleanText,
-                    bubbles,
-                    (bubbles != null) ? bubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList() : List.of(),
-                    initialStage.code(),
-                    0.90,
-                    false,
-                    null,
-                    null,
-                    extractedLead,
-                    List.of(),
-                    customerInsight,
-                    List.of(),
-                    List.of("OVERSIZED_PAYLOAD_FAST_PATH")
-            );
-            return applyGuardrails(
-                    fastResponse,
-                    honorific,
-                    request.customerName(),
-                    isFirstTurn,
-                    initialStage.code(),
-                    mergedMessage,
-                    request.history(),
-                    List.of()
-            );
+        if (extractedLead != null
+                && extractedLead.phoneNumber() != null
+                && metaLearningService != null
+                && request.history() != null
+                && !request.history().isEmpty()) {
+            metaLearningService.recordConversionSuccess(pageId, request.history(), mergedMessage);
         }
-
-        boolean domainHealthSafetyEnabled = !v2Mode && isDomainPhysicalContraindicationGateEnabled(pagePersona);
-        String matchedCustomRedFlag = v2Mode ? null : findMatchedPageSafetyRedFlag(mergedMessage, pagePersona);
-        boolean allowDomainHealthForTurn = domainHealthSafetyEnabled || matchedCustomRedFlag != null;
+        FanpageBotPromptBuilder.SalesStage salesStage = FanpageBotPromptBuilder.SalesStage.DISCOVERY;
 
         List<AgentSkillDto> candidateSkills = agentSkillService != null
                 ? agentSkillService.getActiveSkillsForPage(pageId)
                 : CustomerInsightEngine.builtInDefaultSkills();
-        List<AgentSkillDto> activeSkills = v2Mode
-                ? CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId)
-                : customerInsightEngine.selectActiveSkills(
-                        customerInsight, mergedMessage, request.history(), initialStage, candidateSkills);
-        if (!v2Mode && !allowDomainHealthForTurn && !isUniversalAcuteMedicalEmergency(mergedMessage) && activeSkills != null) {
-            activeSkills = activeSkills.stream()
-                    .filter(s -> s != null
-                            && !"safety_handoff_high_risk".equalsIgnoreCase(s.code())
-                            && !"spa_neurological_safety_handoff".equalsIgnoreCase(s.code()))
-                    .toList();
-        }
+        List<AgentSkillDto> activeSkills = CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId);
 
-        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION & META-PROBE TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ Ở V2)
-        String promptBoundSecurityTarget = (v2Mode && verbatimOriginalMessage != null)
-                ? verbatimOriginalMessage
-                : mergedMessage;
+        // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION & META-PROBE TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ)
+        String promptBoundSecurityTarget = verbatimOriginalMessage != null ? verbatimOriginalMessage : mergedMessage;
         if (PromptSecurityGuard.isDirectJailbreakAttempt(promptBoundSecurityTarget)) {
-            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak_or_meta_probe page_id={} v2_mode={} len={} msg={}",
+            log.warn("stage=fanpage-bot-security blocked=direct_jailbreak_or_meta_probe page_id={} len={} msg={}",
                     pageId,
-                    v2Mode,
                     promptBoundSecurityTarget != null ? promptBoundSecurityTarget.length() : 0,
                     maskPiiInText(mergedMessage));
-            if (v2Mode) {
-                String rawSelfPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
-                        ? pagePersona.resolvedConfig().resolvedSelfPronoun()
-                        : "em";
-                String neutralSelfPronoun = (rawSelfPronoun != null && !rawSelfPronoun.isBlank())
-                        ? rawSelfPronoun.strip().toLowerCase(Locale.ROOT)
-                        : "em";
-                String neutralNoCtaRefusal = "Dạ " + neutralSelfPronoun
-                        + " chỉ hỗ trợ cung cấp thông tin dịch vụ và lịch hẹn thực tế của bên mình thôi ạ.";
-                List<FanpageBotResponse.ReplyBubble> singleBubble = List.of(
-                        new FanpageBotResponse.ReplyBubble(neutralNoCtaRefusal, 900)
-                );
-                return new FanpageBotResponse(
-                        neutralNoCtaRefusal,
-                        singleBubble,
-                        List.of(900),
-                        "DISCOVERY",
-                        1.0,
-                        false,
-                        null,
-                        null,
-                        extractedLead,
-                        List.of(),
-                        customerInsight,
-                        List.of(),
-                        List.of("SECURITY_PROMPT_INJECTION_REFUSAL")
-                );
-            }
-            String safeReply = "Dạ em chỉ có thể hỗ trợ tư vấn thông tin dịch vụ và chương trình ưu đãi chính thức của Page thôi ạ. "
-                    + "Để em kết nối ngay với Quản lý phụ trách hỗ trợ trực tiếp cho " + honorific + " nhé ạ!";
-            return buildHandoffResponse(
-                    safeReply,
-                    "SECURITY_BLOCK",
-                    "Phát hiện tin nhắn có dấu hiệu can thiệp chỉ thị hệ thống (Prompt Injection / Jailbreak).",
-                    0.0,
-                    extractedLead,
-                    customerInsight,
-                    List.of()
+            String rawSelfPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
+                    ? pagePersona.resolvedConfig().resolvedSelfPronoun()
+                    : "em";
+            String neutralSelfPronoun = (rawSelfPronoun != null && !rawSelfPronoun.isBlank())
+                    ? rawSelfPronoun.strip().toLowerCase(Locale.ROOT)
+                    : "em";
+            String neutralNoCtaRefusal = "Dạ " + neutralSelfPronoun
+                    + " chỉ hỗ trợ cung cấp thông tin dịch vụ và lịch hẹn thực tế của bên mình thôi ạ.";
+            List<FanpageBotResponse.ReplyBubble> singleBubble = List.of(
+                    new FanpageBotResponse.ReplyBubble(neutralNoCtaRefusal, 900)
             );
-        }
-
-        // 2. PHÁT HIỆN TÌNH HUỐNG KHÓ TẦNG 1 (PRE-LLM DETERMINISTIC HANDOFF — CHỈ CHẠY Ở DETERMINISTIC_V1;
-        //    TRONG LLM_COGNITIVE_V2, S05/S08/S09/A02/A08 ĐƯỢC ĐƯA VÀO ACI COGNITIVE LOOP + CONDITIONAL HANDOFF)
-        if (!v2Mode && COMPLAINT_OR_DISTRESS_PATTERN.matcher(mergedMessage).find()) {
-            List<AgentSkillDto> handoffSafeSkills = CleanAgentOrchestratorService.alignCleanAgentActiveSkills(
-                    activeSkills,
-                    candidateSkills,
-                    "HUMAN_HANDOFF",
-                    false,
-                    false,
-                    false
-            );
-            if (agentSkillService != null && handoffSafeSkills != null && !handoffSafeSkills.isEmpty()) {
-                try {
-                    agentSkillService.recordSkillsApplied(handoffSafeSkills);
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to record skill telemetry on COMPLAINT_OR_DISTRESS: {}", e.getMessage());
-                }
-            }
-            log.info("stage=fanpage-bot-handoff trigger=COMPLAINT_OR_DISTRESS page_id={}", pageId);
-            boolean isSpaComplaintV2 = pagePersona != null
-                    && ((pagePersona.name() != null && pagePersona.name().toLowerCase(Locale.ROOT).contains("spa"))
-                        || (pagePersona.resolvedConfig().openingBubbles() != null && !pagePersona.resolvedConfig().openingBubbles().isEmpty()));
-            String empathyReply = isSpaComplaintV2
-                    ? "Dạ em rất tiếc vì trải nghiệm chưa làm " + honorific + " hài lòng ạ. Em chuyển quản lý phụ trách kiểm tra và phản hồi " + honorific + " sớm nhất nhé."
-                    : "Dạ em rất xin lỗi " + honorific + " về trải nghiệm chưa tốt và sự bất tiện này ạ. "
-                      + "Em xin phép chuyển thông tin khẩn cấp tới Quản lý và Bác sĩ/Chuyên viên trưởng của bên em để kiểm tra và liên hệ hỗ trợ trực tiếp cho " + honorific + " ngay lập tức ạ.";
-            return buildHandoffResponse(
-                    empathyReply,
-                    "COMPLAINT_OR_DISTRESS",
-                    "Khách hàng phản ánh dấu hiệu kích ứng / khiếu nại chất lượng / yêu cầu xử lý khẩn cấp — cần Quản lý hoặc Bác sĩ tiếp nhận ngay.",
+            return new FanpageBotResponse(
+                    neutralNoCtaRefusal,
+                    singleBubble,
+                    List.of(900),
+                    "DISCOVERY",
                     1.0,
-                    extractedLead,
-                    customerInsight,
-                    handoffSafeSkills
-            );
-        }
-
-        if (!v2Mode && shouldTriggerSafetyContraindicationHandoff(mergedMessage, pagePersona)) {
-            boolean isNeurological = SentimentIntentLayer.isNeurologicalRiskMessage(mergedMessage);
-            if (candidateSkills != null) {
-                String targetSkillCode = isNeurological ? "spa_neurological_safety_handoff" : "safety_handoff_high_risk";
-                for (AgentSkillDto cand : candidateSkills) {
-                    if (cand != null && targetSkillCode.equalsIgnoreCase(cand.code())) {
-                        activeSkills = List.of(cand);
-                        break;
-                    }
-                }
-            }
-            if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                try {
-                    agentSkillService.recordSkillsApplied(activeSkills);
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to record skill telemetry on HIGH_RISK_SAFETY: {}", e.getMessage());
-                }
-            }
-            log.info("stage=fanpage-bot-handoff trigger=HIGH_RISK_SAFETY neurological={} page_id={}", isNeurological, pageId);
-            String lowerSafety = mergedMessage.toLowerCase(Locale.ROOT);
-            boolean isPregnancy = lowerSafety.contains("bầu") || lowerSafety.contains("mang thai") || lowerSafety.contains("thai kỳ") || lowerSafety.contains("mới sinh");
-            boolean isEarSafety = lowerSafety.contains("tai") && (lowerSafety.contains("đau") || lowerSafety.contains("ù") || lowerSafety.contains("dịch") || lowerSafety.contains("mủ") || lowerSafety.contains("viêm") || lowerSafety.contains("nghe kém"));
-            String safetyReply;
-            if (isEarSafety) {
-                safetyReply = "Dạ nếu tai đang đau và ù, " + honorific + " chưa nên vệ sinh tại spa ngay ạ. Em khuyên " + honorific + " khám Tai Mũi Họng trước và chuyển chuyên viên hỗ trợ mình ngay nhé.";
-            } else if (isPregnancy) {
-                safetyReply = "Dạ trường hợp mang thai cần được tư vấn trực tiếp để an toàn cho " + honorific + " ạ. Em chuyển chuyên viên kiểm tra và hướng dẫn phù hợp ngay nhé.";
-            } else if (isNeurological) {
-                safetyReply = "Dạ những dấu hiệu này có thể cần được xử trí y tế khẩn cấp, nên " + honorific + " hãy gọi cấp cứu hoặc đến cơ sở y tế gần nhất ngay, đừng chờ đợi thêm ạ. Em cũng chuyển chuyên viên hỗ trợ " + honorific + " ngay nhé.";
-            } else {
-                safetyReply = "Dạ trường hợp này cần chuyên viên kiểm tra trực tiếp để an toàn và chính xác cho " + honorific + " ạ. Em chuyển người hỗ trợ " + honorific + " ngay nhé.";
-            }
-            ConversationState safetyState = ConversationState.hydrate(
-                    pageId,
-                    request.senderId(),
-                    request.conversationId(),
-                    request.isResetSessionRequested(),
-                    request.history(),
-                    pagePersona != null ? pagePersona.resolvedConfig().safeDomainKeywords() : List.of(),
-                    List.of()
-            );
-            PrimaryActionRouter.RoutingDecision safetyDecision = new PrimaryActionRouter.RoutingDecision(
-                    PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY,
-                    PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY,
-                    false,
-                    1,
-                    isNeurological ? "NEUROLOGICAL_RISK" : "SAFETY_CONTRAINDICATION",
-                    isNeurological ? "spa_neurological_safety_handoff" : "safety_handoff_high_risk"
-            );
-            List<LearnedRuleDto> safetyAppliedRules = List.of();
-            if (retrievalService != null) {
-                try {
-                    RetrievalService.RetrievalResult safetyRetrieval = retrievalService.retrieveWithRules(
-                            documentIds, mergedMessage, 1, List.of(), pageId
-                    );
-                    if (safetyRetrieval != null && safetyRetrieval.appliedRules() != null) {
-                        safetyAppliedRules = safetyRetrieval.appliedRules().stream()
-                                .filter(FanpageBotService::isSafetyPolicyRule)
-                                .toList();
-                    }
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to load safety rules on HIGH_RISK_SAFETY handoff: {}", e.getMessage());
-                }
-            }
-            FanpageBotResponse baseHandoffResp = buildHandoffResponse(
-                    safetyReply,
-                    "MEDICAL_SAFETY_HANDOFF",
-                    "Khách hàng có dấu hiệu thai kỳ, triệu chứng thần kinh cấp tính hoặc tình trạng sức khỏe chống chỉ định — chuyển Quản lý / Kỹ thuật viên trưởng kiểm tra trực tiếp.",
-                    1.0,
-                    extractedLead,
-                    customerInsight,
-                    activeSkills
-            );
-            FanpageBotResponse handoffResp = new FanpageBotResponse(
-                    baseHandoffResp.replyText(),
-                    baseHandoffResp.replyBubbles(),
-                    baseHandoffResp.salesStage(),
-                    baseHandoffResp.confidenceScore(),
-                    baseHandoffResp.needsHumanHandoff(),
-                    baseHandoffResp.handoffCategory(),
-                    baseHandoffResp.handoffReason(),
-                    baseHandoffResp.extractedLead(),
-                    safetyAppliedRules,
-                    baseHandoffResp.customerInsight(),
-                    baseHandoffResp.activeSkills()
-            );
-            long safetyElapsedMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
-            this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
-                    PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY,
-                    ThinkingMode.FAST_NO_THINK,
-                    safetyDecision.detectedIntent(),
-                    List.of(),
-                    List.of(),
-                    true,
-                    null,
-                    0L,
-                    0L,
-                    0L,
-                    safetyElapsedMs,
-                    0L,
-                    "SAFETY_HIGH_RISK_HANDOFF",
-                    false,
-                    ThinkingMode.FAST_NO_THINK.maxOutputTokens(),
-                    0,
-                    0L,
-                    0L,
-                    10_000,
-                    0L,
-                    0,
-                    false,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0,
-                    safetyElapsedMs,
                     false,
                     null,
-                    "DETERMINISTIC_POLICY",
-                    false,
-                    0,
-                    "PASS",
-                    List.of(),
-                    "deterministic",
-                    llmClient != null ? llmClient.name() : "none",
-                    "none",
-                    List.of("DETERMINISTIC_POLICY")
-            );
-            ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
-            ConversationState stateAfterSafety = ConversationState.updateAfterSend(
-                    pageId,
-                    request.senderId(),
-                    request.conversationId(),
-                    safetyState,
-                    mergedMessage,
-                    safetyDecision,
-                    handoffResp.replyBubbles(),
-                    true,
-                    request.history() != null ? request.history().size() : 0
-            );
-            log.info("[ProvenanceAudit] page_id={} sender_id={} routerRuleId={} primaryAction={} detectedIntent={} selectedSkill={} lastBotQuestionType={} stateBefore={} stateAfter={} policyLoaded=true policyMatched=true safetyHandoffTriggered=true bubbleSources=[SAFETY_GATE_FAST_PATH] rawLlmOutput=N/A outputAfterValidatorAndHooks={} finalUiReplyBubbles={}",
-                    pageId,
-                    request.senderId(),
-                    safetyDecision.routerRuleId(),
-                    safetyDecision.effectiveResponseAction(),
-                    safetyDecision.detectedIntent(),
-                    safetyDecision.correspondingMicroSkillCode(),
-                    safetyState.lastBotQuestionType(),
-                    formatStateTelemetrySummary(safetyState),
-                    formatStateTelemetrySummary(stateAfterSafety),
-                    handoffResp.replyText(),
-                    handoffResp.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-            return handoffResp;
-        }
-
-        if (!v2Mode && EXPLICIT_HUMAN_REQUEST_PATTERN.matcher(mergedMessage).find()) {
-            if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                try {
-                    agentSkillService.recordSkillsApplied(activeSkills);
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to record skill telemetry on EXPLICIT_HUMAN_REQUEST: {}", e.getMessage());
-                }
-            }
-            log.info("stage=fanpage-bot-handoff trigger=EXPLICIT_HUMAN_REQUEST page_id={}", pageId);
-            String humanReply = "Dạ vâng ạ, em xin phép chuyển cuộc trò chuyện cho Chuyên viên tư vấn và Quản lý bên em hỗ trợ " + honorific + " trực tiếp ngay bây giờ nha.";
-            return buildHandoffResponse(
-                    humanReply,
-                    "EXPLICIT_HUMAN_REQUEST",
-                    "Khách hàng chủ động yêu cầu gặp nhân viên thật / quản lý / bác sĩ tư vấn trực tiếp.",
-                    1.0,
+                    null,
                     extractedLead,
-                    customerInsight,
-                    activeSkills
+                    List.of(),
+                    null,
+                    List.of(),
+                    List.of("SECURITY_PROMPT_INJECTION_REFUSAL")
             );
         }
 
-        if (v2Mode
-                ? PrimaryActionRouter.isStrictSystemOptOutMessage(verbatimOriginalMessage)
-                : PrimaryActionRouter.isExplicitOptOutMessage(mergedMessage)) {
-            if (v2Mode && agentBrainService != null) {
+        // 2. XỬ LÝ TỪ KHÓA OPT-OUT HỆ THỐNG NGHIÊM NGẶT (STRICT SYSTEM OPT-OUT)
+        if (PrimaryActionRouter.isStrictSystemOptOutMessage(verbatimOriginalMessage)) {
+            if (agentBrainService != null) {
                 agentBrainService.applyAciTurnMemoryUpdates(
                         pageId,
                         request.senderId(),
@@ -1355,31 +980,9 @@ public class FanpageBotService {
                     null,
                     extractedLead,
                     List.of(),
-                    customerInsight,
+                    null,
                     activeSkills != null && !activeSkills.isEmpty() ? List.of(activeSkills.get(0)) : List.of(),
                     List.of("EXPLICIT_OPT_OUT")
-            );
-        }
-
-        if (!v2Mode && COMPLEX_NEGOTIATION_PATTERN.matcher(mergedMessage).find()) {
-            if (agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-                try {
-                    agentSkillService.recordSkillsApplied(activeSkills);
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to record skill telemetry on COMPLEX_NEGOTIATION: {}", e.getMessage());
-                }
-            }
-            log.info("stage=fanpage-bot-handoff trigger=COMPLEX_NEGOTIATION page_id={}", pageId);
-            String negReply = "Dạ với nhu cầu hợp tác / chính sách ưu đãi đặc biệt này, em xin phép chuyển trực tiếp cho Quản lý kinh doanh bên em để trao đổi mức quyền lợi tốt nhất cho mình nhé ạ!\n\n"
-                    + honorific + " có thể để lại Số điện thoại để Quản lý bên em liên hệ trao đổi trực tiếp ngay hôm nay ạ?";
-            return buildHandoffResponse(
-                    negReply,
-                    "COMPLEX_NEGOTIATION",
-                    "Khách hàng đề xuất hợp tác đại lý / mua số lượng lớn / thương lượng mức chiết khấu ngoài khung tiêu chuẩn.",
-                    0.95,
-                    extractedLead,
-                    customerInsight,
-                    activeSkills
             );
         }
 
@@ -1403,63 +1006,15 @@ public class FanpageBotService {
                             .filter(java.util.Objects::nonNull)
                             .findFirst()
                             .orElse(null);
+                    if (pageId != null) {
+                        CURRENT_EFFECTIVE_PAGE_ID.set(pageId);
+                    }
                     pagePersona = resolvePagePersona(pageId);
-                    honorific = v2Mode
-                            ? resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona)
-                            : FanpageBotPromptBuilder.resolveCustomerHonorific(
-                                    mergedMessage, request.history(), request.customerName(), pagePersona);
-                    customerInsight = v2Mode
-                            ? null
-                            : customerInsightEngine.analyzeInsight(
-                                    mergedMessage,
-                                    request.history(),
-                                    honorific,
-                                    initialStage,
-                                    extractedLead,
-                                    request.previousTemperature(),
-                                    request.replyDelaySeconds(),
-                                    request.idleSeconds()
-                            );
+                    honorific = resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona);
                     candidateSkills = agentSkillService != null
                             ? agentSkillService.getActiveSkillsForPage(pageId)
                             : CustomerInsightEngine.builtInDefaultSkills();
-                    activeSkills = v2Mode
-                            ? CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId)
-                            : customerInsightEngine.selectActiveSkills(
-                                    customerInsight, mergedMessage, request.history(), initialStage, candidateSkills);
-                }
-            }
-        }
-        boolean isLiveConfiguredLlmPreCheck = llmClient != null && llmClient.name() != null
-                && llmClient.name().toLowerCase(Locale.ROOT).matches("^(?:ollama|openai|openai_compatible|gemini|anthropic|claude|deepseek|qwen|dashscope|grok|xai|openrouter|custom):.*");
-        boolean cleanAgentEligiblePreCheck = v2Mode
-                ? (llmClient != null && !isGeneratePriceAnchorAction)
-                : (isCleanAgentMode() && isLiveConfiguredLlmPreCheck && !isGeneratePriceAnchorAction);
-        if (!cleanAgentEligiblePreCheck && agentSkillService != null && activeSkills != null && !activeSkills.isEmpty()) {
-            try {
-                agentSkillService.recordSkillsApplied(activeSkills);
-            } catch (Exception e) {
-                log.warn("Non-fatal: failed to record skill telemetry: {}", e.getMessage());
-            }
-        }
-
-        // Củng cố ngầm (Implicit Conversion Reinforcement — chỉ chạy ở V1; Unit P1.1 bỏ RL skill counter pre-mutation trên luồng V2)
-        if (!v2Mode && extractedLead != null && extractedLead.hasAnyLead()
-                && request.history() != null && !request.history().isEmpty()) {
-            if (metaLearningService != null) {
-                metaLearningService.recordConversionSuccess(pageId, request.history(), mergedMessage);
-            } else if (agentSkillService != null) {
-                StringBuilder convoBuilder = new StringBuilder();
-                for (FanpageBotRequest.ConversationTurn t : request.history()) {
-                    if (t != null && t.content() != null) {
-                        convoBuilder.append(t.content()).append(' ');
-                    }
-                }
-                convoBuilder.append(mergedMessage);
-                try {
-                    agentSkillService.recordConversionSuccess(pageId, convoBuilder.toString());
-                } catch (Exception e) {
-                    log.warn("Non-fatal: failed to record conversion success: {}", e.getMessage());
+                    activeSkills = CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId);
                 }
             }
         }
@@ -1473,152 +1028,52 @@ public class FanpageBotService {
                     "Page hiện chưa có tài liệu tri thức ở trạng thái READY để tra cứu tự động.",
                     0.0,
                     extractedLead,
-                    customerInsight,
+                    null,
                     activeSkills
             );
         }
 
-        // 4. KHÔI PHỤC TRẠNG THÁI HỘI THOẠI, PHÂN TÍCH CÂU HỎI TỒN ĐỌNG & TRUY XUẤT TRI THỨC THEO HÀNH ĐỘNG (7-STEP COHERENT PIPELINE)
-        // Lưu ý quan trọng: Chỉ ĐỌC AI Playbook (extraRules = List.of()), KHÔNG BAO GIỜ chạy MetaLearningService từ tin nhắn khách hàng!
+        // 4. KHÔI PHỤC TRẠNG THÁI TỐI THIỂU & TRUY XUẤT TRI THỨC (ACI V2 SINGLE-PASS COGNITIVE LOOP)
         int incomingHistorySize = request.history() != null ? request.history().size() : 0;
         List<String> safeDomainKeywords = pagePersona != null ? pagePersona.resolvedConfig().resolvedScopeTaxonomy() : List.of();
-        ConversationState preRetrievalState = v2Mode
-                ? ConversationState.hydrateMinimalForAciV2(
-                        pageId,
-                        request.senderId(),
-                        request.conversationId(),
-                        request.isResetSessionRequested()
-                )
-                : ConversationState.hydrateForTurn(
-                        pageId,
-                        request.senderId(),
-                        request.conversationId(),
-                        request.isResetSessionRequested(),
-                        mergedMessage,
-                        request.history(),
-                        safeDomainKeywords,
-                        List.of()
-                );
-        ConversationState preEnrichedState = v2Mode
-                ? preRetrievalState
-                : preRetrievalState.enrichWithCurrentMessage(mergedMessage, safeDomainKeywords);
-        PrimaryActionRouter.RoutingDecision preRetrievalDecision = v2Mode
-                ? null
-                : PrimaryActionRouter.route(
-                        mergedMessage,
-                        preRetrievalState,
-                        preEnrichedState, // enrich đúng 1 lần/lượt: không để Router enrich lại
-                        null,
-                        safeDomainKeywords,
-                        allowDomainHealthForTurn
-                );
-        boolean isPreRoutedDetailOrFaq = !v2Mode && preRetrievalDecision != null
-                && (preRetrievalDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
-                    || preRetrievalDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.SAFE_REFUSAL_OR_HANDOFF_IF_REPEATED);
+        ConversationState preRetrievalState = ConversationState.hydrateMinimalForAciV2(
+                pageId,
+                request.senderId(),
+                request.conversationId(),
+                request.isResetSessionRequested()
+        );
 
         long retrievalStartNs = System.nanoTime();
-        List<java.util.Map<String, String>> historyMaps = new ArrayList<>();
-        if (!v2Mode && request.history() != null) {
-            for (FanpageBotRequest.ConversationTurn t : request.history()) {
-                if (t != null && t.role() != null && t.content() != null) {
-                    historyMaps.add(java.util.Map.of("role", t.role(), "content", t.content()));
-                }
-            }
-        }
-        boolean hasActiveCompactPolicy = pagePersona != null
-                && pagePersona.resolvedConfig() != null
-                && pagePersona.resolvedConfig().activePromptCompact() != null
-                && !pagePersona.resolvedConfig().activePromptCompact().isBlank();
-        com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult = (!v2Mode && fastApiAgentService != null && !hasActiveCompactPolicy)
-                ? fastApiAgentService.consult(
-                        request.senderId(),
-                        pageId != null ? pageId.toString() : null,
-                        mergedMessage,
-                        historyMaps,
-                        List.of(),
-                        honorific)
-                : null;
-        if (!v2Mode && consultResult != null && "Anh".equalsIgnoreCase(consultResult.honorific())
-                && !"mình".equalsIgnoreCase(honorific)) {
-            honorific = "Anh";
-        }
-        String baseContextualQuery = v2Mode
-                ? mergedMessage
-                : buildActionTargetedSearchQuery(
-                        mergedMessage,
-                        request.history(),
-                        preRetrievalState,
-                        preEnrichedState,
-                        preRetrievalDecision
-                );
-        String contextualQuery = (v2Mode || isPreRoutedDetailOrFaq)
-                ? baseContextualQuery
-                : enrichContextualQueryWithLangGraph(baseContextualQuery, consultResult);
         int topK = request.topK() != null
-                ? (isPreRoutedDetailOrFaq ? Math.max(8, request.topK()) : request.topK())
-                : Math.max(isPreRoutedDetailOrFaq ? 8 : 6, chatProps.getTopK());
-        RetrievalService.RetrievalResult retrievalResult = retrievalService.retrieveWithRules(
-                documentIds,
-                contextualQuery,
-                topK,
-                List.of(),
-                pageId
-        );
+                ? request.topK()
+                : Math.max(6, chatProps != null ? chatProps.getTopK() : 6);
+        RetrievalService.RetrievalResult retrievalResult = retrievalService != null
+                ? retrievalService.retrieveWithRules(
+                        documentIds,
+                        mergedMessage,
+                        topK,
+                        List.of(),
+                        pageId
+                )
+                : null;
         long retrievalMs = (System.nanoTime() - retrievalStartNs) / 1_000_000L;
 
-        List<ReciprocalRankFusion.FusedChunk> rawFused = retrievalResult != null && retrievalResult.chunks() != null
+        List<ReciprocalRankFusion.FusedChunk> fused = retrievalResult != null && retrievalResult.chunks() != null
                 ? retrievalResult.chunks()
                 : List.of();
-        List<ReciprocalRankFusion.FusedChunk> fused = v2Mode
-                ? rawFused
-                : scopeChunksToTopicFamily(rawFused, consultResult, mergedMessage);
         List<LearnedRuleDto> appliedRules;
-        if (v2Mode && retrievalService != null) {
+        if (retrievalService != null) {
             List<LearnedRuleDto> allActivePageRules = retrievalService.getAllActiveApprovedRulesForPage(pageId);
             appliedRules = (allActivePageRules != null && !allActivePageRules.isEmpty())
                     ? allActivePageRules
                     : (retrievalResult != null && retrievalResult.appliedRules() != null ? retrievalResult.appliedRules() : List.of());
         } else {
-            appliedRules = retrievalResult != null && retrievalResult.appliedRules() != null
-                    ? retrievalResult.appliedRules()
-                    : List.of();
+            appliedRules = List.of();
         }
 
-        boolean leadReadyHandoff = !v2Mode && bookingState != null && bookingState.hasPhoneInCurrentTurn()
-                && extractedLead.phoneNumber() != null && !extractedLead.phoneNumber().isBlank();
-        boolean purePhoneLeadFastPath = !v2Mode && leadReadyHandoff && !asksExplicitPriceInMessage(mergedMessage);
-
-        // Unit P1.1: Bỏ hoàn toàn 19 hàm regex V1 của isConversationalStateTurn khi chạy LLM_COGNITIVE_V2
-        boolean isConversationalStateTurn = !v2Mode && (isPreRoutedDetailOrFaq
-                || PrimaryActionRouter.isAcknowledgementMessage(mergedMessage)
-                || PrimaryActionRouter.isUnitPriceComparisonMessage(mergedMessage)
-                || PrimaryActionRouter.isPriceObjectionMessage(mergedMessage)
-                || CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(mergedMessage, true)
-                || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(mergedMessage)
-                || PrimaryActionRouter.isFrustrationMessage(mergedMessage)
-                || PrimaryActionRouter.isServiceFamilySelectionMessage(mergedMessage)
-                || PrimaryActionRouter.isConditionFollowUpMessage(mergedMessage)
-                || SentimentIntentLayer.isDetailOrFaqQuestion(
-                        mergedMessage,
-                        preRetrievalState.lastAssistantMessage(),
-                        preRetrievalState.knownRecommendedPackage(),
-                        preRetrievalState.hasUnresolvedCustomerRequest())
-                || SentimentIntentLayer.isComprehensionFailureMessage(mergedMessage)
-                || SentimentIntentLayer.isTrialAcceptanceMessage(mergedMessage)
-                || SentimentIntentLayer.isStrongRejectionMessage(mergedMessage)
-                || SentimentIntentLayer.isExplicitDownsellRequest(mergedMessage)
-                || SentimentIntentLayer.isAlternativePackageRequest(mergedMessage)
-                || SentimentIntentLayer.isPackageRejectionMessage(mergedMessage)
-                || SentimentIntentLayer.isPriceEscalationRequest(mergedMessage)
-                || SentimentIntentLayer.isNeurologicalRiskMessage(mergedMessage)
-                || SentimentIntentLayer.isEntityMismatchCorrection(mergedMessage)
-                || CustomerInsightEngine.isPureGreetingOrOpening(
-                        mergedMessage != null ? mergedMessage.toLowerCase(Locale.ROOT) : "",
-                        request.history() == null || request.history().isEmpty()));
-
-        // Trong LLM_COGNITIVE_V2: Nếu câu khách mang tính chất đối thoại/khiếu nại/xác nhận thanh toán/lời hứa nhân viên (S05, S08, S09)
-        // khiến truy vấn trực tiếp chưa khớp đoạn tài liệu nào, tự động truy xuất neo danh mục & chính sách chuẩn của Page để LLM luôn có căn cứ sự thật!
-        if (v2Mode && fused.isEmpty() && retrievalService != null) {
+        // Nếu câu khách mang tính chất đối thoại/khiếu nại/xác nhận thanh toán/lời hứa nhân viên khiến truy vấn trực tiếp chưa khớp đoạn tài liệu nào,
+        // tự động truy xuất neo danh mục & chính sách chuẩn của Page để LLM luôn có căn cứ sự thật!
+        if (fused.isEmpty() && retrievalService != null) {
             try {
                 RetrievalService.RetrievalResult anchorRetrieval = retrievalService.retrieveWithRules(
                         documentIds,
@@ -1638,1231 +1093,62 @@ public class FanpageBotService {
             }
         }
 
-        // 5. KIỂM TRA ĐỘ TỰ TIN DỮ LIỆU (RETRIEVAL CONFIDENCE GATE — CHỈ CHẶN CỨNG TRƯỚC LLM Ở DETERMINISTIC_V1)
-        if (!v2Mode && fused.isEmpty() && !purePhoneLeadFastPath && !isConversationalStateTurn) {
-            log.info("stage=fanpage-bot-handoff trigger=EMPTY_RETRIEVAL page_id={}", pageId);
-            String unknownReply = "Dạ về thông tin này để đảm bảo chuẩn xác nhất cho trường hợp của " + honorific + ", em xin phép nhờ Chuyên viên phụ trách của bên em kiểm tra và nhắn phản hồi lại " + honorific + " ngay trong ít phút nhé ạ!";
-            return buildHandoffResponse(
-                    unknownReply,
-                    "UNGROUNDED_OR_UNKNOWN",
-                    "Không tìm thấy đoạn tài liệu nào khớp với câu hỏi của khách hàng trong kho tri thức của Page.",
-                    0.15,
-                    extractedLead,
-                    customerInsight,
-                    activeSkills
-            );
-        }
-
-        // Kiểm tra nếu khách hỏi đích danh một dịch vụ/thông tin cụ thể không hề xuất hiện trong các chunk của Page (DETERMINISTIC_V1)
-        String ungroundedTopic = (!v2Mode && !fused.isEmpty()) ? detectUngroundedSpecificTopic(mergedMessage, fused) : null;
-        if (ungroundedTopic != null) {
-            log.info("stage=fanpage-bot-handoff trigger=UNGROUNDED_TOPIC topic={} page_id={}", ungroundedTopic, pageId);
-            String politePivotReply = "Dạ hiện tại bên em chưa có thông tin niêm yết cho yêu cầu về \"" + ungroundedTopic + "\" trong danh mục chuẩn ạ.\n\n"
-                    + "Để không làm mất thời gian của " + honorific + ", em xin phép chuyển tin nhắn cho Chuyên viên tư vấn chính bên em kiểm tra xem có liệu trình/giải pháp nào phù hợp nhất với nhu cầu của " + honorific + " và phản hồi " + honorific + " ngay nhé ạ!";
-            return buildHandoffResponse(
-                    politePivotReply,
-                    "UNGROUNDED_OR_UNKNOWN",
-                    "Khách hàng hỏi về nội dung/dịch vụ ngoài danh mục tài liệu đã đào tạo: \"" + ungroundedTopic + "\".",
-                    0.25,
-                    extractedLead,
-                    customerInsight,
-                    activeSkills
-            );
-        }
-
-        // 5.5. MAP OF CONTENT (MOC) & STATEFUL PRICE LADDER TRACKER
-        boolean isLiveConfiguredLlm = isLiveConfiguredLlmPreCheck;
-        boolean cleanAgentEligible = v2Mode
-                ? (llmClient != null && !isGeneratePriceAnchorAction)
-                : (isCleanAgentMode() && isLiveConfiguredLlm && !isGeneratePriceAnchorAction && !leadReadyHandoff);
-        String mocSummary = null;
-        if (!cleanAgentEligible && mapOfContentService != null) {
-            try {
-                mocSummary = mapOfContentService.getOrBuildMapOfContent(pageId, null);
-            } catch (Exception e) {
-                log.warn("[MOC] Failed to build Map of Content for page_id={}: {}", pageId, e.getMessage());
-            }
-        }
-
-        String detectedBranch = null;
-        PriceLadderResult priceLadder = null;
         ObsidianMetadataCache metaCacheForLadder = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
-        if (cleanAgentEligible && metaCacheForLadder != null) {
+        if (metaCacheForLadder != null) {
             fused = enrichFusedChunksWithPriceLadderTargets(fused, null, mergedMessage, metaCacheForLadder, pageId);
             fused = enrichFusedChunksWithOperationalAndPromoFacts(fused, mergedMessage, metaCacheForLadder, pageId);
         }
-        if (!cleanAgentEligible) {
-            detectedBranch = PriceLadderTracker.resolveBranch(mergedMessage, request.history(), null);
-            if (isPreRoutedDetailOrFaq || preEnrichedState.hasUnresolvedCustomerRequest()) {
-                fused = enrichFusedChunksForDetailAndFaqQa(fused, preEnrichedState, mergedMessage, metaCacheForLadder, pageId);
-            } else {
-                fused = enrichFusedChunksWithPriceLadderTargets(fused, null, mergedMessage, metaCacheForLadder, pageId);
-            }
-            // v3.8: ladder chỉ từ availablePackageCatalog đã xác minh (state hoặc parser Catalog chính thức trên chunk ACTIVE của tenant)
-            List<PackageCatalogService.PackageSummary> verifiedCatalogForLadder =
-                    (preEnrichedState != null && preEnrichedState.availablePackageCatalog() != null
-                            && !preEnrichedState.availablePackageCatalog().isEmpty())
-                            ? preEnrichedState.availablePackageCatalog()
-                            : PackageCatalogService.extractCatalog(fused, List.of());
-            priceLadder = PriceLadderTracker.evaluate(mergedMessage, request.history(), verifiedCatalogForLadder, detectedBranch);
-            if (!isPreRoutedDetailOrFaq && !preEnrichedState.hasUnresolvedCustomerRequest()) {
-                fused = enrichFusedChunksWithPriceLadderTargets(fused, priceLadder, mergedMessage, metaCacheForLadder, pageId);
-            }
-            if (priceLadder != null && (priceLadder.isPriceObjection() || priceLadder.isCatalogFloor())
-                    && (priceLadder.discountPolicy() == null || priceLadder.discountPolicy().isBlank())) {
-                String dynamicPromo = resolveDynamicPromoPolicy(fused, metaCacheForLadder, pageId);
-                priceLadder = new PriceLadderResult(
-                        priceLadder.isPriceObjection(),
-                        priceLadder.isTrialRequest(),
-                        priceLadder.previousPriceQuoted(),
-                        priceLadder.targetPrice(),
-                        priceLadder.targetPackageName(),
-                        dynamicPromo,
-                        priceLadder.isCatalogFloor(),
-                        priceLadder.rationale()
-                );
-            }
-        }
 
-        // 6. XÁC ĐỊNH NHỊP ĐỘ TƯ VẤN (3-STAGE CONSULTATIVE PACING — CHỈ CHẠY V1 REGEX KHI !v2Mode)
-        FanpageBotPromptBuilder.SalesStage salesStage = v2Mode
-                ? FanpageBotPromptBuilder.SalesStage.DISCOVERY
-                : determineSalesStage(mergedMessage, request.history(), extractedLead, priceLadder);
-        boolean hasPriorAssistantTurn = (preRetrievalState != null && preRetrievalState.greetingSent())
-                || (request.history() != null && request.history().stream()
-                    .anyMatch(t -> t != null && "assistant".equalsIgnoreCase(t.role()) && t.content() != null && !t.content().isBlank()));
-        boolean isFirstTurn = !hasPriorAssistantTurn;
-
-        // Fast-path (DETERMINISTIC_V1): Nếu khách gửi SĐT đặt lịch / yêu cầu gọi lại mà không hỏi thêm giá, xác nhận tức thì (0ms LLM)
-        if (!v2Mode && leadReadyHandoff && !asksExplicitPriceInMessage(mergedMessage)) {
-            String fastPhoneReply = ensureCleanPhoneLeadReply("", extractedLead, honorific, appliedRules);
-            List<FanpageBotResponse.ReplyBubble> fastBubbles = splitIntoBubbles(fastPhoneReply);
-            double fastConfidence = computeConfidenceScore(fused);
-            String fastReason = "Khách hàng đã để lại SĐT (" + extractedLead.phoneNumber() + ") / đặt lịch — Chuyển Chuyên viên liên hệ qua phone/Zalo ngay!";
-            log.info("[LLM] FanpageBotService fast-path phone-lead response retrievalMs={} llmMs=0 status=ok page_id={} honorific={} sales_stage={} handoff=true phone={} bubbles={}",
-                    retrievalMs, pageId, honorific, salesStage.code(), maskPhoneNumber(extractedLead.phoneNumber()), fastBubbles.size());
-            FanpageBotResponse fastResp = new FanpageBotResponse(
-                    fastPhoneReply,
-                    fastBubbles,
-                    salesStage.code(),
-                    fastConfidence,
-                    true,
-                    "BOOKING_LEAD_CAPTURED",
-                    fastReason,
+        if (llmClient == null) {
+            return buildHandoffResponse(
+                    SAFE_HANDOFF_BUBBLE_TEXT,
+                    "LLM_UNAVAILABLE",
+                    "Chưa cấu hình LlmClient cho luồng tư vấn ACI V2.",
+                    0.0,
                     extractedLead,
-                    appliedRules,
-                    customerInsight,
+                    null,
                     activeSkills
             );
-            return applyGuardrails(fastResp, honorific, request.customerName(), isFirstTurn, salesStage.code(), mergedMessage, request.history(), fused);
         }
 
-        // 7. DỰNG PROMPT RIÊNG CỦA BOT FANPAGE (KÈM CUSTOMER INSIGHT, AGENT SKILLS & LANGGRAPH DIRECTIVE) & GỌI LLM
-        if (!v2Mode && agentBrainService != null) {
-            try {
-                AgentBrainService.RecallAndAdviseResponse brainAdvice =
-                        agentBrainService.recallAndAdvise(
-                                pageId,
-                                request.senderId(),
-                                request.customerName(),
-                                mergedMessage,
-                                computeConfidenceScore(fused),
-                                0.90,
-                                isFirstTurn,
-                                pagePersona
-                        );
-                customerInsight = agentBrainService.enrichCustomerInsight(pageId, request.senderId(), customerInsight, brainAdvice);
-                if (brainAdvice != null) {
-                    activeSkills = agentBrainService.synchronizeActiveSkills(activeSkills, candidateSkills, brainAdvice);
-                }
-            } catch (Exception e) {
-                log.debug("[AgentBrain] Non-fatal recallAndAdvise exception: {}", e.getMessage());
-            }
-        }
-
-        List<com.example.docmind.dto.SampleDialogueDto> sampleDialogues = List.of();
-        if (!cleanAgentEligible && playbookUploadService != null && !hasActiveCompactPolicy) {
-            try {
-                sampleDialogues = playbookUploadService.retrieveRelevantDialogues(contextualQuery, pageId, 1);
-            } catch (Exception e) {
-                log.debug("[Playbook] Non-fatal retrieveRelevantDialogues exception: {}", e.getMessage());
-            }
-        }
-
-        boolean hasRuntimeControlPolicy = pagePersona != null
-                && ((pagePersona.resolvedConfig().openingBubbles() != null && !pagePersona.resolvedConfig().openingBubbles().isEmpty())
-                    || (pagePersona.resolvedConfig().preferenceDiscoveryPrompt() != null && !pagePersona.resolvedConfig().preferenceDiscoveryPrompt().isBlank())
-                    || (pagePersona.resolvedConfig().activePromptCompact() != null && !pagePersona.resolvedConfig().activePromptCompact().isBlank())
-                    || (pagePersona.resolvedConfig().safeDomainKeywords() != null && !pagePersona.resolvedConfig().safeDomainKeywords().isEmpty())
-                    || (candidateSkills != null && candidateSkills.stream().anyMatch(s -> s != null && s.pageId() != null && !s.pageId().isBlank())));
-        boolean hasPriorPriceInHistory = (priceLadder != null && priceLadder.previousPriceQuoted() != null)
-                || hasQuotedPriceInAssistantHistory(request.history());
-
-        ConversationState convState = v2Mode
-                ? preEnrichedState.withCatalogOnlyForAciV2(fused, safeDomainKeywords)
-                : preEnrichedState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
-        if (cleanAgentEligible) {
-            this.lastTurnTelemetry = null;
-            if (cleanAgentOrchestratorService != null) {
-                cleanAgentOrchestratorService.setLlmClient(this.llmClient);
-                cleanAgentOrchestratorService.setAgentBrainService(this.agentBrainService);
-                cleanAgentOrchestratorService.setAgentSkillService(this.agentSkillService);
-            } else {
-                this.cleanAgentOrchestratorService = new CleanAgentOrchestratorService(
-                        this.llmClient, this.agentBrainService, this.agentSkillService);
-            }
-            this.cleanAgentOrchestratorService.setCognitiveMode(this.cognitiveMode);
-            AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput = v2Mode
-                    ? AdaptiveConversationIntelligence.buildThreeStreamInput(
-                            request,
-                            convState != null ? convState.availablePackageCatalog() : List.of(),
-                            pagePersona != null ? pagePersona.resolvedConfig() : null,
-                            java.time.ZoneId.of("Asia/Ho_Chi_Minh")
-                    )
-                    : null;
-            return cleanAgentOrchestratorService.executeCleanAgentTurn(
-                    pageId,
-                    request,
-                    mergedMessage,
-                    honorific,
-                    pagePersona,
-                    preRetrievalState,
-                    convState,
-                    fused,
-                    appliedRules,
-                    extractedLead,
-                    customerInsight,
-                    activeSkills,
-                    candidateSkills,
-                    salesStage,
-                    incomingHistorySize,
-                    turnStartNs,
-                    retrievalMs,
-                    threeStreamInput
-            );
-        }
-        ConversationState priorStateWithChunks = preRetrievalState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
-        String stateBeforeTelemetry = formatStateTelemetrySummary(priorStateWithChunks);
-        PrimaryActionRouter.RoutingDecision actionDecision = isGeneratePriceAnchorAction
-                ? new PrimaryActionRouter.RoutingDecision(
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        false,
-                        1,
-                        "RECOMMEND_AND_QUOTE_IF_PRICE_REQUESTED",
-                        "spa_recommend_and_quote_if_requested",
-                        "R03-SPLIT-BUBBLE-2-EMOTIONAL-ANCHOR"
-                )
-                : ((hasRuntimeControlPolicy || isLiveConfiguredLlm)
-                        ? PrimaryActionRouter.route(
-                                mergedMessage,
-                                priorStateWithChunks,
-                                convState,
-                                fused,
-                                safeDomainKeywords,
-                                allowDomainHealthForTurn
-                        )
-                        : new PrimaryActionRouter.RoutingDecision(
-                                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                                false,
-                                2,
-                                "GENERAL_CONSULTATION",
-                                null
-                        ));
-        if (actionDecision != null && actionDecision.correspondingMicroSkillCode() != null && candidateSkills != null) {
-            boolean matchedCandidateSkill = false;
-            for (AgentSkillDto candidate : candidateSkills) {
-                if (candidate != null && matchesSkillCodeOrAlias(
-                        actionDecision.correspondingMicroSkillCode(),
-                        candidate.code(),
-                        actionDecision.detectedIntent())) {
-                    activeSkills = List.of(candidate);
-                    matchedCandidateSkill = true;
-                    break;
-                }
-            }
-            if (!matchedCandidateSkill && ("spa_graceful_exit_after_rejection".equalsIgnoreCase(actionDecision.correspondingMicroSkillCode())
-                    || "spa_stage3_graceful_exit".equalsIgnoreCase(actionDecision.correspondingMicroSkillCode()))) {
-                activeSkills = List.of(new AgentSkillDto(
-                        null,
-                        "spa_graceful_exit_after_rejection",
-                        "Tôn trọng quyết định cân nhắc & Giữ thiện cảm (Graceful Exit)",
-                        "CLOSING",
-                        "Tôn trọng quyết định cân nhắc của khách, giữ thiện cảm ấm áp, không xin lỗi và không đặt câu hỏi chèo kéo.",
-                        "cân nhắc thêm, suy nghĩ thêm, để xem đã nhé, có gì nhắn sau",
-                        "Gửi 1 bong bóng ấm áp tôn trọng quyết định cân nhắc của khách, giữ thiện cảm, 0 xin lỗi, 0 câu hỏi.",
-                        null,
-                        null,
-                        96,
-                        true,
-                        pageId != null ? pageId.toString() : null,
-                        null,
-                        null
-                ));
-            }
-        }
-
-        // v3.3.4 GAP-03: Chuẩn hóa bất biến cờ always_on trước mọi bước dùng rule (prompt, scoped selection, telemetry)
-        if (appliedRules != null && !appliedRules.isEmpty()) {
-            appliedRules = PromptBudgetGuard.enforceAlwaysOnBudget(appliedRules);
-        }
-        if (hasRuntimeControlPolicy && appliedRules != null && !appliedRules.isEmpty()) {
-            List<LearnedRuleDto> guardedAlwaysOn = PromptBudgetGuard.validateAlwaysOnRules(appliedRules);
-            LearnedRuleDto scopedContextual = PromptBudgetGuard.selectScopedContextualRule(
-                    appliedRules,
-                    actionDecision != null ? actionDecision.detectedIntent() : null,
-                    convState,
-                    mergedMessage,
-                    true
-            );
-            List<LearnedRuleDto> scopedRules = new ArrayList<>(guardedAlwaysOn);
-            if (scopedContextual != null && scopedRules.stream().noneMatch(r -> r.id() != null && r.id().equals(scopedContextual.id()))) {
-                scopedRules.add(scopedContextual);
-            }
-            appliedRules = List.copyOf(scopedRules);
-        }
-
-        int minDelayMs = pagePersona != null ? pagePersona.resolvedConfig().resolvedPostPriceDelayMs() : 10_000;
-        com.docmind.guardrail.ReplyContractValidator.ValidationResult dbReferenceValRes = null;
-        if (hasRuntimeControlPolicy && !leadReadyHandoff && actionDecision != null) {
-            List<FanpageBotResponse.ReplyBubble> dbCandidateBubbles = PrimaryActionRouter.executeActionBubbles(
-                    actionDecision,
-                    mergedMessage,
-                    convState,
-                    honorific,
-                    pagePersona,
-                    fused,
-                    activeSkills != null && !activeSkills.isEmpty() ? activeSkills.get(0) : null
-            );
-            if (dbCandidateBubbles != null && !dbCandidateBubbles.isEmpty()) {
-                dbReferenceValRes = com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                        dbCandidateBubbles,
-                        convState,
-                        mergedMessage,
-                        actionDecision.effectiveResponseAction(),
-                        actionDecision.prependsConfiguredOpening(),
-                        minDelayMs
-                );
-            }
-        }
-
-        List<FanpageBotResponse.ReplyBubble> preAnchorBubblesForSplitState = List.of();
-        if (Boolean.TRUE.equals(request.splitPriceBubbles())
-                && !isLiveConfiguredLlm
-                && !isGeneratePriceAnchorAction
-                && !leadReadyHandoff
-                && actionDecision != null
-                && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                && dbReferenceValRes != null
-                && dbReferenceValRes.validatedBubbles().size() >= 2
-                && BubbleTextSanitizer.PRICE_PATTERN
-                        .matcher(dbReferenceValRes.validatedBubbles().get(dbReferenceValRes.validatedBubbles().size() - 2).text())
-                        .find()) {
-            long priceBubbleShownAtNs = System.nanoTime();
-            ThinkingModePolicy.markPriceBubble1ShownAndBubble2Pending(
-                    pageId, request.senderId(), currentTurnSequence, priceBubbleShownAtNs);
-            List<FanpageBotResponse.ReplyBubble> bubble1Only = List.copyOf(
-                    dbReferenceValRes.validatedBubbles().subList(0, dbReferenceValRes.validatedBubbles().size() - 1));
-            String combinedBubble1Text = String.join("\n\n", bubble1Only.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-            long firstBubbleSendMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
-            this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
-                    actionDecision.effectiveResponseAction(),
-                    ThinkingMode.FAST_NO_THINK,
-                    actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "PRICE_INQUIRY",
-                    List.of(),
-                    ThinkingModePolicy.extractRetrievedSourceIds(fused),
-                    true,
-                    null,
-                    0L,
-                    System.currentTimeMillis(),
-                    0L,
-                    firstBubbleSendMs,
-                    0L,
-                    "SPLIT_BUBBLE_1_IMMEDIATE_PRICE_QUOTE",
-                    false,
-                    ThinkingMode.FAST_NO_THINK.maxOutputTokens(),
-                    0,
-                    0L,
-                    0L,
-                    minDelayMs,
-                    0L,
-                    minDelayMs,
-                    false,
-                    0L,
-                    retrievalMs,
-                    0L,
-                    0,
-                    firstBubbleSendMs
-            );
-            ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
-            log.info("[AdaptiveThinkingRouter] page_id={} sender_id={} primary_action={} thinking_mode={} reason={} think_enabled={} max_output_tokens={} prompt_build_ms={} retrieval_ms={} llm_elapsed_ms={} validation_ms={} retry_count={} first_bubble_send_ms={} inter_bubble_gap_ms={} total_turn_ms={} target_price_gap_ms={} remaining_delay_ms={} cancelled_second_bubble={}",
-                    pageId, request.senderId(), actionDecision.effectiveResponseAction(),
-                    ThinkingMode.FAST_NO_THINK, "SPLIT_BUBBLE_1_IMMEDIATE_PRICE_QUOTE", false,
-                    ThinkingMode.FAST_NO_THINK.maxOutputTokens(), 0L, retrievalMs, 0L, 0L, 0,
-                    firstBubbleSendMs, 0L, firstBubbleSendMs, minDelayMs, minDelayMs, false);
-            ConversationState stateAfterSplit1 = ConversationState.updateAfterSend(
-                    pageId,
-                    request.senderId(),
-                    request.conversationId(),
-                    convState,
-                    mergedMessage,
-                    actionDecision,
-                    bubble1Only,
-                    false,
-                    incomingHistorySize
-            );
-            List<LearnedRuleDto> uiRulesSplit1 = filterMatchedRulesForUiResponse(appliedRules, actionDecision, false);
-            boolean policyLoadedSplit1 = appliedRules != null && !appliedRules.isEmpty();
-            log.info("[ProvenanceAudit] page_id={} sender_id={} routerRuleId={} primaryAction={} detectedIntent={} selectedSkill={} lastBotQuestionType={} stateBefore={} stateAfter={} policyLoaded={} policyMatched={} safetyHandoffTriggered=false bubbleSources=[OFFLINE_SPLIT_BUBBLE_1] rawLlmOutput=N/A outputAfterValidatorAndHooks={} finalUiReplyBubbles={}",
-                    pageId,
-                    request.senderId(),
-                    actionDecision.routerRuleId(),
-                    actionDecision.effectiveResponseAction(),
-                    actionDecision.detectedIntent(),
-                    activeSkills != null && !activeSkills.isEmpty() ? activeSkills.get(0).code() : actionDecision.correspondingMicroSkillCode(),
-                    convState != null ? convState.lastBotQuestionType() : "NONE",
-                    stateBeforeTelemetry,
-                    formatStateTelemetrySummary(stateAfterSplit1),
-                    policyLoadedSplit1,
-                    !uiRulesSplit1.isEmpty(),
-                    combinedBubble1Text,
-                    bubble1Only.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-            return new FanpageBotResponse(
-                    combinedBubble1Text,
-                    bubble1Only,
-                    FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION.code(),
-                    computeConfidenceScore(fused),
-                    false,
-                    null,
-                    null,
-                    extractedLead,
-                    uiRulesSplit1,
-                    customerInsight,
-                    activeSkills
-            ).withPendingSecondBubble(true, currentTurnSequence, priceBubbleShownAtNs);
-        }
-
-        if (isGeneratePriceAnchorAction) {
-            if (actionDecision == null || actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE) {
-                actionDecision = new PrimaryActionRouter.RoutingDecision(
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        false,
-                        1,
-                        "PRICE_INQUIRY",
-                        "spa_price_quote_after_clarify"
-                );
-                if (hasRuntimeControlPolicy) {
-                    List<FanpageBotResponse.ReplyBubble> dbCandidateBubbles = PrimaryActionRouter.executeActionBubbles(
-                            actionDecision,
-                            mergedMessage,
-                            convState,
-                            honorific,
-                            pagePersona,
-                            fused,
-                            activeSkills != null && !activeSkills.isEmpty() ? activeSkills.get(0) : null
-                    );
-                    if (dbCandidateBubbles != null && !dbCandidateBubbles.isEmpty()) {
-                        dbReferenceValRes = com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                                dbCandidateBubbles,
-                                convState,
-                                mergedMessage,
-                                actionDecision.effectiveResponseAction(),
-                                actionDecision.prependsConfiguredOpening(),
-                                minDelayMs
-                        );
-                    }
-                }
-            } else {
-                actionDecision = new PrimaryActionRouter.RoutingDecision(
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                        false,
-                        1,
-                        actionDecision.detectedIntent(),
-                        actionDecision.correspondingMicroSkillCode()
-                );
-            }
-            if (dbReferenceValRes != null && !dbReferenceValRes.validatedBubbles().isEmpty()) {
-                List<FanpageBotResponse.ReplyBubble> allRef = dbReferenceValRes.validatedBubbles();
-                if (allRef.size() >= 2) {
-                    preAnchorBubblesForSplitState = List.copyOf(allRef.subList(0, allRef.size() - 1));
-                }
-                FanpageBotResponse.ReplyBubble anchorRef = allRef.get(allRef.size() - 1);
-                dbReferenceValRes = new com.docmind.guardrail.ReplyContractValidator.ValidationResult(
-                        List.of(),
-                        List.of(anchorRef),
-                        anchorRef.text()
-                );
-            }
-        }
-
-        ThinkingModePolicy.ThinkingDecision thinkingDecision = isGeneratePriceAnchorAction
-                ? new ThinkingModePolicy.ThinkingDecision(
-                        ThinkingMode.PRICE_ANCHOR_THINK,
-                        ThinkingMode.PRICE_ANCHOR_THINK.maxOutputTokens(),
-                        "PRICE_QUOTE_EMOTIONAL_ANCHOR",
-                        ThinkingModePolicy.ObjectionRootCause.NONE,
-                        convState.objectionCount(),
-                        List.of(),
-                        List.of()
-                )
-                : ThinkingModePolicy.decide(
-                        mergedMessage,
-                        convState,
-                        actionDecision,
-                        customerInsight,
-                        benchmarkConfigMode
-                );
-        boolean isOpenAiCompatibleProvider = llmClient instanceof com.example.docmind.service.llm.OpenAiCompatibleLlmClient
-                || (llmClient != null && llmClient.name() != null
-                    && (llmClient.name().startsWith("openai:") || llmClient.name().startsWith("vllm:")));
-
-        long promptBuildStartNs = System.nanoTime();
-        String prompt = hasRuntimeControlPolicy
-                ? FanpageBotPromptBuilder.buildDynamicRuntimePrompt(
-                        mergedMessage,
-                        request.customerName(),
-                        request.history(),
-                        fused,
-                        appliedRules,
-                        pagePersona,
-                        salesStage,
-                        honorific,
-                        customerInsight,
-                        activeSkills,
-                        mocSummary,
-                        priceLadder,
-                        sampleDialogues,
-                        convState,
-                        actionDecision,
-                        dbReferenceValRes != null ? dbReferenceValRes.validatedBubbles() : List.of(),
-                        thinkingDecision,
-                        isOpenAiCompatibleProvider
-                )
-                : FanpageBotPromptBuilder.build(
-                        mergedMessage,
-                        request.customerName(),
-                        request.history(),
-                        fused,
-                        appliedRules,
-                        pagePersona,
-                        salesStage,
-                        honorific,
-                        customerInsight,
-                        activeSkills,
-                        mocSummary,
-                        priceLadder,
-                        sampleDialogues
-                );
-        long promptBuildMs = (System.nanoTime() - promptBuildStartNs) / 1_000_000L;
-
-        QueryComplexity complexity = queryComplexityClassifier != null
-                ? queryComplexityClassifier.classify(mergedMessage, request.history(), priceLadder)
-                : QueryComplexity.SIMPLE;
-        ReasoningBudget budget = (hasRuntimeControlPolicy || thinkingDecision.thinkingMode() != ThinkingMode.FAST_NO_THINK)
-                ? ReasoningBudget.forThinkingDecision(thinkingDecision)
-                : ReasoningBudget.salesChat(complexity);
-
-        long llmStartNs = System.nanoTime();
-        Long storedPriceShownNs = isGeneratePriceAnchorAction
-                ? ThinkingModePolicy.getPendingPriceBubbleShownAtNs(pageId, request.senderId(), currentTurnSequence)
-                : null;
-        long priceBubbleShownAtNs = (isGeneratePriceAnchorAction && request.priceBubbleSentAtNs() != null && request.priceBubbleSentAtNs() > 0L)
-                ? request.priceBubbleSentAtNs()
-                : ((storedPriceShownNs != null && storedPriceShownNs > 0L) ? storedPriceShownNs : llmStartNs);
-        boolean isPriceAnchorOrQuoteTurn = isGeneratePriceAnchorAction
-                || thinkingDecision.thinkingMode() == ThinkingMode.PRICE_ANCHOR_THINK
-                || (actionDecision != null
-                    && (actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                        || actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE));
-        if (isPriceAnchorOrQuoteTurn && !isGeneratePriceAnchorAction) {
-            ThinkingModePolicy.markPriceBubble1ShownAndBubble2Pending(pageId, request.senderId(), currentTurnSequence, priceBubbleShownAtNs);
-        }
-        log.info("[LLM] FanpageBotService calling engine={} thinkingMode={} thinkEnabled={} reason={} complexity={} effort={} temp={} topP={} maxTokens={} (page_id={}, sales_stage={}, honorific={}, archetype={}, skills={}, retrievalMs={}, promptBuildMs={}, promptChars={})",
-                llmClient.name(), thinkingDecision.thinkingMode().name(), budget.thinkEnabled(), thinkingDecision.reasonCode(),
-                complexity.name(), budget.reasoningEffort(), budget.temperature(), budget.topP(), budget.maxTokens(),
-                pageId, salesStage.code(), honorific,
-                customerInsight != null ? customerInsight.buyerArchetype() : "N/A",
-                activeSkills != null ? activeSkills.size() : 0,
-                retrievalMs, promptBuildMs, prompt.length());
-
-        String rawReply = null;
-        boolean interceptedByMoodPass = false;
-        boolean forcedSafeHandoffByReferee = false;
-        List<String> cancelledBubbleTextsThisTurn = List.of();
-        boolean responseValidatedByLlm = false;
-        String fallbackReasonForTelemetry = null;
-        List<String> validationErrorsForTelemetry = List.of();
-        List<FanpageBotResponse.ReplyBubble> stateDrivenBubbles = null;
-        StructuredLlmOutput structuredLlmOutput = null;
-        int retryCount = 0;
-        long repairElapsedMs = 0L;
-
-        // Ngoại trừ: (1) BOT_MUTED và (2) EXPLICIT_OPT_OUT (đã xử lý ở trên),
-        // toàn bộ các lượt hội thoại thông thường (kể cả Turn 1) BẮT BUỘC gọi sang LLM đã cấu hình (llmClient.complete),
-        // sau đó chạy qua ReplyContractValidator kiểm định mà không tự động gắn 2 bong bóng mở đầu cố định.
-        boolean isBotMutedFastPath = actionDecision != null
-                && actionDecision.primaryAction() == PrimaryActionRouter.PrimaryAction.BOT_MUTED;
-        boolean isConfiguredThreeBubbleBrandIntro = actionDecision != null
-                && actionDecision.prependsConfiguredOpening()
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
-                && pagePersona != null
-                && pagePersona.resolvedConfig() != null
-                && pagePersona.resolvedConfig().openingBubbles() != null
-                && pagePersona.resolvedConfig().openingBubbles().size() >= 3
-                && dbReferenceValRes != null
-                && dbReferenceValRes.validatedBubbles().size() == 3;
-
-        if (isBotMutedFastPath) {
-            stateDrivenBubbles = List.of();
-            rawReply = "";
-            interceptedByMoodPass = true;
-            responseValidatedByLlm = true;
-        } else if (isConfiguredThreeBubbleBrandIntro) {
-            stateDrivenBubbles = dbReferenceValRes.validatedBubbles();
-            rawReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-            interceptedByMoodPass = true;
-            responseValidatedByLlm = true;
+        ConversationState convState = preRetrievalState.withCatalogOnlyForAciV2(fused, safeDomainKeywords);
+        this.lastTurnTelemetry = null;
+        if (cleanAgentOrchestratorService != null) {
+            cleanAgentOrchestratorService.setLlmClient(this.llmClient);
+            cleanAgentOrchestratorService.setAgentBrainService(this.agentBrainService);
+            cleanAgentOrchestratorService.setAgentSkillService(this.agentSkillService);
         } else {
-            try {
-                rawReply = llmClient.complete(prompt, budget);
-                if (rawReply == null) {
-                    rawReply = llmClient.complete(prompt);
-                }
-            } catch (Exception e) {
-                log.warn("[LLM] Exception calling llmClient {}: {}", llmClient.name(), e.getMessage());
-            }
+            this.cleanAgentOrchestratorService = new CleanAgentOrchestratorService(
+                    this.llmClient, this.agentBrainService, this.agentSkillService);
         }
-        boolean isFallback = !isBotMutedFastPath && !isConfiguredThreeBubbleBrandIntro && (rawReply == null
-                || rawReply.isBlank()
-                || rawReply.matches("(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*")
-                || rawReply.startsWith("[stub-llm]"));
-
-        String sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
-
-        // Nếu LLM trả về JSON (kể cả bọc trong ```json ... ```), bóc tách reply_bubbles, should_handoff, state_updates, grounding_check
-        // Chỉ cho phép retry tối đa 1 lần nếu lỗi cú pháp JSON hoặc thiếu trường bắt buộc (KHÔNG retry vì lỗi độ dài câu)
-        if (!interceptedByMoodPass && !isFallback && sanitizedReply != null && !sanitizedReply.isBlank()) {
-            structuredLlmOutput = parseStructuredLlmJsonOutput(sanitizedReply, minDelayMs);
-            if (hasRuntimeControlPolicy && isLiveConfiguredLlm
-                    && (structuredLlmOutput == null || !structuredLlmOutput.parsedFromJson()
-                        || structuredLlmOutput.bubbles() == null || structuredLlmOutput.bubbles().isEmpty())) {
-                retryCount = 1;
-                long jsonRepairStartNs = System.nanoTime();
-                try {
-                    ReasoningBudget fastRepairBudget = ReasoningBudget.forThinkingMode(ThinkingMode.FAST_NO_THINK);
-                    String retryReply = llmClient.complete(prompt, fastRepairBudget);
-                    if (retryReply == null) {
-                        retryReply = llmClient.complete(prompt, budget);
-                    }
-                    if (retryReply != null && !retryReply.isBlank()) {
-                        rawReply = retryReply;
-                        sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
-                        structuredLlmOutput = parseStructuredLlmJsonOutput(sanitizedReply, minDelayMs);
-                    }
-                } catch (Exception e) {
-                    log.warn("[LLM] JSON retry exception calling llmClient {}: {}", llmClient.name(), e.getMessage());
-                } finally {
-                    repairElapsedMs += (System.nanoTime() - jsonRepairStartNs) / 1_000_000L;
-                }
-            }
-            if (structuredLlmOutput != null && structuredLlmOutput.parsedFromJson() && !structuredLlmOutput.bubbles().isEmpty()) {
-                sanitizedReply = String.join("\n\n", structuredLlmOutput.bubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-            }
-            if (structuredLlmOutput != null && structuredLlmOutput.groundingCheck() != null && convState != null) {
-                convState = convState.applyGroundingCheckAsymmetricUpdate(structuredLlmOutput.groundingCheck(), mergedMessage);
-            }
-        }
-
-        long secondBubbleReadyAtNs = System.nanoTime();
-        long llmLatencyMs = (secondBubbleReadyAtNs - llmStartNs) / 1_000_000L;
-        long turnElapsedMs = Math.max(0L, (secondBubbleReadyAtNs - turnStartNs) / 1_000_000L);
-        long effectivePriceShownAtNs = isGeneratePriceAnchorAction ? priceBubbleShownAtNs : secondBubbleReadyAtNs;
-        ThinkingModePolicy.PostPriceDelayMetrics postPriceDelayMetrics = ThinkingModePolicy.computeDynamicPostPriceDelay(
-                minDelayMs,
-                effectivePriceShownAtNs,
-                secondBubbleReadyAtNs
-        );
-        if (!isGeneratePriceAnchorAction && isLiveConfiguredLlm && turnElapsedMs >= 500L) {
-            int targetGap = (int) Math.max(minDelayMs, ThinkingModePolicy.DEFAULT_TARGET_PRICE_GAP_MS);
-            int remainingVisibleDelayMs = targetGap;
-            long nowEpochMs = System.currentTimeMillis();
-            postPriceDelayMetrics = new ThinkingModePolicy.PostPriceDelayMetrics(
-                    targetGap,
-                    nowEpochMs - turnElapsedMs,
-                    nowEpochMs + remainingVisibleDelayMs,
-                    turnElapsedMs,
-                    remainingVisibleDelayMs,
-                    turnElapsedMs + remainingVisibleDelayMs
-            );
-        }
-        boolean cancelledSecondBubbleByConcurrentTurn = isPriceAnchorOrQuoteTurn && ThinkingModePolicy.isPendingSecondBubbleSuperseded(
-                pageId,
-                request.senderId(),
-                currentTurnSequence
-        );
-
-        if (isFallback) {
-            fallbackReasonForTelemetry = "LLM_OFFLINE_OR_EMPTY_RESPONSE";
-            validationErrorsForTelemetry = List.of("LLM_OFFLINE_OR_EMPTY_RESPONSE");
-            log.info("[LLM] Fallback triggered (rawReply={}) -> generating grounded fallback reply from RAG fused chunks and state",
-                    rawReply != null && rawReply.length() > 60 ? rawReply.substring(0, 60) + "..." : rawReply);
-            if (hasRuntimeControlPolicy && dbReferenceValRes != null && !dbReferenceValRes.validatedBubbles().isEmpty()) {
-                stateDrivenBubbles = alignBubbleDelaysWithContract(
-                        dbReferenceValRes.validatedBubbles(),
-                        dbReferenceValRes.validatedBubbles(),
-                        postPriceDelayMetrics,
-                        cancelledSecondBubbleByConcurrentTurn
+        this.cleanAgentOrchestratorService.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput =
+                AdaptiveConversationIntelligence.buildThreeStreamInput(
+                        request,
+                        convState != null ? convState.availablePackageCatalog() : List.of(),
+                        pagePersona != null ? pagePersona.resolvedConfig() : null,
+                        java.time.ZoneId.of("Asia/Ho_Chi_Minh")
                 );
-                rawReply = String.join("\n\n", stateDrivenBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
-                sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
-                interceptedByMoodPass = true;
-                isFallback = false;
-            } else if (hasRuntimeControlPolicy) {
-                stateDrivenBubbles = List.of(new FanpageBotResponse.ReplyBubble(SAFE_HANDOFF_BUBBLE_TEXT, 0));
-                rawReply = SAFE_HANDOFF_BUBBLE_TEXT;
-                sanitizedReply = SAFE_HANDOFF_BUBBLE_TEXT;
-                forcedSafeHandoffByReferee = true;
-                interceptedByMoodPass = true;
-                isFallback = false;
-            } else {
-                ObsidianMetadataCache metaCache = this.retrievalService != null ? this.retrievalService.getMetadataCache() : null;
-                rawReply = generateGroundedFallbackReply(
-                        mergedMessage, fused, honorific, isFirstTurn, salesStage, request.history(), priceLadder, detectedBranch, request.customerName(),
-                        metaCache, pageId);
-                sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
-                isFallback = false;
-            }
-        }
-
-        // Chạy qua ReplyContractValidator cho các Page có Runtime Control Policy sau khi LLM đã sinh câu trả lời
-        long validationStartNs = System.nanoTime();
-        long targetedRepairElapsedMs = 0L;
-        // v3.8 provenance: raw_output -> sanitized -> validator_errors -> repair_outcome -> final_bubble
-        String provenanceRepairOutcome = isConfiguredThreeBubbleBrandIntro ? "CONFIGURED_BRAND_INTRO_3_BUBBLES" : "NOT_NEEDED";
-        List<String> provenanceFirstPassErrors = List.of();
-        String provenanceSanitizedOutput = sanitizedReply;
-        if (!interceptedByMoodPass && fallbackReasonForTelemetry == null) {
-            responseValidatedByLlm = true;
-        }
-        long validationMs = Math.max(0L, ((System.nanoTime() - validationStartNs) / 1_000_000L) - targetedRepairElapsedMs);
-
-        // 8. HẬU XỬ LÝ (POST-PROCESSING): BÓC TÁCH [[HANDOFF]], LỌC SẠCH TRÍCH DẪN [1], ĐỒNG NHẤT XƯNG HÔ & LÀM MƯỢT CÂU HỎI KẾT
-        boolean isActionExplicitHandoff = actionDecision != null
-                && (actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
-                    || actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY);
-        boolean stateDrivenHandoff = forcedSafeHandoffByReferee
-                || (interceptedByMoodPass && isActionExplicitHandoff)
-                || (!hasRuntimeControlPolicy && structuredLlmOutput != null && Boolean.TRUE.equals(structuredLlmOutput.shouldHandoff()))
-                || (isActionExplicitHandoff && structuredLlmOutput != null && Boolean.TRUE.equals(structuredLlmOutput.shouldHandoff()));
-        String detectedIntentForHandoff = actionDecision != null ? actionDecision.detectedIntent() : null;
-        String stateHandoffCat = stateDrivenHandoff
-                ? ("UNGROUNDED_SCOPE_HANDOFF".equals(detectedIntentForHandoff)
-                    || "UNRESOLVED_FAQ_HANDOFF".equals(detectedIntentForHandoff)
-                    || "UNSUPPORTED_DETAIL_OR_FAQ_QUESTION".equals(detectedIntentForHandoff)
-                    || "MISSING_OR_CONFLICTING_DETAIL_EVIDENCE_HANDOFF".equals(detectedIntentForHandoff)
-                    ? "UNGROUNDED_OR_UNKNOWN"
-                    : "COMPLAINT_OR_DISTRESS")
-                : null;
-        String stateHandoffReason = stateDrivenHandoff
-                ? (structuredLlmOutput != null && structuredLlmOutput.handoffReason() != null && !structuredLlmOutput.handoffReason().isBlank()
-                    ? structuredLlmOutput.handoffReason()
-                    : ("UNGROUNDED_SCOPE_HANDOFF".equals(detectedIntentForHandoff)
-                        ? "Chưa có gói dịch vụ khớp với phạm vi nhu cầu trong tài liệu Active — chuyển quản lý/chuyên viên hỗ trợ."
-                        : ("UNRESOLVED_FAQ_HANDOFF".equals(detectedIntentForHandoff)
-                            || "UNSUPPORTED_DETAIL_OR_FAQ_QUESTION".equals(detectedIntentForHandoff)
-                            || "MISSING_OR_CONFLICTING_DETAIL_EVIDENCE_HANDOFF".equals(detectedIntentForHandoff)
-                            ? "Thông tin chi tiết dịch vụ/FAQ khách hỏi chưa có hoặc có mâu thuẫn trong tài liệu hiện hành — chuyển chuyên viên xác nhận chính xác."
-                            : ("COMPREHENSION_ESCALATION_HANDOFF".equals(detectedIntentForHandoff)
-                                ? "Khách hàng vẫn chưa rõ sau khi giải thích — chuyển chuyên viên hỗ trợ giải đáp trực tiếp."
-                                : ("MISMATCH_CORRECTION_HANDOFF".equals(detectedIntentForHandoff)
-                                    ? "Khách hàng phản ánh tư vấn lệch vùng/nhu cầu kèm bức xúc — xin lỗi và chuyển quản lý hỗ trợ ngay."
-                                    : "Khách hàng bức xúc nhiều lượt liên tiếp — chuyển nhân viên hỗ trợ trực tiếp.")))))
-                : null;
-        boolean skipLegacyPostProcessing = interceptedByMoodPass || hasRuntimeControlPolicy;
-        PostProcessedBotReply processed = skipLegacyPostProcessing
-                ? new PostProcessedBotReply(
-                        sanitizedReply,
-                        stateDrivenHandoff,
-                        stateHandoffCat,
-                        stateHandoffReason)
-                : postProcessReply(sanitizedReply, fused, honorific, isFirstTurn, salesStage, request.history(), mergedMessage, priceLadder);
-
-        String finalCleanText = processed.cleanText();
-        if (leadReadyHandoff) {
-            if (asksExplicitPriceInMessage(mergedMessage)) {
-                finalCleanText = ensurePhoneLeadConfirmationPreservingPrice(finalCleanText, extractedLead, honorific);
-            } else {
-                finalCleanText = ensureCleanPhoneLeadReply(finalCleanText, extractedLead, honorific, appliedRules);
-            }
-        } else if (!processed.needsHandoff() && !skipLegacyPostProcessing
-                && (FanpageBotPromptBuilder.isBroadUnspecifiedPriceInquiry(mergedMessage, request.history())
-                    || (isFirstTurn && isBarePriceOrGreetingTurn(mergedMessage)))) {
-            finalCleanText = enforceAntiInformationDumpingOnBroadPrice(
-                    finalCleanText, fused, honorific, request.customerName(), isFirstTurn);
-        } else if (!processed.needsHandoff() && !skipLegacyPostProcessing) {
-            finalCleanText = enforceConversationBookingConsistency(
-                    finalCleanText, mergedMessage, bookingState, honorific, request.history(), isFirstTurn);
-            if (consultResult != null && consultResult.isProfileUpdateTurn()) {
-                finalCleanText = enforceTopicAnchorOnProfileUpdate(finalCleanText, consultResult, honorific);
-            }
-        }
-
-        if (!skipLegacyPostProcessing) {
-            finalCleanText = sanitizeForbiddenWords(finalCleanText, pagePersona);
-        }
-
-        boolean hasCompletedBookingLead = bookingState.hasCapturedPhone() && bookingState.hasConfirmedTimeSlot();
-        boolean finalHandoff = processed.needsHandoff() || leadReadyHandoff || hasCompletedBookingLead;
-        String finalHandoffCategory = (leadReadyHandoff || hasCompletedBookingLead)
-                ? "BOOKING_LEAD_CAPTURED"
-                : (processed.needsHandoff() ? processed.handoffCategory() : null);
-        String finalHandoffReason = (leadReadyHandoff || hasCompletedBookingLead)
-                ? "Khách hàng đã để lại SĐT (" + extractedLead.phoneNumber()
-                  + (extractedLead.preferredTime() != null ? " - Giờ hẹn: " + extractedLead.preferredTime() : "")
-                  + ") / đặt lịch — Đã khóa lịch hẹn!"
-                : (processed.needsHandoff() ? processed.handoffReason() : null);
-        boolean replyContainsPrice = hasQuotedPriceInText(finalCleanText) || isGeneratePriceAnchorAction;
-        String finalStage = finalHandoff && processed.needsHandoff() && !leadReadyHandoff && !hasCompletedBookingLead
-                ? "HUMAN_HANDOFF"
-                : (structuredLlmOutput != null && structuredLlmOutput.updatedSalesStage() != null && !structuredLlmOutput.updatedSalesStage().isBlank()
-                    ? structuredLlmOutput.updatedSalesStage()
-                    : (interceptedByMoodPass && replyContainsPrice && salesStage == FanpageBotPromptBuilder.SalesStage.DISCOVERY
-                        ? FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION.code()
-                        : salesStage.code()));
-        double confidence = processed.needsHandoff() && !leadReadyHandoff ? 0.35 : computeConfidenceScore(fused);
-
-        boolean isLiveProductionLlm = isLiveConfiguredLlm;
-        boolean enablePostPriceBubble2Thinking = isLiveProductionLlm && !finalHandoff
-                && (replyContainsPrice || hasPriorPriceInHistory)
-                && !(isFirstTurn && !replyContainsPrice);
-
-        List<FanpageBotResponse.ReplyBubble> bubbles = (stateDrivenBubbles != null && !stateDrivenBubbles.isEmpty() && (!finalHandoff || stateDrivenHandoff))
-                ? stateDrivenBubbles
-                : (structuredLlmOutput != null && structuredLlmOutput.parsedFromJson() && !structuredLlmOutput.bubbles().isEmpty() && !finalHandoff
-                    ? structuredLlmOutput.bubbles()
-                    : splitIntoBubbles(finalCleanText, enablePostPriceBubble2Thinking));
-
-        if (isGeneratePriceAnchorAction) {
-            if (cancelledSecondBubbleByConcurrentTurn || bubbles == null || bubbles.isEmpty()) {
-                bubbles = List.of();
-                finalCleanText = "";
-            } else {
-                FanpageBotResponse.ReplyBubble anchorBubble = bubbles.get(bubbles.size() - 1);
-                FanpageBotResponse.ReplyBubble delayedAnchor = new FanpageBotResponse.ReplyBubble(
-                        anchorBubble.text(),
-                        postPriceDelayMetrics.remainingDelayMs()
-                );
-                bubbles = List.of(delayedAnchor);
-                finalCleanText = delayedAnchor.text();
-            }
-        }
-
-        int thinkingChars = 0;
-        long thinkingLatencyMs = 0L;
-        long contentLatencyMs = llmLatencyMs;
-        String telemetryProvider = "ollama";
-        String telemetryModel = llmClient != null && llmClient.name() != null ? llmClient.name() : "qwen3:14b";
-        String telemetryEndpoint = "/api/chat";
-        long ollamaLoadDurationMs = 0L;
-        int ollamaPromptEvalCount = 0;
-        long ollamaPromptEvalDurationMs = 0L;
-        int ollamaEvalCount = 0;
-        long ollamaEvalDurationMs = 0L;
-        long ollamaTotalDurationMs = llmLatencyMs;
-        if (llmClient instanceof com.example.docmind.service.llm.OllamaLlmClient ollamaClient) {
-            com.example.docmind.service.llm.OllamaLlmClient.OllamaCallTelemetry t = ollamaClient.getLastCallTelemetry();
-            if (t != null) {
-                thinkingChars = t.thinkingChars();
-                thinkingLatencyMs = t.thinkingLatencyMs();
-                contentLatencyMs = t.contentLatencyMs();
-                telemetryProvider = t.provider();
-                if (t.model() != null && !t.model().isBlank()) {
-                    telemetryModel = t.model();
-                }
-                if (t.endpoint() != null && !t.endpoint().isBlank()) {
-                    telemetryEndpoint = t.endpoint();
-                } else if (t.apiPath() != null && !t.apiPath().isBlank()) {
-                    telemetryEndpoint = t.apiPath();
-                }
-                ollamaLoadDurationMs = t.loadDurationMs();
-                ollamaPromptEvalCount = t.promptEvalCount();
-                ollamaPromptEvalDurationMs = t.promptEvalDurationMs();
-                ollamaEvalCount = t.evalCount();
-                ollamaEvalDurationMs = t.evalDurationMs();
-                ollamaTotalDurationMs = t.totalDurationMs() > 0L ? t.totalDurationMs() : llmLatencyMs;
-            }
-        } else if (llmClient instanceof com.example.docmind.service.llm.OpenAiCompatibleLlmClient openAiClient) {
-            telemetryProvider = "openai_compatible";
-            telemetryEndpoint = "/v1/chat/completions";
-            com.example.docmind.service.llm.OpenAiCompatibleLlmClient.OpenAiCallTelemetry t = openAiClient.getLastCallTelemetry();
-            if (t != null) {
-                thinkingChars = t.thinkingChars();
-                thinkingLatencyMs = t.thinkingLatencyMs();
-                contentLatencyMs = t.contentLatencyMs();
-            }
-        }
-        boolean hasConfiguredOpeningOnTurn1 = actionDecision != null
-                && actionDecision.prependsConfiguredOpening()
-                && pagePersona != null
-                && pagePersona.resolvedConfig() != null
-                && pagePersona.resolvedConfig().openingBubbles() != null
-                && pagePersona.resolvedConfig().openingBubbles().size() >= 2
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
-                && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.BOT_MUTED;
-        long priceShownEpochMs = replyContainsPrice ? postPriceDelayMetrics.priceBubbleShownAtEpochMs() : 0L;
-        long secondSentEpochMs = (replyContainsPrice && (bubbles.size() >= 2 || isGeneratePriceAnchorAction))
-                ? postPriceDelayMetrics.secondBubbleReadyAtEpochMs()
-                : 0L;
-        long timeToFirstBubbleMs = ((isPriceAnchorOrQuoteTurn && !isGeneratePriceAnchorAction) || hasConfiguredOpeningOnTurn1)
-                ? (retrievalMs + promptBuildMs)
-                : (retrievalMs + promptBuildMs + llmLatencyMs);
-        long interBubbleGapMs = (replyContainsPrice && (bubbles.size() >= 2 || isGeneratePriceAnchorAction))
-                ? postPriceDelayMetrics.effectiveInterBubbleGapMs()
-                : (bubbles.size() >= 2 ? bubbles.get(1).typingDelayMs() : 0L);
-        long totalTurnMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
-
-        boolean usedTemplateFallback = fallbackReasonForTelemetry != null && !fallbackReasonForTelemetry.isBlank();
-        boolean repairApplied = !usedTemplateFallback && retryCount > 0;
-        String generationSource = isBotMutedFastPath
-                ? "DETERMINISTIC_POLICY"
-                : (isConfiguredThreeBubbleBrandIntro
-                    ? "CONFIGURED_OPENING"
-                    : (usedTemplateFallback ? "FALLBACK_TEMPLATE" : (repairApplied ? "LLM_REPAIRED" : "LLM_LIVE")));
-        String validationOutcome = usedTemplateFallback ? "FALLBACK" : (repairApplied ? "REPAIRED_PASS" : "PASS");
-        List<String> bubbleSources;
-        if (hasConfiguredOpeningOnTurn1 && bubbles != null && bubbles.size() >= 3) {
-            boolean allThreeConfigured = pagePersona.resolvedConfig().openingBubbles().size() >= 3
-                    && actionDecision.effectiveResponseAction() != PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE;
-            List<String> mixedSources = new ArrayList<>(bubbles.size());
-            mixedSources.add("CONFIGURED_OPENING");
-            mixedSources.add("CONFIGURED_OPENING");
-            for (int i = 2; i < bubbles.size(); i++) {
-                mixedSources.add(allThreeConfigured ? "CONFIGURED_OPENING" : generationSource);
-            }
-            bubbleSources = List.copyOf(mixedSources);
-        } else {
-            bubbleSources = bubbles != null
-                    ? bubbles.stream().map(b -> generationSource).toList()
-                    : List.of();
-        }
-
-        this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
-                actionDecision != null ? actionDecision.effectiveResponseAction() : PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
-                thinkingDecision.thinkingMode(),
-                actionDecision != null && actionDecision.detectedIntent() != null ? actionDecision.detectedIntent() : "",
-                thinkingDecision.unresolvedQuestionIds(),
-                ThinkingModePolicy.extractRetrievedSourceIds(fused),
-                responseValidatedByLlm,
-                fallbackReasonForTelemetry,
-                llmLatencyMs,
-                priceShownEpochMs,
-                secondSentEpochMs,
-                timeToFirstBubbleMs,
-                interBubbleGapMs,
-                thinkingDecision.reasonCode(),
-                budget.thinkEnabled(),
-                budget.maxTokens(),
-                thinkingChars,
-                thinkingLatencyMs,
-                contentLatencyMs,
-                postPriceDelayMetrics.configuredDelayMs(),
-                postPriceDelayMetrics.elapsedSincePriceBubbleMs(),
-                postPriceDelayMetrics.remainingDelayMs(),
-                cancelledSecondBubbleByConcurrentTurn,
-                promptBuildMs,
-                retrievalMs,
-                validationMs,
-                repairElapsedMs,
-                retryCount,
-                totalTurnMs,
-                usedTemplateFallback,
-                fallbackReasonForTelemetry,
-                generationSource,
-                repairApplied,
-                retryCount,
-                validationOutcome,
-                validationErrorsForTelemetry,
-                telemetryProvider,
-                telemetryModel,
-                telemetryEndpoint,
-                bubbleSources,
-                ollamaLoadDurationMs,
-                ollamaPromptEvalCount,
-                ollamaPromptEvalDurationMs,
-                ollamaEvalCount,
-                ollamaEvalDurationMs,
-                ollamaTotalDurationMs
-        );
-        if (hasRuntimeControlPolicy || isLiveConfiguredLlm) {
-            ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
-            log.info("[AdaptiveThinkingRouter] primaryAction={} thinkingMode={} detectedIntent={} generationSource={} usedTemplateFallback={} fallbackTriggerRule={} repairApplied={} repairAttemptCount={} validationOutcome={} validationErrors={} provider={} model={} endpoint={} bubbleSources={} loadDurationMs={} promptEvalCount={} promptEvalDurationMs={} evalCount={} evalDurationMs={} totalDurationMs={} unresolvedQuestionIds={} retrievedSourceIds={} responseValidated={} promptBuildMs={} retrievalMs={} llmElapsedMs={} validationMs={} repairElapsedMs={} retryCount={} priceBubbleShownAt={} secondBubbleSentAt={} firstBubbleSendMs={} interBubbleGapMs={} totalTurnMs={} thinkEnabled={} maxOutputTokens={} thinkingChars={} thinkingLatencyMs={} contentLatencyMs={} remainingDelayMs={} cancelledSecondBubble={}",
-                    this.lastTurnTelemetry.primaryAction(),
-                    thinkingDecision.thinkingMode().name(),
-                    this.lastTurnTelemetry.detectedIntent(),
-                    this.lastTurnTelemetry.generationSource(),
-                    this.lastTurnTelemetry.usedTemplateFallback(),
-                    this.lastTurnTelemetry.fallbackTriggerRule(),
-                    this.lastTurnTelemetry.repairApplied(),
-                    this.lastTurnTelemetry.repairAttemptCount(),
-                    this.lastTurnTelemetry.validationOutcome(),
-                    this.lastTurnTelemetry.validationErrors(),
-                    this.lastTurnTelemetry.provider(),
-                    this.lastTurnTelemetry.model(),
-                    this.lastTurnTelemetry.endpoint(),
-                    this.lastTurnTelemetry.bubbleSources(),
-                    this.lastTurnTelemetry.loadDurationMs(),
-                    this.lastTurnTelemetry.promptEvalCount(),
-                    this.lastTurnTelemetry.promptEvalDurationMs(),
-                    this.lastTurnTelemetry.evalCount(),
-                    this.lastTurnTelemetry.evalDurationMs(),
-                    this.lastTurnTelemetry.totalDurationMs(),
-                    this.lastTurnTelemetry.unresolvedQuestionIds(),
-                    this.lastTurnTelemetry.retrievedSourceIds(),
-                    this.lastTurnTelemetry.responseValidated(),
-                    promptBuildMs,
-                    retrievalMs,
-                    llmLatencyMs,
-                    validationMs,
-                    repairElapsedMs,
-                    retryCount,
-                    priceShownEpochMs,
-                    secondSentEpochMs,
-                    timeToFirstBubbleMs,
-                    interBubbleGapMs,
-                    totalTurnMs,
-                    budget.thinkEnabled(),
-                    budget.maxTokens(),
-                    thinkingChars,
-                    thinkingLatencyMs,
-                    contentLatencyMs,
-                    postPriceDelayMetrics.remainingDelayMs(),
-                    cancelledSecondBubbleByConcurrentTurn);
-        }
-
-        log.info("[LLM] FanpageBotService response from engine={} retrievalMs={} latencyMs={} status={} page_id={} honorific={} sales_stage={} handoff={} lead_phone={} bubbles={}",
-                llmClient.name(), retrievalMs, llmLatencyMs, isFallback ? "fallback" : "ok",
-                pageId, honorific, finalStage, finalHandoff, extractedLead != null ? maskPhoneNumber(extractedLead.phoneNumber()) : "none", bubbles.size());
-
-        List<LearnedRuleDto> uiMatchedRules = filterMatchedRulesForUiResponse(appliedRules, actionDecision, finalHandoff);
-        boolean safetyHandoffTriggered = finalHandoff
-                && actionDecision != null
-                && actionDecision.effectiveResponseAction() == PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY;
-        boolean policyLoaded = appliedRules != null && !appliedRules.isEmpty();
-        boolean policyMatched = !uiMatchedRules.isEmpty();
-
-        FanpageBotResponse rawResponse = new FanpageBotResponse(
-                finalCleanText,
-                bubbles,
-                finalStage,
-                confidence,
-                finalHandoff,
-                finalHandoffCategory,
-                finalHandoffReason,
-                extractedLead,
-                uiMatchedRules,
-                customerInsight,
-                activeSkills
-        );
-
-        FanpageBotResponse finalResponse = (interceptedByMoodPass || hasRuntimeControlPolicy)
-                ? rawResponse
-                : applyGuardrails(
-                        rawResponse,
-                        honorific,
-                        request.customerName(),
-                        isFirstTurn,
-                        finalStage,
-                        mergedMessage,
-                        request.history(),
-                        fused
-                );
-
-        // v3.8 FINAL OUTPUT GATE: kiểm tra và ghi nhận warning, TUYỆT ĐỐI KHÔNG thay thế reply_bubbles không rỗng của LLM bằng câu fallback.
-        boolean finalGateBlocked = false;
-        if (finalResponse != null && finalResponse.replyBubbles() != null && !finalResponse.replyBubbles().isEmpty()
-                && actionDecision != null && !isBotMutedFastPath) {
-            com.docmind.guardrail.ReplyContractValidator.ValidationResult gateRes =
-                    com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                            finalResponse.replyBubbles(), convState, mergedMessage,
-                            actionDecision.effectiveResponseAction(), actionDecision.prependsConfiguredOpening(),
-                            minDelayMs, ThinkingMode.FAST_NO_THINK, null);
-            if (gateRes.errors() != null && !gateRes.errors().isEmpty()) {
-                List<String> gateErrors = List.copyOf(gateRes.errors());
-                log.warn("[FinalOutputGate] WARNING errors={} -> preserving LLM reply_bubbles", gateErrors);
-                validationErrorsForTelemetry = gateErrors;
-            }
-        }
-
-        // Provenance Kill-Switch (v3.4.2 Mục 1.3): Cấm tuyệt đối Java ghi đè câu tiếng Việt ngoài luồng rồi gắn nhãn LLM_LIVE
-        List<FanpageBotResponse.ReplyBubble> finalUiReplyBubbles = (finalResponse != null && finalResponse.replyBubbles() != null)
-                ? finalResponse.replyBubbles()
-                : (bubbles != null ? bubbles : List.of());
-        String rawLlmOutput = rawReply != null ? rawReply : "";
-        if (interceptedByMoodPass && !finalGateBlocked) {
-            String normalizedRaw = normalizeForProvenance(rawLlmOutput);
-            for (int i = 0; i < finalUiReplyBubbles.size(); i++) {
-                if (i < bubbleSources.size() && "LLM_LIVE".equals(bubbleSources.get(i))) {
-                    String normalizedBubble = normalizeForProvenance(finalUiReplyBubbles.get(i).text());
-                    String normalizedWithoutDa = normalizedBubble.replaceFirst("^dạ\\s+", "").strip();
-                    // Referee (validator/sanitizer) chỉ được xoá/sửa nhẹ cụm từ của LLM: coi là "xuất phát từ LLM" nếu >= 80% từ của bubble có trong raw.
-                    boolean derivedByWordOverlap = false;
-                    String checkForOverlap = !normalizedWithoutDa.isEmpty() ? normalizedWithoutDa : normalizedBubble;
-                    if (!checkForOverlap.isEmpty()) {
-                        String[] bubbleWords = checkForOverlap.split("\\s+");
-                        java.util.Set<String> rawWords = new java.util.HashSet<>(java.util.Arrays.asList(normalizedRaw.split("\\s+")));
-                        int hit = 0;
-                        for (String w : bubbleWords) {
-                            if (rawWords.contains(w)) {
-                                hit++;
-                            }
-                        }
-                        derivedByWordOverlap = bubbleWords.length > 0 && hit >= Math.ceil(bubbleWords.length * 0.8);
-                    }
-                    if (!normalizedBubble.isEmpty()
-                            && !derivedByWordOverlap
-                            && !normalizedRaw.contains(normalizedBubble)
-                            && (normalizedWithoutDa.isEmpty() || !normalizedRaw.contains(normalizedWithoutDa))) {
-                        throw new IllegalStateException("[GHOSTWRITER_VIOLATION] Bubble index " + i
-                                + " được gắn nhãn LLM_LIVE nhưng không xuất phát từ rawLlmOutput! Raw="
-                                + rawLlmOutput + " | FinalBubble=" + finalUiReplyBubbles.get(i).text());
-                    }
-                }
-            }
-        }
-
-        if (inboundSessionPersistenceService != null
-                && !inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(pageId, request.senderId())) {
-            log.warn("[LEGACY-LAYER2-FENCE] Stale turn suppressed before ledger commit (page_id={} sender_id={})",
-                    pageId, request.senderId());
-            markProvenanceV38Logged();
-            return buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", CURRENT_INBOUND_EXTERNAL_MID.get());
-        }
-
-        ConversationState stateAfterTurn = convState;
-        if ((hasRuntimeControlPolicy || isLiveConfiguredLlm)
-                && (!isGeneratePriceAnchorAction || !cancelledSecondBubbleByConcurrentTurn)) {
-            List<FanpageBotResponse.ReplyBubble> deliveredBubbles = finalResponse != null ? finalResponse.replyBubbles() : bubbles;
-            List<FanpageBotResponse.ReplyBubble> bubblesForStateUpdate = deliveredBubbles;
-            if (isGeneratePriceAnchorAction && !preAnchorBubblesForSplitState.isEmpty() && deliveredBubbles != null && !deliveredBubbles.isEmpty()) {
-                List<FanpageBotResponse.ReplyBubble> mergedForState = new ArrayList<>(preAnchorBubblesForSplitState.size() + deliveredBubbles.size());
-                mergedForState.addAll(preAnchorBubblesForSplitState);
-                mergedForState.addAll(deliveredBubbles);
-                bubblesForStateUpdate = List.copyOf(mergedForState);
-            }
-            String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
-            // turn/event id ỔN ĐỊNH (không dùng UUID ngẫu nhiên) để webhook retry không ghi trùng ledger bền vững
-            String ledgerUserTurnId = isGeneratePriceAnchorAction
-                    ? String.valueOf(CURRENT_TURN_ID.get())
-                    : SentBubbleLedger.stableUserTurnId(ledgerKeyNow, mergedMessage);
-            if (!isGeneratePriceAnchorAction) {
-                SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerUserTurnId, mergedMessage);
-            }
-            if (deliveredBubbles != null && !deliveredBubbles.isEmpty()) {
-                SentBubbleLedger.recordAssistantTurn(
-                        ledgerKeyNow, ledgerUserTurnId + (isGeneratePriceAnchorAction ? ":anchor" : ":a"),
-                        deliveredBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                        SentBubbleLedger.DeliveryStatus.DELIVERED,
-                        cancelledBubbleTextsThisTurn);
-            }
-            stateAfterTurn = ConversationState.updateAfterSend(
-                    pageId,
-                    request.senderId(),
-                    request.conversationId(),
-                    convState,
-                    mergedMessage,
-                    actionDecision,
-                    bubblesForStateUpdate,
-                    finalResponse != null ? finalResponse.needsHumanHandoff() : finalHandoff,
-                    incomingHistorySize
-            );
-        }
-
-        List<String> finalUiBubbleTexts = (finalResponse != null && finalResponse.replyBubbles() != null)
-                ? finalResponse.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList()
-                : (bubbles != null ? bubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList() : List.of());
-        log.info("[ProvenanceV38] turn_id={} raw_output={} sanitized_output={} validator_errors={} repair_outcome={} final_bubble={}",
-                CURRENT_TURN_ID.get(),
-                maskSensitiveForAudit(rawLlmOutput),
-                maskSensitiveForAudit(provenanceSanitizedOutput),
-                provenanceFirstPassErrors,
-                provenanceRepairOutcome,
-                maskSensitiveForAudit(String.join(" || ", finalUiBubbleTexts)));
-        PROVENANCE_V38_LOGGED.set(true);
-        log.info("[ProvenanceAudit] turn_id={} conversation_id={} page_id={} sender_id={} routerRuleId={} primaryAction={} detectedIntent={} selectedSkill={} lastBotQuestionType={} stateBefore={} stateAfter={} policyLoaded={} policyMatched={} safetyHandoffTriggered={} bubbleSources={} rawLlmOutput={} outputAfterValidatorAndHooks={} finalUiReplyBubbles={}",
-                CURRENT_TURN_ID.get(),
-                request.conversationId(),
-                pageId,
-                request.senderId(),
-                actionDecision != null ? actionDecision.routerRuleId() : "NONE",
-                actionDecision != null ? actionDecision.effectiveResponseAction() : "NONE",
-                actionDecision != null ? actionDecision.detectedIntent() : "NONE",
-                activeSkills != null && !activeSkills.isEmpty()
-                        ? activeSkills.get(0).code()
-                        : (actionDecision != null ? actionDecision.correspondingMicroSkillCode() : "NONE"),
-                convState != null ? convState.lastBotQuestionType() : "NONE",
-                stateBeforeTelemetry,
-                formatStateTelemetrySummary(stateAfterTurn),
-                policyLoaded,
-                policyMatched,
-                safetyHandoffTriggered,
-                bubbleSources,
-                rawReply != null ? rawReply.replaceAll("\\s+", " ").strip() : "null",
-                finalCleanText != null ? finalCleanText.replaceAll("\\s+", " ").strip() : "null",
-                finalUiBubbleTexts);
-        emitLiveAuditJsonLog(
+        return cleanAgentOrchestratorService.executeAciCognitiveTurn(
                 pageId,
                 request,
                 mergedMessage,
+                honorific,
+                pagePersona,
+                preRetrievalState,
                 convState,
-                stateAfterTurn,
-                actionDecision,
-                prompt,
-                rawReply,
-                structuredLlmOutput,
-                finalUiReplyBubbles,
-                validationErrorsForTelemetry,
-                provenanceFirstPassErrors,
-                provenanceRepairOutcome,
-                fallbackReasonForTelemetry,
-                telemetryProvider,
-                telemetryModel,
-                budget,
-                totalTurnMs
+                fused,
+                appliedRules,
+                extractedLead,
+                null,
+                activeSkills,
+                candidateSkills,
+                salesStage,
+                incomingHistorySize,
+                turnStartNs,
+                retrievalMs,
+                threeStreamInput
         );
-        // v3.3.4 GAP-05: telemetry có cấu trúc 1 dòng/lượt để theo dõi ma trận Selective Thinking & ngân sách prompt
-        log.info("DOCMIND_V334_TELEMETRY pageId={} action={} intent={} routerRuleId={} thinkingMode={} thinkingReason={} safetyHandoff={} bubblesCount={} alwaysOnChars={}",
-                pageId,
-                actionDecision != null ? actionDecision.effectiveResponseAction() : "NONE",
-                actionDecision != null ? actionDecision.detectedIntent() : "NONE",
-                actionDecision != null ? actionDecision.routerRuleId() : "NONE",
-                thinkingDecision != null ? thinkingDecision.thinkingMode() : "NONE",
-                thinkingDecision != null ? thinkingDecision.triggerReason() : "NONE",
-                finalResponse != null ? finalResponse.needsHumanHandoff() : finalHandoff,
-                finalUiBubbleTexts.size(),
-                PromptBudgetGuard.validateAlwaysOnRules(appliedRules, "").alwaysOnRuleChars());
-
-        if (agentBrainService != null) {
-            try {
-                agentBrainService.retainTurnAsync(
-                        pageId,
-                        request.senderId(),
-                        request.customerName(),
-                        mergedMessage,
-                        finalResponse != null ? finalResponse.replyText() : finalCleanText,
-                        stateAfterTurn != null && stateAfterTurn.customerCareNotes() != null
-                                ? stateAfterTurn.customerCareNotes()
-                                : List.of()
-                );
-            } catch (Exception e) {
-                log.debug("[AgentBrain] Non-fatal retainTurnAsync exception: {}", e.getMessage());
-            }
-        }
-
-        return finalResponse;
     }
 
     /**
@@ -4728,114 +3014,6 @@ public class FanpageBotService {
         );
     }
 
-    static String enrichContextualQueryWithLangGraph(
-            String baseQuery,
-            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult) {
-        String q = baseQuery != null ? baseQuery : "";
-        if (consultResult == null || "GENERAL".equalsIgnoreCase(consultResult.topicFamily())) {
-            return q;
-        }
-        if (consultResult.topicKeywords() != null && !consultResult.topicKeywords().isEmpty()) {
-            String lowerQ = q.toLowerCase(Locale.ROOT);
-            List<String> missingKeywords = new ArrayList<>();
-            for (String kw : consultResult.topicKeywords()) {
-                if (kw != null && !kw.isBlank() && !lowerQ.contains(kw.toLowerCase(Locale.ROOT))) {
-                    missingKeywords.add(kw.strip());
-                }
-            }
-            if (!missingKeywords.isEmpty()) {
-                q = String.join(" ", missingKeywords) + " " + q;
-            }
-        }
-        return q.strip();
-    }
-
-    static List<ReciprocalRankFusion.FusedChunk> scopeChunksToTopicFamily(
-            List<ReciprocalRankFusion.FusedChunk> rawFused,
-            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult,
-            String currentMessage) {
-        if (rawFused == null || rawFused.isEmpty() || consultResult == null) {
-            return rawFused == null ? List.of() : rawFused;
-        }
-        if (!"ACNE_THAM".equalsIgnoreCase(consultResult.topicFamily())) {
-            return rawFused;
-        }
-        String lowerMsg = currentMessage != null ? currentMessage.toLowerCase(Locale.ROOT) : "";
-        if (lowerMsg.contains("nám") || lowerMsg.contains("pico") || lowerMsg.contains("meso") || lowerMsg.contains("căng bóng")) {
-            return rawFused;
-        }
-        Pattern offTopicLinePattern = Pattern.compile("(?iU)(trị\\s+nám|laser\\s+pico|meso\\s+collagen|căng\\s+bóng\\s+&\\s+trẻ\\s+hóa)");
-        List<ReciprocalRankFusion.FusedChunk> scoped = new ArrayList<>(rawFused.size());
-        for (ReciprocalRankFusion.FusedChunk fc : rawFused) {
-            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) {
-                continue;
-            }
-            String text = fc.chunk().text();
-            String[] lines = text.split("\\r?\\n");
-            if (lines.length <= 1) {
-                scoped.add(fc);
-                continue;
-            }
-            List<String> keptLines = new ArrayList<>();
-            for (String line : lines) {
-                if (!offTopicLinePattern.matcher(line).find()) {
-                    keptLines.add(line);
-                }
-            }
-            String pruned = String.join("\n", keptLines).strip();
-            if (!pruned.isEmpty() && !pruned.equals(text)) {
-                com.example.docmind.repository.RetrievedChunk orig = fc.chunk();
-                com.example.docmind.repository.RetrievedChunk updated = new com.example.docmind.repository.RetrievedChunk(
-                        orig.chunkId(),
-                        orig.documentId(),
-                        orig.headingPath(),
-                        orig.sourceBlockIds(),
-                        orig.page(),
-                        orig.bbox(),
-                        pruned,
-                        orig.score()
-                );
-                scoped.add(new ReciprocalRankFusion.FusedChunk(updated, fc.score()));
-            } else {
-                scoped.add(fc);
-            }
-        }
-        return scoped;
-    }
-
-    static String enforceTopicAnchorOnProfileUpdate(
-            String cleanText,
-            com.example.docmind.client.FastApiAgentClient.ConsultResponse consultResult,
-            String resolvedHonorific) {
-        if (cleanText == null || cleanText.isBlank() || consultResult == null || !consultResult.isProfileUpdateTurn()) {
-            return cleanText;
-        }
-        if (!"ACNE_THAM".equalsIgnoreCase(consultResult.topicFamily())) {
-            return cleanText;
-        }
-        String lower = cleanText.toLowerCase(Locale.ROOT);
-        boolean driftedToCatalog = lower.contains("laser pico")
-                || lower.contains("meso collagen")
-                || lower.contains("thâm nám hay dưỡng căng bóng")
-                || lower.contains("mụn, nám")
-                || lower.contains("đang cần ưu tiên cải thiện vấn đề nào nhất");
-        if (!driftedToCatalog) {
-            return cleanText;
-        }
-        String h = (resolvedHonorific != null && !resolvedHonorific.isBlank()) ? resolvedHonorific.strip() : "Anh";
-        String kws = (consultResult.topicKeywords() != null && !consultResult.topicKeywords().isEmpty())
-                ? String.join(" và ", consultResult.topicKeywords())
-                : "điều trị mụn & mờ thâm";
-        boolean hasBackAcne = kws.toLowerCase(Locale.ROOT).contains("lưng");
-        String bodyPartNote = hasBackAcne
-                ? "đặc biệt vùng da lưng và mặt của Nam giới có lớp sừng dày và tuyến bã nhờn hoạt động mạnh hơn"
-                : "nền da Nam giới thường dày và tuyến bã nhờn hoạt động mạnh hơn";
-        return "Dạ các phác đồ " + kws + " chuẩn Y khoa bên em hoàn toàn phù hợp và hiệu quả cao với " + h
-                + " Nam giới ạ (bên em có bố trí khu vực phòng trị liệu riêng tư kín đáo 1-1 nên " + h + " hoàn toàn thoải mái ạ). "
-                + "Vì " + bodyPartNote + ", Liệu trình Trị Mụn Chuẩn Y Khoa (từ 650.000đ - 1.500.000đ/buổi, cam kết 0 phụ phí) sẽ giúp tiêu viêm sâu và làm sáng vết thâm rất nhanh.\n\n"
-                + h + " tiện ghé cơ sở vào khung giờ Sáng hay Chiều để Bác sĩ Chuyên khoa I trực tiếp soi da AI 3D miễn phí 100% và lên phác đồ xử lý dứt điểm cho mình ạ?";
-    }
-
     /**
      * Xác định Nhịp độ tư vấn (SalesStage) để Bot tư vấn từ tốn, không vội vã:
      * - DISCOVERY: Mới bắt đầu (0-1 lượt trước) và chưa hỏi thẳng về giá gói cụ thể/chốt lịch (hoặc chỉ hỏi "giá" chung chung chưa rõ nhu cầu).
@@ -5013,7 +3191,12 @@ public class FanpageBotService {
         working = polishConversationalVietnamese(working, honorific, isFirstTurn, salesStage, history, currentMessage);
 
         // 4. Khử triệt để mọi cú pháp kỹ thuật (wikilinks, tables, citations, markdown headers, bold, leaked tags)
-        working = SyntaxSanitizationHook.sanitize(working, honorific);
+        working = BubbleTextSanitizer.sanitizeBubbleText(
+                working.replaceAll("\\[\\[([^\\]|]+)(?:\\|([^\\]]+))?\\]\\]", "$1")
+                       .replaceAll("\\[\\d+\\]", "")
+                       .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
+                       .replaceAll("(?m)^\\s*#{1,6}\\s+", "")
+        );
 
         if (working.isBlank()) {
             working = "Dạ em xin phép kết nối ngay với Chuyên viên phụ trách của Page để hỗ trợ chi tiết cho " + honorific + " liền nhé ạ!";
@@ -5981,57 +4164,6 @@ public class FanpageBotService {
                 activeSkills
         );
         return base;
-    }
-
-    private FanpageBotResponse applyGuardrails(
-            FanpageBotResponse response,
-            String customerHonorific,
-            String customerName,
-            boolean isFirstTurn,
-            String salesStage,
-            String customerMessage,
-            List<FanpageBotRequest.ConversationTurn> history,
-            List<ReciprocalRankFusion.FusedChunk> fused) {
-        if (response == null) {
-            return null;
-        }
-
-        List<String> historyTexts = new ArrayList<>();
-        if (history != null) {
-            for (FanpageBotRequest.ConversationTurn turn : history) {
-                if (turn != null && turn.content() != null) {
-                    String rolePrefix = (turn.role() != null && !turn.role().isBlank())
-                            ? turn.role().strip().toLowerCase(Locale.ROOT) + ": "
-                            : "";
-                    historyTexts.add(rolePrefix + turn.content());
-                }
-            }
-        }
-
-        List<String> chunkTexts = new ArrayList<>();
-        if (fused != null) {
-            for (ReciprocalRankFusion.FusedChunk fc : fused) {
-                if (fc.chunk() != null && fc.chunk().text() != null) {
-                    chunkTexts.add(fc.chunk().text());
-                }
-            }
-        }
-
-        String effectiveStage = (response.needsHumanHandoff() && response.handoffCategory() != null)
-                ? response.handoffCategory()
-                : salesStage;
-
-        GuardrailContext ctx = GuardrailContext.builder()
-                .customerHonorific(customerHonorific)
-                .customerName(customerName)
-                .isFirstTurn(isFirstTurn)
-                .salesStage(effectiveStage)
-                .customerMessage(customerMessage)
-                .conversationHistory(historyTexts)
-                .knowledgeChunks(chunkTexts)
-                .build();
-
-        return guardrailPipeline.process(ctx, response);
     }
 
     private static double computeConfidenceScore(List<ReciprocalRankFusion.FusedChunk> fused) {

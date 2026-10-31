@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -115,18 +114,29 @@ class PendingBubbleCancelTest {
                 new FanpageBotResponse.ReplyBubble("Dạ em thành thật xin lỗi mình một lần nữa vì sự sơ suất vừa rồi ạ.", 0),
                 new FanpageBotResponse.ReplyBubble("Khi mình ghé, em sẽ dặn kỹ thuật viên chăm sóc kỹ vùng đầu và vai cho mình nha.", 2000)
         );
-        ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+        String prevApology = "Dạ em thành thật xin lỗi mình vì sự sơ suất vừa rồi ạ.";
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
                 duplicateApologyBubbles,
-                afterTurn3,
-                "Dở vừa, ns linh ta linh tinh",
-                PrimaryActionRouter.PrimaryAction.DIRECT_CONCRETE_SOLUTION,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                "Xin lỗi kiểu văn mẫu thế, tư vấn chán thế",
                 false,
-                2000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                prevApology,
+                List.of()
         );
-        assertTrue(valRes.errors().contains("DUPLICATE_ERROR_APOLOGY"),
-                "ReplyContractValidator phải bắt lỗi Hard Gate DUPLICATE_ERROR_APOLOGY khi xin lỗi lặp lại cùng errorId");
+        assertTrue(violations.contains("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT"),
+                "ACI V2 Referee phải chặn lặp xin lỗi hành chính rập khuôn khi khách phàn nàn về cách nói chuyện");
+        assertTrue(afterTurn3.apologizedErrorIds().contains("WRONG_SCOPE:đầu gối"));
     }
 
     @Test
@@ -162,18 +172,27 @@ class PendingBubbleCancelTest {
         List<FanpageBotResponse.ReplyBubble> newErrorApologyBubbles = List.of(
                 new FanpageBotResponse.ReplyBubble("Dạ em xin lỗi vì vừa nhầm sang vùng lưng ạ, mình đang cần chăm sóc vùng đầu, vai và giấc ngủ thôi đúng không ạ?", 0)
         );
-        ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
                 newErrorApologyBubbles,
-                afterTurn3,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                null,
+                List.of(),
+                null,
                 "Đau vai chứ lưng đâu",
-                PrimaryActionRouter.PrimaryAction.REPAIR_AND_RECONFIRM,
                 false,
-                2000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                "Dạ em xin lỗi vì nhầm sang vùng đầu gối ạ.",
+                List.of()
         );
-        assertFalse(valRes.errors().contains("DUPLICATE_ERROR_APOLOGY"),
-                "Khi phát sinh errorId mới (WRONG_SCOPE:lưng), bot được phép nhận lỗi đích danh mà không bị chặn DUPLICATE_ERROR_APOLOGY");
+        assertFalse(violations.contains("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT"),
+                "Khi phát sinh đính chính vùng mới (WRONG_SCOPE:lưng), bot được phép nhận lỗi đích danh mà không bị chặn");
     }
 
     @Test
@@ -215,20 +234,21 @@ class PendingBubbleCancelTest {
         assertTrue(artifact.confirmedScopes().containsAll(List.of("đầu", "vai", "giấc ngủ")));
         assertTrue(artifact.noteText().contains("dặn kỹ thuật viên"));
 
-        // Kiểm tra nhánh chưa có confirmedScopes mà hứa vận hành -> phải báo lỗi OPERATIONAL_PROMISE_WITHOUT_ARTIFACT
+        // Kiểm tra nhánh chưa có confirmedScopes thì updateAfterSend không tạo khống CustomerCareNoteArtifact rỗng
         ConversationState emptyScopeState = ConversationState.empty().withTenantCareActor("kỹ thuật viên", spaTaxonomy);
-        ReplyContractValidator.ValidationResult invalidPromiseRes = ReplyContractValidator.validateAndEnforce(
-                promisedBubbles,
+        ConversationState afterEmptyScope = ConversationState.updateAfterSend(
+                TEST_TENANT_ID,
+                "sender-empty-care",
+                "conv-empty-care",
                 emptyScopeState,
                 "Tư vấn đi",
-                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                concreteDecision,
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ mình đang muốn thư giãn vùng nào để em tư vấn đúng ý ạ?", 0)),
                 false,
-                2000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+                1
         );
-        assertTrue(invalidPromiseRes.errors().contains("OPERATIONAL_PROMISE_WITHOUT_ARTIFACT"),
-                "Khi chưa có confirmedScopes mà hứa 'em sẽ dặn kỹ thuật viên...', Validator phải bắt lỗi OPERATIONAL_PROMISE_WITHOUT_ARTIFACT");
+        assertTrue(afterEmptyScope.customerCareNotes().isEmpty(),
+                "Khi chưa có lời hứa vận hành gắn với confirmedScopes thì không tự tạo CustomerCareNoteArtifact");
     }
 
     @Test

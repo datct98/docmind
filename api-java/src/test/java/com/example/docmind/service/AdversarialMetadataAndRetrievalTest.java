@@ -221,12 +221,12 @@ public class AdversarialMetadataAndRetrievalTest {
             );
             assertThat(tagsQ1).contains("quan_1");
 
-            // Test 2: Hà Nội - Bích Câu & Long Biên & Cầu Giấy
+            // Test 2: Hà Nội - Bích Câu & Long Biên & Cầu Giấy (dynamic multi-tenant branch header markers)
             List<String> tagsHn = ChunkMetadataExtractor.extractBranchTags(
-                    "Chi nhánh Hà Nội (Bích Câu, Long Biên, Cầu Giấy)",
+                    "Chi nhánh Hà Nội — Cơ sở Bích Câu, Cơ sở Long Biên, Chi nhánh Cầu Giấy",
                     "Dịch vụ áp dụng tại tất cả cơ sở Hà Nội"
             );
-            assertThat(tagsHn).contains("bich_cau", "long_bien", "cau_giay");
+            assertThat(tagsHn).contains("ha_noi", "bich_cau", "long_bien", "cau_giay");
 
             // Test 3: Dynamic regex branch discovery for unlisted locations
             List<String> tagsDynamic = ChunkMetadataExtractor.extractBranchTags(

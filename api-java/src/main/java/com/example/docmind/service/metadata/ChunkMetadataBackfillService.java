@@ -135,25 +135,14 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
         int updated = 0;
         int skipped = 0;
 
-        String updateSqlWithTsvContent = """
-                UPDATE chunks
-                SET chunk_metadata = CAST(? AS jsonb),
-                    tsv = setweight(to_tsvector('simple', coalesce(array_to_string(heading_path, ' '), '')), 'A')
-                          || setweight(to_tsvector('simple', coalesce(text, '')), 'B'),
-                    tsv_content = setweight(to_tsvector('simple', coalesce(array_to_string(heading_path, ' '), '')), 'A')
-                                  || setweight(to_tsvector('simple', coalesce(text, '')), 'B')
-                WHERE id = ?
-                """;
-
-        String updateSqlFallback = """
+        // Unit P3.4: Ghi 1 lần duy nhất vào cột chuẩn tsv; trigger trg_chunks_sync_tsv() tự đồng bộ sang tsv_content
+        String canonicalUpdateSql = """
                 UPDATE chunks
                 SET chunk_metadata = CAST(? AS jsonb),
                     tsv = setweight(to_tsvector('simple', coalesce(array_to_string(heading_path, ' '), '')), 'A')
                           || setweight(to_tsvector('simple', coalesce(text, '')), 'B')
                 WHERE id = ?
                 """;
-
-        String chosenSql = hasTsvContentCol ? updateSqlWithTsvContent : updateSqlFallback;
 
         for (ChunkEntity entity : chunks) {
             processed++;
@@ -170,7 +159,7 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
                 json = "{}";
             }
 
-            int rowsAffected = jdbc.update(chosenSql, json, entity.getId());
+            int rowsAffected = jdbc.update(canonicalUpdateSql, json, entity.getId());
             if (rowsAffected > 0) {
                 updated++;
             } else {

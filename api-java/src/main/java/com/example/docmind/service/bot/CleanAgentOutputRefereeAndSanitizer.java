@@ -2998,7 +2998,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             "(?isU).*(?<!(?:chưa|không|ko|chẳng)\\s{1,4}(?:có|áp\\s+dụng|triển\\s+khai)\\s{1,4}(?:chương\\s+trình\\s+)?)"
             + "\\b(?:đang\\s+(?:giảm|sale|ưu\\s+đãi)\\s+\\d{1,2}\\s*%|giảm\\s+(?:ngay\\s+|thêm\\s+|tới\\s+)?\\d{1,2}\\s*%|"
             + "ưu\\s+đãi\\s+giảm\\s+\\d{1,2}\\s*%|mua\\s+\\d+\\s*(?:buổi|gói|vé|suất)\\s+(?:tặng|được\\s+tặng|giảm)\\s+\\d+|"
-            + "tặng\\s+(?:kèm\\s+)?voucher\\s+\\d+)"
+            + "tặng\\s+(?:kèm\\s+)?voucher\\s+\\d+|cam\\s+kết\\s+hoàn\\s+tiền(?:\\s+\\d{1,3}\\s*%)?|hoàn\\s+tiền\\s+100\\s*%)"
             + ".*"
     );
 
@@ -3790,6 +3790,18 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 "(?iU)^(\\s*(?:dạ[,\\s]+)?)mình\\s+((?:đã\\s+|rất\\s+|cũng\\s+)?(?:biết|ghi\\s+nhận|nắm\\s+rõ|xin\\s+lỗi))\\b",
                 "Dạ " + sp + " $2"
         );
+        if ("mình".equalsIgnoreCase(cp)) {
+            out = out.replaceAll(
+                    "(?iU)^\\s*(?:em|chị|anh)\\s+(đang\\s+(?:gặp\\s+phải|quan\\s+tâm|cần|muốn|tìm\\s+hiểu)\\b)",
+                    "Mình $1"
+            );
+        } else if ("Anh".equalsIgnoreCase(cp)) {
+            out = out.replaceAll("(?iU)^(\\s*(?:dạ[,\\s]+)?(?:em\\s+)?chào\\s+)chị\\b", "$1Anh");
+            out = out.replaceAll("(?iU)^(\\s*(?:dạ[,\\s]+)?)chị(\\s+ơi\\b)", "$1Anh$2");
+        } else if ("Chị".equalsIgnoreCase(cp)) {
+            out = out.replaceAll("(?iU)^(\\s*(?:dạ[,\\s]+)?(?:em\\s+)?chào\\s+)anh\\b", "$1Chị");
+            out = out.replaceAll("(?iU)^(\\s*(?:dạ[,\\s]+)?)anh(\\s+ơi\\b)", "$1Chị$2");
+        }
         return out;
     }
 
@@ -4681,6 +4693,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         String combinedText = combinedSb.toString();
         String combinedTextLower = combinedText.toLowerCase(Locale.ROOT);
+        Set<Long> groundedChunkPricesVnd = groundedChunksLower.isEmpty()
+                ? Set.of()
+                : extractPricesInVndFromText(groundedChunksLower);
 
         List<String> violations = new ArrayList<>();
         for (String v : baseViolations) {
@@ -4691,6 +4706,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     || v.startsWith("CONTRADICTORY_DOWNSELL_AND_BOOKING_CLOSE_IN_SAME_TURN")
                     || v.startsWith("FALSE_PRIOR_PACKAGE_INTEREST_ASSUMPTION")) {
                 continue;
+            }
+            if (v.startsWith("UNGROUNDED_PRICE_WHEN_CATALOG_EMPTY:") && !groundedChunkPricesVnd.isEmpty()) {
+                String rawPrice = v.substring("UNGROUNDED_PRICE_WHEN_CATALOG_EMPTY:".length()).strip();
+                Long priceVnd = parseCleanPriceMentionToVnd(rawPrice);
+                if (priceVnd != null && priceVnd > 0L && groundedChunkPricesVnd.contains(priceVnd)) {
+                    continue;
+                }
             }
             if (v.startsWith("UNGROUNDED_PRODUCT_SPECIFICATION:") && !groundedChunksLower.isEmpty()) {
                 String specToken = v.substring("UNGROUNDED_PRODUCT_SPECIFICATION:".length()).strip().toLowerCase(Locale.ROOT);
@@ -4833,6 +4855,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (repeatsPreviousAdministrativeApologyStructure(combinedText, previousAssistantMessage)) {
                 addUniqueViolation(violations, "REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT");
             }
+        }
+
+        if (isPoliteClosureTurn && BOOKING_TIME_QUESTION_PHRASE_PATTERN.matcher(combinedText).matches()) {
+            addUniqueViolation(violations, "PUSHY_BOOKING_CTA_ON_POLITE_CLOSURE");
         }
 
         return violations;
@@ -5666,7 +5692,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return false;
         }
         String low = combinedText.toLowerCase(Locale.ROOT);
-        Matcher pctMatcher = Pattern.compile("(\\d{1,2})\\s*%").matcher(low);
+        if (low.contains("hoàn tiền") && !groundedChunksLower.contains("hoàn tiền")) {
+            return false;
+        }
+        Matcher pctMatcher = Pattern.compile("(\\d{1,3})\\s*%").matcher(low);
         boolean foundAnyPromoToken = false;
         while (pctMatcher.find()) {
             foundAnyPromoToken = true;
@@ -5706,8 +5735,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             int winEnd = Math.min(combinedTextLower.length(), idx + token.length() + 55);
             String before = combinedTextLower.substring(winStart, idx);
             String window = combinedTextLower.substring(winStart, winEnd);
-            boolean hasNegationOrExtraComparison = before.matches(
-                    "(?s).*(?:không|chẳng|ko|0\\s+|miễn|đội\\s+thêm|phát\\s+sinh\\s+thêm|tốn\\s+thêm|thu\\s+thêm|mất\\s+thêm).*");
+            boolean precededByAffirmativePriceLabel = before.matches(
+                    "(?s).*(?:\\b(?:giá|mức\\s+giá|đơn\\s+giá|niêm\\s+yết|chi\\s+phí|là)\\s*[:=]?\\s*)$");
+            boolean hasNegationOrExtraComparison = !precededByAffirmativePriceLabel && before.matches(
+                    "(?s).*(?:\\b(?:không|chẳng|ko|miễn)\\b|(?<![\\d.,])0\\s+|\\b(?:đội|phát\\s+sinh|tốn|thu|mất)\\s+thêm\\b).*");
             boolean hasTipOrFeeNoun = window.matches(
                     "(?s).*(?:\\btip\\b|tiền\\s+tip|tiền\\s+bo|phụ\\s+phí|phí\\s+phát\\s+sinh|chi\\s+phí\\s+ẩn).*");
             if (hasNegationOrExtraComparison && hasTipOrFeeNoun) {

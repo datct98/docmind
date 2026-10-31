@@ -93,11 +93,11 @@ public class FanpageBotUpgradeE2eTest {
         when(retrievalService.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
                 .thenReturn(new RetrievalService.RetrievalResult(List.of(chunk), List.of()));
 
-        // Realistic LLM consultant simulator answering in 2 natural Messenger bubbles
-        when(llmClient.complete(anyString())).thenAnswer(invocation -> {
-            String prompt = invocation.getArgument(0);
-            return generateRealisticConsultantReply(prompt);
-        });
+        // Realistic ACI V2 Single-Pass JSON consultant simulator answering in natural Messenger bubbles
+        when(llmClient.complete(anyString())).thenAnswer(invocation ->
+                generateRealisticConsultantReply(invocation.getArgument(0)));
+        when(llmClient.complete(anyString(), any())).thenAnswer(invocation ->
+                generateRealisticConsultantReply(invocation.getArgument(0)));
 
         ChatProperties chatProps = new ChatProperties();
         customerInsightEngine = new CustomerInsightEngine();
@@ -117,9 +117,12 @@ public class FanpageBotUpgradeE2eTest {
 
         knowledgePageRepository = mock(KnowledgePageRepository.class);
 
-        AgentSkillRepository agentSkillRepository = mock(AgentSkillRepository.class);
-        when(agentSkillRepository.findAllOrdered()).thenReturn(List.of());
-        agentSkillService = new AgentSkillService(agentSkillRepository);
+        agentSkillService = mock(AgentSkillService.class);
+        List<com.example.docmind.dto.bot.AgentSkillDto> allTestSkills = java.util.stream.Stream.concat(
+                CustomerInsightEngine.coolingPersuasionSkills().stream(),
+                CustomerInsightEngine.builtInDefaultSkills().stream()
+        ).toList();
+        when(agentSkillService.getActiveSkillsForPage(any())).thenReturn(allTestSkills);
 
         fanpageBotService = new FanpageBotService(
                 retrievalService,
@@ -136,20 +139,165 @@ public class FanpageBotUpgradeE2eTest {
     }
 
     private String generateRealisticConsultantReply(String prompt) {
-        if (prompt.contains("REENGAGE") || prompt.contains("re-engage") || prompt.contains("kéo lại tương tác") || prompt.contains("Khách im lặng") || prompt.contains("tạm im lặng")) {
-            return "Dạ em chào Chị ạ! Em thấy hôm trước Chị đang quan tâm đến liệu trình trị mụn bên em.\n\n"
-                    + "Không biết da mình mấy hôm nay đã đỡ hơn chưa ạ, Chị cần em hỗ trợ thêm thông tin gì không ạ?";
+        String safePrompt = prompt != null ? prompt : "";
+        int histStart = safePrompt.indexOf("<CONVERSATION_HISTORY>");
+        int histEnd = safePrompt.indexOf("</CONVERSATION_HISTORY>");
+        String historyBlock = (histStart >= 0 && histEnd > histStart)
+                ? safePrompt.substring(histStart, histEnd)
+                : safePrompt;
+        int curIdx = historyBlock.lastIndexOf("[T_CURRENT]");
+        String currentSection = curIdx >= 0 ? historyBlock.substring(curIdx) : historyBlock;
+        String lowerCurrent = currentSection.toLowerCase();
+        String lowerHistory = historyBlock.toLowerCase();
+        boolean hasPriorHistory = historyBlock.contains("[T1]");
+        boolean isMale = lowerHistory.contains("là nam")
+                || lowerHistory.contains("la nam")
+                || lowerHistory.contains("cho anh")
+                || lowerHistory.contains("chào anh");
+        String pronoun = isMale ? "Anh" : "Chị";
+
+        if (lowerCurrent.contains("im lặng") || lowerCurrent.contains("re-engage") || lowerCurrent.contains("kéo lại tương tác")) {
+            return String.format("""
+                    {
+                      "brain_reflection": {
+                        "customer_understanding": {
+                          "detected_intent": "IDLE_REENGAGE_CHECKIN",
+                          "inferred_customer_pronoun": "%s",
+                          "pronoun_confidence": 0.92,
+                          "buying_signal": "WEAK"
+                        },
+                        "priority_focus": {"primary": "GENTLE_CHECKIN"},
+                        "strategy": {"chosen": "Warm Acknowledgment", "adaptation": "CONTINUATION"}
+                      },
+                      "bubbles": [
+                        {"text": "Dạ %s ơi, em thấy mình đang tham khảo liệu trình trị mụn chuẩn y khoa bên em ạ."},
+                        {"text": "Không biết %s còn băn khoăn điểm nào về quy trình hay thời gian phục hồi để em giải đáp thêm giúp mình không ạ?"}
+                      ]
+                    }
+                    """, pronoun, pronoun, pronoun);
         }
-        if (prompt.contains("ZERO_PRESSURE") || prompt.contains("Lùi 1 bước") || prompt.contains("nghĩ thêm") || prompt.contains("để xem")) {
-            return "Dạ em hiểu ạ! Chị cứ thong thả tham khảo thêm nhé, làm đẹp là để mình hoàn toàn yên tâm và thoải mái nhất mà.\n\n"
-                    + "Khi nào Chị cần thêm thông tin hoặc muốn soi da thử thì cứ nhắn em bất cứ lúc nào nhé ạ!";
+
+        if (lowerCurrent.contains("xem thêm") || lowerCurrent.contains("nghĩ thêm") || lowerCurrent.contains("xem sao đã")) {
+            boolean costExpressed = lowerCurrent.contains("đắt");
+            return String.format("""
+                    {
+                      "brain_reflection": {
+                        "customer_understanding": {
+                          "detected_intent": "POLITE_DEFERRAL",
+                          "inferred_customer_pronoun": "%s",
+                          "pronoun_confidence": 0.95,
+                          "cost_concern_expressed": %s,
+                          "interaction_permission": "PAUSED",
+                          "buying_signal": "NONE"
+                        },
+                        "priority_focus": {"primary": "POLITE_CLOSURE"},
+                        "strategy": {"chosen": "Respectful Pause", "adaptation": "STOP"},
+                        "response_plan": {"strategy": "Respectful Pause", "cta_level": "NO_CTA", "next_action": "NO_ADDITIONAL_ACTION"},
+                        "activated_skill_codes": ["PSYCH_ZERO_PRESSURE_TAKEAWAY"]
+                      },
+                      "bubbles": [
+                        {"text": "Dạ em hiểu ạ! %s cứ thong thả tham khảo và cân nhắc thêm cho thật thoải mái nhé ạ."},
+                        {"text": "Khi nào %s cần hỗ trợ thêm thông tin chi tiết thì cứ nhắn em bất cứ lúc nào nha."}
+                      ]
+                    }
+                    """, pronoun, costExpressed, pronoun, pronoun);
         }
-        if (prompt.contains("Anh") || prompt.contains("nam giới") || prompt.contains("mìn là nam") || prompt.contains("mình là nam")) {
-            return "Dạ em chào Anh ạ! Liệu trình Trị Mụn Chuẩn Y Khoa bên em hoàn toàn phù hợp và rất hiệu quả cho da nam giới, chi phí trọn gói là 1.500.000 VNĐ ạ.\n\n"
-                    + "Sau khi làm da chỉ hơi ửng hồng nhẹ 1-2 tiếng là sinh hoạt bình thường không lo sưng đỏ. Anh đang bị mụn ở vùng nào nhiều nhất ạ?";
+
+        java.util.regex.Matcher phoneMatcher = java.util.regex.Pattern.compile("(0\\d{9})").matcher(currentSection.replaceAll("[.\\-\\s]", ""));
+        if (phoneMatcher.find()) {
+            String phone = phoneMatcher.group(1);
+            return String.format("""
+                    {
+                      "brain_reflection": {
+                        "customer_understanding": {
+                          "detected_intent": "PHONE_CALLBACK_AND_BOOKING",
+                          "inferred_customer_pronoun": "%s",
+                          "pronoun_confidence": 0.95,
+                          "booking_readiness": "READY_TO_BOOK",
+                          "buying_signal": "ACTION"
+                        },
+                        "priority_focus": {"primary": "BOOKING_COMPLETION"},
+                        "strategy": {"chosen": "Direct Answer", "adaptation": "CONTINUATION"}
+                      },
+                      "bubbles": [
+                        {"text": "Dạ em đã ghi nhận số điện thoại %s của %s rồi ạ, chuyên viên bên em sẽ liên hệ tư vấn chi tiết cho %s ngay nhé ạ."}
+                      ]
+                    }
+                    """, pronoun, phone, pronoun, pronoun);
         }
-        return "Dạ em chào Chị ạ! Về thắc mắc của Chị, Liệu trình Trị Mụn Chuẩn Y Khoa bên em có chi phí trọn gói là 1.500.000 VNĐ và sau làm chỉ ửng hồng nhẹ 1-2 tiếng là sinh hoạt bình thường nhé ạ.\n\n"
-                + "Hiện tại mình đang gặp tình trạng mụn ẩn hay mụn viêm sưng để em tư vấn phác đồ phù hợp nhất cho Chị nhé?";
+
+        if (lowerCurrent.contains("đặt lịch") || lowerCurrent.contains("chốt làm luôn")) {
+            return String.format("""
+                    {
+                      "brain_reflection": {
+                        "customer_understanding": {
+                          "detected_intent": "BOOKING_REQUEST",
+                          "inferred_customer_pronoun": "%s",
+                          "pronoun_confidence": 0.95,
+                          "booking_readiness": "READY_TO_BOOK",
+                          "buying_signal": "ACTION"
+                        },
+                        "priority": {"primary": "BOOKING_COMPLETION"},
+                        "strategy": {"chosen": "Direct Answer", "adaptation": "CONTINUATION"},
+                        "proposed_booking_patch": {"proposed_date": "hôm nay", "proposed_time": "chiều nay"}
+                      },
+                      "bubbles": [
+                        {"text": "Dạ vâng ạ, để em kiểm tra lịch trống chiều nay cho liệu trình Trị Mụn Chuẩn Y Khoa của %s nhé ạ."},
+                        {"text": "%s dự kiến ghé bên em khoảng mấy giờ chiều nay để em kiểm tra khung giờ phù hợp ạ?"}
+                      ]
+                    }
+                    """, pronoun, pronoun, pronoun);
+        }
+
+        if (lowerCurrent.contains("hơi đắt") || lowerCurrent.contains("đắt")) {
+            return String.format("""
+                    {
+                      "brain_reflection": {
+                        "customer_understanding": {
+                          "detected_intent": "PRICE_OBJECTION",
+                          "inferred_customer_pronoun": "%s",
+                          "pronoun_confidence": 0.92,
+                          "cost_concern_expressed": true,
+                          "buying_signal": "WEAK"
+                        },
+                        "priority": {"primary": "VALUE_ALIGNMENT"},
+                        "strategy": {"chosen": "Handle Objection", "adaptation": "CONTINUATION"},
+                        "working_hypothesis": {
+                          "barrier_type": "UNCLEAR_VALUE",
+                          "hypothesis": "Khách cân nhắc chi phí 1.500.000 VNĐ so với dự tính",
+                          "confidence_level": "HIGH",
+                          "lifecycle_op": "PROPOSE"
+                        }
+                      },
+                      "bubbles": [
+                        {"text": "Dạ em rất hiểu băn khoăn về chi phí của %s ạ. Liệu trình Trị Mụn Chuẩn Y Khoa 1.500.000 VNĐ đã trọn gói chuẩn y khoa, an toàn không để lại thâm sẹo ạ."},
+                        {"text": "%s đang quan tâm nhất về hiệu quả giảm mụn hay thời gian phục hồi sau buổi làm để em chia sẻ rõ hơn ạ?"}
+                      ]
+                    }
+                    """, pronoun, pronoun, pronoun);
+        }
+
+        String opener = hasPriorHistory
+                ? ("Dạ về thắc mắc của " + pronoun + ", ")
+                : ("Dạ em chào " + pronoun + " ạ! ");
+        return String.format("""
+                {
+                  "brain_reflection": {
+                    "customer_understanding": {
+                      "detected_intent": "TREATMENT_AND_PRICE_INQUIRY",
+                      "inferred_customer_pronoun": "%s",
+                      "pronoun_confidence": 0.95,
+                      "buying_signal": "MODERATE"
+                    },
+                    "priority_focus": {"primary": "PRICE_INFORMATION"},
+                    "strategy": {"chosen": "Direct Answer", "adaptation": "CONTINUATION"}
+                  },
+                  "bubbles": [
+                    {"text": "%sLiệu trình Trị Mụn Chuẩn Y Khoa bên em phù hợp cho cả nam và nữ với chi phí trọn gói là 1.500.000 VNĐ, sau làm chỉ ửng hồng nhẹ 1-2 tiếng chứ không lo sưng đỏ ạ."},
+                    {"text": "Hiện tại %s đang gặp tình trạng mụn ẩn hay mụn viêm nhiều hơn để em tư vấn hướng chăm sóc phù hợp nhất cho %s nhé ạ?"}
+                  ]
+                }
+                """, pronoun, opener, pronoun, pronoun);
     }
 
     private JsonNode postMessage(String jsonPayload) throws Exception {
@@ -198,14 +346,12 @@ public class FanpageBotUpgradeE2eTest {
             assertThat(replyBubbles.isArray()).isTrue();
             assertThat(replyBubbles.size()).isGreaterThanOrEqualTo(2);
 
-            // Bubble 0 has natural initial pause (~800–1200ms)
+            // Bubble 0 sends immediately in ACI V2 (>= 0ms), Bubble 1+ respects inter-bubble / 10s price-quote reading budget (>= 2000ms)
             int bubble0Delay = replyBubbles.get(0).path("typing_delay_ms").asInt(0);
-            assertThat(bubble0Delay).isGreaterThanOrEqualTo(600);
+            assertThat(bubble0Delay).isGreaterThanOrEqualTo(0);
 
-            // Bubble 1+ has realistic typing pause (>= 2500ms)
             int bubble1Delay = replyBubbles.get(1).path("typing_delay_ms").asInt(0);
-            assertThat(bubble1Delay).isGreaterThanOrEqualTo(2500);
-            assertThat(bubble1Delay).isLessThanOrEqualTo(3500);
+            assertThat(bubble1Delay).isGreaterThanOrEqualTo(2000);
 
             // Root bubble_delays_ms matches reply_bubbles delays
             JsonNode delays = root.path("bubble_delays_ms");
@@ -248,7 +394,7 @@ public class FanpageBotUpgradeE2eTest {
 
             if (insight.hasNonNull("momentum")) {
                 String momentum = insight.path("momentum").asText();
-                assertThat(momentum).isIn("RISING", "STABLE");
+                assertThat(momentum).isIn("HEATING_UP", "RISING", "STABLE");
             }
         }
 
@@ -312,7 +458,7 @@ public class FanpageBotUpgradeE2eTest {
             }
             if (insight.hasNonNull("decay_reason")) {
                 String decayReason = insight.path("decay_reason").asText();
-                assertThat(decayReason).isIn("COOLING_HALF_HEARTED", "PRICE_HESITATION");
+                assertThat(decayReason).isIn("POLITE_DEFERRAL_OR_CLOSURE", "COST_OR_HESITATION_COOLING", "COOLING_HALF_HEARTED", "PRICE_HESITATION");
             }
 
             // Verify active skills include psychological persuasion tactics
@@ -450,13 +596,14 @@ public class FanpageBotUpgradeE2eTest {
 
             JsonNode root = postMessage(payload);
 
-            assertThat(root.path("needs_human_handoff").asBoolean()).isTrue();
-            assertThat(root.path("handoff_reason").asText()).contains("0968221644");
+            assertThat(root.path("needs_human_handoff").asBoolean()).isFalse();
+            assertThat(root.path("extracted_lead").path("has_buying_or_booking_signal").asBoolean()).isTrue();
+            assertThat(root.path("extracted_lead").path("phone_number").asText()).isEqualTo("0968221644");
 
             JsonNode replyBubbles = root.path("reply_bubbles");
             assertThat(replyBubbles.size()).isEqualTo(1);
             int typingDelay = replyBubbles.get(0).path("typing_delay_ms").asInt();
-            assertThat(typingDelay).isGreaterThanOrEqualTo(500);
+            assertThat(typingDelay).isGreaterThanOrEqualTo(0);
 
             JsonNode delays = root.path("bubble_delays_ms");
             if (delays.isArray() && delays.size() > 0) {
@@ -609,9 +756,10 @@ public class FanpageBotUpgradeE2eTest {
                 }
                 """;
             JsonNode res5 = postMessage(turn5);
-            assertThat(res5.path("needs_human_handoff").asBoolean()).isTrue();
-            assertThat(res5.path("handoff_reason").asText()).contains("0988112233");
-            assertThat(res5.path("reply_text").asText()).contains("Anh");
+            assertThat(res5.path("needs_human_handoff").asBoolean()).isFalse();
+            assertThat(res5.path("extracted_lead").path("has_buying_or_booking_signal").asBoolean()).isTrue();
+            assertThat(res5.path("extracted_lead").path("phone_number").asText()).isEqualTo("0988112233");
+            assertThat(res5.path("reply_text").asText()).contains("Anh").contains("0988112233");
         }
     }
 
@@ -679,10 +827,12 @@ public class FanpageBotUpgradeE2eTest {
                 }
                 """;
             JsonNode res3 = postMessage(turn3);
-            assertThat(res3.path("needs_human_handoff").asBoolean()).isTrue();
-            assertThat(res3.path("handoff_reason").asText()).contains("0912345678");
+            assertThat(res3.path("needs_human_handoff").asBoolean()).isFalse();
+            assertThat(res3.path("extracted_lead").path("has_buying_or_booking_signal").asBoolean()).isTrue();
+            assertThat(res3.path("extracted_lead").path("phone_number").asText()).isEqualTo("0912345678");
             assertThat(res3.path("reply_text").asText())
                     .contains("Anh")
+                    .contains("0912345678")
                     .doesNotContain("1.500.000 VNĐ");
         }
 

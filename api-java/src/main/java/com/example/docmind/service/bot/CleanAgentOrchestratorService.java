@@ -219,7 +219,8 @@ public class CleanAgentOrchestratorService {
     private InboundSessionPersistenceService inboundSessionPersistenceService;
     private volatile java.util.function.BiPredicate<UUID, String> preCommitOutboundPermitChecker = null;
     private volatile AdaptiveConversationIntelligence.CognitiveMode cognitiveMode =
-            AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+            AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
+    private volatile boolean aciCognitiveLoopActive = false;
     private volatile AdaptiveConversationIntelligence.HandoffEventDispatcher handoffEventDispatcher;
     private volatile AdaptiveConversationIntelligence.AdaptiveCognitiveReflection lastAciReflection;
     private volatile AdaptiveConversationIntelligence.ConditionalHandoffDecision lastHandoffDecision;
@@ -247,12 +248,14 @@ public class CleanAgentOrchestratorService {
     @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:LLM_COGNITIVE_V2}")
     public void setCognitiveModeProperty(String rawMode) {
         this.cognitiveMode = AdaptiveConversationIntelligence.CognitiveMode.fromProperty(rawMode);
+        this.aciCognitiveLoopActive = true;
     }
 
     public void setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode cognitiveMode) {
         this.cognitiveMode = cognitiveMode != null
                 ? cognitiveMode
-                : AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+                : AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
+        this.aciCognitiveLoopActive = (cognitiveMode != null);
     }
 
     public AdaptiveConversationIntelligence.CognitiveMode getCognitiveMode() {
@@ -385,7 +388,7 @@ public class CleanAgentOrchestratorService {
             long retrievalMs,
             AdaptiveConversationIntelligence.ThreeStreamTurnInput prebuiltThreeStreamInput
     ) {
-        if (this.cognitiveMode == AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2) {
+        if (this.aciCognitiveLoopActive && this.cognitiveMode == AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2) {
             return executeAciCognitiveTurn(
                     pageId,
                     request,
@@ -4078,7 +4081,7 @@ public class CleanAgentOrchestratorService {
         }
     }
 
-    private FanpageBotResponse executeAciCognitiveTurn(
+    public FanpageBotResponse executeAciCognitiveTurn(
             UUID pageId,
             FanpageBotRequest request,
             String legacyNormalizedMessage,
@@ -4471,6 +4474,9 @@ public class CleanAgentOrchestratorService {
             if (llmClient != null) {
                 long callStartNs = System.nanoTime();
                 rawReply = llmClient.complete(aciPrompt, aciBudget);
+                if (rawReply == null) {
+                    rawReply = llmClient.complete(aciPrompt);
+                }
                 modelLatencyMs += Math.max(1L, (System.nanoTime() - callStartNs) / 1_000_000L);
                 tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                 if (isUpstreamLlmClientErrorPayload(rawReply)) {
@@ -4484,6 +4490,9 @@ public class CleanAgentOrchestratorService {
                     llmRegenerationCount++;
                     long fallbackStartNs = System.nanoTime();
                     rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    if (rawReply == null) {
+                        rawReply = llmClient.complete(aciPrompt);
+                    }
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                     if (rawReply == null || rawReply.isBlank() || isUpstreamLlmClientErrorPayload(rawReply)) {
@@ -4533,6 +4542,9 @@ public class CleanAgentOrchestratorService {
                     llmRegenerationCount++;
                     long retryStartNs = System.nanoTime();
                     String retryRaw = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    if (retryRaw == null) {
+                        retryRaw = llmClient.complete(aciPrompt);
+                    }
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - retryStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                     if (retryRaw != null && !retryRaw.isBlank() && !isUpstreamLlmClientErrorPayload(retryRaw)) {
@@ -4617,8 +4629,23 @@ public class CleanAgentOrchestratorService {
                         senderId,
                         originalVerbatim,
                         reflection,
+                        pagePersona,
                         handoffEventDispatcher
                 );
+        if ("MEDICAL_SAFETY_HANDOFF".equals(handoffDecision.handoffCategory())
+                && handoffDecision.isHandoffCreated()
+                && (reflection.handoffRequest() == null || !reflection.handoffRequest().requested())) {
+            boolean isAcuteOrNeuro = FanpageBotService.isUniversalAcuteMedicalEmergency(originalVerbatim);
+            String safeMedicalText = isAcuteOrNeuro
+                    ? ("Dạ những dấu hiệu này cần được kiểm tra y tế sớm để đảm bảo an toàn, nên " + safeHonorific
+                        + " hãy thăm khám bác sĩ hoặc cơ sở y tế gần nhất trước nhé ạ. "
+                        + BubbleTextSanitizer.capitalizeFirstLetter(selfPronoun)
+                        + " xin phép kết nối chuyên viên hỗ trợ trực tiếp cho " + safeHonorific + " ngay ạ.")
+                    : ("Dạ với trường hợp này, để đảm bảo an toàn tuyệt đối cho " + safeHonorific + ", "
+                        + selfPronoun + " xin phép kết nối chuyên viên phụ trách kiểm tra và tư vấn trực tiếp cho "
+                        + safeHonorific + " ngay nhé ạ.");
+            candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeMedicalText, 0));
+        }
 
         // Kiểm định Referee V2 (CHỈ giữ Sự thật, Quyền hạn & An toàn — TẮT ép chiến thuật bán hàng thay LLM)
         long validationStartNs = System.nanoTime();
@@ -4666,6 +4693,9 @@ public class CleanAgentOrchestratorService {
                     llmRegenerationCount++;
                     long repairCallStartNs = System.nanoTime();
                     String repairedRaw = llmClient.complete(repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    if (repairedRaw == null) {
+                        repairedRaw = llmClient.complete(repairPrompt);
+                    }
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - repairCallStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                     if (repairedRaw == null || repairedRaw.isBlank() || isUpstreamLlmClientErrorPayload(repairedRaw)) {
@@ -4712,6 +4742,7 @@ public class CleanAgentOrchestratorService {
                                         senderId,
                                         originalVerbatim,
                                         reflection,
+                                        pagePersona,
                                         handoffEventDispatcher
                                 );
                             }
@@ -4801,6 +4832,27 @@ public class CleanAgentOrchestratorService {
                     );
                     candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(FanpageBotService.SAFE_HANDOFF_BUBBLE_TEXT, 0));
                     usedSafeHandoffFallback = true;
+                    repairApplied = true;
+                } else if (postRepairViolations.stream().anyMatch(v -> v != null
+                        && (v.startsWith("QUOTED_PACKAGE_FOCUS_MISMATCH:")
+                            || v.startsWith("UNRESOLVED_OR_AMBIGUOUS_REPLY_GUARD_VIOLATION:")
+                            || ("UNGROUNDED_PROMO_POLICY_FABRICATION".equals(v)
+                                && quotedReplyResolution != null
+                                && quotedReplyResolution.resolutionState() != CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE)))) {
+                    log.warn("[ACI-V2] Post-repair still has quote-reply/promo guard violation ({}) -> building deterministic quoted-context fallback",
+                            postRepairViolations);
+                    candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+                            quotedReplyResolution,
+                            authoritativeBookingState,
+                            "ACI_COGNITIVE_V2",
+                            focusPkgForRepair,
+                            unblindedEligibleCatalog,
+                            allCatalog,
+                            effectivePersonaConfig,
+                            originalVerbatim,
+                            selfPronoun,
+                            safeHonorific
+                    );
                     repairApplied = true;
                 } else if (postRepairViolations.stream().anyMatch(v -> v != null && v.startsWith("PRICE_ENTITY_MISMATCH:"))) {
                     candidateBubbles = CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
@@ -5137,6 +5189,8 @@ public class CleanAgentOrchestratorService {
                 senderId,
                 safeHonorific,
                 request != null ? request.previousTemperature() : null,
+                request != null ? request.idleSeconds() : null,
+                request != null ? request.action() : null,
                 reflection,
                 draft2After,
                 workingHypothesisAfter,
@@ -5606,6 +5660,40 @@ public class CleanAgentOrchestratorService {
             ConversationState safeConv,
             AgentBrainService agentBrainService
     ) {
+        return buildCustomerInsightFromAciTurn(
+                pageId,
+                senderId,
+                safeHonorific,
+                previousTemperatureInput,
+                null,
+                null,
+                reflection,
+                draft2After,
+                workingHypothesisAfter,
+                priceObjectionCountAfter,
+                actualSentSpeechAct,
+                authoritativeBookingState,
+                safeConv,
+                agentBrainService
+        );
+    }
+
+    static CustomerInsightDto buildCustomerInsightFromAciTurn(
+            UUID pageId,
+            String senderId,
+            String safeHonorific,
+            Integer previousTemperatureInput,
+            Integer idleSecondsInput,
+            String requestAction,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After,
+            AdaptiveConversationIntelligence.WorkingHypothesisRecord workingHypothesisAfter,
+            int priceObjectionCountAfter,
+            String actualSentSpeechAct,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            ConversationState safeConv,
+            AgentBrainService agentBrainService
+    ) {
         AdaptiveConversationIntelligence.AdaptiveCognitiveReflection ref = reflection != null
                 ? reflection
                 : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
@@ -5622,7 +5710,8 @@ public class CleanAgentOrchestratorService {
                 || ref.strategy().adaptation() == AdaptiveConversationIntelligence.StrategyAdaptationMode.STOP;
         String emotionLabel = (draft2After != null && draft2After.consultativeProfile() != null
                 && draft2After.consultativeProfile().emotion() != null
-                && draft2After.consultativeProfile().emotion().primary() != null)
+                && draft2After.consultativeProfile().emotion().primary() != null
+                && !"UNKNOWN".equalsIgnoreCase(draft2After.consultativeProfile().emotion().primary()))
                 ? draft2After.consultativeProfile().emotion().primary()
                 : (cu.emotionalState() != null && cu.emotionalState().primary() != null ? cu.emotionalState().primary() : "");
 
@@ -5652,12 +5741,13 @@ public class CleanAgentOrchestratorService {
             archetypeLabel = "Đang tìm hiểu dịch vụ";
         }
 
+        Integer prevTemp = previousTemperatureInput;
         int buyingTemp;
         if (bookingActive || signal == AdaptiveConversationIntelligence.BuyingSignal.ACTION) {
-            buyingTemp = 85;
+            buyingTemp = Math.min(100, Math.max(85, prevTemp != null ? prevTemp + 3 : 85));
         } else if (readiness == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
                 || signal == AdaptiveConversationIntelligence.BuyingSignal.STRONG) {
-            buyingTemp = 78;
+            buyingTemp = Math.min(100, Math.max(78, prevTemp != null ? prevTemp + 2 : 78));
         } else if (stopOrClosure) {
             buyingTemp = 36;
         } else if (signal == AdaptiveConversationIntelligence.BuyingSignal.MODERATE
@@ -5669,11 +5759,22 @@ public class CleanAgentOrchestratorService {
             buyingTemp = 48;
         }
 
-        Integer prevTemp = previousTemperatureInput;
+        boolean isIdleDecayTurn = "REENGAGE".equalsIgnoreCase(requestAction)
+                || (idleSecondsInput != null && idleSecondsInput >= 180);
+        if (isIdleDecayTurn) {
+            int baseTemp = prevTemp != null ? prevTemp : buyingTemp;
+            int idleDecay = (idleSecondsInput != null && idleSecondsInput > 0)
+                    ? Math.max(15, (int) Math.round(7.5 * Math.log1p(idleSecondsInput / 30.0)))
+                    : 18;
+            buyingTemp = Math.max(0, Math.min(100, baseTemp - idleDecay));
+        }
         int tempDelta = prevTemp != null ? (buyingTemp - prevTemp) : 0;
         String momentum;
         String decayReason = null;
-        if (stopOrClosure || tempDelta <= -8) {
+        if (isIdleDecayTurn) {
+            momentum = "COOLING_IDLE";
+            decayReason = "COOLING_IDLE";
+        } else if (stopOrClosure || tempDelta <= -8) {
             momentum = "COOLING_HALF_HEARTED";
             decayReason = stopOrClosure ? "POLITE_DEFERRAL_OR_CLOSURE" : "COST_OR_HESITATION_COOLING";
         } else if (tempDelta >= 8 || buyingTemp >= 75) {
@@ -5715,6 +5816,17 @@ public class CleanAgentOrchestratorService {
                 if (rf != null && !rf.isBlank()) painsSet.add(rf.strip());
             }
         }
+        if (painsSet.isEmpty() && ref.confirmedFactsDelta() != null) {
+            for (AdaptiveConversationIntelligence.FactDeltaProposal fd : ref.confirmedFactsDelta()) {
+                if (fd != null
+                        && fd.effectiveValidity() != AdaptiveConversationIntelligence.FactValidity.NEGATED
+                        && fd.effectiveValidity() != AdaptiveConversationIntelligence.FactValidity.SUPERSEDED
+                        && fd.effectiveValidity() != AdaptiveConversationIntelligence.FactValidity.RESOLVED
+                        && fd.value() != null && !fd.value().isBlank()) {
+                    painsSet.add(fd.value().strip());
+                }
+            }
+        }
 
         List<String> hiddenConcerns = new ArrayList<>();
         if (draft2After != null && draft2After.consultativeProfile() != null
@@ -5722,6 +5834,10 @@ public class CleanAgentOrchestratorService {
                 && draft2After.consultativeProfile().barrierHypothesis().summary() != null
                 && !draft2After.consultativeProfile().barrierHypothesis().summary().isBlank()) {
             hiddenConcerns.add(draft2After.consultativeProfile().barrierHypothesis().summary().strip());
+        } else if (ref.workingHypothesis() != null
+                && ref.workingHypothesis().content() != null
+                && !ref.workingHypothesis().content().isBlank()) {
+            hiddenConcerns.add(ref.workingHypothesis().content().strip());
         } else if (costConcern) {
             hiddenConcerns.add("Đắn đo mức giá / ngân sách");
         }

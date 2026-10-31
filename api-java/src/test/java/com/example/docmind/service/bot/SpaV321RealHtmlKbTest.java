@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.SampleDialogueDto;
@@ -40,6 +39,77 @@ class SpaV321RealHtmlKbTest {
 
     private PromptBuilder.PagePersona nangSenPersona;
     private List<ReciprocalRankFusion.FusedChunk> realHtmlChunks;
+
+    private record V2RefereeOutcome(
+            List<FanpageBotResponse.ReplyBubble> validatedBubbles,
+            List<String> errors
+    ) {
+        String combinedText() {
+            return String.join("\n", validatedBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
+        }
+    }
+
+    private V2RefereeOutcome enforceV2Referee(
+            List<FanpageBotResponse.ReplyBubble> rawBubbles,
+            ConversationState state,
+            String customerMessage,
+            PrimaryActionRouter.PrimaryAction action,
+            boolean openingRequired,
+            int minPostPriceDelayMs
+    ) {
+        return enforceV2Referee(rawBubbles, state, customerMessage, action, openingRequired, minPostPriceDelayMs, ThinkingMode.FAST_NO_THINK, 0L);
+    }
+
+    private V2RefereeOutcome enforceV2Referee(
+            List<FanpageBotResponse.ReplyBubble> rawBubbles,
+            ConversationState state,
+            String customerMessage,
+            PrimaryActionRouter.PrimaryAction action,
+            boolean openingRequired,
+            int minPostPriceDelayMs,
+            ThinkingMode thinkingMode,
+            long elapsedMs
+    ) {
+        List<FanpageBotResponse.ReplyBubble> normalized = new ArrayList<>();
+        if (rawBubbles != null) {
+            for (int i = 0; i < rawBubbles.size(); i++) {
+                FanpageBotResponse.ReplyBubble b = rawBubbles.get(i);
+                if (b == null || b.text() == null || b.text().isBlank()) continue;
+                String clean = BubbleTextSanitizer.capitalizeFirstLetter(BubbleTextSanitizer.sanitizeBubbleText(b.text()));
+                int delay = b.typingDelayMs();
+                if (i > 0 && CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(normalized.get(i - 1).text())) {
+                    int remaining = (int) Math.max(0L, minPostPriceDelayMs - Math.max(0L, elapsedMs));
+                    delay = Math.max(delay, elapsedMs == 0L ? minPostPriceDelayMs : remaining);
+                } else if (rawBubbles.size() == 1 && CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(clean)) {
+                    delay = Math.max(delay, minPostPriceDelayMs);
+                }
+                normalized.add(new FanpageBotResponse.ReplyBubble(clean, delay));
+            }
+        }
+        List<PackageCatalogService.PackageSummary> catalog = state != null && state.availablePackageCatalog() != null
+                ? state.availablePackageCatalog()
+                : List.of();
+        List<String> v2Violations = new ArrayList<>(CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                normalized,
+                catalog,
+                catalog,
+                List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                catalog,
+                nangSenPersona != null ? nangSenPersona.resolvedConfig() : null,
+                customerMessage,
+                false,
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                realHtmlChunks != null ? realHtmlChunks : List.of()
+        ));
+        if (v2Violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_PRICE_MENTIONED:") || v.startsWith("UNGROUNDED_OR_EXCLUDED_PRICE:"))) {
+            v2Violations.add("UNGROUNDED_CATALOG_PRICE");
+        }
+        return new V2RefereeOutcome(normalized, v2Violations);
+    }
 
     @BeforeEach
     void setUp() {
@@ -386,7 +456,7 @@ class SpaV321RealHtmlKbTest {
                     realHtmlChunks,
                     null
             );
-            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome valRes = enforceV2Referee(
                     rawBubbles,
                     state,
                     msg,
@@ -491,7 +561,7 @@ class SpaV321RealHtmlKbTest {
             List<FanpageBotResponse.ReplyBubble> rawBubbles = PrimaryActionRouter.executeActionBubbles(
                     dec, msg, state, "mình", nangSenPersona, realHtmlChunks, null
             );
-            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome valRes = enforceV2Referee(
                     rawBubbles, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
             );
             turnReplies.add(valRes.combinedText());
@@ -541,7 +611,7 @@ class SpaV321RealHtmlKbTest {
         assertThat(sgReply).containsAnyOf("570k", "750k", "870k").doesNotContain("399k", "530k");
 
         // Validator must flag ungrounded price (e.g. 450k not in catalog)
-        ReplyContractValidator.ValidationResult ungroundedCheck = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome ungroundedCheck = enforceV2Referee(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ gói massage bên em có giá 450k ạ.", 10000)),
                 sgState,
                 "báo giá",
@@ -573,7 +643,7 @@ class SpaV321RealHtmlKbTest {
             List<FanpageBotResponse.ReplyBubble> raw = PrimaryActionRouter.executeActionBubbles(
                     dec, msg, state, "mình", nangSenPersona, realHtmlChunks, null
             );
-            ReplyContractValidator.ValidationResult val = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome val = enforceV2Referee(
                     raw, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
             );
             setupReplies.add(val.validatedBubbles());
@@ -610,7 +680,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> rawA = PrimaryActionRouter.executeActionBubbles(
                 decA, msgA, stateA, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valA = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valA = enforceV2Referee(
                 rawA, stateA, msgA, decA.effectiveResponseAction(), decA.openingRequired(), 10000
         );
         assertThat(valA.validatedBubbles()).hasSize(1);
@@ -645,7 +715,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> rawB = PrimaryActionRouter.executeActionBubbles(
                 decB, msgB, stateB, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valB = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valB = enforceV2Referee(
                 rawB, stateB, msgB, decB.effectiveResponseAction(), decB.openingRequired(), 10000
         );
         assertThat(valB.combinedText())
@@ -677,7 +747,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> rawE = PrimaryActionRouter.executeActionBubbles(
                 decE, msgE, stateE, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valE = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valE = enforceV2Referee(
                 rawE, stateE, msgE, decE.effectiveResponseAction(), decE.openingRequired(), 10000
         );
         assertThat(valE.validatedBubbles()).hasSize(1);
@@ -699,7 +769,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> rawD = PrimaryActionRouter.executeActionBubbles(
                 decD, msgD, stateA, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valD = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valD = enforceV2Referee(
                 rawD, stateA, msgD, decD.effectiveResponseAction(), decD.openingRequired(), 10000
         );
         assertThat(valD.combinedText().toLowerCase(Locale.ROOT))
@@ -1087,7 +1157,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubbles1 = PrimaryActionRouter.executeActionBubbles(
                 dec1, msg1, state1, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult val1 = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome val1 = enforceV2Referee(
                 bubbles1, state1, msg1, dec1.effectiveResponseAction(), dec1.openingRequired(), 10000
         );
         assertThat(val1.combinedText()).doesNotContain("339k", "239k").contains("?");
@@ -1111,7 +1181,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubbles2 = PrimaryActionRouter.executeActionBubbles(
                 dec2, msg2, state2, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult val2 = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome val2 = enforceV2Referee(
                 bubbles2, state2, msg2, dec2.effectiveResponseAction(), dec2.openingRequired(), 10000, ThinkingMode.PRICE_ANCHOR_THINK, 0L
         );
         assertThat(val2.validatedBubbles()).hasSize(2);
@@ -1145,7 +1215,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubbles3 = PrimaryActionRouter.executeActionBubbles(
                 dec3, msg3, state3, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult val3 = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome val3 = enforceV2Referee(
                 bubbles3, state3, msg3, dec3.effectiveResponseAction(), dec3.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
         );
         assertThat(val3.combinedText())
@@ -1178,7 +1248,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubbles4 = PrimaryActionRouter.executeActionBubbles(
                 dec4, msg4, state4, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult val4 = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome val4 = enforceV2Referee(
                 bubbles4, state4, msg4, dec4.effectiveResponseAction(), dec4.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
         );
         assertThat(val4.validatedBubbles()).hasSize(2);
@@ -1219,7 +1289,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubbles5 = PrimaryActionRouter.executeActionBubbles(
                 dec5, msg5, state5, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult val5 = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome val5 = enforceV2Referee(
                 bubbles5, state5, msg5, dec5.effectiveResponseAction(), dec5.openingRequired(), 10000, ThinkingMode.FAST_NO_THINK, 0L
         );
         assertThat(val5.validatedBubbles()).hasSize(1);
@@ -1254,7 +1324,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubblesB = PrimaryActionRouter.executeActionBubbles(
                 decB, msgB, stateB, "chị", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valB = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valB = enforceV2Referee(
                 bubblesB, stateB, msgB, decB.effectiveResponseAction(), decB.openingRequired(), 10000, ThinkingMode.OBJECTION_REFRAME_THINK, 0L
         );
         assertThat(valB.combinedText().toLowerCase(Locale.ROOT))
@@ -1283,7 +1353,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> bubblesC = PrimaryActionRouter.executeActionBubbles(
                 decC, msgC, stateC, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult valC = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome valC = enforceV2Referee(
                 bubblesC, stateC, msgC, decC.effectiveResponseAction(), decC.openingRequired(), 10000, ThinkingMode.REPAIR_FIRST, 0L
         );
         assertThat(valC.combinedText().toLowerCase(Locale.ROOT))
@@ -1326,7 +1396,7 @@ class SpaV321RealHtmlKbTest {
             List<FanpageBotResponse.ReplyBubble> bubblesD = PrimaryActionRouter.executeActionBubbles(
                     decD, neuroInput, stateD, "mình", nangSenPersona, realHtmlChunks, null
             );
-            ReplyContractValidator.ValidationResult valD = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome valD = enforceV2Referee(
                     bubblesD, stateD, neuroInput, decD.effectiveResponseAction(), decD.openingRequired(), 10000, ThinkingMode.FAST_NO_THINK, 0L
             );
             assertThat(valD.combinedText().toLowerCase(Locale.ROOT))
@@ -1354,7 +1424,7 @@ class SpaV321RealHtmlKbTest {
                 "Ô hay, nói linh ta linh tinh gì đấy"
         );
         List<PrimaryActionRouter.RoutingDecision> decisions = new ArrayList<>();
-        List<ReplyContractValidator.ValidationResult> validations = new ArrayList<>();
+        List<V2RefereeOutcome> validations = new ArrayList<>();
 
         for (String msg : userMessages) {
             ConversationState state = ConversationState.hydrate(
@@ -1369,7 +1439,7 @@ class SpaV321RealHtmlKbTest {
             List<FanpageBotResponse.ReplyBubble> rawBubbles = PrimaryActionRouter.executeActionBubbles(
                     dec, msg, state, "chị", nangSenPersona, realHtmlChunks, null
             );
-            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome valRes = enforceV2Referee(
                     rawBubbles, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
             );
             validations.add(valRes);
@@ -1449,7 +1519,7 @@ class SpaV321RealHtmlKbTest {
                 "tụt hứng tghooi rẹp"
         );
         List<PrimaryActionRouter.RoutingDecision> decisions = new ArrayList<>();
-        List<ReplyContractValidator.ValidationResult> validations = new ArrayList<>();
+        List<V2RefereeOutcome> validations = new ArrayList<>();
         List<ConversationState> statesAfter = new ArrayList<>();
 
         List<String> bannedExactTemplates = List.of(
@@ -1473,7 +1543,7 @@ class SpaV321RealHtmlKbTest {
             List<FanpageBotResponse.ReplyBubble> rawBubbles = PrimaryActionRouter.executeActionBubbles(
                     dec, msg, state, "mình", nangSenPersona, realHtmlChunks, null
             );
-            ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+            V2RefereeOutcome valRes = enforceV2Referee(
                     rawBubbles, state, msg, dec.effectiveResponseAction(), dec.openingRequired(), 10000
             );
             validations.add(valRes);
@@ -1556,7 +1626,7 @@ class SpaV321RealHtmlKbTest {
         List<FanpageBotResponse.ReplyBubble> safetyBubbles = PrimaryActionRouter.executeActionBubbles(
                 safetyDec, safetyMsg, safetyState, "mình", nangSenPersona, realHtmlChunks, null
         );
-        ReplyContractValidator.ValidationResult safetyVal = ReplyContractValidator.validateAndEnforce(
+        V2RefereeOutcome safetyVal = enforceV2Referee(
                 safetyBubbles, safetyState, safetyMsg, safetyDec.effectiveResponseAction(), safetyDec.openingRequired(), 10000
         );
         assertThat(safetyVal.validatedBubbles()).hasSize(1);

@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn;
 import com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble;
@@ -18,6 +17,19 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MultiTenantPrimaryActionRouterTest {
+
+    private static List<ReplyBubble> sanitizeRouterBubbles(List<ReplyBubble> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<ReplyBubble> out = new ArrayList<>(raw.size());
+        for (ReplyBubble b : raw) {
+            if (b != null && b.text() != null && !b.text().isBlank()) {
+                out.add(new ReplyBubble(BubbleTextSanitizer.sanitizeBubbleText(b.text()), b.typingDelayMs()));
+            }
+        }
+        return out;
+    }
 
     private static ReciprocalRankFusion.FusedChunk chunk(String heading, String text) {
         RetrievedChunk rc = new RetrievedChunk(
@@ -126,10 +138,9 @@ class MultiTenantPrimaryActionRouterTest {
         ConversationState s1 = ConversationState.hydrate(pageId, "u-018", history, keywords, chunks);
         PrimaryActionRouter.RoutingDecision d1 = PrimaryActionRouter.route(u1, s1, chunks, keywords);
         assertThat(d1.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION);
-        List<ReplyBubble> b1 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d1, u1, s1, "mình", persona, chunks, null),
-                s1, u1, d1.effectiveResponseAction(), d1.openingRequired(), 15_000
-        ).validatedBubbles();
+        List<ReplyBubble> b1 = sanitizeRouterBubbles(
+                PrimaryActionRouter.executeActionBubbles(d1, u1, s1, "mình", persona, chunks, null)
+        );
         assertThat(b1).hasSizeGreaterThanOrEqualTo(2);
         assertThat(b1.get(0).text()).contains("An Nhiên").contains("Nàng Sen Spa");
         history.add(new ConversationTurn("user", u1));
@@ -148,10 +159,9 @@ class MultiTenantPrimaryActionRouterTest {
         assertThat(targetScopes).contains("chân", "gối");
         assertThat(targetScopes).doesNotContain("cổ", "vai", "gáy");
 
-        List<ReplyBubble> b2 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d2, u2, s2, "mình", persona, chunks, null),
-                s2, u2, d2.effectiveResponseAction(), d2.openingRequired(), 15_000
-        ).validatedBubbles();
+        List<ReplyBubble> b2 = sanitizeRouterBubbles(
+                PrimaryActionRouter.executeActionBubbles(d2, u2, s2, "mình", persona, chunks, null)
+        );
         assertThat(b2).hasSize(2);
         assertThat(b2.get(0).text().toLowerCase(Locale.ROOT))
                 .contains("đau chân")
@@ -170,10 +180,9 @@ class MultiTenantPrimaryActionRouterTest {
                 PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
                 PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
         );
-        List<ReplyBubble> b3 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d3, u3, s3, "mình", persona, chunks, null),
-                s3, u3, d3.effectiveResponseAction(), d3.openingRequired(), 15_000
-        ).validatedBubbles();
+        List<ReplyBubble> b3 = sanitizeRouterBubbles(
+                PrimaryActionRouter.executeActionBubbles(d3, u3, s3, "mình", persona, chunks, null)
+        );
         assertThat(b3).hasSize(2);
         String b3TextLower = joinBubbles(b3).toLowerCase(Locale.ROOT);
         assertThat(b3TextLower).doesNotContain("cổ vai gáy");
@@ -199,10 +208,9 @@ class MultiTenantPrimaryActionRouterTest {
         assertThat(d4.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT);
         assertThat(d4.detectedIntent()).isEqualTo("MISMATCH_CORRECTION_HANDOFF");
 
-        List<ReplyBubble> b4 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d4, u4, s4, "mình", persona, chunks, null),
-                s4, u4, d4.effectiveResponseAction(), d4.openingRequired(), 15_000
-        ).validatedBubbles();
+        List<ReplyBubble> b4 = sanitizeRouterBubbles(
+                PrimaryActionRouter.executeActionBubbles(d4, u4, s4, "mình", persona, chunks, null)
+        );
         assertThat(b4).hasSize(1);
         assertThat(b4.get(0).text())
                 .doesNotContain("?")
@@ -232,10 +240,9 @@ class MultiTenantPrimaryActionRouterTest {
         assertThat(decision.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT);
         assertThat(decision.detectedIntent()).isEqualTo("UNGROUNDED_SCOPE_HANDOFF");
 
-        List<ReplyBubble> bubbles = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(decision, "thi thoảng", state, "mình", persona, offScopeChunks, null),
-                state, "thi thoảng", decision.effectiveResponseAction(), decision.openingRequired(), 15_000
-        ).validatedBubbles();
+        List<ReplyBubble> bubbles = sanitizeRouterBubbles(
+                PrimaryActionRouter.executeActionBubbles(decision, "thi thoảng", state, "mình", persona, offScopeChunks, null)
+        );
         assertThat(bubbles).hasSize(1);
         assertThat(bubbles.get(0).text())
                 .doesNotContain("280k")
@@ -434,10 +441,9 @@ class MultiTenantPrimaryActionRouterTest {
                     PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
                     PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
             );
-            List<ReplyBubble> bubbles = ReplyContractValidator.validateAndEnforce(
-                    PrimaryActionRouter.executeActionBubbles(decision, msg, state, "chị", persona, chunks, null),
-                    state, msg, decision.effectiveResponseAction(), decision.openingRequired(), 15_000
-            ).validatedBubbles();
+            List<ReplyBubble> bubbles = sanitizeRouterBubbles(
+                    PrimaryActionRouter.executeActionBubbles(decision, msg, state, "chị", persona, chunks, null)
+            );
             String replyLower = joinBubbles(bubbles).toLowerCase(Locale.ROOT);
             assertThat(replyLower)
                     .contains("xin lỗi")

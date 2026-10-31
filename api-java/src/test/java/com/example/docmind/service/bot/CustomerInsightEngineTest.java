@@ -424,7 +424,6 @@ class CustomerInsightEngineTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
     void derivesPreviousTemperatureFromHistoryWhenNotExplicitlyProvided() {
         List<FanpageBotRequest.ConversationTurn> history = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Chị bị nám lâu năm, gói Laser Pico giá sao em?"),
@@ -443,7 +442,8 @@ class CustomerInsightEngineTest {
         );
 
         assertThat(insight.previousTemperature()).isNotNull();
-        assertThat(insight.previousTemperature()).isGreaterThanOrEqualTo(58);
+        // Plain price inquiry ("giá sao em?") is not misclassified as a price objection, so prior chronic turn derives 48 (> Turn-1 baseline 36)
+        assertThat(insight.previousTemperature()).isGreaterThanOrEqualTo(48);
         assertThat(insight.temperatureDelta()).isLessThan(0);
         assertThat(insight.momentum()).isEqualTo("COOLING_HALF_HEARTED");
     }

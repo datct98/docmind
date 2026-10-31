@@ -22,7 +22,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.agent.nightly_graph import run_nightly_training_graph
-from app.agent.sales_graph import run_sales_consultation_graph
 from app.agent.security import verify_internal_token
 from app.config import get_settings
 from app.embeddings import MAX_BATCH, get_embedding_provider
@@ -290,53 +289,11 @@ async def embed(
         clear_context()
 
 
-class InternalConsultRequest(BaseModel):
-    """Request payload for Hot-Path LangGraph consultation (`POST /internal/v1/consult`)."""
-
-    customer_psid: str = Field(default="anonymous_customer")
-    page_id: str | None = Field(default=None)
-    message: str = Field(default="")
-    history: list[dict[str, str]] = Field(default_factory=list)
-    candidate_chunks: list[dict[str, Any]] = Field(default_factory=list)
-    candidate_rules: list[dict[str, Any]] = Field(default_factory=list)
-    honorific: str | None = Field(default=None)
-
-
 class InternalNightlyExtractRequest(BaseModel):
     """Request payload for Cold-Path Nightly Training & Security Audit (`POST /internal/v1/nightly-extract`)."""
 
     page_id: str | None = Field(default=None)
     conversations: list[dict[str, Any]] = Field(default_factory=list)
-
-
-@router.post("/internal/v1/consult")
-async def internal_consult(
-    body: InternalConsultRequest,
-    x_internal_token: str | None = Header(default=None),
-    x_correlation_id: str | None = Header(default=None),
-) -> JSONResponse:
-    """Hot-Path LangGraph state-driven consultation & topic-anchor contextualization."""
-    bind_context(correlation_id=_correlation_from(x_correlation_id))
-    try:
-        if not verify_internal_token(x_internal_token):
-            log.warning("internal consult rejected: invalid X-Internal-Token", stage="langgraph-consult")
-            return JSONResponse(
-                status_code=403,
-                content={"error": "Forbidden: invalid X-Internal-Token"},
-            )
-
-        result = run_sales_consultation_graph(body.model_dump())
-        log.info(
-            "langgraph consult served",
-            stage="langgraph-consult",
-            funnel_stage=result.get("funnel_stage"),
-            topic_family=result.get("topic_family"),
-            honorific=result.get("honorific"),
-            is_profile_update=result.get("is_profile_update_turn"),
-        )
-        return JSONResponse(status_code=200, content=result)
-    finally:
-        clear_context()
 
 
 @router.post("/internal/v1/nightly-extract")

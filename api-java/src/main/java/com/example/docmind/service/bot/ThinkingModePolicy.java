@@ -1075,7 +1075,12 @@ public final class ThinkingModePolicy {
                 || "PUSHBACK_ON_ASSUMPTION_REPAIR".equals(detectedIntent)
                 || "FRUSTRATION_CONCERN_ACKNOWLEDGEMENT".equals(detectedIntent)
                 || "CLARIFICATION_DETAIL_OR_FAQ_QA".equals(detectedIntent);
-        boolean hasUnresolvedQuestionFromPriorTurns = safeState.hasUnresolvedCustomerRequest();
+        boolean isPureServiceDetailFaqWithoutComplaint = !hasRepairComplaint
+                && effectiveAction == PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA
+                && !"CLARIFICATION_DETAIL_OR_FAQ_QA".equals(detectedIntent)
+                && safeState.priceDiscussed();
+        boolean hasUnresolvedQuestionFromPriorTurns = !isPureServiceDetailFaqWithoutComplaint
+                && safeState.hasUnresolvedCustomerRequest();
 
         if (!isPriceObjectionAction && !isNonRepairMetaOrAckAdvance && (hasRepairComplaint || hasUnresolvedQuestionFromPriorTurns)) {
             // v3.3.4: Tách 2 chiến lược tâm lý:

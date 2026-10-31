@@ -584,14 +584,16 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(stopResp.triggeredHooks()).contains("EXPLICIT_OPT_OUT");
         assertThat(sharedBrain.getAciOperationalState(PAGE_ID, "sender-strict-stop").optedOut()).isTrue();
 
-        // 3. Rollback tức thì về DETERMINISTIC_V1 qua cấu hình cognitiveModeProperty -> hành vi cũ 100% được khôi phục
+        // 3. Unit P3.4: DETERMINISTIC_V1 đã được gỡ bỏ hoàn toàn — mọi cấu hình legacy ("DETERMINISTIC_V1", "V1") đều quy tụ về LLM_COGNITIVE_V2 duy nhất
         botService.setCognitiveModeProperty("DETERMINISTIC_V1");
-        assertThat(botService.isLlmCognitiveV2Mode()).isFalse();
-        FanpageBotResponse v1RollbackS06 = botService.handleCustomerMessage(
-                buildBotRequest("sender-v1-rollback", "Chị Lan", "Thôi, không cần nữa", null, List.of())
+        assertThat(botService.isLlmCognitiveV2Mode()).isTrue();
+        assertThat(AdaptiveConversationIntelligence.CognitiveMode.fromProperty("V1"))
+                .isEqualTo(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+        FanpageBotResponse v2CanonicalS06 = botService.handleCustomerMessage(
+                buildBotRequest("sender-v2-canonical", "Chị Lan", "Thôi, không cần nữa", null, List.of())
         );
-        assertThat(llmCallCount.get()).isEqualTo(1); // V1 chặn cứng trước LLM như baseline cũ
-        assertThat(v1RollbackS06.triggeredHooks()).contains("EXPLICIT_OPT_OUT");
+        assertThat(llmCallCount.get()).isEqualTo(2);
+        assertThat(v2CanonicalS06.triggeredHooks()).doesNotContain("EXPLICIT_OPT_OUT");
     }
 
     // =========================================================================
@@ -3754,31 +3756,26 @@ class AciCognitiveV2AndReadingBudgetTest {
                             + "FALSE, 'Sale đang trực tiếp tư vấn', 'HUMAN_SALE', NOW(), NOW(), NOW())",
                     safetySessionId, PAGE_ID, safetyPsid
             );
-            for (AdaptiveConversationIntelligence.CognitiveMode mode : List.of(
-                    AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
-                    AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1
-            )) {
-                bot.setCognitiveMode(mode);
-                FanpageBotResponse emergencyUnderTakeover = bot.handleCustomerMessage(new FanpageBotRequest(
-                        PAGE_ID.toString(), safetyPsid, "Khách Cấp Cứu",
-                        "Chị đang bầu 5 tháng bị tức ngực đau đầu dữ dội",
-                        null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
-                        "fb_webhook_" + safetyPsid, false, null, null
-                ));
-                assertThat(llmCalls.get()).isEqualTo(3);
-                assertThat(emergencyUnderTakeover.replyBubbles()).isEmpty();
-                assertThat(emergencyUnderTakeover.replyText()).isEmpty();
-                assertThat(emergencyUnderTakeover.needsHumanHandoff()).isFalse();
-                assertThat(emergencyUnderTakeover.handoffCategory()).isNull();
-                assertThat(emergencyUnderTakeover.handoffReason()).isNull();
-                assertThat(emergencyUnderTakeover.triggeredHooks()).contains("HUMAN_TAKEOVER_SILENT_HOLD");
-            }
+            bot.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+            FanpageBotResponse emergencyUnderTakeover = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), safetyPsid, "Khách Cấp Cứu",
+                    "Chị đang bầu 5 tháng bị tức ngực đau đầu dữ dội",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + safetyPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(3);
+            assertThat(emergencyUnderTakeover.replyBubbles()).isEmpty();
+            assertThat(emergencyUnderTakeover.replyText()).isEmpty();
+            assertThat(emergencyUnderTakeover.needsHumanHandoff()).isFalse();
+            assertThat(emergencyUnderTakeover.handoffCategory()).isNull();
+            assertThat(emergencyUnderTakeover.handoffReason()).isNull();
+            assertThat(emergencyUnderTakeover.triggeredHooks()).contains("HUMAN_TAKEOVER_SILENT_HOLD");
             Integer emergencyCustSaved = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM conversation_messages WHERE session_id = ? AND sender_role = 'CUSTOMER'",
                     Integer.class,
                     safetySessionId
             );
-            assertThat(emergencyCustSaved).isEqualTo(2);
+            assertThat(emergencyCustSaved).isEqualTo(1);
         } finally {
             jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?)", matrixPsid, safetyPsid);
         }
@@ -4171,8 +4168,6 @@ class AciCognitiveV2AndReadingBudgetTest {
                 localPageRepo,
                 forbiddenV1InsightEngine,
                 localSkillSvc,
-                null,
-                null,
                 null,
                 null,
                 null
@@ -5907,5 +5902,30 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(isolatedOkSkills)
                 .extracting(com.example.docmind.dto.bot.AgentSkillDto::code)
                 .containsExactly("graceful_pause_keep_warmth");
+    }
+
+    @Test
+    @DisplayName("Unit P3.4: Single-Runtime LLM_COGNITIVE_V2, xóa sạch cây com.docmind.guardrail (G4) & route /internal/v1/consult, chuẩn hóa ghi 1 cột tsv chuẩn")
+    void unitP34_singleRuntimeCognitiveV2AndGuardrailConsultRetirementLock() throws Exception {
+        // 1. CognitiveMode chỉ còn duy nhất 1 giá trị runtime LLM_COGNITIVE_V2
+        assertThat(AdaptiveConversationIntelligence.CognitiveMode.values())
+                .containsExactly(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+        assertThat(AdaptiveConversationIntelligence.CognitiveMode.fromProperty("DETERMINISTIC_V1"))
+                .isEqualTo(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+
+        // 2. Nhóm G4 (com.docmind.*) ở cả main & test và sales_graph.py đã bị xóa sạch
+        assertThat(java.nio.file.Files.notExists(java.nio.file.Path.of("src/main/java/com/docmind"))).isTrue();
+        assertThat(java.nio.file.Files.notExists(java.nio.file.Path.of("src/test/java/com/docmind"))).isTrue();
+        java.nio.file.Path salesGraphPy = java.nio.file.Path.of("../doc-service-py/app/agent/sales_graph.py");
+        assertThat(java.nio.file.Files.notExists(salesGraphPy)).isTrue();
+
+        // 3. ChunkMetadataBackfillService ghi 1 cột chuẩn tsv, giao phó tsv_content cho trigger trg_chunks_sync_tsv()
+        String backfillSrc = java.nio.file.Files.readString(
+                java.nio.file.Path.of("src/main/java/com/example/docmind/service/metadata/ChunkMetadataBackfillService.java"),
+                java.nio.charset.StandardCharsets.UTF_8
+        );
+        assertThat(backfillSrc)
+                .contains("tsv = setweight(to_tsvector('simple'")
+                .doesNotContain("tsv_content =");
     }
 }

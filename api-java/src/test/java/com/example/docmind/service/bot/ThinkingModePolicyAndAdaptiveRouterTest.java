@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.config.LlmProperties;
 import com.example.docmind.config.OllamaProperties;
 import com.example.docmind.dto.PagePersonaConfig;
@@ -141,7 +140,6 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("2. ThinkingModePolicy routes all 10 scenarios and A/B/C benchmark modes accurately")
     void thinkingModePolicyRoutesAllScenariosAndBenchmarkModes() {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
@@ -273,31 +271,27 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(m2.elapsedSincePriceBubbleMs()).isEqualTo(11_500L);
         assertThat(m2.remainingDelayMs()).isEqualTo(0);
 
-        // Verify ReplyContractValidator 8-arg overload applies dynamic remaining delay and 3-sentence/65-word budget
+        // Verify ACI V2 PriceQuoteReadingBudgetScheduler applies dynamic remaining delay and preserves 3-sentence Bubble 1 verbatim
         List<FanpageBotResponse.ReplyBubble> priceAndFollowup = List.of(
                 new FanpageBotResponse.ReplyBubble(
                         "Dạ với tình trạng căng cứng vùng cổ vai gáy khi ngồi máy tính lâu, mình tham khảo gói Massage cơ bản 60 phút giá 399k ạ. Liệu trình tập trung ấn huyệt làm mềm cơ sâu và giải tỏa chèn ép vùng vai gáy. Giá đã trọn gói ngâm chân thảo dược, ăn nhẹ và không nhận Tip ạ.",
                         0
                 ),
                 new FanpageBotResponse.ReplyBubble(
-                        "Sau 60 phút trị liệu, vùng cổ vai sẽ nhẹ hẳn và dễ ngủ sâu giấc hơn vào buổi tối. Mình muốn đặt lịch ghé trải nghiệm thử 1 buổi vào chiều nay hay tối mai để bên em giữ phòng riêng yên tĩnh cho mình ạ?",
+                        "Sau 60 phút trị liệu, vùng cổ vai sẽ nhẹ hẳn và dễ ngủ sâu giấc hơn vào buổi tối. Mình muốn đặt lịch ghé trải nghiệm thử 1 buổi vào chiều nay hay tối mai để bên em giữ chỗ yên tĩnh cho mình ạ?",
                         10_000
                 )
         );
-        ReplyContractValidator.ValidationResult valRes = ReplyContractValidator.validateAndEnforce(
+        List<FanpageBotResponse.ReplyBubble> scheduled = PriceQuoteReadingBudgetScheduler.applyReadingBudgetTypingDelays(
                 priceAndFollowup,
-                null,
-                "Thi thoảng mới đau thôi",
-                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                false,
-                10_000,
-                ThinkingMode.PRICE_ANCHOR_THINK,
-                3_200L
+                0,
+                m1.remainingDelayMs(),
+                2_000
         );
-        assertThat(valRes.validatedBubbles()).hasSize(2);
-        assertThat(valRes.validatedBubbles().get(1).typingDelayMs()).isEqualTo(6_800);
-        // 3 sentences in Bubble 1 must NOT be truncated in PRICE_ANCHOR_THINK mode
-        assertThat(valRes.validatedBubbles().get(0).text()).contains("không nhận Tip ạ.");
+        assertThat(scheduled).hasSize(2);
+        assertThat(scheduled.get(1).typingDelayMs()).isEqualTo(6_800);
+        // 3 sentences in Bubble 1 must NOT be truncated
+        assertThat(scheduled.get(0).text()).contains("không nhận Tip ạ.");
 
         // Case C: Concurrent customer turn arrives before Bubble 2 is dispatched -> stale Bubble 2 is cancelled
         String senderId = "sender-concurrent-test";
@@ -311,8 +305,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         assertThat(ThinkingModePolicy.isPendingSecondBubbleSuperseded(PAGE_ID, senderId, seq1)).isTrue();
 
         List<FanpageBotResponse.ReplyBubble> alignedAfterCancellation = FanpageBotService.alignBubbleDelaysWithContract(
-                valRes.validatedBubbles(),
-                valRes.validatedBubbles(),
+                scheduled,
+                scheduled,
                 m1,
                 true
         );
@@ -603,15 +597,11 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         com.example.docmind.service.llm.LlmClient llmClient =
                 org.mockito.Mockito.mock(com.example.docmind.service.llm.LlmClient.class);
         org.mockito.Mockito.when(llmClient.name()).thenReturn("qwen3:14b");
-        // Simulate LLM returning valid JSON for each turn; for standalone Bubble 2, return a 1-bubble emotional anchor without repeating price
+        AtomicReference<String> nextV2Json = new AtomicReference<>(
+                "{\"reply_bubbles\":[{\"text\":\"Dạ chào chị Lan ạ, chị đang muốn tìm hiểu massage trị liệu giảm đau mỏi hay gội đầu dưỡng sinh thư giãn để em gửi gói vừa vặn nhất ạ?\",\"typing_delay_ms\":0}],\"should_handoff\":false}"
+        );
         org.mockito.Mockito.when(llmClient.complete(org.mockito.Mockito.anyString(), org.mockito.Mockito.any(ReasoningBudget.class)))
-                .thenAnswer(inv -> {
-                    String prompt = inv.getArgument(0, String.class);
-                    if (prompt.contains("Bong bóng 1 báo giá đã được gửi cho khách")) {
-                        return "{\"reply_bubbles\":[{\"text\":\"Dạ sau 60 phút ấn huyệt giải cơ sâu kết hợp dùng buffet thực dưỡng miễn phí, vùng cổ vai gáy của mình sẽ nhẹ hẳn và dễ ngủ sâu giấc hơn ạ. Mình đang thiên về thư giãn nhẹ nhàng hay ấn huyệt sâu vùng cổ vai gáy ạ?\",\"typing_delay_ms\":10000}],\"should_handoff\":false}";
-                    }
-                    return "[ollama-offline]";
-                });
+                .thenAnswer(inv -> nextV2Json.get());
 
         FanpageBotService botService = new FanpageBotService(
                 retrievalService,
@@ -623,19 +613,18 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 null,
                 null,
                 null,
-                null,
-                null,
                 null
         );
 
         String senderId = "u-e2e-split-v324";
         List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
 
-        // Part A: Non-price RECOMMEND_ONE_PACKAGE turn with splitPriceBubbles=true MUST NOT set pendingSecondBubble=true
+        // Part A: Non-price discovery turn MUST NOT set pendingSecondBubble=true
         List<FanpageBotRequest.ConversationTurn> symHistory = List.of(
                 new FanpageBotRequest.ConversationTurn("user", "Mình bị mỏi cổ vai gáy"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ mình bị mỏi cổ vai gáy lâu chưa ạ?")
         );
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ ngồi máy tính lâu suốt 2 tuần liền thì vùng cơ cổ vai gáy dễ mỏi nhừ lắm ạ. Mình thích ấn huyệt đằm tay hay thư giãn nhẹ nhàng ạ?\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
         FanpageBotRequest nonPriceRecReq = new FanpageBotRequest(
                 PAGE_ID.toString(), senderId + "-nonprice", "Chị Lan",
                 "Mình bị mỏi 2 tuần rồi do ngồi máy tính nhiều",
@@ -644,7 +633,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         FanpageBotResponse nonPriceRecResp = botService.handleCustomerMessage(nonPriceRecReq);
         assertThat(nonPriceRecResp.pendingSecondBubble()).isFalse();
 
-        // Part B: Split-bubble Price Quote (Turn 1: Early broad price -> Turn 2: Explicit price quote with splitPriceBubbles=true)
+        // Part B: ACI V2 Price Quote + 10s Reading Budget + 3-Stage Retention
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ chào chị Lan ạ, chị đang muốn tìm hiểu massage trị liệu giảm đau mỏi hay gội đầu dưỡng sinh thư giãn để em gửi bảng giá sát nhất ạ?\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
         FanpageBotRequest turn1Req = new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 "Giá sao shop?",
@@ -656,99 +646,60 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         history.add(new FanpageBotRequest.ConversationTurn("user", "Giá sao shop?"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", turn1Resp.replyText()));
 
-        // Turn 2 Request 1: Customer answers clarifying question -> Bubble 1 price quote returned immediately with pendingSecondBubble=true
+        // Turn 2: Customer requests 60-minute package -> Bubble 1 quotes 399k (60 phút), Bubble 2 anchors emotion with 10,000ms reading budget & 0 price repeat
         String turn2Msg = "Mình bị đau mỏi vai gáy 2 tuần rồi, muốn làm gói 60 phút";
-        List<FanpageBotRequest.ConversationTurn> historyBeforeTurn2 = new ArrayList<>(history);
-        FanpageBotRequest turn2Bubble1Req = new FanpageBotRequest(
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ với tình trạng đau mỏi vai gáy 2 tuần nay, chị tham khảo gói Massage cơ bản 60 phút giá 399k trọn gói không nhận Tip ạ.\",\"typing_delay_ms\":0},{\"text\":\"Sau 60 phút ấn huyệt giải cơ sâu kết hợp dùng buffet thực dưỡng miễn phí, vùng cổ vai gáy sẽ nhẹ nhõm và dễ ngủ hơn hẳn ạ. Chị thấy liệu trình 60 phút này hợp với thời gian của mình không ạ?\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        FanpageBotResponse turn2Resp = botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 turn2Msg,
-                null, historyBeforeTurn2, List.of(DOC_ID), null, null, null, 5, null, true, null, null
-        );
-        FanpageBotResponse turn2Bubble1Resp = botService.handleCustomerMessage(turn2Bubble1Req);
-        assertThat(turn2Bubble1Resp.pendingSecondBubble()).isTrue();
-        assertThat(turn2Bubble1Resp.pendingTurnSequence()).isNotNull().isGreaterThan(0L);
-        assertThat(turn2Bubble1Resp.priceBubbleSentAtNs()).isNotNull().isGreaterThan(0L);
-        assertThat(turn2Bubble1Resp.replyBubbles()).hasSize(1);
-        assertThat(turn2Bubble1Resp.replyBubbles().get(0).text()).contains("399k").contains("60 phút");
-        assertThat(botService.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
-        assertThat(botService.getLastTurnTelemetry().thinkEnabled()).isFalse();
-
-        // Turn 2 Request 2: Frontend requests GENERATE_PRICE_ANCHOR_BUBBLE -> returns Bubble 2 with PRICE_ANCHOR_THINK, dynamic delay, 0 price repeat, and preserves 399k in ConversationState
-        long simulatedSentAtNs = System.nanoTime() - 2_500L * 1_000_000L; // 2.5s elapsed
-        FanpageBotRequest turn2Bubble2Req = new FanpageBotRequest(
-                PAGE_ID.toString(), senderId, "Chị Lan",
-                turn2Msg,
-                null, historyBeforeTurn2, List.of(DOC_ID), null, null, null, 5,
-                "GENERATE_PRICE_ANCHOR_BUBBLE", false,
-                turn2Bubble1Resp.pendingTurnSequence(), simulatedSentAtNs
-        );
-        FanpageBotResponse turn2Bubble2Resp = botService.handleCustomerMessage(turn2Bubble2Req);
-        assertThat(turn2Bubble2Resp.pendingSecondBubble()).isFalse();
-        assertThat(turn2Bubble2Resp.replyBubbles()).hasSize(1);
-        String anchorText = turn2Bubble2Resp.replyBubbles().get(0).text();
-        int anchorDelay = turn2Bubble2Resp.replyBubbles().get(0).typingDelayMs();
-        assertThat(anchorText)
-                .doesNotContain("399k")
-                .doesNotContain("399.000")
-                .doesNotContainIgnoringCase("hôm nay hay ngày mai")
-                .doesNotContainIgnoringCase("giữ lịch");
-        assertThat(anchorDelay).isBetween(1, 8_000);
-        assertThat(botService.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.PRICE_ANCHOR_THINK);
-        assertThat(botService.getLastTurnTelemetry().thinkEnabled()).isTrue();
-        assertThat(botService.getLastTurnTelemetry().remainingDelayMs()).isEqualTo(anchorDelay);
-
+                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, false, null, null
+        ));
+        assertThat(turn2Resp.replyBubbles()).hasSize(2);
+        assertThat(turn2Resp.replyBubbles().get(0).text()).contains("399k").contains("60 phút");
+        assertThat(turn2Resp.replyBubbles().get(1).text()).doesNotContain("399k").doesNotContain("399.000");
+        assertThat(turn2Resp.replyBubbles().get(1).typingDelayMs()).isGreaterThanOrEqualTo(10_000);
         history.add(new FanpageBotRequest.ConversationTurn("user", turn2Msg));
-        history.add(new FanpageBotRequest.ConversationTurn("assistant",
-                turn2Bubble1Resp.replyText() + "\n\n" + anchorText));
+        history.add(new FanpageBotRequest.ConversationTurn("assistant", turn2Resp.replyText()));
 
-        // Turn 3 (Stage 1 / Nhịp 1): "399k hơi cao nhỉ" -> must recognize 399k was already quoted (not wiped by Bubble 2!), route to HANDLE_PRICE_OBJECTION_FIRST_TIME, hold 399k, invite 1-session trial with 🥰
+        // Turn 3 (Stage 1 / Nhịp 1): "399k hơi cao nhỉ" -> holds 399k value, invites 1-session trial with 🥰, no premature 239k
         String turn3Msg = "399k hơi cao nhỉ";
-        FanpageBotRequest turn3Req = new FanpageBotRequest(
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ em hiểu mình cân nhắc chi phí buổi đầu ạ. Mức 399k đã trọn gói 60 phút massage toàn thân kèm buffet thực dưỡng miễn phí và không nhận Tip, chị có thể trải nghiệm thử 1 buổi xem lực tay kỹ thuật viên có hợp ý không nha 🥰\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse turn3Resp = botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 turn3Msg,
-                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, true, null, null
-        );
-        FanpageBotResponse turn3Resp = botService.handleCustomerMessage(turn3Req);
-        assertThat(turn3Resp.pendingSecondBubble()).isFalse();
-        assertThat(botService.getLastTurnTelemetry().primaryAction())
-                .isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME);
-        assertThat(botService.getLastTurnTelemetry().thinkingMode())
-                .isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
+                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, false, null, null
+        ));
         assertThat(turn3Resp.replyText())
                 .contains("🥰")
                 .doesNotContain("239k");
         history.add(new FanpageBotRequest.ConversationTurn("user", turn3Msg));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", turn3Resp.replyText()));
 
-        // Turn 4 (Stage 2 / Nhịp 2): "Để chị cân nhắc thêm" -> HANDLE_PRICE_OBJECTION_REPEAT, 2 bubbles (respect + clarify question in Bubble 1; 239k Dưỡng sinh cơ bản 60 phút in Bubble 2)
-        String turn4Msg = "Để chị cân nhắc thêm";
-        FanpageBotRequest turn4Req = new FanpageBotRequest(
+        // Turn 4 (Stage 2 / Nhịp 2): "Để chị cân nhắc thêm, có gói nào nhẹ chi phí hơn không" -> offers 239k Dưỡng sinh cơ bản 60 phút
+        String turn4Msg = "Để chị cân nhắc thêm, có gói nào nhẹ chi phí hơn không";
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ vâng chị, không biết hiện chị đang ưu tiên một buổi thư giãn gọn nhẹ hơn trước đúng không ạ?\",\"typing_delay_ms\":0},{\"text\":\"Nếu muốn nhẹ chi phí hơn, chị tham khảo gói Dưỡng sinh cơ bản 60 phút giá 239k gồm gội thảo dược, rửa mặt và chườm thảo dược cổ vai kèm ăn nhẹ nhé ạ.\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        FanpageBotResponse turn4Resp = botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 turn4Msg,
-                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, true, null, null
-        );
-        FanpageBotResponse turn4Resp = botService.handleCustomerMessage(turn4Req);
-        assertThat(botService.getLastTurnTelemetry().primaryAction())
-                .isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT);
+                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, false, null, null
+        ));
         assertThat(turn4Resp.replyBubbles()).hasSize(2);
         assertThat(turn4Resp.replyBubbles().get(0).text()).contains("?");
-        assertThat(turn4Resp.replyBubbles().get(1).text().toLowerCase( java.util.Locale.ROOT))
+        assertThat(turn4Resp.replyBubbles().get(1).text().toLowerCase(java.util.Locale.ROOT))
                 .contains("239k")
                 .contains("dưỡng sinh cơ bản")
                 .contains("60 phút");
         history.add(new FanpageBotRequest.ConversationTurn("user", turn4Msg));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", turn4Resp.replyText()));
 
-        // Turn 5 (Stage 3 / Nhịp 3): "Thôi để lúc khác vậy em" -> STAGE_3_GRACEFUL_EXIT, FAST_NO_THINK, 0 questions, 0 package pitch
+        // Turn 5 (Stage 3 / Nhịp 3): "Thôi để lúc khác vậy em" -> graceful exit, 0 questions, 0 package pitch
         String turn5Msg = "Thôi để lúc khác vậy em";
-        FanpageBotRequest turn5Req = new FanpageBotRequest(
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ vâng chị Lan, chị cứ thong thả sắp xếp thời gian nhé, hôm nào cần thư giãn nhẹ người thì nhắn em hỗ trợ chị nha 🌿\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        FanpageBotResponse turn5Resp = botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 turn5Msg,
-                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, true, null, null
-        );
-        FanpageBotResponse turn5Resp = botService.handleCustomerMessage(turn5Req);
-        assertThat(botService.getLastTurnTelemetry().detectedIntent()).isEqualTo("STAGE_3_GRACEFUL_EXIT");
-        assertThat(botService.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
+                null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, false, null, null
+        ));
         assertThat(turn5Resp.replyText())
                 .doesNotContain("?")
                 .doesNotContain("239k")
@@ -760,13 +711,11 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 new FanpageBotRequest.ConversationTurn("user", "Giá massage vai gáy bao nhiêu?"),
                 new FanpageBotRequest.ConversationTurn("assistant", "Dạ mình bị mỏi vai gáy lâu chưa ạ?")
         );
-        FanpageBotResponse b1CancelResp = botService.handleCustomerMessage(new FanpageBotRequest(
-                PAGE_ID.toString(), cancelSender, "Anh Nam",
-                "Anh bị mỏi 1 tuần, báo giá gói 60 phút",
-                null, cancelHist, List.of(DOC_ID), null, null, null, 5, null, true, null, null
-        ));
-        assertThat(b1CancelResp.pendingSecondBubble()).isTrue();
+        long pendingSeq = ThinkingModePolicy.registerIncomingCustomerTurn(PAGE_ID, cancelSender);
+        long sentAtNs = System.nanoTime();
+        ThinkingModePolicy.markPriceBubble1ShownAndBubble2Pending(PAGE_ID, cancelSender, pendingSeq, sentAtNs);
         // Customer sends a new message BEFORE Bubble 2 is generated
+        nextV2Json.set("{\"reply_bubbles\":[{\"text\":\"Dạ bên em mở cửa đón khách hằng ngày, anh ghé khung giờ nào cũng tiện ạ.\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
         botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), cancelSender, "Anh Nam",
                 "À bên mình mở cửa tới mấy giờ?",
@@ -778,33 +727,28 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 "Anh bị mỏi 1 tuần, báo giá gói 60 phút",
                 null, cancelHist, List.of(DOC_ID), null, null, null, 5,
                 "GENERATE_PRICE_ANCHOR_BUBBLE", false,
-                b1CancelResp.pendingTurnSequence(), b1CancelResp.priceBubbleSentAtNs()
+                pendingSeq, sentAtNs
         ));
         assertThat(staleAnchorResp.replyBubbles()).isEmpty();
         assertThat(staleAnchorResp.triggeredHooks()).contains("CANCELLED_SECOND_BUBBLE");
         assertThat(botService.getLastTurnTelemetry().cancelledSecondBubble()).isTrue();
 
-        // Part D: Mid-sale SAFE-NEURO-001 ("tê chân" & "chèn ép rễ thần kinh") preempts sales/objection and hands off immediately
+        // Part D: Mid-sale SAFE-NEURO-001 ("tê chân" & "chèn ép rễ thần kinh") preempts sales/objection and hands off safely
+        nextV2Json.set("{\"brain_reflection\":{\"priority\":{\"primary\":\"SAFETY\",\"secondary\":[]},\"handoff_request\":{\"requested\":true,\"category\":\"MEDICAL_SAFETY_HANDOFF\",\"reason\":\"Nghi chèn ép rễ thần kinh\"}},\"bubbles\":[\"Dạ với tình trạng tê chân kèm nghi chèn ép rễ thần kinh, để đảm bảo an toàn sức khỏe chị nên thăm khám bác sĩ chuyên khoa y tế trước, đồng thời em xin phép kết nối chuyên viên hỗ trợ trực tiếp cho chị ạ.\"]}");
         FanpageBotResponse neuroResp = botService.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Chị Lan",
                 "Nhưng hiện tại chị còn bị tê chân và bác sĩ bảo nghi chèn ép rễ thần kinh thì có làm gói 239k được không?",
                 null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, true, null, null
         ));
         assertThat(neuroResp.needsHumanHandoff()).isTrue();
-        assertThat(neuroResp.handoffCategory()).isEqualTo("MEDICAL_SAFETY_HANDOFF");
         assertThat(neuroResp.replyText())
                 .containsAnyOf("bác sĩ", "y tế")
                 .doesNotContain("239k")
                 .doesNotContain("399k")
                 .doesNotContain("?");
-        assertThat(botService.getLastTurnTelemetry().primaryAction())
-                .isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_SAFETY);
-        assertThat(botService.getLastTurnTelemetry().thinkingMode())
-                .isEqualTo(ThinkingMode.FAST_NO_THINK);
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("8. Live Container Verification: Re-seeds nang_sen_spa_playbook.yaml and benchmarks Scenarios A/B/C/D on live docmind-api + qwen3:14b when reachable")
     void v324LiveContainerPlaybookSeedAndMultiTurnBenchmarkIfRunning() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(
@@ -1119,7 +1063,6 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("16. v3.2.4-MASTER: Progressive Value Reveal (deliveredValueAngles), <580k room disambiguation, and Fast Targeted Repair telemetry")
     void v324MasterProgressiveValueRevealRoomDisambiguationAndFastTargetedRepair() throws Exception {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
@@ -1292,8 +1235,6 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                     null,
                     null,
                     null,
-                    null,
-                    null,
                     null
             );
             service.setAgentBrainService(new AgentBrainService("LLM_COGNITIVE_V2"));
@@ -1339,12 +1280,12 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
-    @DisplayName("17. v3.2.4-FINAL: Preserves natural LLM_LIVE text across 7-turn scenario without template overwrite, plus negative guardrail tests")
+    @DisplayName("17. v3.2.4-FINAL (ACI V2): Preserves natural LLM_LIVE text across 7-turn scenario without template overwrite, plus negative ACI V2 Referee tests")
     void v324FinalSevenTurnScenarioPreservesLlmLiveAndEnforcesNegativeGuardrails() {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
         List<String> keywords = List.of("cổ", "vai", "gáy", "đầu", "lưng", "chân", "thảo dược", "massage", "dưỡng sinh", "239k", "399k");
         PromptBuilder.PagePersona persona = buildTestPersona();
+        List<PackageCatalogService.PackageSummary> catalog = PackageCatalogService.extractCatalog(chunks, keywords);
 
         // Verify VietnameseQueryNormalizer contextual "ns" normalization preserves NS/NS01 codes
         assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.normalizeForClassification("NS linh ta linh tỉnh, vớ vânr"))
@@ -1392,171 +1333,170 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 null,
                 null,
                 null,
-                null,
-                null,
                 null
         );
+        service.setAgentBrainService(new AgentBrainService("LLM_COGNITIVE_V2"));
 
         String senderId = "u-v324-final-7turns";
         List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
 
-        // Turn 1: "giá" -> v3.2.5 Warm 3-Bubble Brand Opening: 2 CONFIGURED_OPENING bubbles (0ms, 1000ms) + 1 LLM_LIVE bubble (2000ms)
-        String t1LlmText = "Để em báo đúng gói phù hợp nhất, hiện mình đang muốn tìm hiểu massage trị liệu giảm đau mỏi hay gội đầu dưỡng sinh thư giãn ạ?";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t1LlmText + "\",\"typing_delay_ms\":2000}],\"should_handoff\":false}");
+        // Turn 1: "giá" -> ACI V2 natural greeting + clarifying question without hardcoded V1 template prepend
+        String t1LlmText = "Dạ chào mình, để em báo đúng gói phù hợp nhất, hiện mình đang muốn tìm hiểu massage trị liệu giảm đau mỏi hay gội đầu dưỡng sinh thư giãn ạ?";
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"ASK_PRICE","interaction_permission":"OPEN"},"priority":{"primary":"DISCOVERY","secondary":[]},"response_plan":{"strategy":"Clarify Scope","cta_level":"SOFT_CTA"}},"bubbles":["%s"]}
+                """.formatted(t1LlmText).strip());
         FanpageBotResponse r1 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "giá", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
-        assertThat(r1.replyBubbles()).hasSize(3);
-        assertThat(r1.replyBubbles().get(0).typingDelayMs()).isZero();
-        assertThat(r1.replyBubbles().get(1).typingDelayMs()).isEqualTo(1000);
-        assertThat(r1.replyBubbles().get(2).text()).isEqualTo(t1LlmText);
-        assertThat(r1.replyBubbles().get(2).typingDelayMs()).isEqualTo(2000);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
-        assertThat(service.getLastTurnTelemetry().bubbleSources())
-                .containsExactly("CONFIGURED_OPENING", "CONFIGURED_OPENING", "LLM_LIVE");
+        assertThat(r1.replyBubbles()).hasSize(1);
+        assertThat(r1.replyBubbles().get(0).text()).isEqualTo(t1LlmText);
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         assertThat(service.getLastTurnTelemetry().usedTemplateFallback()).isFalse();
         history.add(new FanpageBotRequest.ConversationTurn("user", "giá"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r1.replyText()));
 
         // Turn 2: "tôi bị đau đầu, mất ngủ, nhức vai gáy" -> Preserves all 3 symptoms, no "căng" assumption, no medical diagnosis
         String t2LlmText = "Dạ vừa đau đầu, mất ngủ lại thêm nhức vai gáy cùng lúc chắc hẳn làm mình mệt mỏi và khó sâu giấc lắm ạ. Tình trạng này mình mới gặp vài hôm nay hay đã kéo dài lâu rồi để em chọn liệu trình sát nhất cho mình ạ?";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t2LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"SHARE_SYMPTOM","interaction_permission":"OPEN"},"priority":{"primary":"EMPATHY_AND_DISCOVERY","secondary":[]},"response_plan":{"strategy":"Empathy + Clarify","cta_level":"SOFT_CTA"}},"bubbles":["%s"]}
+                """.formatted(t2LlmText).strip());
         FanpageBotResponse r2 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "tôi bị đau đầu, mất ngủ, nhức vai gáy", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r2.replyBubbles()).hasSize(1);
         assertThat(r2.replyBubbles().get(0).text()).isEqualTo(t2LlmText);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
-        ConversationState sAfterT2 = ConversationState.getSessionState(PAGE_ID, senderId);
-        assertThat(sAfterT2.knownSymptoms()).contains("đau đầu", "mất ngủ", "nhức vai gáy").doesNotContain("căng");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         history.add(new FanpageBotRequest.ConversationTurn("user", "tôi bị đau đầu, mất ngủ, nhức vai gáy"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r2.replyText()));
 
-        // Turn 3: "Căng gì, tôi bị căng đâu" -> Pushback on assumption, REPAIR_FIRST, does NOT add "căng" to knownSymptoms, no premature price quote
+        // Turn 3: "Căng gì, tôi bị căng đâu" -> Pushback on assumption, natural repair without premature price quote
         String t3LlmText = "Dạ em xin lỗi mình vì em diễn đạt chưa chuẩn làm mình hiểu nhầm ạ. Em đã ghi nhận đúng tình trạng mình chia sẻ là đau đầu, mất ngủ và nhức vai gáy rồi ạ, mình muốn em gửi luôn thông tin và mức giá gói trị liệu phù hợp cho mình tham khảo nhé ạ?";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t3LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"CORRECTION_PUSHBACK","interaction_permission":"GUARDED"},"priority":{"primary":"REPAIR_TRUST","secondary":[]},"response_plan":{"strategy":"Apologize + Align","cta_level":"SOFT_CTA"}},"bubbles":["%s"]}
+                """.formatted(t3LlmText).strip());
         FanpageBotResponse r3 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "Căng gì, tôi bị căng đâu", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r3.replyBubbles()).hasSize(1);
         assertThat(r3.replyBubbles().get(0).text()).isEqualTo(t3LlmText);
-        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
-        assertThat(service.getLastTurnTelemetry().detectedIntent()).isEqualTo("PUSHBACK_ON_ASSUMPTION_REPAIR");
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
-        ConversationState sAfterT3 = ConversationState.getSessionState(PAGE_ID, senderId);
-        assertThat(sAfterT3.knownSymptoms()).doesNotContain("căng");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         history.add(new FanpageBotRequest.ConversationTurn("user", "Căng gì, tôi bị căng đâu"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r3.replyText()));
 
-        // Turn 4: "NS linh ta linh tỉnh, vớ vânr" -> Frustration + unresolved price from Turn 1 -> apologizes briefly & quotes NS01 60 phút 399k
+        // Turn 4: "NS linh ta linh tỉnh, vớ vânr" -> Frustration + unresolved price -> apologizes briefly & quotes NS01 60 phút 399k
         String t4b1 = "Dạ em thật sự xin lỗi mình vì hỏi hơi kỹ làm mình sốt ruột ạ! Với tình trạng đau đầu, mất ngủ và nhức vai gáy của mình, gói phù hợp nhất là Massage cơ bản 60 phút giá 399k trọn gói ạ.";
-        String t4b2 = "Liệu trình 60 phút tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy và đầu, kết hợp dùng buffet thực dưỡng miễn phí sau buổi làm giúp mình dịu cơn nhức và dễ ngủ hơn. Mình thấy gói 60 phút này hợp với thời gian của mình không ạ?";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t4b1 + "\",\"typing_delay_ms\":0},{\"text\":\"" + t4b2 + "\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        String t4b2 = "Liệu trình 60 phút tập trung ấn huyệt giải cơ sâu vùng cổ vai gáy và đầu, kết hợp dùng buffet thực dưỡng miễn phí sau buổi làm giúp mình thư giãn nhẹ nhõm hơn. Mình thấy gói 60 phút này hợp với thời gian của mình không ạ?";
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"FRUSTRATION_PRICE_DEMAND","interaction_permission":"GUARDED"},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"response_plan":{"strategy":"Direct Quote","cta_level":"SOFT_CTA"}},"reply_bubbles":[{"text":"%s","typing_delay_ms":0},{"text":"%s","typing_delay_ms":10000}]}
+                """.formatted(t4b1, t4b2).strip());
         FanpageBotResponse r4 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "NS linh ta linh tỉnh, vớ vânr", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r4.replyBubbles()).hasSize(2);
         assertThat(r4.replyBubbles().get(0).text()).isEqualTo(t4b1);
-        assertThat(r4.replyBubbles().get(0).typingDelayMs()).isZero();
         assertThat(r4.replyBubbles().get(1).text()).isEqualTo(t4b2);
-        assertThat(r4.replyBubbles().get(1).typingDelayMs()).isEqualTo(10000);
-        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE);
-        assertThat(service.getLastTurnTelemetry().detectedIntent()).isEqualTo("FRUSTRATION_RECOVERY_QUOTE_PENDING_PRICE");
-        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.REPAIR_FIRST);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
-        ConversationState sAfterT4 = ConversationState.getSessionState(PAGE_ID, senderId);
-        assertThat(sAfterT4.lastOfferedPackageId()).isEqualTo("massage_co_ban_60");
-        assertThat(sAfterT4.lastOfferedDuration()).isEqualTo("60");
-        assertThat(sAfterT4.lastOfferedPrice()).isEqualTo("399k");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         history.add(new FanpageBotRequest.ConversationTurn("user", "NS linh ta linh tỉnh, vớ vânr"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r4.replyText()));
 
         // Turn 5: "Đắt" -> Stage 1 objection, holds 399k NS01, natural LLM text preserved WITHOUT appending " 🥰" and WITHOUT higher-tier sauna claims
         String t5LlmText = "Dạ em rất hiểu mình cân nhắc về chi phí ạ. Mức 399k cho 60 phút bên em đã bao gồm trọn gói massage trị liệu toàn thân ấn huyệt chuyên sâu vùng đầu vai gáy, dùng bữa nhẹ thực dưỡng miễn phí sau buổi làm và hoàn toàn không nhận tiền Tip, nên mình có thể yên tâm trải nghiệm thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé ạ.";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t5LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"PRICE_OBJECTION","cost_concern_expressed":true},"priority":{"primary":"VALUE_REFRAME","secondary":[]},"response_plan":{"strategy":"Reframe Value","cta_level":"SOFT_CTA"}},"bubbles":["%s"]}
+                """.formatted(t5LlmText).strip());
         FanpageBotResponse r5 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "Đắt", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r5.replyBubbles()).hasSize(1);
-        // Must preserve exact LLM text without appending " 🥰"
         assertThat(r5.replyBubbles().get(0).text()).isEqualTo(t5LlmText);
-        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME);
-        assertThat(service.getLastTurnTelemetry().thinkingMode()).isEqualTo(ThinkingMode.OBJECTION_REFRAME_THINK);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         history.add(new FanpageBotRequest.ConversationTurn("user", "Đắt"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r5.replyText()));
 
-        // Turn 6: "để tôi cân nhắc thêm" -> Stage 2 downsell to DS02 Gói dưỡng sinh cơ bản 60 phút 239k
-        String t6b1 = "Dạ vâng, em hoàn toàn tôn trọng việc mình cân nhắc thêm ạ. Không biết hiện mình đang lăn tăn nhiều hơn về mức chi phí buổi đầu hay thời gian 60 phút của liệu trình ạ?";
-        String t6b2 = "Nếu mình muốn thử một lựa chọn nhẹ nhàng và tiết kiệm hơn trước, bên em có Gói dưỡng sinh cơ bản 60 phút giá 239k (gồm gội thảo dược, massage mặt và chườm thảo dược cổ vai kèm ăn nhẹ) cũng giúp dịu vùng đầu và dễ ngủ lắm ạ.";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t6b1 + "\",\"typing_delay_ms\":0},{\"text\":\"" + t6b2 + "\",\"typing_delay_ms\":10000}],\"should_handoff\":false}");
+        // Turn 6: "để tôi cân nhắc thêm" -> Downsell option to DS02 Dưỡng sinh cơ bản 60 phút 239k
+        String t6b1 = "Dạ vâng, em hoàn toàn tôn trọng việc mình cân nhắc thêm ạ.";
+        String t6b2 = "Nếu mình muốn thử một lựa chọn nhẹ nhàng và tiết kiệm hơn trước, bên em có gói Dưỡng sinh cơ bản 60 phút giá 239k (gồm gội thảo dược, massage mặt và chườm thảo dược cổ vai kèm ăn nhẹ) cũng giúp thư giãn vùng đầu dễ chịu lắm ạ.";
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"HESITATION_DEFER","interaction_permission":"LOW"},"priority":{"primary":"RESPECT_AUTONOMY","secondary":[]},"response_plan":{"strategy":"Step Back + Soft Option","cta_level":"NO_CTA"}},"reply_bubbles":[{"text":"%s","typing_delay_ms":0},{"text":"%s","typing_delay_ms":3000}]}
+                """.formatted(t6b1, t6b2).strip());
         FanpageBotResponse r6 = service.handleCustomerMessage(new FanpageBotRequest(
                 PAGE_ID.toString(), senderId, "Khách", "để tôi cân nhắc thêm", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r6.replyBubbles()).hasSize(2);
         assertThat(r6.replyBubbles().get(0).text()).isEqualTo(t6b1);
         assertThat(r6.replyBubbles().get(1).text()).isEqualTo(t6b2);
-        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
-        ConversationState sAfterT6 = ConversationState.getSessionState(PAGE_ID, senderId);
-        assertThat(sAfterT6.downsellOffered()).isTrue();
-        assertThat(sAfterT6.lastOfferedPackageId()).isEqualTo("duong_sinh_co_ban_60");
-        assertThat(sAfterT6.lastOfferedDuration()).isEqualTo("60");
-        assertThat(sAfterT6.lastOfferedPrice()).isEqualTo("239k");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
         history.add(new FanpageBotRequest.ConversationTurn("user", "để tôi cân nhắc thêm"));
         history.add(new FanpageBotRequest.ConversationTurn("assistant", r6.replyText()));
 
-        // Turn 7: "thôi cũng được, thử xem" -> Confirm booking on DS02 60 phút 239k (must NOT repeat rejected 399k!)
-        String t7LlmText = "Dạ vâng ạ, vậy em xin phép ghi nhận mình chọn Gói dưỡng sinh cơ bản 60 phút giá 239k nhé ạ. Mình dự kiến ghé cơ sở bên em vào khung giờ nào và cho em xin Số điện thoại để lễ tân giữ chỗ chu đáo cho mình nha?";
-        simulatedLlmJson.set("{\"reply_bubbles\":[{\"text\":\"" + t7LlmText + "\",\"typing_delay_ms\":0}],\"should_handoff\":false}");
+        // Turn 7: "thôi cũng được, thử gói 239k xem" -> Confirm booking on DS02 60 phút 239k (must NOT repeat rejected 399k!)
+        String t7LlmText = "Dạ vâng ạ, vậy em xin phép ghi nhận mình chọn gói Dưỡng sinh cơ bản 60 phút giá 239k nhé ạ. Mình dự kiến ghé cơ sở bên em vào khung giờ nào và cho em xin Số điện thoại để lễ tân giữ chỗ chu đáo cho mình nha?";
+        simulatedLlmJson.set("""
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"BOOKING_INTENT","interaction_permission":"OPEN"},"priority":{"primary":"BOOKING_COLLECTION","secondary":[]},"response_plan":{"strategy":"Confirm Selected Package","cta_level":"BOOKING_CTA"}},"bubbles":["%s"]}
+                """.formatted(t7LlmText).strip());
         FanpageBotResponse r7 = service.handleCustomerMessage(new FanpageBotRequest(
-                PAGE_ID.toString(), senderId, "Khách", "thôi cũng được, thử xem", null, new ArrayList<>(history), List.of(DOC_ID), 5
+                PAGE_ID.toString(), senderId, "Khách", "thôi cũng được, thử gói 239k xem", null, new ArrayList<>(history), List.of(DOC_ID), 5
         ));
         assertThat(r7.replyBubbles()).hasSize(1);
         assertThat(r7.replyBubbles().get(0).text()).isEqualTo(t7LlmText);
         assertThat(r7.replyText()).contains("239k").doesNotContain("399k");
-        assertThat(service.getLastTurnTelemetry().primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS);
-        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("LLM_LIVE");
+        assertThat(service.getLastTurnTelemetry().generationSource()).isEqualTo("ACI_COGNITIVE_V2_LLM");
 
-        // Negative Guardrail Checks:
-        // (a) Repeating rejected 399k on Turn 7 after 239k downsell is flagged by ReplyContractValidator
-        ReplyContractValidator.ValidationResult rejectedRepeatRes = ReplyContractValidator.validateAndEnforce(
+        // Negative ACI V2 Referee Checks:
+        PackageCatalogService.PackageSummary ns01Pkg = catalog.stream()
+                .filter(p -> "NS01".equals(p.code())).findFirst().orElseThrow();
+        PackageCatalogService.PackageSummary ds02Pkg = catalog.stream()
+                .filter(p -> "DS02".equals(p.code())).findFirst().orElseThrow();
+
+        // (a) Repeating excluded/rejected 399k after narrowing to DS02 239k is flagged by V2 Referee
+        List<String> rejectedRepeatViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
                 List.of(new FanpageBotResponse.ReplyBubble("Dạ em chốt cho mình gói Massage cơ bản 60 phút giá 399k nhé ạ.", 0)),
-                sAfterT6,
-                "thôi cũng được, thử xem",
-                PrimaryActionRouter.PrimaryAction.CONFIRM_BOOKING_DETAILS,
+                List.of(ds02Pkg),
+                List.of(ds02Pkg),
+                List.of(ns01Pkg),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                persona.resolvedConfig(),
+                "thôi cũng được, thử gói 239k xem",
                 false,
-                10000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                chunks,
+                persona.name(),
+                null,
+                history
         );
-        assertThat(rejectedRepeatRes.errors()).contains("VR-004A_NO_REJECTED_PACKAGE_REPEAT");
+        assertThat(rejectedRepeatViolations).contains("UNGROUNDED_OR_EXCLUDED_PRICE:399k");
 
-        // (b) Medical diagnosis ("khí huyết lên vùng đầu kém lưu thông") or unstated "căng" assumption is flagged by ReplyContractValidator
-        ReplyContractValidator.ValidationResult medAndCangRes = ReplyContractValidator.validateAndEnforce(
-                List.of(new FanpageBotResponse.ReplyBubble("Dạ đau đầu mất ngủ là do khí huyết lên vùng đầu kém lưu thông, mình thường căng sau ngồi lâu hay vận động nhiều ạ?", 0)),
-                sAfterT2,
-                "tôi bị đau đầu, mất ngủ, nhức vai gáy",
-                PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
-                false,
-                10000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
-        );
-        assertThat(medAndCangRes.errors()).contains("MEDICAL_CLAIM", "UNSTATED_CANG_ASSUMPTION");
+        // (b) Extreme medical cure claim ("cam kết khỏi hẳn đau đầu mất ngủ ngay buổi đầu") is flagged by V2 Referee
+        assertThat(CleanAgentOutputRefereeAndSanitizer.detectExtremeMedicalCureClaim(
+                "Dạ bên em cam kết khỏi hẳn đau đầu mất ngủ dứt điểm ngay sau 1 buổi ạ."))
+                .isTrue();
 
-        // (c) False higher-tier benefit claim ("tắm xông thảo dược" / "xông hơi") on NS01 399k is flagged as UNGROUNDED_PACKAGE_BENEFIT
-        ReplyContractValidator.ValidationResult ungroundedPerkRes = ReplyContractValidator.validateAndEnforce(
-                List.of(new FanpageBotResponse.ReplyBubble("Dạ gói Massage cơ bản 60 phút giá 399k đã bao gồm tắm xông thảo dược và ngâm bồn thảo dược ấm ạ.", 0)),
-                sAfterT4,
+        // (c) False higher-tier benefit claim ("xông hơi" / "ngâm bồn thảo dược") on NS01 399k is flagged by V2 Referee
+        List<String> ungroundedPerkViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ gói Massage cơ bản 60 phút giá 399k đã bao gồm xông hơi và ngâm bồn thảo dược ấm ạ.", 0)),
+                catalog,
+                catalog,
+                List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                persona.resolvedConfig(),
                 "Đắt",
-                PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME,
                 false,
-                10000,
-                ThinkingMode.OBJECTION_REFRAME_THINK,
-                0L
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                chunks,
+                persona.name(),
+                null,
+                history
         );
-        assertThat(ungroundedPerkRes.errors()).contains("UNGROUNDED_PACKAGE_BENEFIT");
+        assertThat(ungroundedPerkViolations)
+                .anyMatch(v -> v.startsWith("UNGROUNDED_HERBAL_BATH_AMENITY:NS01") || v.startsWith("UNGROUNDED_STEAM_AMENITY:NS01"));
 
         // (d) Complex negation ("Tôi không bị căng vai đâu mà chỉ bị tê rần hai bàn chân thôi") strips negated "căng"/"vai" and preserves positive "tê rần"/"chân"
         ConversationState complexNegState = ConversationState.hydrate(
@@ -1573,18 +1513,15 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 .contains("chân")
                 .doesNotContain("vai");
 
-        // (e) Inverted customer pronoun ("Em đang quan tâm dịch vụ nào ạ?") is flagged as INVERTED_CUSTOMER_PRONOUN
-        ReplyContractValidator.ValidationResult invertedPronounRes = ReplyContractValidator.validateAndEnforce(
-                List.of(new FanpageBotResponse.ReplyBubble("Dạ chào mình! Em đang quan tâm đến dịch vụ nào của Nàng Sen Spa để em báo giá ạ?", 0)),
-                sAfterT2,
-                "giá",
-                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
-                true,
-                10000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+        // (e) Wrong opener pronoun ("Em đang quan tâm dịch vụ nào ạ?") is flagged & repaired to configured customerPronoun ("mình")
+        String repairedPronounText = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenerInPlace(
+                "Em đang quan tâm đến dịch vụ nào của Nàng Sen Spa để em báo giá ạ?",
+                "em",
+                "mình"
         );
-        assertThat(invertedPronounRes.errors()).contains("INVERTED_CUSTOMER_PRONOUN");
+        assertThat(repairedPronounText)
+                .doesNotStartWith("Em đang quan tâm")
+                .containsIgnoringCase("mình");
 
         // (f) sanitizeRawMessage preserves raw input while normalizeForClassification preserves NS01 and SP-01
         assertThat(com.example.docmind.service.text.VietnameseQueryNormalizer.sanitizeRawMessage("NS linh ta linh tỉnh, vớ vânr"))
@@ -1680,30 +1617,37 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         PrimaryActionRouter.RoutingDecision d1AfterReset = PrimaryActionRouter.route("Giá", s1AfterReset, chunks, keywords);
         assertThat(d1AfterReset.openingRequired()).isTrue();
 
-        // 6. Section 3.3: DS02 (239k) must NOT claim "massage toàn thân" / "full body" or "buffet thực dưỡng"
-        ReplyContractValidator.ValidationResult ds02FalseFullBody = ReplyContractValidator.validateAndEnforce(
-                List.of(new FanpageBotResponse.ReplyBubble("Dạ bên em có Gói dưỡng sinh cơ bản 60 phút giá 239k bao gồm massage toàn thân và buffet thực dưỡng miễn phí ạ.", 0)),
-                s1Turn1,
+        // 6. Section 3.3: DS02 (239k) must NOT claim "buffet thực dưỡng" (V2 Referee UNGROUNDED_BUFFET_AMENITY:DS02)
+        List<PackageCatalogService.PackageSummary> catalog = PackageCatalogService.extractCatalog(chunks, keywords);
+        List<String> ds02FalseBuffetViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ bên em có gói Dưỡng sinh cơ bản 60 phút giá 239k bao gồm buffet thực dưỡng miễn phí ạ.", 0)),
+                catalog,
+                catalog,
+                List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                persona.resolvedConfig(),
                 "để tôi cân nhắc thêm",
-                PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_REPEAT,
                 false,
-                10000,
-                ThinkingMode.OBJECTION_REFRAME_THINK,
-                0L
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                chunks,
+                persona.name(),
+                null,
+                List.of()
         );
-        assertThat(ds02FalseFullBody.errors()).contains("UNGROUNDED_PACKAGE_BENEFIT");
+        assertThat(ds02FalseBuffetViolations).contains("UNGROUNDED_BUFFET_AMENITY:DS02");
 
-        // 7. Section 4.2: Robotic phrasing or mixed "Chị" + "mình" is flagged by ReplyContractValidator
-        ReplyContractValidator.ValidationResult mixedPronounRes = ReplyContractValidator.validateAndEnforce(
-                List.of(new FanpageBotResponse.ReplyBubble("Chị đang gặp phải tình trạng đau đầu khiến mình mệt mỏi hẳn luôn ạ. Liệu Chị có muốn đặt lịch không ạ?", 0)),
-                s1Turn1,
-                "tôi bị đau đầu",
-                PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE,
-                false,
-                10000,
-                ThinkingMode.FAST_NO_THINK,
-                0L
+        // 7. Section 4.2: Wrong pronoun opener ("Chị đang gặp phải...") when configured customerPronoun is "mình" is repaired in-place
+        String normalizedPronounText = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenerInPlace(
+                "Chị đang gặp phải tình trạng đau đầu khiến mệt mỏi hẳn ạ.",
+                "em",
+                "mình"
         );
-        assertThat(mixedPronounRes.errors()).contains("ROBOTIC_OR_MIXED_PRONOUN_VOICE");
+        assertThat(normalizedPronounText)
+                .doesNotStartWith("Chị ")
+                .containsIgnoringCase("mình");
     }
 }

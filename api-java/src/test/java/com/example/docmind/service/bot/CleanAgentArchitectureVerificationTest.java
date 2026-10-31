@@ -4579,7 +4579,6 @@ class CleanAgentArchitectureVerificationTest {
         };
 
         com.example.docmind.config.ChatProperties chatProps = new com.example.docmind.config.ChatProperties();
-        FastApiAgentService mockFastApi = org.mockito.Mockito.mock(FastApiAgentService.class);
         return new FanpageBotService(
                 retrievalService,
                 stubLiveLlm,
@@ -4589,8 +4588,6 @@ class CleanAgentArchitectureVerificationTest {
                 new CustomerInsightEngine(),
                 null,
                 null,
-                new com.docmind.guardrail.GuardrailPipeline(),
-                mockFastApi,
                 null,
                 new com.example.docmind.service.reasoning.QueryComplexityClassifier()
         );
@@ -4643,10 +4640,7 @@ class CleanAgentArchitectureVerificationTest {
         // rồi Deterministic Guard dựng câu chuẩn về đúng gói 530k, không lọt 239k và không bịa giảm giá!
         java.util.concurrent.atomic.AtomicInteger llmCalls = new java.util.concurrent.atomic.AtomicInteger(0);
         FanpageBotService realBotService = buildRealEndToEndSpaBotService(prompt -> """
-                <AGENT_THOUGHT>
-                intent: PROMO_OR_DISCOUNT_QUESTION
-                </AGENT_THOUGHT>
-                Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em đang giảm 15% cho khách mới đặt lịch hôm nay ạ!
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"PROMO_OR_DISCOUNT_QUESTION","cost_concern_expressed":false}},"bubbles":["Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em đang giảm 15% cho khách mới đặt lịch hôm nay ạ!"]}
                 """, llmCalls);
 
         com.example.docmind.controller.FanpageBotController controller =
@@ -4694,7 +4688,8 @@ class CleanAgentArchitectureVerificationTest {
 
         // Kiểm tra priceObjectionCount không bị tăng bởi câu hỏi thuần ưu đãi "Gói này có giảm giá k"
         ConversationState afterState = ConversationState.hydrateForTurn(
-                UUID.fromString(pageId), senderPsid, webhookConvIdA, false, "", List.of(), List.of(), List.of());
+                UUID.fromString(pageId), senderPsid, webhookConvIdA, false, "",
+                SentBubbleLedger.transcript(ledgerKey), List.of(), List.of());
         assertEquals(1, afterState.priceObjectionCount(),
                 "Câu hỏi thuần ưu đãi 'Gói này có giảm giá k' tuyệt đối không được làm tăng priceObjectionCount (vẫn giữ = 1 từ lượt u2)");
     }
@@ -4727,10 +4722,7 @@ class CleanAgentArchitectureVerificationTest {
         // Kể cả khi LLM ngoan cố tự bốc 239k làm đáp án đơn phương, Deterministic Guard phải chặn và đổi thành câu hỏi xác nhận giữa 530k và 239k!
         java.util.concurrent.atomic.AtomicInteger llmCallsB1 = new java.util.concurrent.atomic.AtomicInteger(0);
         FanpageBotService realBotServiceB1 = buildRealEndToEndSpaBotService(prompt -> """
-                <AGENT_THOUGHT>
-                intent: PROMO_OR_DISCOUNT_QUESTION
-                </AGENT_THOUGHT>
-                Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em là giá niêm yết trọn gói chưa có chương trình giảm giá riêng ạ.
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"PROMO_OR_DISCOUNT_QUESTION","cost_concern_expressed":false}},"bubbles":["Dạ hiện Gói dưỡng sinh cơ bản 60 phút giá 239k bên em là giá niêm yết trọn gói chưa có chương trình giảm giá riêng ạ."]}
                 """, llmCallsB1);
 
         com.example.docmind.controller.FanpageBotController controllerB1 =
@@ -4780,10 +4772,7 @@ class CleanAgentArchitectureVerificationTest {
         java.util.concurrent.atomic.AtomicInteger llmCallsB3 = new java.util.concurrent.atomic.AtomicInteger(0);
         // Kể cả khi LLM tự đoán mò 530k hoặc 239k khi lịch sử trống -> Deterministic Guard chặn và gửi câu hỏi mở lịch sự!
         FanpageBotService realBotServiceB3 = buildRealEndToEndSpaBotService(prompt -> """
-                <AGENT_THOUGHT>
-                intent: PROMO_OR_DISCOUNT_QUESTION
-                </AGENT_THOUGHT>
-                Dạ mình đang hỏi gói 530k hay gói 239k vậy ạ?
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"PROMO_OR_DISCOUNT_QUESTION","cost_concern_expressed":false}},"bubbles":["Dạ mình đang hỏi gói 530k hay gói 239k vậy ạ?"]}
                 """, llmCallsB3);
 
         com.example.docmind.controller.FanpageBotController controllerB3 =
@@ -4881,10 +4870,7 @@ class CleanAgentArchitectureVerificationTest {
         java.util.concurrent.atomic.AtomicInteger llmCallsD = new java.util.concurrent.atomic.AtomicInteger(0);
         // LLM cố tình sinh câu ghép râu ông nọ cắm cằm bà kia ("Massage cơ bản 60 phút" đi với "239k") cả 2 lần
         FanpageBotService realBotServiceD = buildRealEndToEndSpaBotService(prompt -> """
-                <AGENT_THOUGHT>
-                intent: PROMO_OR_DISCOUNT_QUESTION
-                </AGENT_THOUGHT>
-                Dạ hiện gói Massage cơ bản 60 phút bên em đang áp dụng mức giá niêm yết 239k trọn gói không phát sinh phụ phí ạ.
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"PROMO_OR_DISCOUNT_QUESTION","cost_concern_expressed":false}},"bubbles":["Dạ hiện gói Massage cơ bản 60 phút bên em đang áp dụng mức giá niêm yết 239k trọn gói không phát sinh phụ phí ạ."]}
                 """, llmCallsD);
 
         com.example.docmind.controller.FanpageBotController controllerD =

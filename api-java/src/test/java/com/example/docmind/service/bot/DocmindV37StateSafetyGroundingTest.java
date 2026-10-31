@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.ReplyContractValidator;
 import com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn;
 import com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble;
 import org.junit.jupiter.api.DisplayName;
@@ -126,29 +125,33 @@ class DocmindV37StateSafetyGroundingTest {
     }
 
     @Test
-    @DisplayName("Validator chặn (BLOCKING) báo giá dạng câu hỏi xác nhận gói và KHÔNG tự viết lại câu")
+    @DisplayName("ACI V2 Referee chặn (BLOCKING) mức giá dịch vụ không có trong Catalog mà KHÔNG tự ý viết lại con số trong bubble")
     void validatorBlocksPackageConfirmationQuestionWithoutRewriting() {
-        ConversationState st = symptomState();
-        List<ReplyBubble> bad = List.of(new ReplyBubble("Dạ mình đang quan tâm đến gói Massage trị liệu 60 phút giá 399k ạ?", 0));
-        var res = ReplyContractValidator.validateAndEnforce(bad, st, "thỉnh thoảng",
-                PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE, false, 10_000, ThinkingMode.FAST_NO_THINK, null);
-        assertThat(res.errors()).contains("FORBIDDEN_PACKAGE_CONFIRMATION_QUESTION");
-        // v3.8: Java không sửa văn bản; validator giữ NGUYÊN bubble, lỗi là BLOCKING -> regenerate/handoff
-        assertThat(res.validatedBubbles().get(0).text()).isEqualTo(bad.get(0).text());
-        assertThat(ReplyContractValidator.hasBlockingError(res.errors())).isTrue();
+        List<ReplyBubble> bad = List.of(new ReplyBubble("Dạ bên em đang có gói Massage trị liệu 60 phút giá 999k ạ.", 0));
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                bad, List.of(), List.of(), List.of(), null, null, List.of(), null,
+                "thỉnh thoảng", false, null, null, null);
+        assertThat(violations).contains("UNGROUNDED_PRICE_MENTIONED:999k");
+        assertThat(bad.get(0).text()).isEqualTo("Dạ bên em đang có gói Massage trị liệu 60 phút giá 999k ạ.");
     }
 
     @Test
-    @DisplayName("Validator chặn xin lỗi rỗng kiểu tổng đài khi đã có triệu chứng")
+    @DisplayName("ACI V2 Referee chặn lặp xin lỗi hành chính rỗng kiểu tổng đài khi khách phàn nàn cách nói chuyện")
     void validatorBlocksEmptyTemplateApology() {
-        ConversationState st = symptomState();
-        List<ReplyBubble> bad = List.of(new ReplyBubble(
-                "Lúc nãy em không hiểu rõ nhu cầu của mình. Em xin được hỗ trợ lại ạ?", 0));
-        var res = ReplyContractValidator.validateAndEnforce(bad, st, "Dở à",
-                PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY, false, 10_000, ThinkingMode.FAST_NO_THINK, null);
-        assertThat(res.errors()).contains("EMPTY_TEMPLATE_APOLOGY");
-        assertThat(ReplyContractValidator.hasEmptyTemplateApology("Em xin được hỗ trợ lại ạ?")).isTrue();
-        assertThat(ReplyContractValidator.hasEmptyTemplateApology("Em xin lỗi mình nha, vừa rồi em chưa giải thích rõ vì sao gói này hợp.")).isFalse();
+        String prevBot = "Dạ em rất xin lỗi mình vì sự bất tiện này ạ, mong mình thông cảm giúp em.";
+        List<ReplyBubble> repeatedApology = List.of(new ReplyBubble(
+                "Dạ em rất xin lỗi mình vì sự bất tiện vừa rồi ạ, mong mình thông cảm giúp em.", 0));
+        List<String> violations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                repeatedApology, List.of(), List.of(), List.of(), null, null, List.of(), null,
+                "Xin lỗi kiểu văn mẫu thế", false, null, null, null, List.of(), null, prevBot, List.of());
+        assertThat(violations).contains("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT");
+
+        List<ReplyBubble> naturalFix = List.of(new ReplyBubble(
+                "Dạ vừa rồi em diễn đạt hơi cứng nhắc, để em nói thẳng vào phần giá và quy trình mình đang hỏi nha.", 0));
+        List<String> cleanViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                naturalFix, List.of(), List.of(), List.of(), null, null, List.of(), null,
+                "Xin lỗi kiểu văn mẫu thế", false, null, null, null, List.of(), null, prevBot, List.of());
+        assertThat(cleanViolations).doesNotContain("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT");
     }
 
     // ---------------------------------------------------------------- History ledger

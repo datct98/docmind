@@ -1,6 +1,5 @@
 package com.example.docmind.service.bot;
 
-import com.docmind.guardrail.HonorificConsistencyHook;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn;
@@ -247,16 +246,20 @@ class DocmindV330ArchitecturalRegressionTest {
     }
 
     @Test
-    @DisplayName("TEST M — HONORIFIC HOOK: Bảo toàn câu đúng vai ('Em đang...', 'Mình có thể...')")
+    @DisplayName("TEST M — PRONOUN OPENER REPAIR (ACI V2): Bảo toàn câu đúng vai ('Em đang...', 'Mình có thể...') và sửa câu ngược vai")
     void testM_HonorificHookProtectedPhrases() {
         String validBotEm = "Em đang kiểm tra giúp mình ạ";
         String validCustomerMinh = "Mình có thể tham khảo gói 60 phút ạ";
-        assertEquals(validBotEm, HonorificConsistencyHook.repairIfReversed(validBotEm, "mình"));
-        assertEquals(validCustomerMinh, HonorificConsistencyHook.repairIfReversed(validCustomerMinh, "mình"));
+        List<ReplyBubble> repaired1 = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                List.of(new ReplyBubble(validBotEm, 0)), "em", "mình");
+        List<ReplyBubble> repaired2 = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                List.of(new ReplyBubble(validCustomerMinh, 0)), "em", "mình");
+        assertEquals(validBotEm, repaired1.get(0).text());
+        assertEquals(validCustomerMinh, repaired2.get(0).text());
     }
 
     @Test
-    @DisplayName("TEST R — SPLIT BUBBLE 2 (phát hiện khi chạy live): Anchor bubble riêng không được mở đầu 'Dạ em hiểu rồi ạ' hay gọi lại tên gói đã báo")
+    @DisplayName("TEST R — READING BUDGET & BUBBLE COHERENCE (ACI V2): Bubble 1 báo giá nhận nhịp đọc ở Bubble 2 và không lặp giá ở Bubble 2")
     void testR_SplitAnchorBubbleCrossBubbleRedundancy() {
         List<ConversationTurn> history = List.of(
                 new ConversationTurn("user", "Tôi bị đau lưng, mỏi vai, xin giá"),
@@ -268,19 +271,18 @@ class DocmindV330ArchitecturalRegressionTest {
         );
         assertNotNull(state.lastOfferedPackageName(), "State phải nhớ tên gói vừa báo ở Bubble 1");
 
-        List<ReplyBubble> badAnchor = List.of(new ReplyBubble(
-                "Dạ em hiểu rồi ạ. Mình thấy gói " + state.lastOfferedPackageName() + " 60 phút đã hợp ý mình chưa ạ?", 10000));
-        com.docmind.guardrail.ReplyContractValidator.ValidationResult bad = com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                badAnchor, state, "thi thoảng bị", PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                false, 10000, ThinkingMode.PRICE_ANCHOR_THINK, 4000L);
-        assertTrue(bad.errors().contains("CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT"));
-
-        List<ReplyBubble> goodAnchor = List.of(new ReplyBubble(
-                "Sau buổi làm, vùng lưng vai được thả lỏng dần và người nhẹ hẳn ạ. Mình thấy gói 60 phút này đã hợp ý chưa ạ?", 10000));
-        com.docmind.guardrail.ReplyContractValidator.ValidationResult good = com.docmind.guardrail.ReplyContractValidator.validateAndEnforce(
-                goodAnchor, state, "thi thoảng bị", PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                false, 10000, ThinkingMode.PRICE_ANCHOR_THINK, 4000L);
-        assertFalse(good.errors().contains("CROSS_BUBBLE_REDUNDANCY_OR_PRICE_REPEAT"));
+        List<ReplyBubble> twoBubbles = List.of(
+                new ReplyBubble("Dạ bên em có gói " + state.lastOfferedPackageName() + " 60 phút giá 399k rất phù hợp ạ.", 0),
+                new ReplyBubble("Sau buổi làm, vùng lưng vai được thả lỏng dần và người nhẹ hẳn ạ. Mình thấy gói 60 phút này đã hợp ý chưa ạ?", 0)
+        );
+        int quoteBubbleIdx = PriceQuoteReadingBudgetScheduler.findActualPriceQuoteBubbleIndex(
+                twoBubbles, state.availablePackageCatalog(), true);
+        List<ReplyBubble> scheduled = PriceQuoteReadingBudgetScheduler.applyReadingBudgetTypingDelays(
+                twoBubbles, quoteBubbleIdx, 10_000, 2_000);
+        assertEquals(2, scheduled.size());
+        assertTrue(scheduled.get(1).typingDelayMs() >= 4000,
+                "Bubble 2 sau câu báo giá 399k phải được tính nhịp đọc (Reading Budget) tự nhiên");
+        assertFalse(BubbleTextSanitizer.PRICE_PATTERN.matcher(scheduled.get(1).text()).find());
     }
 
     @Test

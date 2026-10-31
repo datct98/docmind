@@ -18,6 +18,21 @@ public final class BubbleTextSanitizer {
             "(?iU)(?<![\\d.,])(?:\\d{1,3}(?:\\.\\d{3})+|\\d{2,4})\\s*(?:k\\b|đ\\b|vnđ\\b|vnd\\b)|(?<![\\d.,])\\d{1,3}(?:[.,]\\d{1,2})?\\s*(?:triệu|tr)\\b"
     );
 
+    public static String sanitizeBubbleText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String cleaned = text
+                .replaceAll("\\[\\[([^\\]|]+)(?:\\|([^\\]]+))?\\]\\]", "$1")
+                .replaceAll("\\[\\d+\\]", "")
+                .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
+                .replaceAll("(?m)^\\s*#{1,6}\\s+", "")
+                .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
+                .strip();
+        cleaned = normalizeDeclarativeQuestionMarks(cleaned);
+        return capitalizeFirstLetter(cleaned);
+    }
+
     public static String capitalizeFirstLetter(String text) {
         if (text == null || text.isBlank()) {
             return text;
@@ -67,6 +82,7 @@ public final class BubbleTextSanitizer {
                 + "phải\\s+không|đúng\\s+không|được\\s+không|hợp\\s+[^?]*\\s+(?:không|chưa)|"
                 + "có\\s+[^?]*\\s+(?:không|chưa)|"
                 + "(?:không\\s+biết|chưa\\s+biết)\\s+[^?]*\\s+hay\\s+[^?]+|"
+                + "(?:đang\\s+(?:muốn|cần|quan\\s+tâm)|muốn\\s+(?:tìm\\s+hiểu|làm|chọn|trải\\s+nghiệm))\\s+[^?]+\\s+hay\\s+(?!bị\\b|đau\\b|mỏi\\b|nhức\\b)[^?]+|"
                 + "không\\s+ạ|chưa\\s+ạ|sao\\s+ạ|vậy\\s+ạ|thế\\s+nào|như\\s+nào|nào|"
                 + "mấy\\s+giờ|mấy\\s+buổi|mấy\\s+lần|mấy\\s+phút|bao\\s+lâu|bao\\s+nhiêu|khi\\s+nào|ở\\s+đâu|"
                 + "là\\s+gì|là\\s+j|món\\s+gì|những\\s+gì|gì\\s+ạ|hả|nhỉ|sao"
@@ -74,7 +90,7 @@ public final class BubbleTextSanitizer {
         if (hasInterrogativeStructure) {
             return true;
         }
-        boolean hasChoiceHay = s.matches("(?iu).*(?:^|[\\s,;.!])hay\\s+(?!bị(?:[\\s,;.!?]|$)|đau(?:[\\s,;.!?]|$)|mỏi(?:[\\s,;.!?]|$)|nhức(?:[\\s,;.!?]|$)|tê(?:[\\s,;.!?]|$)|căng(?:[\\s,;.!?]|$)|ngồi(?:[\\s,;.!?]|$)|mất\\s+ngủ|khó\\s+ngủ|chuột\\s+rút)(?:là|mình|chị|anh|bạn|em|mới|đã|lâu|gần\\s+đây|sáng|chiều|tối|hôm\\s+nay|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|buổi|gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|mục|loại|dòng|hạng\\s+mục|món|combo|dịch\\s+vụ|một|\\d+)(?:[\\s,;.!?]|$).*");
+        boolean hasChoiceHay = s.matches("(?iu).*(?:^|[\\s,;.!])hay\\s+(?!bị(?:[\\s,;.!?]|$)|đau(?:[\\s,;.!?]|$)|mỏi(?:[\\s,;.!?]|$)|nhức(?:[\\s,;.!?]|$)|tê(?:[\\s,;.!?]|$)|căng(?:[\\s,;.!?]|$)|ngồi(?:[\\s,;.!?]|$)|mất\\s+ngủ|khó\\s+ngủ|chuột\\s+rút)(?:là|mình|chị|anh|bạn|em|mới|đã|lâu|gần\\s+đây|sáng|chiều|tối|hôm\\s+nay|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|buổi|gói|mẫu|khóa|khoá|lớp|sản\\s+phẩm|phương\\s+án|mục|loại|dòng|hạng\\s+mục|món|combo|dịch\\s+vụ|vùng|khu\\s+vực|một|hai|ba|\\d+)(?:[\\s,;.!?]|$).*");
         if (hasChoiceHay) {
             return true;
         }

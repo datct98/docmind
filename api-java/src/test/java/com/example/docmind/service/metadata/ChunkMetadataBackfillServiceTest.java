@@ -193,12 +193,12 @@ class ChunkMetadataBackfillServiceTest {
         ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);
         verify(jdbc, times(65)).update(sqlCaptor.capture(), jsonCaptor.capture(), idCaptor.capture());
 
-        // Verify SQL update contains both tsv and tsv_content with Weight A and Weight B
+        // Unit P3.4: Verify SQL update writes canonical tsv once (trg_chunks_sync_tsv() keeps tsv_content in sync)
         String sql = sqlCaptor.getValue();
         assertThat(sql).contains("chunk_metadata = CAST(? AS jsonb)");
-        assertThat(sql).contains("setweight(to_tsvector('simple', coalesce(array_to_string(heading_path, ' '), '')), 'A')");
+        assertThat(sql).contains("tsv = setweight(to_tsvector('simple', coalesce(array_to_string(heading_path, ' '), '')), 'A')");
         assertThat(sql).contains("setweight(to_tsvector('simple', coalesce(text, '')), 'B')");
-        assertThat(sql).contains("tsv_content =");
+        assertThat(sql).doesNotContain("tsv_content =");
 
         // Verify genuine JSON content across calls
         List<String> capturedJsons = jsonCaptor.getAllValues();

@@ -1,8 +1,6 @@
 package com.example.docmind.service.bot;
 
 import com.example.docmind.client.FastApiAgentClient;
-import com.example.docmind.client.FastApiAgentClient.ConsultRequest;
-import com.example.docmind.client.FastApiAgentClient.ConsultResponse;
 import com.example.docmind.client.FastApiAgentClient.ExtractedSampleDto;
 import com.example.docmind.client.FastApiAgentClient.NightlyExtractRequest;
 import com.example.docmind.client.FastApiAgentClient.NightlyExtractResponse;
@@ -20,55 +18,20 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Orchestrates communication between Spring Boot 4.0.0 Gateway and the
- * FastAPI + LangGraph Engine (`doc-service-py`) via `@HttpExchange`, with
- * an ultra-fast deterministic in-JVM State Graph fallback when running
- * offline or in unit tests.
+ * Orchestrates Cold-Path Nightly Training & Security Audit communication between
+ * Spring Boot 4.0.0 Gateway and `doc-service-py` (`/internal/v1/nightly-extract`),
+ * with a deterministic in-JVM security auditor fallback when running offline.
  */
 @Service
 public class FastApiAgentService {
 
     private static final Logger log = LoggerFactory.getLogger(FastApiAgentService.class);
-
-    private static final Pattern MALE_PATTERN = Pattern.compile(
-            "(?iU)(?:\\b(?:tôi|mình|mìn|minh|mk|t|em|anh)\\s+(?:là|la|làm)\\s+(?:nam|con\\s+trai|đàn\\s+ông)\\b|"
-            + "\\bnhưng\\s+(?:tôi|mình|mìn|mk|t)\\s+là\\s+nam\\b|"
-            + "\\bnam\\s+giới\\b|\\bcho\\s+nam\\b|\\bkhách\\s+nam\\b|\\banh\\s+muốn\\b|\\banh\\s+bị\\b)"
-    );
-
-    private static final Pattern PROFILE_UPDATE_ONLY_PATTERN = Pattern.compile(
-            "(?iU)^[\\s,.\\-!]*(?:nhưng\\s+|mà\\s+|à\\s+)?(?:tôi|mình|mìn|minh|mk|t|anh|chị)?\\s*"
-            + "(?:là\\s+nam(?:\\s+giới)?|là\\s+con\\s+trai|là\\s+đàn\\s+ông|nam\\s+nhé|nam\\s+ạ|"
-            + "nam\\s+có\\s+làm\\s+được\\s+không|nam\\s+dùng\\s+được\\s+không|"
-            + "da\\s+(?:nhạy\\s+cảm|dầu|khô|mỏng)|(?:\\d{2})\\s+tuổi)[\\s?.!]*$"
-    );
-
-    private static final Pattern ACNE_THAM_PATTERN = Pattern.compile(
-            "(?iU)\\b(?:trị\\s+mụn\\s+lưng|trị\\s+mụn\\s+ẩn|trị\\s+mụn\\s+viêm|mụn\\s+lưng|mụn\\s+ẩn|"
-            + "mụn\\s+viêm|mụn\\s+cằm|mụn\\s+đầu\\s+đen|mờ\\s+thâm|trị\\s+thâm|vết\\s+thâm|thâm\\s+mụn|"
-            + "nặn\\s+mụn|kháng\\s+viêm|trị\\s+mụn|mụn|thâm)\\b"
-    );
-
-    private static final Pattern MELASMA_PICO_PATTERN = Pattern.compile(
-            "(?iU)\\b(?:nám|tàn\\s+nhang|đồi\\s+mồi|sạm\\s+da|sắc\\s+tố|laser\\s+pico|pico)\\b"
-    );
-
-    private static final Pattern MESO_REJUV_PATTERN = Pattern.compile(
-            "(?iU)\\b(?:căng\\s+bóng|trẻ\\s+hóa|meso|collagen|lão\\s+hóa|nếp\\s+nhăn|chảy\\s+xệ)\\b"
-    );
-
-    private static final Pattern ACNE_EXCLUDE_LINE_PATTERN = Pattern.compile(
-            "(?iU)(?:Trị\\s+Nám\\s+Laser\\s+Pico|Căng\\s+bóng\\s+Meso\\s+Collagen|4\\.500\\.000|3\\.200\\.000|Laser\\s+Pico|Meso\\s+Collagen)"
-    );
 
     private static final Pattern INJECTION_AUDIT_PATTERN = Pattern.compile(
             "(?iU)(?:ignore\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|"
@@ -128,48 +91,9 @@ public class FastApiAgentService {
         this(customClient, props != null && props.getInternalToken() != null ? props.getInternalToken() : "docmind-internal-secret-token-2026");
     }
 
-    public ConsultResponse consult(
-            String customerPsid,
-            String pageId,
-            String message,
-            List<Map<String, String>> history,
-            List<Map<String, Object>> candidateChunks,
-            String honorific) {
-        return consult(new ConsultRequest(
-                customerPsid != null && !customerPsid.isBlank() ? customerPsid : "anonymous_customer",
-                pageId,
-                message,
-                history != null ? history : List.of(),
-                candidateChunks != null ? candidateChunks : List.of(),
-                List.of(),
-                honorific != null && !honorific.isBlank() ? honorific : "Chị"
-        ));
-    }
-
     private static String resolveCorrelationId() {
         String cid = CorrelationIds.currentCorrelationId();
         return (cid != null && !cid.isBlank()) ? cid : CorrelationIds.newId();
-    }
-
-    /**
-     * Execute Hot-Path LangGraph state-driven consultation & topic-anchor contextualization.
-     */
-    public ConsultResponse consult(ConsultRequest request) {
-        if (client != null) {
-            try {
-                ConsultResponse remote = client.consultCustomer(
-                        internalToken,
-                        resolveCorrelationId(),
-                        request
-                );
-                if (remote != null && remote.rewrittenQuery() != null) {
-                    return remote;
-                }
-            } catch (Exception ex) {
-                log.debug("FastAPI LangGraph consult unreachable ({}), using local state-graph fallback", ex.getMessage());
-            }
-        }
-        return runLocalStateGraphFallback(request);
     }
 
     /**
@@ -191,125 +115,6 @@ public class FastApiAgentService {
             }
         }
         return runLocalNightlyFallback(request);
-    }
-
-    public ConsultResponse runLocalStateGraphFallback(ConsultRequest req) {
-        String rawMsg = req.message() != null ? req.message().trim() : "";
-        List<Map<String, String>> history = req.history() != null ? req.history() : List.of();
-
-        List<String> userTurns = new ArrayList<>();
-        int assistantTurns = 0;
-        for (Map<String, String> turn : history) {
-            String role = turn.getOrDefault("role", "").toLowerCase(Locale.ROOT);
-            String content = turn.getOrDefault("content", "").trim();
-            if ("user".equals(role) && !content.isEmpty()) {
-                userTurns.add(content);
-            } else if ("assistant".equals(role) && !content.isEmpty()) {
-                assistantTurns++;
-            }
-        }
-        int turnIndex = assistantTurns + 1;
-
-        String combinedUserText = String.join(" . ", userTurns) + " . " + rawMsg;
-        String honorific = req.honorific() != null && !req.honorific().isBlank() ? req.honorific() : "Chị";
-        if (MALE_PATTERN.matcher(rawMsg).find() || MALE_PATTERN.matcher(combinedUserText).find()) {
-            honorific = "Anh";
-        }
-
-        TopicDetection topic = detectTopic(rawMsg, req.candidateChunks());
-        boolean currentHasNewTopic = topic != null;
-        if (topic == null) {
-            for (int i = userTurns.size() - 1; i >= 0; i--) {
-                topic = detectTopic(userTurns.get(i), req.candidateChunks());
-                if (topic != null) {
-                    break;
-                }
-            }
-        }
-
-        String topicFamily = topic != null ? topic.family : "GENERAL";
-        String activeTopic = topic != null ? topic.label : "Tư vấn dịch vụ & giải pháp theo tài liệu của Page";
-        List<String> topicKeywords = topic != null ? topic.keywords : List.of();
-
-        boolean isProfileUpdate = turnIndex > 1
-                && !currentHasNewTopic
-                && (MALE_PATTERN.matcher(rawMsg).find() || PROFILE_UPDATE_ONLY_PATTERN.matcher(rawMsg).find());
-
-        String rewrittenQuery;
-        if (isProfileUpdate && !"GENERAL".equals(topicFamily)) {
-            rewrittenQuery = activeTopic + " " + String.join(" ", topicKeywords)
-                    + " phù hợp cho khách hàng " + honorific + " (Nam giới) — " + rawMsg;
-        } else if (turnIndex > 1 && !currentHasNewTopic && !"GENERAL".equals(topicFamily) && rawMsg.length() <= 65) {
-            rewrittenQuery = activeTopic + " (" + String.join(" ", topicKeywords) + "): " + rawMsg;
-        } else {
-            rewrittenQuery = rawMsg;
-        }
-
-        String funnelStage = classifyFunnelStage(rawMsg);
-
-        List<Map<String, Object>> filteredChunks = new ArrayList<>();
-        if (req.candidateChunks() != null) {
-            for (Map<String, Object> ch : req.candidateChunks()) {
-                String text = String.valueOf(ch.getOrDefault("text", ""));
-                if ("ACNE_THAM".equals(topicFamily) && !text.isBlank()) {
-                    List<String> kept = new ArrayList<>();
-                    for (String line : text.split("\\r?\\n")) {
-                        if (!ACNE_EXCLUDE_LINE_PATTERN.matcher(line).find()) {
-                            kept.add(line);
-                        }
-                    }
-                    String cleaned = String.join("\n", kept).trim();
-                    if (!cleaned.isEmpty()) {
-                        filteredChunks.add(Map.of(
-                                "chunk_id", ch.getOrDefault("chunk_id", ""),
-                                "text", cleaned
-                        ));
-                    }
-                } else {
-                    filteredChunks.add(ch);
-                }
-            }
-        }
-
-        StringBuilder directive = new StringBuilder();
-        directive.append("[LANGGRAPH STATE ENGINE — BƯỚC PHỄU: ").append(funnelStage)
-                .append(" | LƯỢT CHAT: #").append(turnIndex).append("]\n");
-        directive.append("- DANH XƯNG BẮT BUỘC 100%: Gọi khách là \"").append(honorific)
-                .append("\" (TUYỆT ĐỐI KHÔNG dùng danh xưng khác).\n");
-        directive.append("- CHỦ ĐỀ ĐANG NEO (ACTIVE TOPIC ANCHOR): ").append(activeTopic)
-                .append(" (Mã nhóm: ").append(topicFamily).append(").\n");
-        if (turnIndex >= 2) {
-            directive.append("- QUY TẮC ĐA LƯỢT: Đây là lượt chat tiếp nối (Turn >= 2). CẤM TUYỆT ĐỐI chào lại ")
-                    .append("(\"Dạ em chào...\") và CẤM giới thiệu lại danh mục dịch vụ tổng quan từ đầu!\n");
-        }
-        if (isProfileUpdate) {
-            directive.append("- CHỈ THỊ ĐẶC BIỆT (CẬP NHẬT HỒ SƠ KHÁCH HÀNG): Khách vừa bổ sung thông tin cá nhân (\"")
-                    .append(rawMsg).append("\") trong khi đang tìm hiểu về [").append(activeTopic).append("]. ")
-                    .append("Hãy xác nhận ngay rằng dịch vụ/giải pháp [").append(activeTopic)
-                    .append("] hoàn toàn phù hợp & hiệu quả cao với ").append(honorific)
-                    .append(", giữ nguyên mạch tư vấn [")
-                    .append(activeTopic).append("] dựa trên <DOCUMENT_CONTEXT> và CẤM nhắc tới các dịch vụ ngoài lề!");
-        }
-
-        String psid = req.customerPsid() != null ? req.customerPsid() : "anonymous_customer";
-        return new ConsultResponse(
-                "local-state-graph",
-                psid,
-                (req.pageId() != null ? req.pageId() : "global") + ":" + psid,
-                honorific,
-                activeTopic,
-                topicFamily,
-                topicKeywords,
-                isProfileUpdate,
-                turnIndex == 1 && !currentHasNewTopic && rawMsg.length() <= 15,
-                turnIndex,
-                funnelStage,
-                rewrittenQuery,
-                filteredChunks,
-                List.of(),
-                directive.toString(),
-                Map.of("customer_psid", psid, "psid_locked", true, "funnel_stage", funnelStage)
-        );
     }
 
     private NightlyExtractResponse runLocalNightlyFallback(NightlyExtractRequest req) {
@@ -382,77 +187,6 @@ public class FastApiAgentService {
                 rejected,
                 samples
         );
-    }
-
-    private record TopicDetection(String family, String label, List<String> keywords) {}
-
-    private TopicDetection detectTopic(String text, List<Map<String, Object>> candidateChunks) {
-        if (text == null || text.isBlank()) return null;
-        Matcher mAcne = ACNE_THAM_PATTERN.matcher(text);
-        if (mAcne.find()) {
-            Set<String> matched = new LinkedHashSet<>();
-            matched.add(mAcne.group(0).toLowerCase(Locale.ROOT));
-            while (mAcne.find()) {
-                matched.add(mAcne.group(0).toLowerCase(Locale.ROOT));
-            }
-            List<String> kws = new ArrayList<>(List.of("Trị Mụn Chuẩn Y Khoa", "mụn", "mờ thâm"));
-            kws.addAll(matched);
-            return new TopicDetection(
-                    "ACNE_THAM",
-                    "Trị mụn & Mờ thâm chuyên sâu (" + String.join(", ", matched) + ")",
-                    kws
-            );
-        }
-        if (MELASMA_PICO_PATTERN.matcher(text).find()) {
-            return new TopicDetection(
-                    "MELASMA_PICO",
-                    "Trị nám, tàn nhang & sắc tố Laser Pico",
-                    List.of("Trị Nám Laser Pico", "nám", "tàn nhang")
-            );
-        }
-        if (MESO_REJUV_PATTERN.matcher(text).find()) {
-            return new TopicDetection(
-                    "MESO_REJUV",
-                    "Căng bóng & Trẻ hóa Meso Collagen",
-                    List.of("Căng bóng Meso Collagen", "căng bóng", "trẻ hóa")
-            );
-        }
-        if (candidateChunks != null && !candidateChunks.isEmpty()) {
-            String lower = text.toLowerCase(Locale.ROOT);
-            String[] words = lower.split("[^\\p{L}\\p{Nd}]+");
-            Set<String> stopWords = Set.of("tôi", "mình", "cho", "hỏi", "về", "là", "gì", "thế", "nào", "của", "bên", "em", "shop", "anh", "chị", "muốn", "cần", "bị", "có", "không");
-            List<String> queryWords = new ArrayList<>();
-            for (String w : words) {
-                if (w.length() >= 2 && !stopWords.contains(w)) {
-                    queryWords.add(w);
-                }
-            }
-            for (Map<String, Object> ch : candidateChunks) {
-                Object rawHeadings = ch.get("heading_path");
-                String hJoined = "";
-                if (rawHeadings instanceof List<?> list) {
-                    List<String> hs = new ArrayList<>();
-                    for (Object o : list) {
-                        if (o != null && !String.valueOf(o).isBlank()) hs.add(String.valueOf(o));
-                    }
-                    hJoined = String.join(" > ", hs);
-                } else if (rawHeadings != null) {
-                    hJoined = String.valueOf(rawHeadings);
-                }
-                String chText = String.valueOf(ch.getOrDefault("text", ""));
-                String combined = (hJoined + " " + chText).toLowerCase(Locale.ROOT);
-                List<String> matchedKw = new ArrayList<>();
-                for (String qw : queryWords) {
-                    if (combined.contains(qw)) {
-                        matchedKw.add(qw);
-                    }
-                }
-                if (matchedKw.size() >= 2 && !hJoined.isBlank()) {
-                    return new TopicDetection("DYNAMIC_TOPIC", hJoined, matchedKw.subList(0, Math.min(5, matchedKw.size())));
-                }
-            }
-        }
-        return null;
     }
 
     private String classifyFunnelStage(String text) {

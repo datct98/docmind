@@ -22,6 +22,10 @@ public final class VietnameseQueryNormalizer {
     public static final int MAX_INPUT_LENGTH = 2000;
     public static final int MAX_VERBATIM_LLM_INPUT_LENGTH = 25_000;
     private static final int MAX_CLUSTER_BACKTRACK_CODE_UNITS = 64;
+    private static final int MAX_NORMALIZE_CACHE_ENTRIES = 2048;
+    private static final int MAX_CACHEABLE_INPUT_LENGTH = 512;
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> NORMALIZE_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
 
     private static final Pattern DANGEROUS_ASCII_CONTROL_PATTERN = Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
     private static final Pattern XML_CONTRACT_TAG_SPOOF_PATTERN = Pattern.compile(
@@ -540,6 +544,22 @@ public final class VietnameseQueryNormalizer {
         if (text == null) {
             return "";
         }
+        if (text.length() <= MAX_CACHEABLE_INPUT_LENGTH) {
+            String cached = NORMALIZE_CACHE.get(text);
+            if (cached != null) {
+                return cached;
+            }
+            String computed = computeNormalized(text);
+            if (NORMALIZE_CACHE.size() >= MAX_NORMALIZE_CACHE_ENTRIES) {
+                NORMALIZE_CACHE.clear();
+            }
+            NORMALIZE_CACHE.putIfAbsent(text, computed);
+            return computed;
+        }
+        return computeNormalized(text);
+    }
+
+    private static String computeNormalized(String text) {
         if (text.length() > MAX_INPUT_LENGTH) {
             text = text.substring(0, MAX_INPUT_LENGTH);
         }
