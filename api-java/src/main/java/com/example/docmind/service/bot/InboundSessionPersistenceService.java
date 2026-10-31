@@ -51,6 +51,27 @@ public class InboundSessionPersistenceService {
     );
 
     /**
+     * Explicit marketing / proactive notification re-subscribe command:
+     * ONLY this explicit command restores proactive {@code /api/bot/fanpage/reengage} permission
+     * ({@code re_opt_in_source = "EXPLICIT_MARKETING_REOPT_IN"}) after a customer has opted out.
+     */
+    public static final String RE_OPT_IN_SOURCE_EXPLICIT_MARKETING = "EXPLICIT_MARKETING_REOPT_IN";
+
+    /**
+     * Active customer-initiated service, price, or booking inquiry after opt-out:
+     * opens reply permission ONLY for the customer's active service inquiries
+     * ({@code re_opt_in_source = "SERVICE_INQUIRY_REPLY_ONLY"}), while proactive marketing
+     * {@code /api/bot/fanpage/reengage} remains 100% blocked!
+     */
+    public static final String RE_OPT_IN_SOURCE_SERVICE_INQUIRY_REPLY_ONLY = "SERVICE_INQUIRY_REPLY_ONLY";
+
+    private static final Pattern EXPLICIT_MARKETING_REOPT_IN_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:start|subscribe|đăng\\s+ký\\s+lại|đăng\\s+ký\\s+nhận\\s+tin(?:\\s+lại)?|"
+            + "nhận\\s+tin\\s+(?:tiếp\\s+thị\\s+|khuyến\\s+mãi\\s+|tư\\s+vấn\\s+)?lại|"
+            + "đồng\\s+ý\\s+nhận\\s+(?:lại\\s+)?tin(?:\\s+nhắn|\\s+tiếp\\s+thị|\\s+khuyến\\s+mãi|\\s+tư\\s+vấn)?)[.!?~\\s]*$"
+    );
+
+    /**
      * Concrete customer-initiated re-consent patterns (Scenarios 1, 2, 3):
      * (1) Concrete price inquiry, (2) Concrete booking / schedule availability request,
      * (3) Concrete service / package / operational inquiry or explicit re-subscribe request.
@@ -188,6 +209,20 @@ public class InboundSessionPersistenceService {
                 || PrimaryActionRouter.isStrictSystemOptOutMessage(norm);
     }
 
+    public static boolean isExplicitMarketingReOptInCommand(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        if (isExplicitCustomerOptOutCommand(norm)) {
+            return false;
+        }
+        if (RECONSENT_NEGATION_CLAUSE_PATTERN.matcher(norm).matches()) {
+            return false;
+        }
+        return EXPLICIT_MARKETING_REOPT_IN_PATTERN.matcher(norm).matches();
+    }
+
     public static boolean isExplicitServicePriceOrBookingReconsent(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -199,7 +234,8 @@ public class InboundSessionPersistenceService {
         if (RECONSENT_NEGATION_CLAUSE_PATTERN.matcher(norm).matches()) {
             return false;
         }
-        return EXPLICIT_RECONSENT_SERVICE_PRICE_BOOKING_PATTERN.matcher(norm).matches();
+        return EXPLICIT_MARKETING_REOPT_IN_PATTERN.matcher(norm).matches()
+                || EXPLICIT_RECONSENT_SERVICE_PRICE_BOOKING_PATTERN.matcher(norm).matches();
     }
 
     /**
@@ -285,13 +321,19 @@ public class InboundSessionPersistenceService {
 
                 // Scenarios 1-4: Session currently opted_out == true (while control_mode != HUMAN_TAKEOVER)
                 if (guardEnabled && session.optedOut()) {
-                    if (isExplicitServicePriceOrBookingReconsent(safeText)) {
-                        // Scenarios 1, 2, 3: Explicit concrete price / booking / service inquiry -> audited re-consent
-                        String source = resolved.channel() != null ? resolved.channel().name() : "UNKNOWN";
-                        String evidence = buildReconsentEvidence(resolved.externalMid(), safeText);
+                    boolean explicitMarketingReOptIn = isExplicitMarketingReOptInCommand(safeText);
+                    if (explicitMarketingReOptIn || isExplicitServicePriceOrBookingReconsent(safeText)) {
+                        // Unit P1.1 (P0.4 Permission Split):
+                        // - Concrete price/service/booking inquiry -> SERVICE_INQUIRY_REPLY_ONLY (allows active reply ONLY, keeps /reengage 100% blocked!)
+                        // - Explicit marketing re-opt-in command -> EXPLICIT_MARKETING_REOPT_IN (restores proactive /reengage permission)
+                        String channelTag = resolved.channel() != null ? resolved.channel().name() : "UNKNOWN";
+                        String source = explicitMarketingReOptIn
+                                ? RE_OPT_IN_SOURCE_EXPLICIT_MARKETING
+                                : RE_OPT_IN_SOURCE_SERVICE_INQUIRY_REPLY_ONLY;
+                        String evidence = buildReconsentEvidence(channelTag, resolved.externalMid(), safeText);
                         recordSessionReconsentInTx(session.id(), source, evidence, now);
-                        log.info("[OPT_OUT_RECONSENT_AUDITED] sessionId={} pageId={} psid={} source={} mid={}",
-                                session.id(), requestedPageId, psid, source, resolved.externalMid());
+                        log.info("[OPT_OUT_RECONSENT_AUDITED] sessionId={} pageId={} psid={} source={} channel={} mid={}",
+                                session.id(), requestedPageId, psid, source, channelTag, resolved.externalMid());
                         return new EntryEvaluation(
                                 EntryAction.RECONSENTED_PROCEED_TO_BOT,
                                 session.id(),
@@ -373,7 +415,9 @@ public class InboundSessionPersistenceService {
     /**
      * Checks whether proactive {@code REENGAGE} is permitted for {@code (pageId, senderId)}.
      * Blocks proactive outreach 100% when session is in {@code HUMAN_TAKEOVER}, {@code opted_out == true},
-     * or DB is unreachable (Fail-Closed).
+     * OR has previously opted out ({@code opted_out_at IS NOT NULL}) without an explicit marketing
+     * re-opt-in command ({@code re_opt_in_source != "EXPLICIT_MARKETING_REOPT_IN"}, e.g. when
+     * {@code re_opt_in_source == "SERVICE_INQUIRY_REPLY_ONLY"}), or when DB is unreachable (Fail-Closed).
      */
     public boolean isProactiveReengageAllowed(UUID requestedPageId, String rawSenderId) {
         String psid = normalizePsid(rawSenderId);
@@ -389,8 +433,16 @@ public class InboundSessionPersistenceService {
                 if ("HUMAN_TAKEOVER".equalsIgnoreCase(latest.controlMode())) {
                     return false;
                 }
-                if (guardEnabled && latest.optedOut()) {
-                    return false;
+                if (guardEnabled) {
+                    if (latest.optedOut()) {
+                        return false;
+                    }
+                    if (latest.optedOutAt() != null
+                            && !RE_OPT_IN_SOURCE_EXPLICIT_MARKETING.equalsIgnoreCase(latest.reOptInSource())) {
+                        log.info("[REENGAGE_BLOCKED_MARKETING_OPT_OUT_ACTIVE] sessionId={} pageId={} psid={} optedOutAt={} reOptInSource={}",
+                                latest.id(), requestedPageId, psid, latest.optedOutAt(), latest.reOptInSource());
+                        return false;
+                    }
                 }
                 return true;
             });
@@ -551,26 +603,30 @@ public class InboundSessionPersistenceService {
     private List<SessionSnapshot> queryLatestSessionSnapshotInTx(UUID effectiveDbPageId, String psid) {
         if (effectiveDbPageId != null) {
             return jdbcTemplate.query(
-                    "SELECT id, control_mode, opted_out FROM conversation_sessions "
+                    "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_source FROM conversation_sessions "
                             + "WHERE page_id = ? AND customer_psid = ? "
                             + "ORDER BY updated_at DESC LIMIT 1",
                     (rs, rowNum) -> new SessionSnapshot(
                             UUID.fromString(rs.getString("id")),
                             rs.getString("control_mode"),
-                            rs.getBoolean("opted_out")
+                            rs.getBoolean("opted_out"),
+                            toInstantOrNull(rs.getTimestamp("opted_out_at")),
+                            rs.getString("re_opt_in_source")
                     ),
                     effectiveDbPageId,
                     psid
             );
         }
         return jdbcTemplate.query(
-                "SELECT id, control_mode, opted_out FROM conversation_sessions "
+                "SELECT id, control_mode, opted_out, opted_out_at, re_opt_in_source FROM conversation_sessions "
                         + "WHERE customer_psid = ? "
                         + "ORDER BY updated_at DESC LIMIT 1",
                 (rs, rowNum) -> new SessionSnapshot(
                         UUID.fromString(rs.getString("id")),
                         rs.getString("control_mode"),
-                        rs.getBoolean("opted_out")
+                        rs.getBoolean("opted_out"),
+                        toInstantOrNull(rs.getTimestamp("opted_out_at")),
+                        rs.getString("re_opt_in_source")
                 ),
                 psid
         );
@@ -620,7 +676,7 @@ public class InboundSessionPersistenceService {
                 nowTs,
                 nowTs
         );
-        return new SessionSnapshot(newSessionId, "BOT_ACTIVE", false);
+        return new SessionSnapshot(newSessionId, "BOT_ACTIVE", false, null, null);
     }
 
     private void recordSessionOptOutInTx(UUID sessionId, String previewText, Instant now) {
@@ -628,6 +684,7 @@ public class InboundSessionPersistenceService {
         jdbcTemplate.update(
                 "UPDATE conversation_sessions "
                         + "SET opted_out = TRUE, opted_out_at = ?, "
+                        + "    re_opt_in_at = NULL, re_opt_in_source = NULL, re_opt_in_evidence = NULL, "
                         + "    last_message_preview = ?, last_sender_role = 'CUSTOMER', "
                         + "    last_message_at = GREATEST(last_message_at, ?), updated_at = ? "
                         + "WHERE id = ?",
@@ -654,13 +711,14 @@ public class InboundSessionPersistenceService {
         );
     }
 
-    private static String buildReconsentEvidence(String externalMid, String text) {
+    private static String buildReconsentEvidence(String channelTag, String externalMid, String text) {
+        String safeChannel = (channelTag != null && !channelTag.isBlank()) ? channelTag.strip() : "UNKNOWN";
         String safeMid = (externalMid != null && !externalMid.isBlank()) ? externalMid : "no-mid";
         String excerpt = text != null ? text.strip() : "";
-        if (excerpt.length() > 280) {
-            excerpt = excerpt.substring(0, 280);
+        if (excerpt.length() > 260) {
+            excerpt = excerpt.substring(0, 260);
         }
-        return safeMid + " | " + excerpt;
+        return safeChannel + ":" + safeMid + " | " + excerpt;
     }
 
     private static Instant toInstantOrNull(Timestamp ts) {
@@ -754,6 +812,12 @@ public class InboundSessionPersistenceService {
                 : "psid-sim-default";
     }
 
-    private record SessionSnapshot(UUID id, String controlMode, boolean optedOut) {
+    private record SessionSnapshot(
+            UUID id,
+            String controlMode,
+            boolean optedOut,
+            Instant optedOutAt,
+            String reOptInSource
+    ) {
     }
 }

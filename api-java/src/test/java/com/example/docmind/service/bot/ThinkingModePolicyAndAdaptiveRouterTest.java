@@ -141,6 +141,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("2. ThinkingModePolicy routes all 10 scenarios and A/B/C benchmark modes accurately")
     void thinkingModePolicyRoutesAllScenariosAndBenchmarkModes() {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
@@ -803,6 +804,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("8. Live Container Verification: Re-seeds nang_sen_spa_playbook.yaml and benchmarks Scenarios A/B/C/D on live docmind-api + qwen3:14b when reachable")
     void v324LiveContainerPlaybookSeedAndMultiTurnBenchmarkIfRunning() throws Exception {
         java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
@@ -1113,6 +1115,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("16. v3.2.4-MASTER: Progressive Value Reveal (deliveredValueAngles), <580k room disambiguation, and Fast Targeted Repair telemetry")
     void v324MasterProgressiveValueRevealRoomDisambiguationAndFastTargetedRepair() throws Exception {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();
@@ -1333,6 +1336,7 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("17. v3.2.4-FINAL: Preserves natural LLM_LIVE text across 7-turn scenario without template overwrite, plus negative guardrail tests")
     void v324FinalSevenTurnScenarioPreservesLlmLiveAndEnforcesNegativeGuardrails() {
         List<ReciprocalRankFusion.FusedChunk> chunks = buildTestChunks();

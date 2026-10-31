@@ -246,7 +246,7 @@ public class CleanAgentOrchestratorService {
         this.agentSkillService = agentSkillService;
     }
 
-    @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:DETERMINISTIC_V1}")
+    @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:LLM_COGNITIVE_V2}")
     public void setCognitiveModeProperty(String rawMode) {
         this.cognitiveMode = AdaptiveConversationIntelligence.CognitiveMode.fromProperty(rawMode);
     }
@@ -4443,20 +4443,8 @@ public class CleanAgentOrchestratorService {
                 draft2Before
         );
         this.lastBuiltPrompt = aciPrompt;
-        int legacyEquivalentPromptChars = computeLegacyEquivalentPromptChars(
-                pagePersona,
-                safeHonorific,
-                tieredCatalog,
-                fused,
-                safeHistory,
-                originalVerbatim,
-                customerInsight,
-                activeSkills,
-                quotedReplyResolution,
-                pageId,
-                appliedRules,
-                priorBookingState
-        );
+        // Unit P1.1: Ngừng dựng ngầm Prompt V1 (~22.400 ký tự) trên hot-path LLM_COGNITIVE_V2
+        int legacyEquivalentPromptChars = 0;
         long promptBuildMs = Math.max(0L, (System.nanoTime() - promptStartNs) / 1_000_000L);
 
         // Chọn chế độ ThinkingMode thích ứng (tôn trọng BenchmarkConfigMode cho thực nghiệm FAST_NO_THINK vs DEEP_THINK)
@@ -4857,33 +4845,21 @@ public class CleanAgentOrchestratorService {
                     SentBubbleLedger.DeliveryStatus.DELIVERED,
                     List.of()
             );
-            ConversationState.updateAfterSend(
-                    pageId,
-                    senderId,
-                    request != null ? request.conversationId() : null,
-                    safeConv,
-                    originalVerbatim,
-                    v2StateSyncDecision,
-                    finalBubbles,
-                    false, // Không khóa cứng humanTakeover toàn phiên khi mới tạo ticket xác minh thanh toán/lời hứa để khách còn hỏi tiến độ (A06/A09)!
-                    incomingHistorySize
-            );
-            ConversationState.updateStructuredBookingStateInSession(
-                    pageId,
-                    senderId,
-                    request != null ? request.conversationId() : null,
-                    authoritativeBookingState
-            );
             String verifiedSymptomDurationAfterSync = agentBrainService != null
                     ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId)
                     : reflection.customerUnderstanding().verifiedSymptomDuration();
             String authoritativeSymptomDuration = (verifiedSymptomDurationAfterSync != null && !verifiedSymptomDurationAfterSync.isBlank())
                     ? verifiedSymptomDurationAfterSync
                     : symptomDurationBefore;
-            ConversationState.syncAuthoritativeSymptomDurationInSession(
+            // Unit P1.1: Ghi nhận trạng thái phiên tối giản (0 V1 regex ensureTurnEnriched / updateAfterSend)
+            ConversationState.recordAciV2TurnMinimalState(
                     pageId,
                     senderId,
                     request != null ? request.conversationId() : null,
+                    safeConv,
+                    finalBubbles,
+                    replyHasPrice,
+                    authoritativeBookingState,
                     authoritativeSymptomDuration
             );
         }
@@ -5003,41 +4979,9 @@ public class CleanAgentOrchestratorService {
         );
         ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
 
-        CustomerInsightDto enrichedInsight = customerInsight;
-        if (agentBrainService != null) {
-            enrichedInsight = agentBrainService.enrichCustomerInsight(pageId, senderId, enrichedInsight, null);
-        }
-        if (enrichedInsight != null && !safeHonorific.equals(enrichedInsight.honorific())) {
-            enrichedInsight = new CustomerInsightDto(
-                    enrichedInsight.buyerArchetype(),
-                    enrichedInsight.archetypeLabel(),
-                    enrichedInsight.buyingTemperature(),
-                    enrichedInsight.previousTemperature(),
-                    enrichedInsight.temperatureDelta(),
-                    enrichedInsight.momentum(),
-                    enrichedInsight.temperatureLabel(),
-                    enrichedInsight.decayReason(),
-                    safeHonorific,
-                    enrichedInsight.extractedPains(),
-                    enrichedInsight.hiddenConcerns(),
-                    enrichedInsight.recommendedStrategy(),
-                    enrichedInsight.careNotes(),
-                    enrichedInsight.workingHypothesis(),
-                    enrichedInsight.lastActualSentSpeechAct(),
-                    enrichedInsight.priceObjectionCount(),
-                    enrichedInsight.inPriceObjectionContext(),
-                    enrichedInsight.hasPresentedDownsell()
-            );
-        }
-        String resolvedSalesStage = shouldHandoff
-                ? "HUMAN_HANDOFF"
-                : (authoritativeBookingState.status().isActiveOrConfirmed()
-                    ? FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE.code()
-                    : (replyHasPrice || safeConv.priceDiscussed()
-                        ? FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION.code()
-                        : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
-        List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
-
+        AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After =
+                agentBrainService != null ? agentBrainService.getCustomerUnderstandingDraft2Snapshot(pageId, senderId)
+                        : AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial();
         String inferredPronounAfter = agentBrainService != null
                 ? agentBrainService.getInferredCustomerPronoun(pageId, senderId)
                 : reflection.customerUnderstanding().inferredCustomerPronoun();
@@ -5059,6 +5003,30 @@ public class CleanAgentOrchestratorService {
         int priceObjectionCountAfter = agentBrainService != null
                 ? agentBrainService.getPriceObjectionCount(pageId, senderId)
                 : (Boolean.TRUE.equals(reflection.customerUnderstanding().costConcernExpressed()) ? priceObjectionCountBefore + 1 : priceObjectionCountBefore);
+
+        // Unit P1.1: Ánh xạ trực tiếp CustomerInsightDto từ kết quả nhận thức ACI V2 (bỏ qua CustomerInsightEngine V1 chạy ngầm trước LLM)
+        CustomerInsightDto enrichedInsight = buildCustomerInsightFromAciTurn(
+                pageId,
+                senderId,
+                safeHonorific,
+                request != null ? request.previousTemperature() : null,
+                reflection,
+                draft2After,
+                workingHypothesisAfter,
+                priceObjectionCountAfter,
+                actualSentSpeechAct,
+                authoritativeBookingState,
+                safeConv,
+                agentBrainService
+        );
+        String resolvedSalesStage = shouldHandoff
+                ? "HUMAN_HANDOFF"
+                : (authoritativeBookingState.status().isActiveOrConfirmed()
+                    ? FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE.code()
+                    : (replyHasPrice || safeConv.priceDiscussed()
+                        ? FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION.code()
+                        : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
+        List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
 
         log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptTokens={} completionTokens={} reflectionTokens={} llmMs={} retrievalMs={} retryCount={} totalTurnMs={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
                 pageId,
@@ -5099,9 +5067,6 @@ public class CleanAgentOrchestratorService {
                 selectedSkills.stream().map(AgentSkillDto::code).toList(),
                 activatedSkills.stream().map(AgentSkillDto::code).toList()
         );
-        AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After =
-                agentBrainService != null ? agentBrainService.getCustomerUnderstandingDraft2Snapshot(pageId, senderId)
-                        : AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial();
         log.info("[ACI-V2-DRAFT2] page_id={} sender_id={} turn={} promptVersion={} promptSource={} thinkingMode={} modelLatencyMs={} layer1_context={{current_topic=\"{}\", topic_history={}, unresolved_requests={}, pending_references={}, last_bot_action=\"{}\"}} layer2_profile={{turn_intent=\"{}\", conversation_goal=\"{}\", need_revision={}, confirmed_facts={}, self_reported_symptoms={}, barrier_hypothesis={{type=\"{}\", confidence=\"{}\", summary=\"{}\"}}, emotion=\"{}\", communication_preference=\"{}\", effective_turn_depth=\"{}\"}} layer3_commitment={{interested_package={}, selected_package={}, booking_status=\"{}\", booking_readiness=\"{}\"}} response_plan={{objective=\"{}\", strategy=\"{}\", tone=\"{}\", depth=\"{}\", next_action=\"{}\"}}",
                 pageId,
                 senderId,
@@ -5314,7 +5279,7 @@ public class CleanAgentOrchestratorService {
                 || lowerCode.contains("warm_nod");
     }
 
-    private static ThinkingMode selectAciAdaptiveThinkingMode(
+    static ThinkingMode selectAciAdaptiveThinkingMode(
             String originalMessage,
             AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput,
             List<AdaptiveConversationIntelligence.CommitmentRecord> sessionCommitments
@@ -5420,52 +5385,168 @@ public class CleanAgentOrchestratorService {
         return LlmTokenUsageSnapshot.zero();
     }
 
-    private static int computeLegacyEquivalentPromptChars(
-            PromptBuilder.PagePersona pagePersona,
-            String safeHonorific,
-            CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog,
-            List<ReciprocalRankFusion.FusedChunk> fused,
-            List<FanpageBotRequest.ConversationTurn> safeHistory,
-            String customerMessage,
-            CustomerInsightDto customerInsight,
-            List<AgentSkillDto> activeSkills,
-            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution,
+    /**
+     * Unit P1.1: Ánh xạ trực tiếp {@link CustomerInsightDto} từ {@link AdaptiveConversationIntelligence.AdaptiveCognitiveReflection}
+     * và bộ nhớ 5 tầng của {@code ACI V2}, loại bỏ hoàn toàn bước chạy {@code CustomerInsightEngine.analyzeInsight} V1 trước LLM.
+     */
+    static CustomerInsightDto buildCustomerInsightFromAciTurn(
             UUID pageId,
-            List<LearnedRuleDto> appliedRules,
-            ConversationState.StructuredBookingState bookingState
+            String senderId,
+            String safeHonorific,
+            Integer previousTemperatureInput,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After,
+            AdaptiveConversationIntelligence.WorkingHypothesisRecord workingHypothesisAfter,
+            int priceObjectionCountAfter,
+            String actualSentSpeechAct,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            ConversationState safeConv,
+            AgentBrainService agentBrainService
     ) {
-        try {
-            String legacyPrompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
-                    pagePersona,
-                    safeHonorific,
-                    List.of(),
-                    List.of(),
-                    "chưa có",
-                    true,
-                    "null",
-                    "null",
-                    0,
-                    false,
-                    bookingState != null ? bookingState.status().name() : "NONE",
-                    List.of("GENERAL_CONSULTATION"),
-                    "không có",
-                    1,
-                    tieredCatalog,
-                    fused != null ? fused : List.of(),
-                    safeHistory,
-                    customerMessage,
-                    customerInsight,
-                    activeSkills,
-                    Map.of(),
-                    quotedReplyResolution,
-                    pageId,
-                    appliedRules,
-                    bookingState
-            );
-            return legacyPrompt != null ? legacyPrompt.length() : 0;
-        } catch (Exception e) {
-            return 0;
+        AdaptiveConversationIntelligence.AdaptiveCognitiveReflection ref = reflection != null
+                ? reflection
+                : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
+        AdaptiveConversationIntelligence.CustomerUnderstanding cu = ref.customerUnderstanding();
+        AdaptiveConversationIntelligence.BookingReadiness readiness = cu.bookingReadiness();
+        AdaptiveConversationIntelligence.BuyingSignal signal = cu.buyingSignal();
+        boolean costConcern = Boolean.TRUE.equals(cu.costConcernExpressed())
+                || "PRICE".equalsIgnoreCase(ref.barrierType())
+                || priceObjectionCountAfter > 0;
+        boolean bookingActive = authoritativeBookingState != null
+                && authoritativeBookingState.status().isActiveOrConfirmed();
+        String primaryPrio = ref.priority().primary();
+        boolean stopOrClosure = "POLITE_CLOSURE".equalsIgnoreCase(primaryPrio)
+                || ref.strategy().adaptation() == AdaptiveConversationIntelligence.StrategyAdaptationMode.STOP;
+        String emotionLabel = (draft2After != null && draft2After.consultativeProfile() != null
+                && draft2After.consultativeProfile().emotion() != null
+                && draft2After.consultativeProfile().emotion().primary() != null)
+                ? draft2After.consultativeProfile().emotion().primary()
+                : (cu.emotionalState() != null && cu.emotionalState().primary() != null ? cu.emotionalState().primary() : "");
+
+        String buyerArchetype;
+        String archetypeLabel;
+        if ("SAFETY".equalsIgnoreCase(primaryPrio)) {
+            buyerArchetype = "SAFETY_CONSCIOUS";
+            archetypeLabel = "Cần lưu ý sức khỏe & an toàn";
+        } else if (bookingActive || readiness == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
+                || signal == AdaptiveConversationIntelligence.BuyingSignal.ACTION
+                || signal == AdaptiveConversationIntelligence.BuyingSignal.STRONG) {
+            buyerArchetype = "DECISIVE_BUYER";
+            archetypeLabel = "Khách sẵn sàng trải nghiệm / đặt lịch";
+        } else if (costConcern) {
+            buyerArchetype = "PRICE_CONSCIOUS";
+            archetypeLabel = "Khách hàng cân nhắc chi phí";
+        } else if (emotionLabel.toUpperCase(Locale.ROOT).contains("FRUSTRAT")
+                || emotionLabel.toUpperCase(Locale.ROOT).contains("IRRITAT")
+                || emotionLabel.toUpperCase(Locale.ROOT).contains("DISAPPOINT")) {
+            buyerArchetype = "SKEPTICAL";
+            archetypeLabel = "Cần thấu cảm & điều chỉnh giao tiếp";
+        } else if (readiness == AdaptiveConversationIntelligence.BookingReadiness.CONSIDERING) {
+            buyerArchetype = "VALUE_CONSCIOUS";
+            archetypeLabel = "Khách hàng đang cân nhắc giải pháp";
+        } else {
+            buyerArchetype = "EXPLORING_CONSULTATION";
+            archetypeLabel = "Đang tìm hiểu dịch vụ";
         }
+
+        int buyingTemp;
+        if (bookingActive || signal == AdaptiveConversationIntelligence.BuyingSignal.ACTION) {
+            buyingTemp = 85;
+        } else if (readiness == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
+                || signal == AdaptiveConversationIntelligence.BuyingSignal.STRONG) {
+            buyingTemp = 78;
+        } else if (stopOrClosure) {
+            buyingTemp = 36;
+        } else if (signal == AdaptiveConversationIntelligence.BuyingSignal.MODERATE
+                || readiness == AdaptiveConversationIntelligence.BookingReadiness.CONSIDERING) {
+            buyingTemp = costConcern ? 52 : 62;
+        } else if (signal == AdaptiveConversationIntelligence.BuyingSignal.WEAK) {
+            buyingTemp = 44;
+        } else {
+            buyingTemp = 48;
+        }
+
+        Integer prevTemp = previousTemperatureInput;
+        int tempDelta = prevTemp != null ? (buyingTemp - prevTemp) : 0;
+        String momentum;
+        String decayReason = null;
+        if (stopOrClosure || tempDelta <= -8) {
+            momentum = "COOLING_HALF_HEARTED";
+            decayReason = stopOrClosure ? "POLITE_DEFERRAL_OR_CLOSURE" : "COST_OR_HESITATION_COOLING";
+        } else if (tempDelta >= 8 || buyingTemp >= 75) {
+            momentum = "HEATING_UP";
+        } else {
+            momentum = "STABLE";
+        }
+        String temperatureLabel = buyingTemp >= 72 ? "HOT" : (buyingTemp >= 45 ? "WARM" : "COLD");
+
+        Set<String> painsSet = new LinkedHashSet<>();
+        if (draft2After != null && draft2After.consultativeProfile() != null) {
+            if (draft2After.consultativeProfile().selfReportedSymptoms() != null) {
+                for (AdaptiveConversationIntelligence.VersionedCustomerFact s : draft2After.consultativeProfile().selfReportedSymptoms()) {
+                    if (s != null && !"NEGATED".equalsIgnoreCase(s.status()) && s.value() != null && !s.value().isBlank()) {
+                        painsSet.add(s.value().strip());
+                    }
+                }
+            }
+            if (draft2After.consultativeProfile().confirmedFacts() != null) {
+                for (AdaptiveConversationIntelligence.VersionedCustomerFact f : draft2After.consultativeProfile().confirmedFacts()) {
+                    if (f != null && !"NEGATED".equalsIgnoreCase(f.status()) && f.value() != null && !f.value().isBlank()) {
+                        painsSet.add(f.value().strip());
+                    }
+                }
+            }
+        }
+        if (agentBrainService != null && (pageId != null || senderId != null)) {
+            for (String rf : agentBrainService.getRecalledVerifiedFacts(pageId, senderId)) {
+                if (rf != null && !rf.isBlank()) painsSet.add(rf.strip());
+            }
+        }
+
+        List<String> hiddenConcerns = new ArrayList<>();
+        if (draft2After != null && draft2After.consultativeProfile() != null
+                && draft2After.consultativeProfile().barrierHypothesis() != null
+                && draft2After.consultativeProfile().barrierHypothesis().summary() != null
+                && !draft2After.consultativeProfile().barrierHypothesis().summary().isBlank()) {
+            hiddenConcerns.add(draft2After.consultativeProfile().barrierHypothesis().summary().strip());
+        } else if (costConcern) {
+            hiddenConcerns.add("Đắn đo mức giá / ngân sách");
+        }
+
+        List<String> careNotes = (agentBrainService != null && (pageId != null || senderId != null))
+                ? agentBrainService.getRecalledCareNotes(pageId, senderId)
+                : List.of();
+        String strategyText = !ref.strategy().chosen().isBlank()
+                ? ref.strategy().chosen()
+                : (draft2After != null && draft2After.lastResponsePlan() != null
+                    ? draft2After.lastResponsePlan().strategy()
+                    : "");
+        String workingHypContent = (workingHypothesisAfter != null && workingHypothesisAfter.content() != null)
+                ? workingHypothesisAfter.content()
+                : "";
+        boolean hasDownsell = (safeConv != null && safeConv.downsellOffered())
+                || (agentBrainService != null && agentBrainService.hasRecalledPresentedDownsell(pageId, senderId));
+
+        return new CustomerInsightDto(
+                buyerArchetype,
+                archetypeLabel,
+                buyingTemp,
+                prevTemp,
+                tempDelta,
+                momentum,
+                temperatureLabel,
+                decayReason,
+                (safeHonorific != null && !safeHonorific.isBlank()) ? safeHonorific : "mình",
+                List.copyOf(painsSet),
+                List.copyOf(hiddenConcerns),
+                strategyText,
+                careNotes,
+                workingHypContent,
+                actualSentSpeechAct != null ? actualSentSpeechAct : "",
+                priceObjectionCountAfter,
+                costConcern,
+                hasDownsell
+        );
     }
 
     private static List<FanpageBotResponse.ReplyBubble> buildSafeAciAuthorityFallbackBubbles(

@@ -417,7 +417,7 @@ public class FanpageBotService {
         return !"LEGACY".equalsIgnoreCase(agentMode);
     }
 
-    @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:DETERMINISTIC_V1}")
+    @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:LLM_COGNITIVE_V2}")
     public void setCognitiveModeProperty(String rawMode) {
         setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.fromProperty(rawMode));
     }
@@ -891,20 +891,27 @@ public class FanpageBotService {
                 ? resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona)
                 : FanpageBotPromptBuilder.resolveCustomerHonorific(
                         mergedMessage, request.history(), request.customerName(), pagePersona);
-        FanpageBotPromptBuilder.ConversationBookingState bookingState =
-                FanpageBotPromptBuilder.analyzeConversationBookingState(mergedMessage, request.history());
+        // Unit P1.1: Khi chạy LLM_COGNITIVE_V2, bỏ qua hoàn toàn các bộ phân tích V1 thừa trước LLM
+        // (analyzeConversationBookingState, determineSalesStage, customerInsightEngine.analyzeInsight)
+        FanpageBotPromptBuilder.ConversationBookingState bookingState = v2Mode
+                ? null
+                : FanpageBotPromptBuilder.analyzeConversationBookingState(mergedMessage, request.history());
         FanpageBotResponse.ExtractedLead extractedLead = extractLeadSignal(mergedMessage, request.history());
-        FanpageBotPromptBuilder.SalesStage initialStage = determineSalesStage(mergedMessage, request.history(), extractedLead);
-        CustomerInsightDto customerInsight = customerInsightEngine.analyzeInsight(
-                mergedMessage,
-                request.history(),
-                honorific,
-                initialStage,
-                extractedLead,
-                request.previousTemperature(),
-                request.replyDelaySeconds(),
-                request.idleSeconds()
-        );
+        FanpageBotPromptBuilder.SalesStage initialStage = v2Mode
+                ? FanpageBotPromptBuilder.SalesStage.DISCOVERY
+                : determineSalesStage(mergedMessage, request.history(), extractedLead);
+        CustomerInsightDto customerInsight = v2Mode
+                ? null
+                : customerInsightEngine.analyzeInsight(
+                        mergedMessage,
+                        request.history(),
+                        honorific,
+                        initialStage,
+                        extractedLead,
+                        request.previousTemperature(),
+                        request.replyDelaySeconds(),
+                        request.idleSeconds()
+                );
 
         // =========================================================================
         // PRE-RETRIEVAL FAST-PATH FOR OVERSIZED PAYLOADS (> 2,000 chars, e.g. 50k chars)
@@ -970,8 +977,8 @@ public class FanpageBotService {
             );
         }
 
-        boolean domainHealthSafetyEnabled = isDomainPhysicalContraindicationGateEnabled(pagePersona);
-        String matchedCustomRedFlag = findMatchedPageSafetyRedFlag(mergedMessage, pagePersona);
+        boolean domainHealthSafetyEnabled = !v2Mode && isDomainPhysicalContraindicationGateEnabled(pagePersona);
+        String matchedCustomRedFlag = v2Mode ? null : findMatchedPageSafetyRedFlag(mergedMessage, pagePersona);
         boolean allowDomainHealthForTurn = domainHealthSafetyEnabled || matchedCustomRedFlag != null;
 
         List<AgentSkillDto> candidateSkills = agentSkillService != null
@@ -1411,23 +1418,23 @@ public class FanpageBotService {
                             ? resolveAciV2EffectiveHonorific(pageId, request.senderId(), pagePersona)
                             : FanpageBotPromptBuilder.resolveCustomerHonorific(
                                     mergedMessage, request.history(), request.customerName(), pagePersona);
-                    customerInsight = customerInsightEngine.analyzeInsight(
-                            mergedMessage,
-                            request.history(),
-                            honorific,
-                            initialStage,
-                            extractedLead,
-                            request.previousTemperature(),
-                            request.replyDelaySeconds(),
-                            request.idleSeconds()
-                    );
+                    customerInsight = v2Mode
+                            ? null
+                            : customerInsightEngine.analyzeInsight(
+                                    mergedMessage,
+                                    request.history(),
+                                    honorific,
+                                    initialStage,
+                                    extractedLead,
+                                    request.previousTemperature(),
+                                    request.replyDelaySeconds(),
+                                    request.idleSeconds()
+                            );
                     candidateSkills = agentSkillService != null
                             ? agentSkillService.getActiveSkillsForPage(pageId)
                             : CustomerInsightEngine.builtInDefaultSkills();
                     activeSkills = v2Mode
-                            ? (candidateSkills != null
-                                ? candidateSkills.stream().filter(s -> s != null && s.active()).toList()
-                                : List.of())
+                            ? CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId)
                             : customerInsightEngine.selectActiveSkills(
                                     customerInsight, mergedMessage, request.history(), initialStage, candidateSkills);
                 }
@@ -1446,8 +1453,8 @@ public class FanpageBotService {
             }
         }
 
-        // Củng cố ngầm (Implicit Conversion Reinforcement): Khi khách để lại SĐT / tín hiệu đặt lịch sau hội thoại tư vấn
-        if (extractedLead != null && extractedLead.hasAnyLead()
+        // Củng cố ngầm (Implicit Conversion Reinforcement — chỉ chạy ở V1; Unit P1.1 bỏ RL skill counter pre-mutation trên luồng V2)
+        if (!v2Mode && extractedLead != null && extractedLead.hasAnyLead()
                 && request.history() != null && !request.history().isEmpty()) {
             if (metaLearningService != null) {
                 metaLearningService.recordConversionSuccess(pageId, request.history(), mergedMessage);
@@ -1485,16 +1492,23 @@ public class FanpageBotService {
         // Lưu ý quan trọng: Chỉ ĐỌC AI Playbook (extraRules = List.of()), KHÔNG BAO GIỜ chạy MetaLearningService từ tin nhắn khách hàng!
         int incomingHistorySize = request.history() != null ? request.history().size() : 0;
         List<String> safeDomainKeywords = pagePersona != null ? pagePersona.resolvedConfig().resolvedScopeTaxonomy() : List.of();
-        ConversationState preRetrievalState = ConversationState.hydrateForTurn(
-                pageId,
-                request.senderId(),
-                request.conversationId(),
-                request.isResetSessionRequested(),
-                mergedMessage,
-                request.history(),
-                safeDomainKeywords,
-                List.of()
-        );
+        ConversationState preRetrievalState = v2Mode
+                ? ConversationState.hydrateMinimalForAciV2(
+                        pageId,
+                        request.senderId(),
+                        request.conversationId(),
+                        request.isResetSessionRequested()
+                )
+                : ConversationState.hydrateForTurn(
+                        pageId,
+                        request.senderId(),
+                        request.conversationId(),
+                        request.isResetSessionRequested(),
+                        mergedMessage,
+                        request.history(),
+                        safeDomainKeywords,
+                        List.of()
+                );
         ConversationState preEnrichedState = v2Mode
                 ? preRetrievalState
                 : preRetrievalState.enrichWithCurrentMessage(mergedMessage, safeDomainKeywords);
@@ -1580,11 +1594,12 @@ public class FanpageBotService {
                     : List.of();
         }
 
-        boolean leadReadyHandoff = bookingState.hasPhoneInCurrentTurn()
+        boolean leadReadyHandoff = !v2Mode && bookingState != null && bookingState.hasPhoneInCurrentTurn()
                 && extractedLead.phoneNumber() != null && !extractedLead.phoneNumber().isBlank();
-        boolean purePhoneLeadFastPath = leadReadyHandoff && !asksExplicitPriceInMessage(mergedMessage);
+        boolean purePhoneLeadFastPath = !v2Mode && leadReadyHandoff && !asksExplicitPriceInMessage(mergedMessage);
 
-        boolean isConversationalStateTurn = isPreRoutedDetailOrFaq
+        // Unit P1.1: Bỏ hoàn toàn 19 hàm regex V1 của isConversationalStateTurn khi chạy LLM_COGNITIVE_V2
+        boolean isConversationalStateTurn = !v2Mode && (isPreRoutedDetailOrFaq
                 || PrimaryActionRouter.isAcknowledgementMessage(mergedMessage)
                 || PrimaryActionRouter.isUnitPriceComparisonMessage(mergedMessage)
                 || PrimaryActionRouter.isPriceObjectionMessage(mergedMessage)
@@ -1609,7 +1624,7 @@ public class FanpageBotService {
                 || SentimentIntentLayer.isEntityMismatchCorrection(mergedMessage)
                 || CustomerInsightEngine.isPureGreetingOrOpening(
                         mergedMessage != null ? mergedMessage.toLowerCase(Locale.ROOT) : "",
-                        request.history() == null || request.history().isEmpty());
+                        request.history() == null || request.history().isEmpty()));
 
         // Trong LLM_COGNITIVE_V2: Nếu câu khách mang tính chất đối thoại/khiếu nại/xác nhận thanh toán/lời hứa nhân viên (S05, S08, S09)
         // khiến truy vấn trực tiếp chưa khớp đoạn tài liệu nào, tự động truy xuất neo danh mục & chính sách chuẩn của Page để LLM luôn có căn cứ sự thật!
@@ -1719,8 +1734,10 @@ public class FanpageBotService {
             }
         }
 
-        // 6. XÁC ĐỊNH NHỊP ĐỘ TƯ VẤN (3-STAGE CONSULTATIVE PACING)
-        FanpageBotPromptBuilder.SalesStage salesStage = determineSalesStage(mergedMessage, request.history(), extractedLead, priceLadder);
+        // 6. XÁC ĐỊNH NHỊP ĐỘ TƯ VẤN (3-STAGE CONSULTATIVE PACING — CHỈ CHẠY V1 REGEX KHI !v2Mode)
+        FanpageBotPromptBuilder.SalesStage salesStage = v2Mode
+                ? FanpageBotPromptBuilder.SalesStage.DISCOVERY
+                : determineSalesStage(mergedMessage, request.history(), extractedLead, priceLadder);
         boolean hasPriorAssistantTurn = (preRetrievalState != null && preRetrievalState.greetingSent())
                 || (request.history() != null && request.history().stream()
                     .anyMatch(t -> t != null && "assistant".equalsIgnoreCase(t.role()) && t.content() != null && !t.content().isBlank()));
@@ -1791,7 +1808,9 @@ public class FanpageBotService {
         boolean hasPriorPriceInHistory = (priceLadder != null && priceLadder.previousPriceQuoted() != null)
                 || hasQuotedPriceInAssistantHistory(request.history());
 
-        ConversationState convState = preEnrichedState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
+        ConversationState convState = v2Mode
+                ? preEnrichedState.withCatalogOnlyForAciV2(fused, safeDomainKeywords)
+                : preEnrichedState.withRetrievedChunks(fused, safeDomainKeywords, request.history());
         if (cleanAgentEligible) {
             this.lastTurnTelemetry = null;
             if (cleanAgentOrchestratorService != null) {

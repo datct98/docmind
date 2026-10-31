@@ -592,6 +592,200 @@ public record ConversationState(
     }
 
     /**
+     * Unit P1.1: Khôi phục trạng thái phiên tối giản (0 V1 regex enrichment) cho {@code LLM_COGNITIVE_V2}.
+     */
+    public static ConversationState hydrateMinimalForAciV2(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            boolean resetSession
+    ) {
+        String sessionKey = buildSessionKey(pageId, senderId, conversationId);
+        String fallbackKey = (conversationId != null && !conversationId.isBlank())
+                ? buildSessionKey(pageId, senderId, null)
+                : null;
+        if (resetSession) {
+            if (sessionKey != null) {
+                SESSION_STORE.remove(sessionKey);
+                LAST_TURN_PRE_STATE_STORE.remove(sessionKey);
+                PENDING_BUBBLE_STORE.remove(sessionKey);
+            }
+            if (fallbackKey != null) {
+                SESSION_STORE.remove(fallbackKey);
+                LAST_TURN_PRE_STATE_STORE.remove(fallbackKey);
+                PENDING_BUBBLE_STORE.remove(fallbackKey);
+            }
+            return initial();
+        }
+        if (sessionKey != null) {
+            ConversationState existing = SESSION_STORE.get(sessionKey);
+            if (existing != null) {
+                return existing;
+            }
+        }
+        if (fallbackKey != null) {
+            ConversationState existingFallback = SESSION_STORE.get(fallbackKey);
+            if (existingFallback != null) {
+                return existingFallback;
+            }
+        }
+        return initial();
+    }
+
+    /**
+     * Unit P1.1: Gắn danh mục Catalog đã trích xuất từ chunk cho {@code LLM_COGNITIVE_V2} mà không chạy V1 history/doc-flag regex.
+     */
+    public ConversationState withCatalogOnlyForAciV2(
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<String> domainKeywords
+    ) {
+        List<PackageCatalogService.PackageSummary> fullCatalog = PackageCatalogService.extractCatalog(fusedChunks, domainKeywords);
+        String reg = this.preferredRegion != null ? this.preferredRegion : "HN";
+        List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
+        if (regCat.isEmpty() && this.availablePackageCatalog != null && !this.availablePackageCatalog.isEmpty()) {
+            regCat = this.availablePackageCatalog;
+        }
+        return this.withCatalogAndRegion(regCat, reg);
+    }
+
+    /**
+     * Unit P1.1: Ghi nhận nguyên tử trạng thái phiên tối giản sau lượt {@code LLM_COGNITIVE_V2}
+     * mà KHÔNG gọi {@code updateAfterSend -> ensureTurnEnriched} (0 V1 regex execution).
+     */
+    public static ConversationState recordAciV2TurnMinimalState(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            ConversationState prevState,
+            List<ReplyBubble> finalBubbles,
+            boolean replyHasPrice,
+            StructuredBookingState authoritativeBookingState,
+            String authoritativeSymptomDuration
+    ) {
+        ConversationState base = prevState != null ? prevState : initial();
+        boolean nextGreetingSent = base.greetingSent() || (finalBubbles != null && !finalBubbles.isEmpty());
+        boolean nextPriceDiscussed = base.priceDiscussed() || replyHasPrice;
+        String nextLastAssistant = base.lastAssistantMessage();
+        if (finalBubbles != null && !finalBubbles.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (ReplyBubble b : finalBubbles) {
+                if (b != null && b.text() != null && !b.text().isBlank()) {
+                    if (sb.length() > 0) sb.append("\n\n");
+                    sb.append(b.text().strip());
+                }
+            }
+            if (sb.length() > 0) {
+                nextLastAssistant = sb.toString();
+            }
+        }
+        ConversationState updated = new ConversationState(
+                nextGreetingSent,
+                base.introSent(),
+                base.stage(),
+                base.lastIntent(),
+                base.lastQuestion(),
+                base.lastQuestionIntent(),
+                base.usedQuestionIntents(),
+                base.lastBotAction(),
+                base.known(),
+                nextPriceDiscussed,
+                base.pricesShown(),
+                base.recommendedOptions(),
+                base.objectionCount(),
+                base.ackCount(),
+                base.clarificationCount(),
+                base.conditionAskedCount(),
+                base.preferenceAskedCount(),
+                base.clarifyServiceTypeCount(),
+                base.clarifyDurationCount(),
+                base.frustrationCount(),
+                base.ambiguousCount(),
+                base.recommendationCount(),
+                base.priceRepeatGuardCount(),
+                base.conditionClarified(),
+                base.serviceFamilyKnown(),
+                base.packageRecommended(),
+                base.priceRequestedInSession(),
+                base.knownSymptoms(),
+                base.knownBodyAreas(),
+                base.knownSeverity(),
+                base.knownDurationOfProblem(),
+                base.knownTrigger(),
+                base.knownServiceFamily(),
+                base.knownPreferredPressure(),
+                base.knownRecommendedPackage(),
+                base.lastQuotePackage(),
+                base.lastSentiment(),
+                base.lastEmotion(),
+                base.usedTemplates(),
+                base.humanTakeover(),
+                base.optedOut(),
+                base.downsellOffered(),
+                base.trialInviteOffered(),
+                base.explicitDownsellRequest(),
+                base.packageRejectionDetected(),
+                base.lastQuotedPackage(),
+                base.lastQuotedDuration(),
+                base.lastQuotedPrice(),
+                base.heldPackage(),
+                base.heldDuration(),
+                base.downsellPackage(),
+                base.downsellDuration(),
+                base.downsellPrice(),
+                base.rejectedDurations(),
+                base.rejectedPackages(),
+                base.objectionStage(),
+                base.telemetrySubtype(),
+                base.docsHasFeedback(),
+                base.docsHasRelaxationBenefit(),
+                base.docsHasPrivateRoom(),
+                base.neurologicalRisk(),
+                base.preferredRegion(),
+                base.mentionedPackages(),
+                base.quotedPackages(),
+                base.heldPrice(),
+                base.alternativeRequestCount(),
+                base.customerCorrectionDetected(),
+                base.rejectedWrongOffer(),
+                base.availablePackageCatalog(),
+                base.lastBotBubbleHashes(),
+                base.outstandingRequests(),
+                nextLastAssistant,
+                base.confirmedScopes(),
+                base.forbiddenScopes(),
+                base.apologizedErrorIds(),
+                base.activeErrorId(),
+                base.customerCareNotes(),
+                base.scopeSupersessionEvents(),
+                base.possibleCorrection(),
+                base.packageExplicitlySelected(),
+                base.selectedPackageId(),
+                base.knownFrequency(),
+                base.knownSymptomDistribution(),
+                base.pendingQuestionSlot(),
+                base.knownEpisodeDuration(),
+                base.packageInterestAccepted(),
+                base.bookingIntentConfirmed(),
+                base.visitTime(),
+                base.contactInfo(),
+                base.bookingStatus(),
+                base.selectedProductId(),
+                base.bookingDate(),
+                base.bookingTime(),
+                base.bookingStatusEnum()
+        );
+        if (authoritativeBookingState != null) {
+            updated = updated.withStructuredBookingState(authoritativeBookingState);
+        }
+        updated = updated.withAuthoritativeSymptomDuration(authoritativeSymptomDuration);
+        String sessionKey = buildSessionKey(pageId, senderId, conversationId);
+        if (sessionKey != null) {
+            SESSION_STORE.put(sessionKey, updated);
+        }
+        return updated;
+    }
+
+    /**
      * Chuyển trạng thái sang AWAITING_CUSTOMER_CONFIRMATION sau khi công cụ kiểm tra lịch / nhân sự xác nhận còn chỗ trống.
      */
     public static ConversationState markSlotAvailableAwaitingCustomerConfirmation(

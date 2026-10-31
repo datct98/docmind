@@ -1537,7 +1537,9 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(capturedPrompt.get()).contains("forbidden_words: [\"chốt đơn\"");
         ThinkingModePolicy.AciTurnTelemetry turn3Telemetry = ThinkingModePolicy.getLastAciTurnTelemetry();
         assertThat(turn3Telemetry).isNotNull();
-        assertThat(turn3Telemetry.promptChars()).isLessThan(turn3Telemetry.legacyEquivalentPromptChars());
+        // Unit P1.1: Ngừng dựng ngầm Prompt V1 (~22.400 ký tự) trên hot-path LLM_COGNITIVE_V2 -> legacyEquivalentPromptChars == 0
+        assertThat(turn3Telemetry.legacyEquivalentPromptChars()).isZero();
+        assertThat(turn3Telemetry.promptChars()).isLessThan(12_000);
 
         // 2. Referee V2 đã chặn từ cấm "chốt đơn" ở lần nháp 1 và sửa sạch ở lần 2
         assertThat(llmAttempts.get()).isEqualTo(2);
@@ -3613,15 +3615,29 @@ class AciCognitiveV2AndReadingBudgetTest {
             assertThat(s1Resp.replyBubbles()).isNotEmpty();
             assertThat(s1Resp.replyText()).contains("239k");
             Map<String, Object> rowAfterS1 = jdbc.queryForMap(
-                    "SELECT opted_out, re_opt_in_at, re_opt_in_source, re_opt_in_evidence FROM conversation_sessions WHERE customer_psid = ?",
+                    "SELECT opted_out, opted_out_at, re_opt_in_at, re_opt_in_source, re_opt_in_evidence FROM conversation_sessions WHERE customer_psid = ?",
                     matrixPsid
             );
             assertThat(rowAfterS1.get("opted_out")).isEqualTo(false);
+            assertThat(rowAfterS1.get("opted_out_at")).isNotNull();
             assertThat(rowAfterS1.get("re_opt_in_at")).isNotNull();
-            assertThat(rowAfterS1.get("re_opt_in_source")).isEqualTo("FB_WEBHOOK");
+            assertThat(rowAfterS1.get("re_opt_in_source"))
+                    .isEqualTo(InboundSessionPersistenceService.RE_OPT_IN_SOURCE_SERVICE_INQUIRY_REPLY_ONLY);
             assertThat(String.valueOf(rowAfterS1.get("re_opt_in_evidence")))
-                    .contains("fbmid:m_p04_reconsent_s1")
+                    .contains("FB_WEBHOOK:fbmid:m_p04_reconsent_s1")
                     .contains("Gói 60p bao nhiêu tiền?");
+
+            // Unit P1.1 (P0.4 Permission Split): Even after customer asked a price question ("SERVICE_INQUIRY_REPLY_ONLY"),
+            // proactive marketing /reengage MUST STILL BE 100% BLOCKED until explicit marketing re-opt-in!
+            FanpageBotResponse reengageAfterServiceInquiryOnly = bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), matrixPsid, "Chị Hương", "",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, 600, "REENGAGE", false, null, null,
+                    "fb_webhook_" + matrixPsid, false, null, null
+            ));
+            assertThat(llmCalls.get()).isEqualTo(1);
+            assertThat(reengageAfterServiceInquiryOnly.replyBubbles()).isEmpty();
+            assertThat(reengageAfterServiceInquiryOnly.triggeredHooks())
+                    .contains("PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD", "OPT_OUT_SILENT_HOLD");
 
             // --- Scenario 2: Re-opt-out ("Đừng làm phiền chị nữa") then concrete booking request ("Đặt cho chị 5h chiều nay") ---
             bot.handleCustomerMessage(new FanpageBotRequest(
@@ -3957,6 +3973,299 @@ class AciCognitiveV2AndReadingBudgetTest {
         } finally {
             pool.shutdownNow();
             jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?, ?)", psidC1, psidC2, psidC3);
+        }
+    }
+
+    @Test
+    @DisplayName("P1.1: Zero Hidden V1 Computation on V2 Hot-Path, Default @Value LLM_COGNITIVE_V2, Direct ACI CustomerInsight Mapping & Migrated F-02/F-08")
+    void testP11_ZeroHiddenV1ComputationOnV2HotPathAndMigratedF02F08(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempWalDir
+    ) throws Exception {
+        // 1. Verify @Value default on both FanpageBotService and CleanAgentOrchestratorService is LLM_COGNITIVE_V2
+        var botValueAnn = FanpageBotService.class
+                .getMethod("setCognitiveModeProperty", String.class)
+                .getAnnotation(org.springframework.beans.factory.annotation.Value.class);
+        var orchValueAnn = CleanAgentOrchestratorService.class
+                .getMethod("setCognitiveModeProperty", String.class)
+                .getAnnotation(org.springframework.beans.factory.annotation.Value.class);
+        assertThat(botValueAnn).isNotNull();
+        assertThat(botValueAnn.value()).isEqualTo("${docmind.bot.cognitive-mode:LLM_COGNITIVE_V2}");
+        assertThat(orchValueAnn).isNotNull();
+        assertThat(orchValueAnn.value()).isEqualTo("${docmind.bot.cognitive-mode:LLM_COGNITIVE_V2}");
+        assertThat(AdaptiveConversationIntelligence.CognitiveMode.fromProperty(null))
+                .isEqualTo(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+
+        // 2. Migrated F-08 ("K tôi thấy có buffet thực dưỡng, nó là j") -> FAST_NO_THINK (NOT hijacked by leading "K ")
+        FanpageBotRequest f08Req = buildBotRequest(
+                "sender-p11-f08",
+                "Anh Minh",
+                "K tôi thấy có buffet thực dưỡng, nó là j",
+                null,
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Gói massage 60p giá sao shop?"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút giá 399k đã bao gồm tắm xông thảo dược và buffet thực dưỡng miễn phí ạ.")
+                )
+        );
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput f08Streams =
+                AdaptiveConversationIntelligence.buildThreeStreamInput(
+                        f08Req, List.of(), null, java.time.ZoneId.of("Asia/Ho_Chi_Minh")
+                );
+        ThinkingMode f08Mode = CleanAgentOrchestratorService.selectAciAdaptiveThinkingMode(
+                f08Streams.originalMessage(), f08Streams, List.of()
+        );
+        assertThat(f08Mode).isEqualTo(ThinkingMode.FAST_NO_THINK);
+
+        // 3. Spy CustomerInsightEngine that FAILS IMMEDIATELY if analyzeInsight or selectActiveSkills is EVER invoked on V2!
+        CustomerInsightEngine forbiddenV1InsightEngine = new CustomerInsightEngine() {
+            @Override
+            public com.example.docmind.dto.bot.CustomerInsightDto analyzeInsight(
+                    String currentMessage,
+                    List<FanpageBotRequest.ConversationTurn> history,
+                    String honorific,
+                    FanpageBotPromptBuilder.SalesStage stage,
+                    FanpageBotResponse.ExtractedLead lead,
+                    Integer previousTemperature,
+                    Integer replyDelaySeconds,
+                    Integer idleSeconds
+            ) {
+                throw new AssertionError("V1 CustomerInsightEngine.analyzeInsight MUST NEVER run on LLM_COGNITIVE_V2 hot-path!");
+            }
+
+            @Override
+            public List<com.example.docmind.dto.bot.AgentSkillDto> selectActiveSkills(
+                    com.example.docmind.dto.bot.CustomerInsightDto insight,
+                    String currentMessage,
+                    List<FanpageBotRequest.ConversationTurn> history,
+                    FanpageBotPromptBuilder.SalesStage stage,
+                    List<com.example.docmind.dto.bot.AgentSkillDto> candidateSkills
+            ) {
+                throw new AssertionError("V1 CustomerInsightEngine.selectActiveSkills MUST NEVER run on LLM_COGNITIVE_V2 hot-path!");
+            }
+        };
+
+        RetrievalService localRetrieval = mock(RetrievalService.class);
+        when(localRetrieval.getMetadataCache()).thenReturn(null);
+        when(localRetrieval.retrieveWithRules(anyList(), anyString(), anyInt(), anyList(), any()))
+                .thenReturn(new RetrievalService.RetrievalResult(catalogChunks, List.of()));
+        DocumentRepository localDocRepo = mock(DocumentRepository.class);
+        DocumentEntity readyDoc = mock(DocumentEntity.class);
+        when(readyDoc.getId()).thenReturn(DOC_ID);
+        when(readyDoc.getPageId()).thenReturn(PAGE_ID);
+        when(readyDoc.getStatus()).thenReturn("READY");
+        when(readyDoc.isCurrentlyEffective()).thenReturn(true);
+        when(localDocRepo.findByPageIdOrderByCreatedAtDesc(PAGE_ID)).thenReturn(List.of(readyDoc));
+        KnowledgePageRepository localPageRepo = mock(KnowledgePageRepository.class);
+        when(localPageRepo.findById(PAGE_ID)).thenReturn(Optional.of(nangSenPageEntity));
+        AgentSkillService localSkillSvc = mock(AgentSkillService.class);
+        when(localSkillSvc.getActiveSkillsForPage(PAGE_ID)).thenReturn(CustomerInsightEngine.builtInDefaultSkills());
+
+        LlmClient p11Llm = new LlmClient() {
+            @Override
+            public String name() {
+                return "qwen:qwen3.8-flash-p11-test";
+            }
+
+            @Override
+            public String complete(String prompt) {
+                return complete(prompt, null);
+            }
+
+            @Override
+            public String complete(String prompt, ReasoningBudget budget) {
+                if (prompt.contains("ừ để chị xem")) {
+                    // Migrated F-02 ("ừ để chị xem") -> CONSIDERING / WEAK buying signal / POLITE_CLOSURE
+                    return """
+                            {
+                              "brain_reflection": {
+                                "customer_understanding": {
+                                  "detected_intent": "POLITE_HESITATION_DEFERRAL",
+                                  "inferred_customer_pronoun": "Chị",
+                                  "pronoun_confidence": 0.95,
+                                  "booking_readiness": "CONSIDERING",
+                                  "buying_signal": "WEAK"
+                                },
+                                "priority": {"primary": "POLITE_CLOSURE", "secondary": "NONE"},
+                                "working_hypothesis": {
+                                  "content": "Chị khách đang muốn tự cân nhắc thêm sau khi biết giá",
+                                  "lifecycle_op": "ADJUST",
+                                  "confidence": 0.80,
+                                  "evidence_turn_ids": ["T_CURRENT"]
+                                },
+                                "strategy": {
+                                  "chosen": "Respectful Space & Graceful Pause",
+                                  "adaptation": "STOP",
+                                  "previous_outcome": "NEUTRAL",
+                                  "evidence_turn_ids": ["T_CURRENT"]
+                                },
+                                "response_plan": {
+                                  "objective": "Tôn trọng nhịp cân nhắc của chị khách",
+                                  "strategy": "Graceful Pause",
+                                  "tone": "LEVEL_1_NATURAL",
+                                  "depth": "CONCISE",
+                                  "cta_level": "NO_CTA",
+                                  "next_action": "NO_ADDITIONAL_ACTION"
+                                }
+                              },
+                              "reply_bubbles": [
+                                {"text": "Dạ vâng chị cứ thong thả xem thêm nhé ạ, khi nào cần hỗ trợ thêm thông tin chị cứ nhắn em nha.", "typing_delay_ms": 900}
+                              ]
+                            }
+                            """;
+                }
+                // Migrated F-08 ("K tôi thấy có buffet thực dưỡng, nó là j")
+                return """
+                        {
+                          "brain_reflection": {
+                            "customer_understanding": {
+                              "detected_intent": "SERVICE_DETAIL_CLARIFICATION",
+                              "booking_readiness": "EXPLORING",
+                              "buying_signal": "MODERATE"
+                            },
+                            "priority": {"primary": "SERVICE_CLARITY", "secondary": "NONE"},
+                            "strategy": {
+                              "chosen": "Direct Answer",
+                              "adaptation": "CONTINUATION",
+                              "previous_outcome": "ACCEPTED",
+                              "evidence_turn_ids": ["T_CURRENT"]
+                            },
+                            "response_plan": {
+                              "objective": "Giải thích rõ buffet thực dưỡng đi kèm sau liệu trình",
+                              "strategy": "Direct Answer",
+                              "tone": "LEVEL_1_NATURAL",
+                              "depth": "CONCISE",
+                              "cta_level": "NO_CTA",
+                              "next_action": "NO_ADDITIONAL_ACTION"
+                            }
+                          },
+                          "reply_bubbles": [
+                            {"text": "Dạ buffet thực dưỡng là phần ăn nhẹ thanh đạm và trà thảo mộc ấm bên em phục vụ miễn phí sau khi mình làm xong liệu trình ạ.", "typing_delay_ms": 900}
+                          ]
+                        }
+                        """;
+            }
+        };
+
+        AgentBrainService isolatedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        com.example.docmind.config.ChatProperties chatProps = new com.example.docmind.config.ChatProperties();
+        chatProps.setTopK(4);
+        FanpageBotService v2Bot = new FanpageBotService(
+                localRetrieval,
+                p11Llm,
+                chatProps,
+                localDocRepo,
+                localPageRepo,
+                forbiddenV1InsightEngine,
+                localSkillSvc,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        v2Bot.setAgentBrainService(isolatedBrain);
+        v2Bot.setCognitiveModeProperty(null); // exercises default LLM_COGNITIVE_V2 resolution
+        assertThat(v2Bot.isLlmCognitiveV2Mode()).isTrue();
+
+        // Execute F-08 end-to-end on V2
+        FanpageBotResponse f08Resp = v2Bot.handleCustomerMessage(f08Req);
+        assertThat(f08Resp.replyText()).contains("buffet thực dưỡng");
+        ThinkingModePolicy.AciTurnTelemetry f08Tel = ThinkingModePolicy.getLastAciTurnTelemetry();
+        assertThat(f08Tel).isNotNull();
+        assertThat(f08Tel.thinkingMode()).isEqualTo(ThinkingMode.FAST_NO_THINK);
+        assertThat(f08Tel.legacyEquivalentPromptChars()).isZero();
+        assertThat(f08Resp.customerInsight()).isNotNull();
+        assertThat(f08Resp.customerInsight().recommendedStrategy()).isEqualTo("Direct Answer");
+
+        // Execute F-02 ("ừ để chị xem" with previousTemperature=65) end-to-end on V2
+        FanpageBotRequest f02Req = new FanpageBotRequest(
+                PAGE_ID.toString(),
+                "sender-p11-f02",
+                "Chị Thu",
+                "ừ để chị xem",
+                null,
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Gói massage 60p giá sao em?"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ gói Massage cơ bản 60 phút giá 399k ạ.")
+                ),
+                List.of(DOC_ID),
+                4,
+                65,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null
+        );
+        FanpageBotResponse f02Resp = v2Bot.handleCustomerMessage(f02Req);
+        assertThat(f02Resp.customerInsight()).isNotNull();
+        assertThat(f02Resp.customerInsight().honorific()).isEqualTo("Chị");
+        assertThat(f02Resp.customerInsight().temperatureDelta()).isLessThan(0);
+        assertThat(f02Resp.customerInsight().momentum()).isEqualTo("COOLING_HALF_HEARTED");
+        assertThat(f02Resp.customerInsight().workingHypothesis()).contains("cân nhắc thêm");
+        var f02LastRef = v2Bot.getCleanAgentOrchestratorService().getLastAciReflection();
+        assertThat(f02LastRef.customerUnderstanding().bookingReadiness())
+                .isIn(AdaptiveConversationIntelligence.BookingReadiness.CONSIDERING,
+                      AdaptiveConversationIntelligence.BookingReadiness.EXPLORING);
+        assertThat(f02LastRef.customerUnderstanding().buyingSignal())
+                .isEqualTo(AdaptiveConversationIntelligence.BuyingSignal.WEAK);
+
+        // 4. Verify Explicit Marketing Re-Opt-In ("Đăng ký nhận tin lại") unlocks /reengage whereas SERVICE_INQUIRY_REPLY_ONLY blocks it
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        ensureV33OptOutColumnsIdempotent(jdbc);
+        var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_p11"), 67_108_864L);
+        var persistenceSvc = new InboundSessionPersistenceService(jdbc, txMgr, walStore);
+        v2Bot.setInboundSessionPersistenceService(persistenceSvc);
+
+        String splitPsid = "psid-p11-split-" + UUID.randomUUID();
+        try {
+            // Step A: Opt-out
+            v2Bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), splitPsid, "Anh Minh", "Thôi đừng nhắn nữa",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + splitPsid, false, null, null
+            ));
+            // Step B: Service inquiry ("Gói 60p bao nhiêu tiền?") -> bot replies, re_opt_in_source = SERVICE_INQUIRY_REPLY_ONLY
+            FanpageBotResponse priceReply = v2Bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), splitPsid, "Anh Minh", "Gói 60p bao nhiêu tiền?",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + splitPsid, false, null, null
+            ));
+            assertThat(priceReply.replyBubbles()).isNotEmpty();
+            assertThat(jdbc.queryForObject("SELECT re_opt_in_source FROM conversation_sessions WHERE customer_psid = ?", String.class, splitPsid))
+                    .isEqualTo(InboundSessionPersistenceService.RE_OPT_IN_SOURCE_SERVICE_INQUIRY_REPLY_ONLY);
+
+            // Step C: Proactive /reengage MUST STILL BE BLOCKED 100%!
+            FanpageBotResponse blockedReengage = v2Bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), splitPsid, "Anh Minh", "",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, 600, "REENGAGE", false, null, null,
+                    "fb_webhook_" + splitPsid, false, null, null
+            ));
+            assertThat(blockedReengage.replyBubbles()).isEmpty();
+            assertThat(blockedReengage.triggeredHooks()).contains("PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD");
+
+            // Step D: Re-opt-out then send EXPLICIT_MARKETING_REOPT_IN ("Đăng ký nhận tin lại") -> /reengage now allowed
+            v2Bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), splitPsid, "Anh Minh", "Hủy đăng ký",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + splitPsid, false, null, null
+            ));
+            v2Bot.handleCustomerMessage(new FanpageBotRequest(
+                    PAGE_ID.toString(), splitPsid, "Anh Minh", "Đăng ký nhận tin lại",
+                    null, List.of(), List.of(DOC_ID), 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + splitPsid, false, null, null
+            ));
+            assertThat(jdbc.queryForObject("SELECT re_opt_in_source FROM conversation_sessions WHERE customer_psid = ?", String.class, splitPsid))
+                    .isEqualTo(InboundSessionPersistenceService.RE_OPT_IN_SOURCE_EXPLICIT_MARKETING);
+            assertThat(persistenceSvc.isProactiveReengageAllowed(PAGE_ID, splitPsid)).isTrue();
+        } finally {
+            jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid = ?", splitPsid);
         }
     }
 }

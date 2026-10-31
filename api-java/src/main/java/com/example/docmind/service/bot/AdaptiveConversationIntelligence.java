@@ -58,13 +58,16 @@ public final class AdaptiveConversationIntelligence {
 
         public static CognitiveMode fromProperty(String raw) {
             if (raw == null || raw.isBlank()) {
-                return DETERMINISTIC_V1;
+                return LLM_COGNITIVE_V2;
             }
             String norm = raw.strip().toUpperCase(Locale.ROOT);
+            if ("DETERMINISTIC_V1".equals(norm) || "V1".equals(norm) || "LEGACY_V1".equals(norm)) {
+                return DETERMINISTIC_V1;
+            }
             if ("LLM_COGNITIVE_V2".equals(norm) || "V2".equals(norm) || "ACI_V2".equals(norm)) {
                 return LLM_COGNITIVE_V2;
             }
-            return DETERMINISTIC_V1;
+            return LLM_COGNITIVE_V2;
         }
     }
 
