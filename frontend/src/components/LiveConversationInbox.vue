@@ -56,7 +56,10 @@
     <!-- =================================================================== -->
     <!-- CỘT TRÁI: DANH SÁCH HỘI THOẠI KHÁCH HÀNG (& TAB TÀI LIỆU NGUỒN)      -->
     <!-- =================================================================== -->
-    <aside class="inbox-left-panel">
+    <aside
+      class="inbox-left-panel"
+      :class="{ 'is-collapsed-desktop': !showLeftListPanel }"
+    >
       <!-- Top Mode Switcher: Hội thoại KH vs Tài liệu Nguồn -->
       <div class="left-panel-mode-tabs">
         <button
@@ -482,7 +485,7 @@
 
       <!-- MODE B: CHI TIẾT CUỘC TRÒ CHUYỆN MESSENGER (KHI Ở TAB HỘI THOẠI KH) -->
       <template v-else-if="activeSession">
-        <!-- Messenger Top Header -->
+        <!-- Messenger Top Header (Compact Single-Line Laptop Layout) -->
         <header class="thread-header">
           <div class="thread-header-left">
             <button
@@ -493,25 +496,30 @@
             >
               ←
             </button>
+            <button
+              type="button"
+              class="btn-toggle-left-panel"
+              :class="{ active: showLeftListPanel }"
+              title="Ẩn/Hiện cột Danh sách Khách hàng bên trái để mở rộng khung hội thoại"
+              @click="showLeftListPanel = !showLeftListPanel"
+            >
+              {{ showLeftListPanel ? '◀ DS Khách' : '▶ DS Khách' }}
+            </button>
             <div class="thread-avatar" :class="getAvatarColorClass(activeSession)">
               {{ getInitials(activeSession.customer_name) }}
             </div>
             <div class="thread-cust-meta">
               <div class="thread-name-row">
                 <h3 class="thread-cust-name">{{ activeSession.customer_name }}</h3>
-                <span class="thread-honorific-pill">Xưng hô: <strong>{{ activeSession.honorific || 'Chị' }}</strong></span>
+                <span class="thread-honorific-pill">Xưng hô: <strong>{{ activeSession.honorific || (activePage && activePage.persona_config && activePage.persona_config.default_customer_pronoun) || 'mình' }}</strong></span>
                 <span class="thread-stage-pill" :class="'stage-' + (activeSession.sales_stage || 'CONSULTING').toLowerCase()">
                   📍 {{ formatSalesStage(activeSession.sales_stage) }}
                 </span>
-              </div>
-              <div class="thread-sub-row">
-                <span class="thread-psid">ID: <code>{{ activeSession.sender_psid }}</code></span>
-                <span>·</span>
                 <span v-if="activeSession.control_mode === 'HUMAN_TAKEOVER'" class="mode-indicator-text is-human">
-                  👨‍💼 Nhân viên Sale đang tiếp quản (AI đã tạm dừng trả lời tự động)
+                  · 👨‍💼 Sale trực
                 </span>
                 <span v-else class="mode-indicator-text is-bot">
-                  🤖 AI LangGraph đang trực tự động (Phản hồi &lt; 2.5s)
+                  · 🤖 AI V2 trực
                 </span>
               </div>
             </div>
@@ -527,7 +535,7 @@
               title="Tắt AI tự động ở cuộc hội thoại này để Nhân viên Sale trực tiếp chat với khách"
               @click="handleToggleControlMode('HUMAN_TAKEOVER')"
             >
-              ✋ Sale Tiếp Nhận (Tắt AI)
+              ✋ Sale Tiếp Nhận
             </button>
             <button
               v-else
@@ -536,7 +544,7 @@
               title="Giao lại cuộc hội thoại này cho AI Bot tự động trả lời"
               @click="handleToggleControlMode('BOT_ACTIVE')"
             >
-              🤖 Bật lại AI Tự Động
+              🤖 Bật lại AI
             </button>
 
             <!-- Mark Converted Button -->
@@ -547,10 +555,10 @@
               title="Đánh dấu ca chat này đã chốt đơn/đặt lịch thành công (Dữ liệu vàng cho AI học ban đêm)"
               @click="handleMarkConverted"
             >
-              ✅ Đánh dấu Đã Chốt
+              ✅ Đã Chốt
             </button>
             <span v-else class="converted-badge-header">
-              🏆 Đã chốt thành công
+              🏆 Đã chốt
             </span>
 
             <!-- Toggle Right Insight Panel -->
@@ -587,7 +595,7 @@
           </button>
         </div>
 
-        <!-- Messenger Multi-Actor Messages Stream -->
+        <!-- Messenger Multi-Actor Messages Stream (>= 80% Laptop Viewport Height) -->
         <div ref="messagesScrollRef" class="thread-messages-stream">
           <div
             v-for="(msg, mIdx) in activeMessages"
@@ -608,56 +616,83 @@
               <!-- Role & Metadata Header above bubble -->
               <div class="msg-meta-header">
                 <span v-if="msg.sender_role === 'CUSTOMER'" class="msg-actor-badge badge-cust">
-                  👤 {{ msg.sender_name || activeSession.customer_name }} (Khách hàng)
+                  👤 {{ msg.sender_name || activeSession.customer_name }}
                 </span>
                 <span v-else-if="msg.sender_role === 'AI_BOT'" class="msg-actor-badge badge-ai">
                   🤖 {{ msg.sender_name || 'AI Trợ Lý Fanpage' }}
-                  <span v-if="msg.latency_ms" class="msg-latency-tag">⚡ {{ msg.latency_ms }}ms</span>
-                  <span v-if="msg.sales_stage" class="msg-stage-tag">{{ formatSalesStage(msg.sales_stage) }}</span>
                 </span>
                 <span v-else class="msg-actor-badge badge-sale">
-                  👨‍💼 {{ msg.sender_name || 'Nhân viên Sale' }} (Người thật)
+                  👨‍💼 {{ msg.sender_name || 'Nhân viên Sale' }}
                   <span class="sale-gold-tag">⭐ Mẫu thực chiến</span>
                 </span>
                 <span class="msg-time-label">{{ formatTimeOnly(msg.created_at) }}</span>
               </div>
 
-              <!-- Message Bubble Content (Supports Multi-Bubble Messenger Output) -->
+              <!-- Message Bubble Content (Supports Multi-Bubble Messenger Output: 1 independent .msg-bubble-box per normalized bubble) -->
               <div
                 v-for="(bubbleText, bIdx) in getMessageBubbles(msg)"
                 :key="bIdx"
                 class="msg-bubble-box"
               >
-                <p
-                  v-for="(para, pIdx) in splitParagraphs(bubbleText)"
-                  :key="pIdx"
-                  class="msg-para"
-                >
-                  {{ para }}
-                </p>
+                <p class="msg-para">{{ bubbleText }}</p>
               </div>
 
-              <!-- AI Bot Telemetry & Action Bar (Teach AI + Harness² Optimization) -->
-              <div v-if="msg.sender_role === 'AI_BOT'" class="ai-msg-footer-bar">
-                <div v-if="msg.triggered_hooks && msg.triggered_hooks.length > 0" class="ai-hooks-row">
+              <!-- 1-Line 24px Compact AI Metadata Pill (Collapsed by default) -->
+              <div v-if="msg.sender_role === 'AI_BOT' && !msg._delivering_in_progress" class="ai-msg-footer-bar">
+                <div class="ai-compact-pill-row">
                   <span
-                    v-for="h in msg.triggered_hooks"
-                    :key="h"
-                    class="mini-hook-chip"
-                    title="Chốt chặn Guardrail In-Loop đã kiểm duyệt"
+                    class="ai-compact-metrics-pill"
+                    title="Kiến trúc ACI V2 · Số kỹ năng kích hoạt · Số quy tắc áp dụng · Tổng thời gian xử lý lượt"
                   >
-                    🛡️ {{ h }}
+                    🛡️ V2 · ⚡ {{ getMsgActivatedSkills(msg).length }} · 📋 {{ getMsgAppliedRulesCount(msg) }} · ⏱️ {{ formatTurnDurationSec(msg) }}s
                   </span>
-                </div>
-
-                <div class="ai-action-buttons">
                   <button
-                    class="btn-ai-msg-action btn-teach-inline"
+                    type="button"
+                    class="btn-ai-pill-toggle"
+                    :class="{ expanded: isAiDetailExpanded(msg, mIdx) }"
+                    title="Mở/Đóng chi tiết kỹ năng, quy tắc & token của lượt này"
+                    @click="toggleAiDetail(msg, mIdx)"
+                  >
+                    Chi tiết AI {{ isAiDetailExpanded(msg, mIdx) ? '▴' : '▾' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-ai-pill-report"
                     title="Báo sai câu trả lời này và dạy lại quy tắc cho AI"
                     @click="handleTeachAiOnMessage(msg, mIdx)"
                   >
-                    💬 Báo sai & Dạy AI
+                    Báo sai
                   </button>
+                </div>
+
+                <!-- On-Demand Expandable AI Telemetry Drawer -->
+                <div v-if="isAiDetailExpanded(msg, mIdx)" class="ai-expanded-detail-drawer">
+                  <div class="ai-detail-line">
+                    <strong>⚡ Kỹ năng ({{ getMsgActivatedSkills(msg).length }}):</strong>
+                    <span v-if="getMsgActivatedSkills(msg).length > 0">
+                      {{ getMsgActivatedSkills(msg).map(sk => (typeof sk === 'string' ? sk : (sk.name || sk.code))).join(' · ') }}
+                    </span>
+                    <span v-else class="ai-detail-muted">Không bật skill thừa (phản hồi trực tiếp)</span>
+                  </div>
+                  <div v-if="msg.triggered_hooks && msg.triggered_hooks.length > 0" class="ai-detail-line">
+                    <strong>🛡️ Guardrail:</strong>
+                    <span>{{ msg.triggered_hooks.join(' · ') }}</span>
+                  </div>
+                  <div v-if="getMsgAppliedRules(msg).length > 0" class="ai-detail-line">
+                    <strong>📋 Quy tắc ({{ getMsgAppliedRules(msg).length }}):</strong>
+                    <span>
+                      {{ getMsgAppliedRules(msg).map(r => (typeof r === 'string' ? r : (r.rule_code || r.ruleCode || r.category || 'RULE'))).join(' · ') }}
+                    </span>
+                  </div>
+                  <div v-if="msg.turn_profiling" class="ai-detail-line ai-detail-profiling">
+                    <strong>⏱️ Profiling:</strong>
+                    <span>
+                      In {{ msg.turn_profiling.input_tokens ?? msg.turn_profiling.inputTokens ?? 0 }} tok ·
+                      Out {{ msg.turn_profiling.output_tokens ?? msg.turn_profiling.outputTokens ?? 0 }} tok ·
+                      Reflect {{ msg.turn_profiling.reflection_tokens ?? msg.turn_profiling.reflectionTokens ?? 0 }} tok ·
+                      LLM {{ msg.turn_profiling.model_latency_ms ?? msg.turn_profiling.modelLatencyMs ?? msg.latency_ms ?? 0 }}ms
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -671,58 +706,55 @@
             </div>
           </div>
 
-          <!-- Typing Indicator when sending -->
-          <div v-if="isSendingMessage" class="msg-row msg-ai-bot">
+          <!-- Typing Indicator when sending or waiting typing_delay_ms between bubbles -->
+          <div v-if="isSendingMessage || isDeliveringBotBubbles" class="msg-row msg-ai-bot">
             <div class="msg-bubble-col">
               <div class="msg-bubble-box typing-bubble">
-                <span>⏳ Đang xử lý tin nhắn...</span>
+                <span v-if="isDeliveringBotBubbles && inboxRemainingDelaySec > 0">
+                  ⏳ AI đang chờ nhịp đọc &amp; soạn bong bóng tiếp theo ({{ inboxRemainingDelaySec }}s)...
+                </span>
+                <span v-else-if="isDeliveringBotBubbles">
+                  💬 AI đang nhập bong bóng tiếp theo...
+                </span>
+                <span v-else>⏳ Đang xử lý tin nhắn...</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Dual-Mode Messenger Composer Footer -->
+        <!-- Compact Single-Row Dual-Mode Messenger Composer Footer -->
         <footer class="thread-composer-footer">
-          <div class="composer-mode-bar">
+          <div class="composer-input-row">
             <div class="composer-mode-tabs">
               <button
+                type="button"
                 class="composer-mode-btn mode-sale"
                 :class="{ active: composerMode === 'HUMAN_SALE' }"
+                title="Gửi tư cách Nhân viên Sale thật (Tự động chuyển sang Sale trực & lưu mẫu huấn luyện)"
                 @click="composerMode = 'HUMAN_SALE'"
               >
-                👨‍💼 Trả lời khách (Tư cách Sale thật)
+                👨‍💼 Sale
               </button>
               <button
+                type="button"
                 class="composer-mode-btn mode-customer"
                 :class="{ active: composerMode === 'CUSTOMER' }"
+                title="Giả lập khách hàng nhắn tiếp qua Messenger để test Bot AI tự động trả lời"
                 @click="composerMode = 'CUSTOMER'"
               >
-                👤 Giả lập Khách nhắn tiếp vào hộp thư
+                👤 Khách
               </button>
             </div>
 
-            <span class="composer-mode-hint">
-              <template v-if="composerMode === 'HUMAN_SALE'">
-                💡 Khi gửi, hệ thống tự động chuyển sang <strong>Sale trực (Tắt AI)</strong> và lưu câu văn của bạn làm mẫu huấn luyện AI.
-              </template>
-              <template v-else>
-                💡 Giả lập khách nhắn qua Messenger:
-                <strong v-if="activeSession.control_mode === 'HUMAN_TAKEOVER'">AI đang tắt — Chờ Sale trả lời</strong>
-                <strong v-else>AI đang bật — Bot sẽ tự động trả lời ngay</strong>
-              </template>
-            </span>
-          </div>
-
-          <div class="composer-input-row">
             <textarea
               v-model="composerText"
-              rows="2"
+              rows="1"
               class="composer-textarea"
               :class="composerMode === 'HUMAN_SALE' ? 'is-sale-input' : 'is-cust-input'"
               :placeholder="
                 composerMode === 'HUMAN_SALE'
-                  ? `Nhập tin nhắn tư vấn / chốt đơn gửi cho ${activeSession.customer_name} (Tư cách Nhân viên Sale)...`
-                  : `Giả lập ${activeSession.customer_name} nhắn tin mới vào Fanpage...`
+                  ? `Trả lời ${activeSession.customer_name} (Tư cách Sale)...`
+                  : `Giả lập ${activeSession.customer_name} nhắn vào Fanpage...`
               "
               @compositionstart="isImeComposing = true"
               @compositionend="handleImeCompositionEnd($event)"
@@ -736,7 +768,7 @@
                 :disabled="isSendingMessage || !composerText.trim()"
                 @click="handleSendComposerMessage(false)"
               >
-                <span v-if="composerMode === 'HUMAN_SALE'">📤 Gửi (Sale)</span>
+                <span v-if="composerMode === 'HUMAN_SALE'">📤 Gửi</span>
                 <span v-else>💬 Khách gửi</span>
               </button>
 
@@ -744,10 +776,10 @@
                 v-if="composerMode === 'HUMAN_SALE'"
                 class="btn-send-convert"
                 :disabled="isSendingMessage || !composerText.trim()"
-                title="Gửi tin nhắn này và đánh dấu Đã chốt đơn thành công (Phục vụ AI học ban đêm)"
+                title="Gửi tin nhắn này và đánh dấu Đã chốt đơn thành công"
                 @click="handleSendComposerMessage(true)"
               >
-                ✅ Gửi & Chốt đơn
+                ✅ Chốt
               </button>
             </div>
           </div>
@@ -758,6 +790,14 @@
         <div class="placeholder-icon">💬</div>
         <h3>Chọn một cuộc hội thoại ở cột bên trái</h3>
         <p>Xem toàn bộ lịch sử chat giữa Khách hàng, AI Bot và Nhân viên Sale theo thời gian thực.</p>
+        <button
+          v-if="!showLeftListPanel"
+          type="button"
+          class="btn-toggle-left-panel"
+          @click="showLeftListPanel = true"
+        >
+          ▶ Mở Danh sách Khách hàng
+        </button>
       </div>
     </section>
 
@@ -830,7 +870,7 @@
             </div>
             <div class="lead-info-row">
               <span class="lead-key">Xưng hô chuẩn:</span>
-              <span class="lead-val"><strong>{{ activeSession.honorific || 'Chị' }}</strong></span>
+              <span class="lead-val"><strong>{{ activeSession.honorific || (activePage && activePage.persona_config && activePage.persona_config.default_customer_pronoun) || 'mình' }}</strong></span>
             </div>
             <div class="lead-info-row">
               <span class="lead-key">Chủ đề quan tâm:</span>
@@ -923,7 +963,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 
 const props = defineProps({
@@ -972,11 +1012,59 @@ const activeSession = ref(null)
 const activeMessages = ref([])
 const isLoadingList = ref(false)
 const isSendingMessage = ref(false)
+const isDeliveringBotBubbles = ref(false)
+const inboxRemainingDelaySec = ref(0)
+let inboxBubbleDeliveryGen = 0
+const sleepInbox = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+const cancelPendingInboxBubbleDelivery = () => {
+  inboxBubbleDeliveryGen += 1
+  isDeliveringBotBubbles.value = false
+  inboxRemainingDelaySec.value = 0
+}
 const isUpdatingControl = ref(false)
 const isExtractingRule = ref(false)
 const lastExtractionResult = ref(null)
 const optimizingMsgId = ref(null)
-const showInsightPanel = ref(true)
+const showLeftListPanel = ref(true)
+const showInsightPanel = ref(typeof window !== 'undefined' ? window.innerWidth > 1400 : false)
+const expandedAiDetailMap = reactive({})
+
+const getAiDetailKey = (msg, idx) => String(msg?.id || `msg-${idx}`)
+const isAiDetailExpanded = (msg, idx) => Boolean(expandedAiDetailMap[getAiDetailKey(msg, idx)])
+const toggleAiDetail = (msg, idx) => {
+  const key = getAiDetailKey(msg, idx)
+  expandedAiDetailMap[key] = !expandedAiDetailMap[key]
+}
+
+const getMsgActivatedSkills = (msg) => {
+  if (!msg) return []
+  const list = msg.activated_skills ?? msg.active_skills
+  return Array.isArray(list) ? list : []
+}
+
+const getMsgAppliedRules = (msg) => {
+  if (!msg) return []
+  const list = msg.applied_rules ?? msg.appliedRules
+  return Array.isArray(list) ? list : []
+}
+
+const getMsgAppliedRulesCount = (msg) => {
+  const rules = getMsgAppliedRules(msg)
+  if (rules.length > 0) return rules.length
+  if (typeof msg?.applied_rules_count === 'number') return msg.applied_rules_count
+  return 0
+}
+
+const formatTurnDurationSec = (msg) => {
+  const rawMs = msg?.turn_profiling?.total_turn_ms
+    ?? msg?.turn_profiling?.totalTurnMs
+    ?? msg?.latency_ms
+    ?? 0
+  const ms = Number(rawMs) || 0
+  if (ms <= 0) return '0.0'
+  return (ms / 1000).toFixed(1)
+}
 
 const openMobileInsightPane = () => {
   showInsightPanel.value = true
@@ -1119,6 +1207,7 @@ const loadConversations = async (preserveSelection = true) => {
 }
 
 const selectConversation = async (sessionId, switchToChatOnMobile = false) => {
+  cancelPendingInboxBubbleDelivery()
   selectedSessionId.value = sessionId
   lastExtractionResult.value = null
   if (switchToChatOnMobile) {
@@ -1145,6 +1234,124 @@ const setFilter = (code) => {
   activeFilter.value = code
 }
 
+const normalizeStructuredReplyBubbles = (botMsg, responseRoot) => {
+  const rawArr = (botMsg && Array.isArray(botMsg.reply_bubbles) && botMsg.reply_bubbles.length > 0)
+    ? botMsg.reply_bubbles
+    : (responseRoot && Array.isArray(responseRoot.reply_bubbles) ? responseRoot.reply_bubbles : [])
+  const fallbackDelays = (botMsg && Array.isArray(botMsg.bubble_delays_ms))
+    ? botMsg.bubble_delays_ms
+    : (responseRoot && Array.isArray(responseRoot.bubble_delays_ms) ? responseRoot.bubble_delays_ms : [])
+
+  if (rawArr.length > 0) {
+    const mapped = rawArr
+      .map((item, idx) => {
+        if (item && typeof item === 'object') {
+          return {
+            text: String(item.text || '').trim(),
+            typing_delay_ms: Math.max(0, Number(item.typing_delay_ms ?? fallbackDelays[idx] ?? 0))
+          }
+        }
+        return {
+          text: String(item || '').trim(),
+          typing_delay_ms: Math.max(0, Number(fallbackDelays[idx] ?? 0))
+        }
+      })
+      .filter(b => b.text.length > 0)
+    // Chống tách kép: Chỉ fallback tách \n{2,} cho bản ghi lịch sử cũ bị gộp trong 1 phần tử duy nhất
+    if (mapped.length === 1 && /\r?\n\s*\r?\n+/.test(mapped[0].text)) {
+      const legacyParts = mapped[0].text.split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
+      if (legacyParts.length > 1) {
+        return legacyParts.map((text, idx) => ({
+          text,
+          typing_delay_ms: idx === 0 ? mapped[0].typing_delay_ms : 2000
+        }))
+      }
+    }
+    return mapped
+  }
+  if (botMsg && botMsg.content) {
+    return String(botMsg.content)
+      .split(/\r?\n\s*\r?\n+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map((text, idx) => ({ text, typing_delay_ms: idx === 0 ? 0 : 2000 }))
+  }
+  return []
+}
+
+const applySessionResponseWithSequentialBubbles = async (res) => {
+  if (!res || !res.session) return
+  activeSession.value = res.session
+  const incomingMsgs = Array.isArray(res.messages) ? res.messages : []
+  const lastMsg = incomingMsgs.length > 0 ? incomingMsgs[incomingMsgs.length - 1] : null
+
+  if (!lastMsg || lastMsg.sender_role !== 'AI_BOT' || res.bot_paused_by_human_takeover) {
+    activeMessages.value = incomingMsgs
+    await scrollToBottom()
+    return
+  }
+
+  const structuredBubbles = normalizeStructuredReplyBubbles(lastMsg, res)
+  if (structuredBubbles.length === 0) {
+    activeMessages.value = incomingMsgs
+    await scrollToBottom()
+    return
+  }
+
+  const myGen = ++inboxBubbleDeliveryGen
+  const priorMsgs = incomingMsgs.slice(0, incomingMsgs.length - 1)
+  const liveBotMsg = reactive({
+    ...lastMsg,
+    _visible_bubbles: [],
+    _delivering_in_progress: true
+  })
+  activeMessages.value = [...priorMsgs]
+  await scrollToBottom()
+
+  try {
+    for (let i = 0; i < structuredBubbles.length; i++) {
+      if (myGen !== inboxBubbleDeliveryGen) return
+      const rawDelay = Math.max(0, Number(structuredBubbles[i].typing_delay_ms ?? 0))
+      if (rawDelay > 0) {
+        isDeliveringBotBubbles.value = true
+        await scrollToBottom()
+        if (rawDelay >= 2000) {
+          let remainingMs = rawDelay
+          while (remainingMs > 0) {
+            if (myGen !== inboxBubbleDeliveryGen) return
+            inboxRemainingDelaySec.value = Math.ceil(remainingMs / 1000)
+            await scrollToBottom()
+            const stepMs = Math.min(1000, remainingMs)
+            await sleepInbox(stepMs)
+            remainingMs -= stepMs
+          }
+          inboxRemainingDelaySec.value = 0
+        } else {
+          inboxRemainingDelaySec.value = 0
+          await sleepInbox(rawDelay)
+        }
+      }
+      if (myGen !== inboxBubbleDeliveryGen) return
+      isDeliveringBotBubbles.value = false
+      inboxRemainingDelaySec.value = 0
+      if (!activeMessages.value.includes(liveBotMsg)) {
+        activeMessages.value.push(liveBotMsg)
+      }
+      liveBotMsg._visible_bubbles.push(structuredBubbles[i].text)
+      await scrollToBottom()
+    }
+    if (myGen === inboxBubbleDeliveryGen) {
+      liveBotMsg._delivering_in_progress = false
+      delete liveBotMsg._visible_bubbles
+    }
+  } finally {
+    if (myGen === inboxBubbleDeliveryGen) {
+      isDeliveringBotBubbles.value = false
+      inboxRemainingDelaySec.value = 0
+    }
+  }
+}
+
 const handleCreateNewCustomer = async () => {
   if (!newCustMessage.value.trim()) return
   isCreatingConv.value = true
@@ -1156,14 +1363,18 @@ const handleCreateNewCustomer = async () => {
       customerName: custName,
       message: firstMsg
     })
-    if (res && res.session) {
-      await loadConversations(false)
-      await selectConversation(res.session.id, true)
-    }
     newCustName.value = ''
     newCustMessage.value = ''
     showNewCustomerForm.value = false
     emit('toast', { message: `💬 Đã tạo cuộc trò chuyện mới với "${custName}"`, type: 'success' })
+    if (res && res.session) {
+      const list = await api.getConversations(props.activePageId, 'ALL')
+      conversations.value = Array.isArray(list) ? list : []
+      selectedSessionId.value = res.session.id
+      mobilePane.value = 'chat'
+      isCreatingConv.value = false
+      await applySessionResponseWithSequentialBubbles(res)
+    }
   } catch (err) {
     emit('toast', { message: `Lỗi tạo cuộc trò chuyện: ${err.message}`, type: 'error' })
   } finally {
@@ -1175,6 +1386,7 @@ const handleSendComposerMessage = async (markConverted = false) => {
   if (!composerText.value.trim() || !activeSession.value) return
   const text = composerText.value.trim()
   composerText.value = ''
+  cancelPendingInboxBubbleDelivery()
   isSendingMessage.value = true
 
   try {
@@ -1183,6 +1395,7 @@ const handleSendComposerMessage = async (markConverted = false) => {
         message: text,
         markConverted
       })
+      isSendingMessage.value = false
       if (res && res.session) {
         activeSession.value = res.session
         activeMessages.value = res.messages || []
@@ -1194,21 +1407,38 @@ const handleSendComposerMessage = async (markConverted = false) => {
         type: 'success'
       })
     } else {
-      // Simulating customer sending a follow-up message in Messenger
+      // Hiển thị tức thì bong bóng của khách trong lúc chờ LLM phản hồi
+      activeMessages.value.push({
+        id: `optimistic-cust-${Date.now()}`,
+        session_id: activeSession.value.id,
+        sender_role: 'CUSTOMER',
+        sender_name: activeSession.value.customer_name,
+        content: text,
+        created_at: new Date().toISOString()
+      })
+      await scrollToBottom()
+
       const res = await api.sendCustomerTurnInConversation(activeSession.value.id, {
         message: text,
         customerName: activeSession.value.customer_name
       })
-      if (res && res.session) {
-        activeSession.value = res.session
-        activeMessages.value = res.messages || []
-      }
+      // Phản hồi HTTP đã về xong -> mở khóa sending ngay và thực thi tuần tự typing_delay_ms cho từng bong bóng
+      isSendingMessage.value = false
       if (res && res.bot_paused_by_human_takeover) {
         emit('toast', {
           message: '👤 Khách vừa nhắn tin mới. Vì Sale đang tiếp nhận nên AI không tự động chen ngang.',
           type: 'info'
         })
       }
+      // Sync list item trước khi chờ typing_delay_ms giữa các bong bóng
+      if (res && res.session) {
+        const idx = conversations.value.findIndex(c => c.id === res.session.id)
+        if (idx !== -1) {
+          conversations.value[idx] = { ...conversations.value[idx], ...res.session }
+        }
+      }
+      await applySessionResponseWithSequentialBubbles(res)
+      return
     }
     // Sync list item
     const idx = conversations.value.findIndex(c => c.id === activeSession.value.id)
@@ -1348,22 +1578,24 @@ const handleOptimizeMessageHarness = async (msg, mIdx) => {
   }
 }
 
-// Formatting Helpers
-const splitParagraphs = (text) => {
-  if (!text) return ['']
-  return String(text).split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
-}
-
+// Formatting Helpers (No double-splitting on normalized reply_bubbles; preserve single \n inside bubble)
 const getMessageBubbles = (msg) => {
   if (!msg) return ['']
+  if (Array.isArray(msg._visible_bubbles)) {
+    return msg._visible_bubbles
+  }
   if (Array.isArray(msg.reply_bubbles) && msg.reply_bubbles.length > 0) {
     const clean = msg.reply_bubbles
       .map(b => (b && typeof b === 'object' ? String(b.text || '') : String(b || '')).trim())
       .filter(Boolean)
+    if (clean.length === 1 && /\r?\n\s*\r?\n+/.test(clean[0])) {
+      const legacyParts = clean[0].split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
+      if (legacyParts.length > 1) return legacyParts
+    }
     if (clean.length > 0) return clean
   }
   if (msg.sender_role === 'AI_BOT' && msg.content) {
-    const parts = String(msg.content).split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
+    const parts = String(msg.content).split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
     if (parts.length > 1) return parts
   }
   return [msg.content || '']
@@ -1704,6 +1936,10 @@ onMounted(() => {
   loadConversations(false)
 })
 
+onBeforeUnmount(() => {
+  cancelPendingInboxBubbleDelivery()
+})
+
 defineExpose({
   refreshInbox: () => loadConversations(true),
   openDocInspectorOnMobile: () => {
@@ -1720,7 +1956,8 @@ defineExpose({
   flex: 1;
   width: 100%;
   height: 100%;
-  gap: 14px;
+  min-height: 0;
+  gap: 10px;
   overflow: hidden;
 }
 
@@ -2134,14 +2371,16 @@ defineExpose({
 .temp-cold { background: #e0f2fe; color: #0369a1; }
 
 /* ========================================================================= */
-/* CENTER COLUMN: MESSENGER CHAT THREAD                                      */
+/* CENTER COLUMN: MESSENGER CHAT THREAD (FULL-VIEWPORT LAPTOP FLEX LAYOUT)   */
 /* ========================================================================= */
 .inbox-center-thread {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   background: #ffffff;
   border: 1px solid #dde3ea;
-  border-radius: 22px;
+  border-radius: 18px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2152,52 +2391,84 @@ defineExpose({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 18px;
+  padding: 6px 12px;
+  min-height: 44px;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .thread-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.btn-toggle-left-panel {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-toggle-left-panel:hover,
+.btn-toggle-left-panel.active {
+  background: #e8f0fe;
+  color: #0b57d0;
+  border-color: #a8c7fa;
 }
 
 .thread-avatar {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   font-weight: 800;
-  font-size: 15px;
+  font-size: 12.5px;
+  flex-shrink: 0;
 }
 
 .thread-name-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .thread-cust-name {
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 800;
   color: #0f172a;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .thread-honorific-pill,
 .thread-stage-pill {
-  font-size: 11.5px;
-  padding: 2px 9px;
+  font-size: 11px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: #f1f5f9;
   color: #334155;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .thread-stage-pill {
@@ -2206,13 +2477,10 @@ defineExpose({
   font-weight: 700;
 }
 
-.thread-sub-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 3px;
+.mode-indicator-text {
+  font-size: 11.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mode-indicator-text.is-human {
@@ -2228,18 +2496,20 @@ defineExpose({
 .thread-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-control-mode {
-  padding: 7px 13px;
+  padding: 5px 10px;
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .btn-takeover {
@@ -2344,21 +2614,22 @@ defineExpose({
   white-space: nowrap;
 }
 
-/* Messages Stream */
+/* Messages Stream (>= 80% Laptop Viewport Height, 6-8+ turns visible continuously) */
 .thread-messages-stream {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
-  padding: 18px 20px;
+  padding: 10px 16px;
   background: #f8fafd;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .msg-row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
   max-width: 82%;
 }
 
@@ -2372,13 +2643,13 @@ defineExpose({
 }
 
 .msg-side-avatar {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -2401,7 +2672,7 @@ defineExpose({
 .msg-bubble-col {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .msg-ai-bot .msg-bubble-col,
@@ -2412,8 +2683,9 @@ defineExpose({
 .msg-meta-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.2;
   color: #64748b;
 }
 
@@ -2449,11 +2721,11 @@ defineExpose({
 }
 
 .msg-bubble-box {
-  padding: 12px 15px;
-  border-radius: 18px;
+  padding: 8px 13px;
+  border-radius: 16px;
   font-size: 13.5px;
-  line-height: 1.55;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  line-height: 1.46;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .msg-customer .msg-bubble-box {
@@ -2479,94 +2751,135 @@ defineExpose({
 
 .msg-para {
   margin: 0;
+  white-space: pre-line;
 }
 
 .msg-para + .msg-para {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
+/* 1-Line 24px Compact Metadata Pill under AI Bot Turn */
 .ai-msg-footer-bar {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
-.ai-hooks-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.ai-compact-pill-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  max-height: 24px;
+  white-space: nowrap;
 }
 
-.mini-hook-chip {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 6px;
+.ai-compact-metrics-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
   background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.ai-action-buttons {
-  display: flex;
-  gap: 6px;
-}
-
-.btn-ai-msg-action {
-  padding: 3px 9px;
+.btn-ai-pill-toggle,
+.btn-ai-pill-report {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1;
   cursor: pointer;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #334155;
+  transition: all 0.14s ease;
 }
 
-.btn-teach-inline:hover {
+.btn-ai-pill-toggle:hover,
+.btn-ai-pill-toggle.expanded {
+  background: #e8f0fe;
+  border-color: #a8c7fa;
+  color: #0b57d0;
+}
+
+.btn-ai-pill-report:hover {
   border-color: #f59e0b;
   background: #fffbeb;
   color: #b45309;
 }
 
-.btn-harness-inline:hover {
-  border-color: #7c3aed;
-  background: #f5f3ff;
-  color: #6d28d9;
+.ai-expanded-detail-drawer {
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #334155;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
-/* Composer Footer */
+.ai-detail-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-detail-muted {
+  color: #64748b;
+  font-style: italic;
+}
+
+.ai-detail-profiling {
+  color: #0b57d0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+/* Compact Single-Row Composer Footer */
 .thread-composer-footer {
-  padding: 10px 16px 14px;
+  padding: 6px 12px 8px;
   background: #ffffff;
   border-top: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.composer-mode-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .composer-mode-tabs {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .composer-mode-btn {
-  padding: 5px 12px;
+  height: 34px;
+  padding: 0 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   border: 1px solid #cbd5e1;
   background: #f8fafc;
   color: #475569;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .composer-mode-btn.mode-sale.active {
@@ -2581,23 +2894,22 @@ defineExpose({
   border-color: #0b57d0;
 }
 
-.composer-mode-hint {
-  font-size: 11.5px;
-  color: #64748b;
-}
-
 .composer-input-row {
   display: flex;
-  gap: 10px;
-  align-items: stretch;
+  gap: 8px;
+  align-items: center;
 }
 
 .composer-textarea {
   flex: 1;
-  padding: 10px 14px;
-  border-radius: 14px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 76px;
+  padding: 7px 12px;
+  border-radius: 18px;
   border: 1.5px solid #cbd5e1;
-  font-size: 13.5px;
+  font-size: 13px;
+  line-height: 1.4;
   resize: none;
   outline: none;
   font-family: inherit;
@@ -2614,17 +2926,20 @@ defineExpose({
 }
 
 .composer-send-btns {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
   gap: 5px;
+  flex-shrink: 0;
 }
 
 .btn-send-main,
 .btn-send-convert {
-  padding: 8px 16px;
-  border-radius: 12px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
   border: none;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -3427,6 +3742,12 @@ defineExpose({
   display: none;
 }
 
+@media (min-width: 1025px) {
+  .inbox-left-panel.is-collapsed-desktop {
+    display: none !important;
+  }
+}
+
 @media (max-width: 1280px) {
   .inbox-left-panel {
     width: 300px;
@@ -3541,6 +3862,10 @@ defineExpose({
 
   .omnichannel-inbox-layout.mobile-pane-insight .inbox-left-panel,
   .omnichannel-inbox-layout.mobile-pane-insight .inbox-center-thread {
+    display: none !important;
+  }
+
+  .btn-toggle-left-panel {
     display: none !important;
   }
 

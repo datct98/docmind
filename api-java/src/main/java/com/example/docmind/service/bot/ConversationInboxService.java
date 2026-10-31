@@ -13,6 +13,7 @@ import com.example.docmind.entity.HarnessDimension;
 import com.example.docmind.entity.LearnedRuleEntity;
 import com.example.docmind.repository.ConversationMessageRepository;
 import com.example.docmind.repository.ConversationSessionRepository;
+import com.example.docmind.repository.KnowledgePageRepository;
 import com.example.docmind.repository.LearnedRuleRepository;
 import com.example.docmind.service.MetaLearningService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +46,7 @@ public class ConversationInboxService {
     private final FastApiAgentService fastApiAgentService;
     private final MetaLearningService metaLearningService;
     private final LearnedRuleRepository learnedRuleRepository;
+    private KnowledgePageRepository knowledgePageRepository;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Autowired
@@ -54,13 +56,26 @@ public class ConversationInboxService {
             FanpageBotService fanpageBotService,
             @Autowired(required = false) FastApiAgentService fastApiAgentService,
             @Autowired(required = false) MetaLearningService metaLearningService,
-            @Autowired(required = false) LearnedRuleRepository learnedRuleRepository) {
+            @Autowired(required = false) LearnedRuleRepository learnedRuleRepository,
+            @Autowired(required = false) KnowledgePageRepository knowledgePageRepository) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.fanpageBotService = fanpageBotService;
         this.fastApiAgentService = fastApiAgentService;
         this.metaLearningService = metaLearningService;
         this.learnedRuleRepository = learnedRuleRepository;
+        this.knowledgePageRepository = knowledgePageRepository;
+    }
+
+    public ConversationInboxService(
+            ConversationSessionRepository sessionRepository,
+            ConversationMessageRepository messageRepository,
+            FanpageBotService fanpageBotService,
+            FastApiAgentService fastApiAgentService,
+            MetaLearningService metaLearningService,
+            LearnedRuleRepository learnedRuleRepository) {
+        this(sessionRepository, messageRepository, fanpageBotService,
+                fastApiAgentService, metaLearningService, learnedRuleRepository, null);
     }
 
     public Map<String, Object> listSessions(UUID pageId, String controlMode, String search) {
@@ -252,7 +267,14 @@ public class ConversationInboxService {
         sessionRepository.save(session);
 
         List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        return toSessionDetailMap(session, updatedMsgs);
+        Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
+        List<Map<String, Object>> latestBubbles = serializeReplyBubbleList(botResp);
+        detail.put("latest_bot_message_id", botEntity.getId());
+        detail.put("reply_bubbles", latestBubbles);
+        detail.put("bubble_delays_ms", botResp.bubbleDelaysMs() != null
+                ? botResp.bubbleDelaysMs()
+                : latestBubbles.stream().map(b -> (Integer) b.get("typing_delay_ms")).toList());
+        return detail;
     }
 
     @Transactional
@@ -319,7 +341,7 @@ public class ConversationInboxService {
                 .pageId(pageId)
                 .customerPsid(psid)
                 .customerName(name)
-                .honorific(name.toLowerCase(Locale.ROOT).startsWith("anh ") ? "Anh" : "Chị")
+                .honorific(resolvePageDefaultCustomerPronoun(pageId))
                 .activeTopic("Tư vấn dịch vụ chuẩn Y khoa")
                 .topicFamily("GENERAL")
                 .controlMode("BOT_ACTIVE")
@@ -486,7 +508,7 @@ public class ConversationInboxService {
                 .pageId(pageId)
                 .customerPsid(psid)
                 .customerName(displayName)
-                .honorific("Chị")
+                .honorific(resolvePageDefaultCustomerPronoun(pageId))
                 .activeTopic("Tư vấn dịch vụ chuẩn Y khoa")
                 .topicFamily("GENERAL")
                 .controlMode("BOT_ACTIVE")
@@ -504,6 +526,20 @@ public class ConversationInboxService {
                 .build();
     }
 
+    private String resolvePageDefaultCustomerPronoun(UUID pageId) {
+        if (pageId != null && knowledgePageRepository != null) {
+            try {
+                return knowledgePageRepository.findById(pageId)
+                        .map(p -> p.getPersonaConfig() != null
+                                ? p.getPersonaConfig().resolvedDefaultCustomerPronoun()
+                                : "mình")
+                        .orElse("mình");
+            } catch (Exception ignored) {
+            }
+        }
+        return "mình";
+    }
+
     private void applyBotResponseToSession(
             ConversationSessionEntity session,
             String customerMessage,
@@ -517,9 +553,6 @@ public class ConversationInboxService {
         if (botResponse.salesStage() != null && !botResponse.salesStage().isBlank()) {
             session.setSalesStage(botResponse.salesStage());
         }
-        if (botResponse.replyText() != null && botResponse.replyText().contains("Anh")) {
-            session.setHonorific("Anh");
-        }
         if (botResponse.extractedLead() != null) {
             if (botResponse.extractedLead().phoneNumber() != null && !botResponse.extractedLead().phoneNumber().isBlank()) {
                 session.setCapturedPhone(botResponse.extractedLead().phoneNumber());
@@ -530,6 +563,9 @@ public class ConversationInboxService {
         }
         CustomerInsightDto insight = botResponse.customerInsight();
         if (insight != null) {
+            if (insight.honorific() != null && !insight.honorific().isBlank()) {
+                session.setHonorific(insight.honorific().strip());
+            }
             session.setBuyingTemperature(insight.buyingTemperature());
             session.setPreviousTemperature(insight.previousTemperature());
             session.setTemperatureDelta(insight.temperatureDelta() != null ? insight.temperatureDelta() : 0);
@@ -557,19 +593,80 @@ public class ConversationInboxService {
         }
     }
 
+    private List<Map<String, Object>> serializeReplyBubbleList(FanpageBotResponse resp) {
+        if (resp == null || resp.replyBubbles() == null) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (FanpageBotResponse.ReplyBubble b : resp.replyBubbles()) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                continue;
+            }
+            Map<String, Object> bm = new LinkedHashMap<>();
+            bm.put("text", b.text());
+            bm.put("typing_delay_ms", Math.max(0, b.typingDelayMs()));
+            out.add(bm);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> serializeSkillSummaryList(List<com.example.docmind.dto.bot.AgentSkillDto> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (com.example.docmind.dto.bot.AgentSkillDto s : skills) {
+            if (s == null) continue;
+            Map<String, Object> sm = new LinkedHashMap<>();
+            if (s.id() != null) sm.put("id", s.id().toString());
+            sm.put("code", s.code() != null ? s.code() : "");
+            sm.put("name", s.name() != null ? s.name() : (s.code() != null ? s.code() : ""));
+            sm.put("category", s.category() != null ? s.category() : "");
+            out.add(sm);
+        }
+        return out;
+    }
+
     private String serializeBotMetadata(FanpageBotResponse resp) {
         try {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("sales_stage", resp.salesStage());
             meta.put("confidence_score", resp.confidenceScore());
             meta.put("triggered_hooks", resp.triggeredHooks() != null ? resp.triggeredHooks() : List.of());
-            meta.put("active_skills", resp.activeSkills() != null
-                    ? resp.activeSkills().stream()
+            List<com.example.docmind.dto.bot.AgentSkillDto> effActivated =
+                    resp.activatedSkills() != null ? resp.activatedSkills()
+                            : (resp.activeSkills() != null ? resp.activeSkills() : List.of());
+            meta.put("available_skills", resp.availableSkills() != null
+                    ? resp.availableSkills().stream()
                             .filter(s -> s != null)
                             .map(s -> s.code() != null ? s.code() : s.name())
                             .filter(s -> s != null && !s.isBlank())
                             .toList()
                     : List.of());
+            meta.put("selected_skills", resp.selectedSkills() != null
+                    ? resp.selectedSkills().stream()
+                            .filter(s -> s != null)
+                            .map(s -> s.code() != null ? s.code() : s.name())
+                            .filter(s -> s != null && !s.isBlank())
+                            .toList()
+                    : List.of());
+            meta.put("activated_skills", serializeSkillSummaryList(effActivated));
+            meta.put("active_skills", effActivated.stream()
+                    .filter(s -> s != null)
+                    .map(s -> s.code() != null ? s.code() : s.name())
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList());
+            if (resp.turnProfiling() != null) {
+                Map<String, Object> prof = new LinkedHashMap<>();
+                prof.put("input_tokens", resp.turnProfiling().inputTokens());
+                prof.put("output_tokens", resp.turnProfiling().outputTokens());
+                prof.put("reflection_tokens", resp.turnProfiling().reflectionTokens());
+                prof.put("model_latency_ms", resp.turnProfiling().modelLatencyMs());
+                prof.put("retrieval_latency_ms", resp.turnProfiling().retrievalLatencyMs());
+                prof.put("retry_count", resp.turnProfiling().retryCount());
+                prof.put("total_turn_ms", resp.turnProfiling().totalTurnMs());
+                meta.put("turn_profiling", prof);
+            }
             meta.put("applied_rules", resp.appliedRules() != null
                     ? resp.appliedRules().stream()
                             .filter(r -> r != null && r.id() != null)
@@ -578,12 +675,11 @@ public class ConversationInboxService {
                     : List.of());
             meta.put("needs_human_handoff", resp.needsHumanHandoff());
             meta.put("handoff_reason", resp.handoffReason());
-            meta.put("reply_bubbles", resp.replyBubbles() != null
-                    ? resp.replyBubbles().stream()
-                            .filter(b -> b != null && b.text() != null && !b.text().isBlank())
-                            .map(FanpageBotResponse.ReplyBubble::text)
-                            .toList()
-                    : List.of());
+            List<Map<String, Object>> serializedBubbles = serializeReplyBubbleList(resp);
+            meta.put("reply_bubbles", serializedBubbles);
+            meta.put("bubble_delays_ms", resp.bubbleDelaysMs() != null
+                    ? resp.bubbleDelaysMs()
+                    : serializedBubbles.stream().map(b -> (Integer) b.get("typing_delay_ms")).toList());
             return objectMapper.writeValueAsString(meta);
         } catch (Exception e) {
             log.warn("Không thể tuần tự hóa metadata tin nhắn AI_BOT: {}", e.getMessage());
@@ -678,8 +774,29 @@ public class ConversationInboxService {
                     if (meta.get("triggered_hooks") != null) {
                         item.put("triggered_hooks", meta.get("triggered_hooks"));
                     }
+                    if (meta.get("activated_skills") != null) {
+                        item.put("activated_skills", meta.get("activated_skills"));
+                    }
+                    if (meta.get("available_skills") != null) {
+                        item.put("available_skills", meta.get("available_skills"));
+                    }
+                    if (meta.get("selected_skills") != null) {
+                        item.put("selected_skills", meta.get("selected_skills"));
+                    }
+                    if (meta.get("active_skills") != null) {
+                        item.put("active_skills", meta.get("active_skills"));
+                    }
+                    if (meta.get("turn_profiling") != null) {
+                        item.put("turn_profiling", meta.get("turn_profiling"));
+                    }
+                    if (meta.get("applied_rules") != null) {
+                        item.put("applied_rules", meta.get("applied_rules"));
+                    }
                     if (meta.get("reply_bubbles") != null) {
                         item.put("reply_bubbles", meta.get("reply_bubbles"));
+                    }
+                    if (meta.get("bubble_delays_ms") != null) {
+                        item.put("bubble_delays_ms", meta.get("bubble_delays_ms"));
                     }
                 } catch (Exception ignored) {
                 }

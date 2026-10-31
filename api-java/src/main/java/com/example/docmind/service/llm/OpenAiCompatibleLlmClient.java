@@ -50,8 +50,25 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             int maxTokens,
             boolean containedThinkField,
             String reasoningBrief,
-            long latencyMs
+            long latencyMs,
+            int promptChars,
+            int promptTokens,
+            int completionTokens,
+            int reasoningTokens,
+            int cachedTokens
     ) {
+        public OpenAiCallTelemetry(
+                String provider,
+                String model,
+                ThinkingMode thinkingMode,
+                int maxTokens,
+                boolean containedThinkField,
+                String reasoningBrief,
+                long latencyMs
+        ) {
+            this(provider, model, thinkingMode, maxTokens, containedThinkField, reasoningBrief, latencyMs, 0, 0, 0, 0, 0);
+        }
+
         public int thinkingChars() {
             return reasoningBrief != null ? reasoningBrief.length() : 0;
         }
@@ -134,7 +151,9 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     public String complete(String prompt, ReasoningBudget budget) {
         long startNs = System.nanoTime();
         String safePrompt = prompt != null ? prompt : "";
-        String effort = (budget != null && budget.reasoningEffort() != null)
+        boolean suppressBudgetReasoningEffortForQwen = "qwen".equalsIgnoreCase(provider)
+                && (reasoningEffort == null || reasoningEffort.isBlank());
+        String effort = (!suppressBudgetReasoningEffortForQwen && budget != null && budget.reasoningEffort() != null)
                 ? budget.reasoningEffort()
                 : (reasoningEffort != null ? reasoningEffort : "default");
         ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
@@ -153,8 +172,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             try {
                 rawJson = executePostWithRetry(body, budget);
             } catch (HttpClientErrorException.BadRequest badReq) {
-                if (body.containsKey("reasoning_effort") || body.containsKey("max_tokens")) {
-                    log.info("[LLM] Provider {} rejected optional reasoning_effort/max_tokens (400), retrying standard payload", provider);
+                if (body.containsKey("reasoning_effort") || body.containsKey("max_tokens") || body.containsKey("enable_thinking")) {
+                    log.info("[LLM] Provider {} rejected optional reasoning_effort/max_tokens/enable_thinking (400), retrying standard payload", provider);
                     rawJson = executePostWithRetry(buildRequestBody(safePrompt, false, budget), budget);
                 } else {
                     throw badReq;
@@ -179,7 +198,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     targetTokens,
                     hasThinkField,
                     stripped.reasoningBrief(),
-                    latencyMs
+                    latencyMs,
+                    safePrompt.length(),
+                    parsed.promptTokens(),
+                    parsed.completionTokens(),
+                    parsed.reasoningTokens(),
+                    parsed.cachedTokens()
             );
             boolean isFallback = result != null && result.startsWith("[" + provider + "-error]");
             log.info("[LLM] Response received from provider={}, model={}, latencyMs={}, promptTokens={}, completionTokens={}, reasoningTokens={}, cachedTokens={}, status={}",
@@ -226,13 +250,20 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         body.put("temperature", temp);
         body.put("stream", false);
         if (includeOptionalTuning) {
-            String effort = (budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank())
-                    ? budget.reasoningEffort()
-                    : this.reasoningEffort;
+            boolean suppressBudgetReasoningEffortForQwen = "qwen".equalsIgnoreCase(provider)
+                    && (this.reasoningEffort == null || this.reasoningEffort.isBlank());
+            String effort = suppressBudgetReasoningEffortForQwen
+                    ? null
+                    : ((budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank())
+                        ? budget.reasoningEffort()
+                        : this.reasoningEffort);
             if (effort != null && !effort.isBlank()) {
                 body.put("reasoning_effort", effort);
             }
             ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
+            if ("qwen".equalsIgnoreCase(provider)) {
+                body.put("enable_thinking", false);
+            }
             int maxToks = (budget != null && budget.maxTokens() > 0)
                     ? budget.maxTokens()
                     : (thinkingMode != null ? thinkingMode.maxOutputTokens() : props.getMaxTokens());
@@ -283,9 +314,15 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private String executePost(Map<String, Object> body, ReasoningBudget budget) {
         RestClient clientToUse = this.http;
         if (budget != null) {
-            if (budget.complexity() == QueryComplexity.SIMPLE && simpleHttp != null) {
+            if (budget.timeoutSeconds() > ReasoningBudget.DEEP_TIMEOUT_SECONDS) {
+                clientToUse = this.http;
+            } else if (budget.complexity() == QueryComplexity.SIMPLE
+                    && (budget.timeoutSeconds() <= 0 || budget.timeoutSeconds() <= ReasoningBudget.SIMPLE_TIMEOUT_SECONDS)
+                    && simpleHttp != null) {
                 clientToUse = simpleHttp;
-            } else if (budget.complexity() == QueryComplexity.DEEP_REASONING && deepHttp != null) {
+            } else if ((budget.complexity() == QueryComplexity.DEEP_REASONING
+                    || budget.timeoutSeconds() > ReasoningBudget.SIMPLE_TIMEOUT_SECONDS)
+                    && deepHttp != null) {
                 clientToUse = deepHttp;
             }
         }
@@ -397,21 +434,27 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                         promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
             }
 
-            JsonNode message = choices.get(0).path("message");
+            JsonNode choice0 = choices.get(0);
+            String finishReason = choice0.path("finish_reason").asText("");
+            JsonNode message = choice0.path("message");
             String content = message.hasNonNull("content") ? message.get("content").asText() : "";
             String reasoning = message.hasNonNull("reasoning_content") ? message.get("reasoning_content").asText() : "";
 
-            // Loại bỏ thẻ <think>...</think> nếu là model reasoning (DeepSeek-R1)
-            String text = content.replaceAll("(?s)<think>.*?</think>", "").strip();
+            // Loại bỏ thẻ <think>...</think> (kể cả thẻ <think> bị cắt cụt chưa đóng do chạm trần max_tokens)
+            String text = content.replaceAll("(?s)<think>.*?(?:</think>|$)", "").strip();
 
-            // Nếu content rỗng nhưng có reasoning_content, sử dụng reasoning_content
-            if (text.isEmpty() && !reasoning.isBlank()) {
+            // Chỉ trích xuất từ reasoning_content khi bên trong có phần trả lời thực tế nằm sau thẻ đóng </think>
+            // (TUYỆT ĐỐI KHÔNG chép nguyên văn chuỗi suy luận nội tâm thô ra ngoài làm câu trả lời khách hàng khi content rỗng / finish_reason=length!)
+            if (text.isEmpty() && !reasoning.isBlank() && reasoning.contains("</think>") && !"length".equalsIgnoreCase(finishReason)) {
                 text = reasoning.replaceAll("(?s)<think>.*?</think>", "").strip();
             }
 
-            if (text.isEmpty()) {
-                boolean hadHiddenReasoning = reasoningTokens > 0;
-                return new ParsedCompletion(buildFallbackAnswer(prompt, "Nội dung trả lời rỗng từ " + provider),
+            if (text.isEmpty() || isTruncatedReasoningMonologueOnLengthLimit(text, finishReason, prompt)) {
+                boolean hadHiddenReasoning = reasoningTokens > 0
+                        || !reasoning.isBlank()
+                        || content.contains("<think>")
+                        || "length".equalsIgnoreCase(finishReason);
+                return new ParsedCompletion(buildFallbackAnswer(prompt, "Nội dung trả lời bị cắt cụt/rỗng từ " + provider),
                         promptTokens, completionTokens, reasoningTokens, cachedTokens, hadHiddenReasoning);
             }
 
@@ -420,6 +463,26 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             log.warn("[{}] Lỗi parse JSON phản hồi LLM: {}", provider, e.getMessage());
             return new ParsedCompletion(buildFallbackAnswer(prompt, "Lỗi giải mã JSON phản hồi: " + e.getMessage()), 0, 0, 0, 0, false);
         }
+    }
+
+    private static boolean isTruncatedReasoningMonologueOnLengthLimit(String text, String finishReason, String prompt) {
+        if (!"length".equalsIgnoreCase(finishReason) || text == null || text.isBlank()) {
+            return false;
+        }
+        String stripped = text.strip();
+        if (stripped.startsWith("{") && stripped.endsWith("}")) {
+            return false;
+        }
+        String low = stripped.toLowerCase(java.util.Locale.ROOT);
+        if (low.startsWith("we need ")
+                || low.startsWith("let's ")
+                || low.startsWith("the user ")
+                || low.contains("need produce final json")) {
+            return true;
+        }
+        boolean expectsStructuredJson = prompt != null
+                && (prompt.contains("\"bubbles\"") || prompt.contains("CHỈ XUẤT 1 JSON OBJECT"));
+        return expectsStructuredJson && (!stripped.contains("{") || !stripped.contains("\"bubbles\""));
     }
 
     private record StrippedReasoningResult(String cleanedText, String reasoningBrief) {

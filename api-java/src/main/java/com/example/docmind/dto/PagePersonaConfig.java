@@ -484,7 +484,7 @@ public record PagePersonaConfig(
                 if (s != null && !s.isBlank()) merged.add(s.strip());
             }
         }
-        if (domainKeywords != null) {
+        if (merged.isEmpty() && domainKeywords != null) {
             for (String s : domainKeywords) {
                 if (s != null && !s.isBlank()) merged.add(s.strip());
             }

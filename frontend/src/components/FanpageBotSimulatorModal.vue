@@ -1,21 +1,27 @@
 <template>
   <div v-if="isOpen" class="modal-backdrop" @click.self="$emit('close')">
     <div class="fb-sim-modal">
-      <!-- Top Bar -->
+      <!-- Top Bar (Compact Single-Line Laptop Layout) -->
       <div class="fb-sim-header">
         <div class="fb-sim-title-row">
           <div class="fb-icon-badge">💬</div>
-          <div>
-            <h3 class="fb-sim-title">
-              Giả lập Bot Trực Tin Nhắn Fanpage FB
-              <span class="api-pill">POST /api/bot/fanpage/message</span>
-            </h3>
-            <p class="fb-sim-subtitle">
-              Prompt riêng · Không trích dẫn nguồn · Không Q&A nội bộ · Nhịp tư vấn tự nhiên · Tự động đẩy ca khó cho Người xử lý
-            </p>
-          </div>
+          <h3 class="fb-sim-title">
+            Giả lập Bot Trực Tin Nhắn Fanpage FB
+            <span class="api-pill">ACI V2 · POST /api/bot/fanpage/message</span>
+          </h3>
         </div>
-        <button class="btn-close-modal" @click="$emit('close')">×</button>
+        <div class="fb-sim-header-actions">
+          <button
+            type="button"
+            class="btn-toggle-telemetry-desktop"
+            :class="{ active: showTelemetryPane }"
+            title="Ẩn/Hiện cột Radar Tâm lý & Kịch bản bên phải để tối đa hóa khung hội thoại trên Laptop"
+            @click="showTelemetryPane = !showTelemetryPane"
+          >
+            {{ showTelemetryPane ? '📊 Ẩn Radar AI ▸' : '📊 Mở Radar AI ◂' }}
+          </button>
+          <button class="btn-close-modal" @click="$emit('close')">×</button>
+        </div>
       </div>
 
       <!-- Mobile 2-Tab Switcher (Visible on <= 900px) -->
@@ -43,10 +49,13 @@
       </div>
 
       <!-- Main Split Layout -->
-      <div class="fb-sim-body" :class="'mobile-sim-' + mobileSimTab">
+      <div
+        class="fb-sim-body"
+        :class="['mobile-sim-' + mobileSimTab, { 'telemetry-collapsed': !showTelemetryPane }]"
+      >
         <!-- Left: Realistic Facebook Messenger Chat View -->
         <div class="messenger-pane">
-          <!-- Messenger Header -->
+          <!-- Messenger Header (Includes Compact Idle Simulation Controls) -->
           <div class="messenger-topbar" :class="{ 'is-handoff': isHandedOffToHuman }">
             <div class="page-avatar-row">
               <div class="page-avatar">
@@ -59,44 +68,37 @@
                 <div class="bot-live-status">
                   <span class="status-dot" :class="isHandedOffToHuman ? 'dot-handoff' : 'dot-active'"></span>
                   <span v-if="!isHandedOffToHuman">
-                    Bot AI đang trực · Nhịp: <strong>{{ formatStageLabel(currentStage) }}</strong>
+                    AI V2 đang trực · <strong>{{ formatStageLabel(currentStage) }}</strong>
                   </span>
                   <span v-else class="handoff-status-text">
-                    🟠 ĐÃ CHUYỂN NHÂN VIÊN THẬT XỬ LÝ (Bot đã tạm dừng tự động trả lời)
+                    🟠 ĐÃ CHUYỂN NHÂN VIÊN THẬT XỬ LÝ
                   </span>
                 </div>
               </div>
             </div>
 
             <div class="messenger-actions">
-              <button class="btn-skill-sim" @click="isSkillModalOpen = true" title="Quản lý Kho Kỹ năng Tâm lý, Chốt Sale & Giao tiếp">
-                🎯 Kỹ năng Agent
-              </button>
-              <button class="btn-reset-sim" @click="resetSimulation" title="Làm mới phiên chat của khách">
-                🔄 Làm mới phiên
-              </button>
-            </div>
-          </div>
-
-          <!-- Idle Simulation Toolbar -->
-          <div class="idle-simulation-bar">
-            <span class="idle-bar-label">⏱️ Giả lập Im lặng / Độ trễ:</span>
-            <div class="idle-btn-group">
               <button
                 class="btn-idle-sim"
                 :disabled="isDeliveringBubbles || isSending"
                 @click="simulateIdle(300)"
-                title="Giả lập khách hàng im lặng không trả lời sau 5 phút (-18% nhiệt độ, kích hoạt Proactive Re-engagement)"
+                title="Giả lập khách hàng im lặng sau 5 phút"
               >
-                ⏳ Khách im lặng 5p
+                ⏳ 5p
               </button>
               <button
                 class="btn-idle-sim"
                 :disabled="isDeliveringBubbles || isSending"
                 @click="simulateIdle(1800)"
-                title="Giả lập khách hàng im lặng không trả lời sau 30 phút (-35% nhiệt độ, kích hoạt Proactive Re-engagement)"
+                title="Giả lập khách hàng im lặng sau 30 phút"
               >
-                ⏳ Khách im lặng 30p
+                ⏳ 30p
+              </button>
+              <button class="btn-skill-sim" @click="isSkillModalOpen = true" title="Quản lý Kho Kỹ năng Tâm lý, Chốt Sale & Giao tiếp">
+                🎯 Kỹ năng
+              </button>
+              <button class="btn-reset-sim" @click="resetSimulation" title="Làm mới phiên chat của khách">
+                🔄 Làm mới
               </button>
             </div>
           </div>
@@ -138,6 +140,7 @@
               <div v-if="item.role === 'assistant'" class="assistant-bubble-col">
                 <div
                   class="msg-bubble assistant"
+                  style="white-space: pre-line;"
                   :class="[{ 'handoff-bubble': item.isHandoff, 'is-corrected': item.isCorrected, 'is-optimized': item.isOptimized }]"
                 >
                   <div v-if="item.isOptimized" class="bubble-optimized-pill">
@@ -146,67 +149,64 @@
                   {{ item.text }}
                 </div>
 
+                <!-- 1-Line 24px Compact Metadata Pill under Assistant Turn (Collapsed by default) -->
                 <div
                   v-if="!isDeliveringBubbles && chatItems[idx + 1]?.role !== 'assistant'"
                   class="assistant-bubble-meta"
                 >
-                  <!-- In-Loop Deterministic Guardrail Hooks (<5ms) -->
-                  <div
-                    v-if="item.triggeredHooks && item.triggeredHooks.length > 0"
-                    class="triggered-hooks-badge"
-                  >
-                    <span class="badge-icon">🛡️</span>
-                    <span class="badge-label">Guardrail (&lt;5ms):</span>
+                  <div class="sim-compact-pill-row">
                     <span
-                      v-for="hk in item.triggeredHooks"
-                      :key="hk"
-                      class="hook-chip"
-                      :title="getHookTooltip(hk)"
+                      class="sim-compact-metrics-pill"
+                      title="Kiến trúc ACI V2 · Số kỹ năng kích hoạt · Số quy tắc áp dụng · Tổng thời gian xử lý lượt"
                     >
-                      {{ formatHookLabel(hk) }}
+                      🛡️ V2 · ⚡ {{ (item.activeSkills || []).length }} · 📋 {{ (item.appliedRules || []).length }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
                     </span>
-                  </div>
-
-                  <div
-                    v-if="item.activeSkills && item.activeSkills.length > 0"
-                    class="active-skills-badge"
-                  >
-                    <span class="badge-icon">⚡</span>
-                    <span class="badge-label">Kỹ năng kích hoạt:</span>
-                    <span
-                      v-for="sk in item.activeSkills"
-                      :key="sk.id || sk.code"
-                      class="skill-chip-mini"
-                      :title="sk.tactical_instructions"
-                    >
-                      {{ formatSkillCategoryIcon(sk.category) }} {{ sk.name }}
-                    </span>
-                  </div>
-
-                  <div
-                    v-if="item.appliedRules && item.appliedRules.length > 0"
-                    class="applied-rules-badge"
-                  >
-                    <span class="badge-icon">🛡️</span>
-                    <span class="badge-label">Đã áp dụng {{ item.appliedRules.length }} quy tắc:</span>
-                    <span
-                      v-for="r in item.appliedRules"
-                      :key="r.id"
-                      class="rule-chip"
-                      :title="r.generalized_rule"
-                    >
-                      [{{ r.category || r.dimension || 'RULE' }}] {{ r.generalized_rule ? (r.generalized_rule.length > 25 ? r.generalized_rule.substring(0, 25) + '...' : r.generalized_rule) : '' }}
-                    </span>
-                  </div>
-
-                  <div class="assistant-actions-group">
                     <button
-                      class="btn-teach-fb"
+                      type="button"
+                      class="btn-sim-pill-toggle"
+                      :class="{ expanded: isSimTurnExpanded(idx) }"
+                      title="Mở/Đóng chi tiết kỹ năng, quy tắc & token của lượt này"
+                      @click="toggleSimTurnDetail(idx)"
+                    >
+                      Chi tiết AI {{ isSimTurnExpanded(idx) ? '▴' : '▾' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-sim-pill-report"
                       title="Báo câu trả lời này bị sai và chỉ dẫn nguyên tắc đúng cho AI"
                       @click="openTeachForMessage(idx)"
                     >
-                      💬 Báo sai & Dạy AI
+                      Báo sai
                     </button>
+                  </div>
+
+                  <div v-if="isSimTurnExpanded(idx)" class="sim-expanded-detail-drawer">
+                    <div class="sim-detail-line">
+                      <strong>⚡ Kỹ năng ({{ (item.activeSkills || []).length }}):</strong>
+                      <span v-if="item.activeSkills && item.activeSkills.length > 0">
+                        {{ item.activeSkills.map(sk => `${formatSkillCategoryIcon(sk.category)} ${sk.name || sk.code}`).join(' · ') }}
+                      </span>
+                      <span v-else class="sim-detail-muted">Không bật skill thừa (phản hồi trực tiếp)</span>
+                    </div>
+                    <div v-if="item.triggeredHooks && item.triggeredHooks.length > 0" class="sim-detail-line">
+                      <strong>🛡️ Guardrail:</strong>
+                      <span>{{ item.triggeredHooks.map(hk => formatHookLabel(hk)).join(' · ') }}</span>
+                    </div>
+                    <div v-if="item.appliedRules && item.appliedRules.length > 0" class="sim-detail-line">
+                      <strong>📋 Quy tắc ({{ item.appliedRules.length }}):</strong>
+                      <span>
+                        {{ item.appliedRules.map(r => r.rule_code || r.ruleCode || r.category || r.dimension || 'RULE').join(' · ') }}
+                      </span>
+                    </div>
+                    <div v-if="item.turnProfiling" class="sim-detail-line sim-detail-profiling">
+                      <strong>⏱️ Profiling:</strong>
+                      <span>
+                        In {{ item.turnProfiling.input_tokens ?? item.turnProfiling.inputTokens ?? 0 }} tok ·
+                        Out {{ item.turnProfiling.output_tokens ?? item.turnProfiling.outputTokens ?? 0 }} tok ·
+                        Reflect {{ item.turnProfiling.reflection_tokens ?? item.turnProfiling.reflectionTokens ?? 0 }} tok ·
+                        LLM {{ item.turnProfiling.model_latency_ms ?? item.turnProfiling.modelLatencyMs ?? 0 }}ms
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -309,7 +309,7 @@
                 <span>🧠 Radar Thấu hiểu Tâm lý &amp; Insight Khách hàng</span>
               </div>
               <span v-if="currentInsight" class="honorific-pill">
-                Xưng hô: <strong>Em – {{ currentInsight.honorific || 'Chị' }}</strong>
+                Xưng hô: <strong>{{ (activePage && activePage.persona_config && activePage.persona_config.self_pronoun) || 'Em' }} – {{ currentInsight.honorific || (activePage && activePage.persona_config && activePage.persona_config.default_customer_pronoun) || 'mình' }}</strong>
               </span>
             </div>
 
@@ -416,7 +416,7 @@
               <!-- Active Skills Engaged -->
               <div v-if="latestActiveSkills && latestActiveSkills.length" class="insight-block">
                 <div class="skills-row-header">
-                  <span class="insight-sub-label">⚡ Top Kỹ năng Chuyên gia đang kích hoạt ({{ latestActiveSkills.length }}):</span>
+                  <span class="insight-sub-label">⚡ Kỹ năng kích hoạt ở lượt này ({{ latestActiveSkills.length }}):</span>
                   <button class="btn-link-mini" @click="isSkillModalOpen = true">Cấu hình Skills →</button>
                 </div>
                 <div class="insight-chips">
@@ -733,7 +733,7 @@
               <div v-if="conversationAuditResult.state_summary" class="h-metric-item">
                 <span class="h-m-label">Danh xưng / Khung giờ đã chốt</span>
                 <span class="h-m-val delta-pos">
-                  {{ conversationAuditResult.state_summary.resolved_honorific || 'Chị' }} · {{ conversationAuditResult.state_summary.confirmed_time_slot || 'Chưa chốt giờ' }}
+                  {{ conversationAuditResult.state_summary.resolved_honorific || (activePage && activePage.persona_config && activePage.persona_config.default_customer_pronoun) || 'mình' }} · {{ conversationAuditResult.state_summary.confirmed_time_slot || 'Chưa chốt giờ' }}
                 </span>
               </div>
               <div v-if="conversationAuditResult.state_summary?.captured_phone" class="h-metric-item">
@@ -868,7 +868,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { ref, reactive, nextTick, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 import TeachAiModal from './TeachAiModal.vue'
 import AgentSkillModal from './AgentSkillModal.vue'
@@ -922,6 +922,24 @@ const currentInsight = ref(null)
 const latestActiveSkills = ref([])
 const isSkillModalOpen = ref(false)
 const chatScrollRef = ref(null)
+const showTelemetryPane = ref(typeof window !== 'undefined' ? window.innerWidth > 1380 : true)
+const expandedSimTurnDetails = reactive({})
+
+const isSimTurnExpanded = (idx) => Boolean(expandedSimTurnDetails[idx])
+const toggleSimTurnDetail = (idx) => {
+  expandedSimTurnDetails[idx] = !expandedSimTurnDetails[idx]
+}
+
+const formatSimTurnDurationSec = (item) => {
+  const rawMs = item?.turnProfiling?.total_turn_ms
+    ?? item?.turnProfiling?.totalTurnMs
+    ?? item?.turnProfiling?.model_latency_ms
+    ?? item?.turnProfiling?.modelLatencyMs
+    ?? 0
+  const ms = Number(rawMs) || 0
+  if (ms <= 0) return '0.0'
+  return (ms / 1000).toFixed(1)
+}
 
 // =========================================================================
 // HARNESS² RECURSIVE OPTIMIZATION & GUARDRAILS STATE
@@ -1018,52 +1036,99 @@ const filterDisplayedAppliedRules = (rules, isHandoff) => {
   })
 }
 
+const normalizeSimulatorReplyBubbles = (response) => {
+  if (response && Array.isArray(response.reply_bubbles) && response.reply_bubbles.length > 0) {
+    const clean = response.reply_bubbles
+      .map((b, idx) => ({
+        text: String(b && typeof b === 'object' ? (b.text || '') : (b || '')).trim(),
+        typing_delay_ms: Math.max(0, Number((b && typeof b === 'object' ? b.typing_delay_ms : null) ?? (idx === 0 ? 0 : 2000)))
+      }))
+      .filter(b => b.text.length > 0)
+    // Chống tách kép: Nếu Backend đã tách >= 2 bubbles thì render đúng 1-1; chỉ fallback khi bản ghi cũ có 1 phần tử chứa \n\n
+    if (clean.length === 1 && /\r?\n\s*\r?\n+/.test(clean[0].text)) {
+      const parts = clean[0].text.split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
+      if (parts.length > 1) {
+        return parts.map((text, idx) => ({
+          text,
+          typing_delay_ms: idx === 0 ? clean[0].typing_delay_ms : 2000
+        }))
+      }
+    }
+    if (clean.length > 0) return clean
+  }
+  const fallbackText = String(response?.reply_text || '').trim()
+  if (!fallbackText) return []
+  const fallbackParts = fallbackText.split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
+  return fallbackParts.map((text, idx) => ({ text, typing_delay_ms: idx === 0 ? 0 : 2000 }))
+}
+
+const appendDeliveredAssistantBubbleToHistory = (assistantHistoryIdx, bubbleText) => {
+  const cleanText = String(bubbleText || '').replace(/\r?\n\s*\r?\n+/g, ' ').trim()
+  if (!cleanText) return assistantHistoryIdx
+  if (
+    assistantHistoryIdx >= 0 &&
+    assistantHistoryIdx < conversationHistory.value.length &&
+    conversationHistory.value[assistantHistoryIdx]?.role === 'assistant'
+  ) {
+    const prev = String(conversationHistory.value[assistantHistoryIdx].content || '').trim()
+    conversationHistory.value[assistantHistoryIdx].content = prev ? `${prev} ${cleanText}` : cleanText
+    return assistantHistoryIdx
+  }
+  conversationHistory.value.push({ role: 'assistant', content: cleanText })
+  return conversationHistory.value.length - 1
+}
+
 const deliverBubbles = async (response) => {
   const myGen = ++bubbleDeliveryGeneration
-  const bubbles = response.reply_bubbles && response.reply_bubbles.length > 0
-    ? response.reply_bubbles
-    : [{ text: response.reply_text, typing_delay_ms: 1000 }]
+  const bubbles = normalizeSimulatorReplyBubbles(response)
 
   const appliedRules = filterDisplayedAppliedRules(response.applied_rules || [], Boolean(response.needs_human_handoff))
-  const activeSkills = response.active_skills || []
+  const activeSkills = response.activated_skills ?? response.active_skills ?? []
   const triggeredHooks = response.triggered_hooks || response.triggeredHooks || []
+  const turnProfiling = response.turn_profiling || response.turnProfiling || null
+  let assistantHistoryIdx = -1
 
   isDeliveringBubbles.value = true
   try {
     for (let i = 0; i < bubbles.length; i++) {
-      if (myGen !== bubbleDeliveryGeneration) return
-      if (i > 0) {
+      if (myGen !== bubbleDeliveryGeneration) return assistantHistoryIdx
+      const rawDelay = Math.max(0, Number(bubbles[i]?.typing_delay_ms ?? (i === 0 ? 0 : 450)))
+      if (rawDelay > 0) {
         isTyping.value = true
         scrollToBottom()
-        const rawDelay = bubbles[i].typing_delay_ms || 450
-        if (rawDelay >= 5000) {
-          const totalSec = Math.round(rawDelay / 1000)
-          for (let sec = totalSec; sec >= 1; sec--) {
-            if (myGen !== bubbleDeliveryGeneration) return
-            thinkingRemainingSec.value = sec
+        if (rawDelay >= 2000) {
+          let remainingMs = rawDelay
+          while (remainingMs > 0) {
+            if (myGen !== bubbleDeliveryGeneration) return assistantHistoryIdx
+            thinkingRemainingSec.value = Math.ceil(remainingMs / 1000)
             scrollToBottom()
-            await sleep(1000)
+            const stepMs = Math.min(1000, remainingMs)
+            await sleep(stepMs)
+            remainingMs -= stepMs
           }
           thinkingRemainingSec.value = 0
         } else {
           thinkingRemainingSec.value = 0
-          const delay = Math.max(450, Math.min(900, rawDelay))
-          await sleep(delay)
+          await sleep(rawDelay)
         }
       }
-      if (myGen !== bubbleDeliveryGeneration) return
+      if (myGen !== bubbleDeliveryGeneration) return assistantHistoryIdx
       isTyping.value = false
       thinkingRemainingSec.value = 0
       chatItems.value.push({
         role: 'assistant',
         text: bubbles[i].text,
+        typingDelayMs: rawDelay,
         isHandoff: response.needs_human_handoff,
         appliedRules: i === bubbles.length - 1 ? appliedRules : [],
         activeSkills: i === bubbles.length - 1 ? activeSkills : [],
-        triggeredHooks: i === bubbles.length - 1 ? triggeredHooks : []
+        triggeredHooks: i === bubbles.length - 1 ? triggeredHooks : [],
+        turnProfiling: i === bubbles.length - 1 ? turnProfiling : null
       })
+      assistantHistoryIdx = appendDeliveredAssistantBubbleToHistory(assistantHistoryIdx, bubbles[i].text)
       scrollToBottom()
     }
+    return assistantHistoryIdx
   } finally {
     if (myGen === bubbleDeliveryGeneration) {
       isDeliveringBubbles.value = false
@@ -1176,7 +1241,7 @@ const deliverDelayedAnchorBubble = async (anchorResponse, myGen, assistantHistor
     return
   }
   const appliedRules = filterDisplayedAppliedRules(anchorResponse.applied_rules || [], Boolean(anchorResponse.needs_human_handoff))
-  const activeSkills = anchorResponse.active_skills || []
+  const activeSkills = anchorResponse.activated_skills ?? anchorResponse.active_skills ?? []
   const triggeredHooks = anchorResponse.triggered_hooks || anchorResponse.triggeredHooks || []
 
   isDeliveringBubbles.value = true
@@ -1206,18 +1271,10 @@ const deliverDelayedAnchorBubble = async (anchorResponse, myGen, assistantHistor
       isHandoff: anchorResponse.needs_human_handoff,
       appliedRules,
       activeSkills,
-      triggeredHooks
+      triggeredHooks,
+      turnProfiling: anchorResponse.turn_profiling || anchorResponse.turnProfiling || null
     })
-    if (
-      assistantHistoryIdx >= 0 &&
-      assistantHistoryIdx < conversationHistory.value.length &&
-      conversationHistory.value[assistantHistoryIdx]?.role === 'assistant'
-    ) {
-      conversationHistory.value[assistantHistoryIdx].content =
-        `${conversationHistory.value[assistantHistoryIdx].content}\n\n${bubble2.text}`
-    } else {
-      conversationHistory.value.push({ role: 'assistant', content: bubble2.text })
-    }
+    appendDeliveredAssistantBubbleToHistory(assistantHistoryIdx, bubble2.text)
     scrollToBottom()
   } finally {
     if (myGen === bubbleDeliveryGeneration) {
@@ -1266,12 +1323,10 @@ const flushBurst = async () => {
       splitPriceBubbles: false
     })
 
-    // Cập nhật lịch sử hội thoại
+    // Cập nhật lịch sử hội thoại của khách (bong bóng assistant sẽ được ghi nhận theo từng bubble thực tế đã gửi, không gộp \n\n)
     for (const msg of messagesToSend) {
       conversationHistory.value.push({ role: 'user', content: msg })
     }
-    conversationHistory.value.push({ role: 'assistant', content: response.reply_text })
-    const assistantHistoryIdx = conversationHistory.value.length - 1
 
     currentStage.value = response.sales_stage || 'DISCOVERY'
     lastConfidence.value = response.confidence_score ?? 0.85
@@ -1279,8 +1334,9 @@ const flushBurst = async () => {
     if (response.customer_insight) {
       currentInsight.value = response.customer_insight
     }
-    if (response.active_skills) {
-      latestActiveSkills.value = response.active_skills
+    const resolvedActivatedSkills = response.activated_skills ?? response.active_skills
+    if (resolvedActivatedSkills !== undefined) {
+      latestActiveSkills.value = resolvedActivatedSkills
     }
 
     if (response.extracted_lead && response.extracted_lead.has_buying_or_booking_signal) {
@@ -1293,7 +1349,7 @@ const flushBurst = async () => {
       lastHandoffReason.value = response.handoff_reason || 'Tình huống cần chuyên viên trực tiếp xử lý.'
     }
 
-    await deliverBubbles(response)
+    const assistantHistoryIdx = await deliverBubbles(response)
     turnGen = bubbleDeliveryGeneration
 
     if (response.pending_second_bubble && turnGen === bubbleDeliveryGeneration) {
@@ -1389,8 +1445,9 @@ const simulateIdle = async (seconds) => {
     if (response.customer_insight) {
       currentInsight.value = response.customer_insight
     }
-    if (response.active_skills) {
-      latestActiveSkills.value = response.active_skills
+    const resolvedActivatedSkills = response.activated_skills ?? response.active_skills
+    if (resolvedActivatedSkills !== undefined) {
+      latestActiveSkills.value = resolvedActivatedSkills
     }
 
     if (response.extracted_lead && response.extracted_lead.has_buying_or_booking_signal) {
@@ -1561,6 +1618,7 @@ const resetSimulation = () => {
   isConversationAuditModalOpen.value = false
   conversationAuditResult.value = null
   harnessSuccessToast.value = null
+  Object.keys(expandedSimTurnDetails).forEach(k => delete expandedSimTurnDetails[k])
 }
 
 // =========================================================================
@@ -1970,16 +2028,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 8px 12px;
 }
 
 .fb-sim-modal {
   width: 100%;
-  max-width: 1140px;
-  height: 88vh;
+  max-width: 1320px;
+  height: 95vh;
+  max-height: 95vh;
   background: #FFFFFF;
   border: 1px solid #DDE3EA;
-  border-radius: 24px;
+  border-radius: 18px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1987,67 +2046,91 @@ onBeforeUnmount(() => {
 }
 
 .fb-sim-header {
-  padding: 16px 22px;
+  padding: 7px 16px;
+  min-height: 40px;
   background: #F8FAFD;
   border-bottom: 1px solid #DDE3EA;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.fb-sim-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-toggle-telemetry-desktop {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-toggle-telemetry-desktop:hover,
+.btn-toggle-telemetry-desktop.active {
+  background: #E8F0FE;
+  border-color: #A8C7FA;
+  color: #0B57D0;
 }
 
 .fb-sim-title-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
 }
 
 .fb-icon-badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #0B57D0, #1A73E8);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
-  box-shadow: 0 3px 10px rgba(11, 87, 208, 0.22);
+  font-size: 0.92rem;
+  box-shadow: 0 2px 6px rgba(11, 87, 208, 0.2);
 }
 
 .fb-sim-title {
   font-family: var(--font-display);
-  font-size: 1.02rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: #1F1F1F;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  margin: 0;
 }
 
 .api-pill {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-family: var(--font-mono);
   background: #E6F4EA;
   color: #137333;
   border: 1px solid #A8DAB5;
-  padding: 2px 8px;
+  padding: 1px 8px;
   border-radius: 999px;
   font-weight: 600;
-}
-
-.fb-sim-subtitle {
-  font-size: 0.76rem;
-  color: #444746;
-  margin-top: 2px;
 }
 
 .btn-close-modal {
   background: none;
   border: none;
   color: #747775;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
+  line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
 }
 
@@ -2059,8 +2142,23 @@ onBeforeUnmount(() => {
 .fb-sim-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-columns: 1.3fr 0.7fr;
   min-height: 0;
+  overflow: hidden;
+}
+
+@media (min-width: 901px) {
+  .fb-sim-body.telemetry-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .fb-sim-body.telemetry-collapsed .telemetry-pane {
+    display: none !important;
+  }
+
+  .fb-sim-body.telemetry-collapsed .messenger-pane {
+    border-right: none;
+  }
 }
 
 /* Left Messenger Pane */
@@ -2070,15 +2168,20 @@ onBeforeUnmount(() => {
   border-right: 1px solid #DDE3EA;
   background: #FFFFFF;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .messenger-topbar {
-  padding: 12px 16px;
+  padding: 6px 14px;
+  min-height: 42px;
   background: #FFFFFF;
   border-bottom: 1px solid #DDE3EA;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .messenger-topbar.is-handoff {
@@ -2194,12 +2297,13 @@ onBeforeUnmount(() => {
 }
 
 .messenger-messages {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
   background: #F8FAFD;
 }
 
@@ -2227,12 +2331,12 @@ onBeforeUnmount(() => {
 }
 
 .mini-page-avatar {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0B57D0, #1A73E8);
   color: #fff;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -2243,74 +2347,109 @@ onBeforeUnmount(() => {
 .assistant-bubble-col {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   max-width: 82%;
 }
 
+/* 1-Line 24px Compact Metadata Pill under Assistant Turn */
 .assistant-bubble-meta {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   margin-left: 2px;
 }
 
-.applied-rules-badge {
+.sim-compact-pill-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
-  background: #E8F0FE;
-  border: 1px solid #A8C7FA;
+  height: 24px;
+  max-height: 24px;
+  white-space: nowrap;
+}
+
+.sim-compact-metrics-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
-  font-size: 0.72rem;
-  color: #041E49;
-}
-
-.badge-icon {
-  font-size: 0.75rem;
-}
-
-.badge-label {
+  background: #EEF2F6;
+  border: 1px solid #DDE3EA;
+  color: #475569;
+  font-size: 0.7rem;
   font-weight: 600;
+  line-height: 1;
+}
+
+.btn-sim-pill-toggle,
+.btn-sim-pill-report {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #334155;
+  transition: all 0.14s ease;
+}
+
+.btn-sim-pill-toggle:hover,
+.btn-sim-pill-toggle.expanded {
+  background: #E8F0FE;
+  border-color: #A8C7FA;
   color: #0B57D0;
 }
 
-.rule-chip {
-  background: #FFFFFF;
-  border: 1px solid #DDE3EA;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  color: #1F1F1F;
-}
-
-.btn-teach-fb {
-  background: #FFFFFF;
-  border: 1px solid #DDE3EA;
-  color: #444746;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.btn-teach-fb:hover {
+.btn-sim-pill-report:hover {
   background: #FEF7E0;
   border-color: #FDE293;
   color: #B06000;
 }
 
+.sim-expanded-detail-drawer {
+  background: #FFFFFF;
+  border: 1px solid #DBE4F0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 0.73rem;
+  line-height: 1.45;
+  color: #334155;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.sim-detail-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sim-detail-muted {
+  color: #64748B;
+  font-style: italic;
+}
+
+.sim-detail-profiling {
+  color: #0B57D0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+}
+
 .msg-bubble {
-  padding: 10px 14px;
-  border-radius: 18px;
-  font-size: 0.86rem;
-  line-height: 1.48;
+  padding: 8px 13px;
+  border-radius: 16px;
+  font-size: 0.855rem;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 
@@ -2427,12 +2566,13 @@ onBeforeUnmount(() => {
 }
 
 .messenger-input-bar {
-  padding: 10px 14px;
+  padding: 7px 12px;
   border-top: 1px solid #DDE3EA;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   background: #FFFFFF;
+  flex-shrink: 0;
 }
 
 .burst-typing-banner {
@@ -4108,7 +4248,8 @@ onBeforeUnmount(() => {
   }
 
   .fb-sim-subtitle,
-  .api-pill {
+  .api-pill,
+  .btn-toggle-telemetry-desktop {
     display: none;
   }
 

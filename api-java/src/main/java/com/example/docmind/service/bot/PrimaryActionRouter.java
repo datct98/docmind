@@ -259,7 +259,18 @@ public final class PrimaryActionRouter {
             "(?iU)^\\s*(?:dạ\\s+)?(?:uk|ukm|ưk|ừ|ừm|ừa|uh|uhm|ok|oke|okay|oki|rồi|vâng|dạ|dạ\\s+vâng|ok\\s+em|ừ\\s+em|uk\\s+em|ok\\s+shop)[.!~\\s]*$"
     );
 
+    /**
+     * Lệnh opt-out tường minh tuyệt đối ở tầng System Gate (Mục 2.3 — đã xóa {@code "không cần nữa"} để sửa S06).
+     */
     private static final Pattern EXPLICIT_OPT_OUT_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:stop|unsubscribe|hủy\\s+đăng\\s+ký|huỷ\\s+đăng\\s+ký)[.!~\\s]*$"
+            + "|(?isU).*\\b(đừng\\s+nhắn(?:\\s+nữa)?|dừng\\s+lại|làm\\s+ơn\\s+đừng(?:\\s+nhắn)?|thôi\\s+đừng\\s+nhắn|ngừng\\s+nhắn|ngừng\\s+liên\\s+hệ|đừng\\s+liên\\s+hệ\\s+nữa)\\b.*"
+    );
+
+    /**
+     * Bảo toàn nguyên bản 100% hành vi baseline cho chế độ đối chứng / rollback {@code DETERMINISTIC_V1} (Mục 1.2).
+     */
+    private static final Pattern LEGACY_V1_EXPLICIT_OPT_OUT_PATTERN = Pattern.compile(
             "(?isU).*\\b(đừng\\s+nhắn|dừng\\s+lại|không\\s+cần\\s+nữa|làm\\s+ơn\\s+đừng|thôi\\s+đừng\\s+nhắn|ngừng\\s+nhắn)\\b.*"
     );
 
@@ -346,8 +357,20 @@ public final class PrimaryActionRouter {
         if (message == null || message.isBlank()) {
             return false;
         }
-        return EXPLICIT_OPT_OUT_PATTERN.matcher(message.strip()).matches()
+        return LEGACY_V1_EXPLICIT_OPT_OUT_PATTERN.matcher(message.strip()).matches()
                 || SentimentIntentLayer.classify(message, null) == DetectedIntent.OPT_OUT;
+    }
+
+    /**
+     * Lệnh opt-out tường minh tuyệt đối ở tầng System Gate (STOP, UNSUBSCRIBE, HỦY ĐĂNG KÝ, ĐỪNG NHẮN NỮA...).
+     * Tuyệt đối KHÔNG bắt câu từ chối lịch sự như {@code "Thôi, không cần nữa"} (S06).
+     */
+    public static boolean isStrictSystemOptOutMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(message.strip(), Normalizer.Form.NFC);
+        return EXPLICIT_OPT_OUT_PATTERN.matcher(norm).matches();
     }
 
     public static boolean isFrustrationMessage(String message) {

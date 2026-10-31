@@ -1805,18 +1805,19 @@ onUnmounted(() => {
 /* TOP HEADER BAR (NotebookLM Style - Clean & Responsive)                    */
 /* ========================================================================= */
 .notebook-topbar {
-  min-height: 58px;
+  min-height: 44px;
   height: auto;
-  padding: 8px 18px;
+  padding: 5px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  overflow-x: hidden;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   background: var(--bg-canvas);
   z-index: 20;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .topbar-left {
@@ -2485,9 +2486,10 @@ onUnmounted(() => {
 .main-layout {
   flex: 1;
   display: flex;
-  gap: 16px;
-  padding: 0 16px 16px;
+  gap: 10px;
+  padding: 0 12px 8px;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
   background: var(--bg-canvas);
 }

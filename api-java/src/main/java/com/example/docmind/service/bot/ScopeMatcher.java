@@ -134,7 +134,7 @@ public final class ScopeMatcher {
                     }
                 } else {
                     String cleanPrior = normalizeText(prior);
-                    if (!cleanPrior.isEmpty() && !isScopeRetracted(cleanPrior, retracted)) {
+                    if (!cleanPrior.isEmpty() && !isSymptomOrModalityNonScope(cleanPrior) && !isScopeRetracted(cleanPrior, retracted)) {
                         merged.add(cleanPrior);
                     }
                 }
@@ -210,7 +210,7 @@ public final class ScopeMatcher {
                     }
                 } else {
                     String cleanPrior = normalizeText(prior);
-                    if (!cleanPrior.isEmpty() && !isScopeRetracted(cleanPrior, retracted)) {
+                    if (!cleanPrior.isEmpty() && !isSymptomOrModalityNonScope(cleanPrior) && !isScopeRetracted(cleanPrior, retracted)) {
                         merged.add(cleanPrior);
                     }
                 }
@@ -380,11 +380,14 @@ public final class ScopeMatcher {
             return true;
         }
         if (Set.of(
-                "đau", "mỏi", "nhức", "nhói", "tê", "căng", "căng cứng", "sưng", "viêm",
+                "đau", "mỏi", "nhức", "nhói", "tê", "căng", "căng cứng", "sưng", "viêm", "ê buốt",
                 "mất ngủ", "khó ngủ", "stress", "thư giãn", "phục hồi", "trị liệu",
                 "gội đầu", "dưỡng sinh", "massage", "mát xa", "xoa bóp", "bấm huyệt",
                 "ngâm thảo dược", "ngâm chân", "đá nóng", "ráy tai", "vệ sinh tai",
-                "porcelain", "granite", "ceramic", "men matt", "men bóng", "chống trơn"
+                "porcelain", "granite", "ceramic", "men matt", "men bóng", "chống trơn",
+                "tư vấn", "sản phẩm", "dịch vụ", "liệu trình", "bảng giá", "báo giá",
+                "ưu đãi", "khuyến mãi", "bảo hành", "đặt hàng", "đặt lịch", "chi phí", "học phí",
+                "kích thước", "chất liệu", "lắp đặt", "vận chuyển", "mã sản phẩm", "bảng size", "đổi size", "ship"
         ).contains(norm)) {
             return true;
         }

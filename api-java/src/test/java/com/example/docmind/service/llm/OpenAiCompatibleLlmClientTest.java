@@ -928,4 +928,56 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(compatProps.resolveBaseUrl()).isEqualTo("https://api.openai.com/v1");
         assertThat(compatProps.resolveModel()).isEqualTo("gpt-4o-mini");
     }
+
+    @Test
+    void testQwenProviderDisablesThinkingGloballyAcrossAllThinkingModesIncludingObjectionReframe() {
+        LlmProperties qwenProps = new LlmProperties();
+        qwenProps.setProvider("qwen");
+        qwenProps.setBaseUrl("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+        qwenProps.setModel("qwen3-235b-a22b");
+        qwenProps.setApiKey("sk-qwen-no-think-key");
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(qwenProps, objectMapper, builder.build());
+
+        ReasoningBudget objectionBudget = new ReasoningBudget(
+                com.example.docmind.service.reasoning.QueryComplexity.DEEP_REASONING,
+                "medium",
+                30,
+                500,
+                13000,
+                1100,
+                0.2,
+                0.9,
+                1.08,
+                com.example.docmind.service.bot.ThinkingMode.OBJECTION_REFRAME_THINK
+        );
+
+        server.expect(requestTo("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.enable_thinking").value(false))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"bubbles\\\":[\\\"Dạ gói 239k trọn gói 0 Tip ạ.\\\"]}\"}}]}",
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String objectionReply = client.complete("Đắt nhỉ", objectionBudget);
+        assertThat(objectionReply).contains("239k");
+        server.verify();
+        server.reset();
+
+        server.expect(requestTo("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.enable_thinking").value(false))
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"bubbles\\\":[\\\"Dạ 239k và 399k ạ.\\\"]}\"}}]}",
+                        MediaType.APPLICATION_JSON
+                ));
+
+        String deepReply = client.complete("Giá?", ReasoningBudget.deepReasoning());
+        assertThat(deepReply).contains("399k");
+        server.verify();
+    }
 }

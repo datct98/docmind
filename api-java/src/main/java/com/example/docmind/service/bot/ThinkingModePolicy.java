@@ -583,6 +583,104 @@ public final class ThinkingModePolicy {
         }
     }
 
+    /**
+     * Telemetry chuẩn hóa cho kiến trúc {@code LLM_COGNITIVE_V2} / {@code ACI} (Mục 7.1):
+     * báo cáo chính xác {@code promptChars}, {@code promptTokens}, {@code completionTokens},
+     * {@code llmLatencyMs}, {@code actualWaitMs}, {@code totalTurnLatencyMs}.
+     */
+    public record AciTurnTelemetry(
+            AdaptiveConversationIntelligence.CognitiveMode cognitiveMode,
+            ThinkingMode thinkingMode,
+            int promptChars,
+            int legacyEquivalentPromptChars,
+            int promptTokens,
+            int completionTokens,
+            int reasoningTokens,
+            long llmLatencyMs,
+            int quoteBubbleIndex,
+            long actualWaitMs,
+            long totalTurnLatencyMs,
+            boolean repairApplied,
+            List<String> refereeViolations,
+            String priorityPrimary,
+            String strategyChosen,
+            String strategyAdaptation,
+            String handoffStatus,
+            String bookingStatus,
+            int reflectionTokens,
+            long retrievalLatencyMs,
+            int retryCount
+    ) {
+        public AciTurnTelemetry {
+            cognitiveMode = cognitiveMode != null
+                    ? cognitiveMode
+                    : AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2;
+            thinkingMode = thinkingMode != null ? thinkingMode : ThinkingMode.FAST_NO_THINK;
+            refereeViolations = refereeViolations != null ? List.copyOf(refereeViolations) : List.of();
+        }
+
+        public AciTurnTelemetry(
+                AdaptiveConversationIntelligence.CognitiveMode cognitiveMode,
+                ThinkingMode thinkingMode,
+                int promptChars,
+                int legacyEquivalentPromptChars,
+                int promptTokens,
+                int completionTokens,
+                int reasoningTokens,
+                long llmLatencyMs,
+                int quoteBubbleIndex,
+                long actualWaitMs,
+                long totalTurnLatencyMs,
+                boolean repairApplied,
+                List<String> refereeViolations,
+                String priorityPrimary,
+                String strategyChosen,
+                String strategyAdaptation,
+                String handoffStatus,
+                String bookingStatus
+        ) {
+            this(
+                    cognitiveMode,
+                    thinkingMode,
+                    promptChars,
+                    legacyEquivalentPromptChars,
+                    promptTokens,
+                    completionTokens,
+                    reasoningTokens,
+                    llmLatencyMs,
+                    quoteBubbleIndex,
+                    actualWaitMs,
+                    totalTurnLatencyMs,
+                    repairApplied,
+                    refereeViolations,
+                    priorityPrimary,
+                    strategyChosen,
+                    strategyAdaptation,
+                    handoffStatus,
+                    bookingStatus,
+                    reasoningTokens,
+                    0L,
+                    0
+            );
+        }
+
+        public int inputTokens() {
+            return promptTokens;
+        }
+
+        public int outputTokens() {
+            return completionTokens;
+        }
+
+        public long modelLatencyMs() {
+            return llmLatencyMs;
+        }
+
+        public long totalTurnMs() {
+            return totalTurnLatencyMs;
+        }
+    }
+
     private record SessionBubbleState(
             long turnSequence,
             long priceBubbleShownAtNs,
@@ -595,6 +693,7 @@ public final class ThinkingModePolicy {
     private static final Map<String, SessionBubbleState> SESSION_PENDING_BUBBLE_STATES = new ConcurrentHashMap<>();
     private static volatile BenchmarkConfigMode activeBenchmarkMode = BenchmarkConfigMode.ADAPTIVE_C;
     private static final ThreadLocal<TurnTelemetry> LAST_TURN_TELEMETRY = new ThreadLocal<>();
+    private static final ThreadLocal<AciTurnTelemetry> LAST_ACI_TURN_TELEMETRY = new ThreadLocal<>();
 
     private ThinkingModePolicy() {
     }
@@ -628,6 +727,20 @@ public final class ThinkingModePolicy {
 
     public static TurnTelemetry getLastTurnTelemetry() {
         return LAST_TURN_TELEMETRY.get();
+    }
+
+    public static void recordAciTurnTelemetry(AciTurnTelemetry telemetry) {
+        if (telemetry != null) {
+            LAST_ACI_TURN_TELEMETRY.set(telemetry);
+        }
+    }
+
+    public static AciTurnTelemetry getLastAciTurnTelemetry() {
+        return LAST_ACI_TURN_TELEMETRY.get();
+    }
+
+    public static void clearAciTurnTelemetry() {
+        LAST_ACI_TURN_TELEMETRY.remove();
     }
 
     /**

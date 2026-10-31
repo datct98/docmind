@@ -20,6 +20,12 @@ public final class VietnameseQueryNormalizer {
     private VietnameseQueryNormalizer() {}
 
     public static final int MAX_INPUT_LENGTH = 2000;
+    public static final int MAX_VERBATIM_LLM_INPUT_LENGTH = 8000;
+
+    private static final Pattern DANGEROUS_ASCII_CONTROL_PATTERN = Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]");
+    private static final Pattern XML_CONTRACT_TAG_SPOOF_PATTERN = Pattern.compile(
+            "(?i)</?(?:ACI_SYSTEM_PROMPT|CLEAN_AGENT_SYSTEM_PROMPT|SINGLE_PASS_COGNITIVE_CONTRACT|VERIFIED_PAGE_POLICY|VERIFIED_BUSINESS_CATALOG|SESSION_MEMORY_5_TIER|STRUCTURED_TURN_CONTRACT|REPAIR_INSTRUCTION)>"
+    );
 
     private static final Pattern URL_PATTERN = Pattern.compile(
             "(?i)\\b(?:https?://\\S+|www\\.\\S+)"
@@ -401,7 +407,7 @@ public final class VietnameseQueryNormalizer {
     }
 
     /**
-     * Làm sạch nhẹ tin nhắn gốc (chỉ chuẩn hóa khoảng trắng Unicode đặc biệt và cắt chiều dài an toàn),
+     * Làm sạch nhẹ tin nhắn gốc (chỉ lọc ký tự điều khiển ASCII nguy hiểm, chuẩn hóa khoảng trắng Unicode đặc biệt và cắt chiều dài an toàn),
      * giữ nguyên 100% từ ngữ, mã dịch vụ (NS, NS01, SP-01...) và cách viết gốc của khách hàng.
      */
     public static String sanitizeRawMessage(String text) {
@@ -409,11 +415,47 @@ public final class VietnameseQueryNormalizer {
             return "";
         }
         String clipped = text.length() > MAX_INPUT_LENGTH ? text.substring(0, MAX_INPUT_LENGTH) : text;
-        String sanitized = sanitizeUnicodeSpaces(clipped);
+        String noControl = DANGEROUS_ASCII_CONTROL_PATTERN.matcher(clipped).replaceAll("");
+        String sanitized = sanitizeUnicodeSpaces(noControl);
         if (sanitized.isBlank()) {
             return "";
         }
         return sanitized.replaceAll("\\s+", " ").strip();
+    }
+
+    /**
+     * Luồng 1 (Original Message — Bất biến gửi cho LLM trong LLM_COGNITIVE_V2):
+     * Giữ nguyên 100% dấu câu, từ viết tắt, lỗi chính tả, cách diễn đạt và nhịp xuống dòng giữa các bong bóng trong burst;
+     * chỉ lọc ký tự điều khiển ASCII nguy hiểm, vô hiệu hóa giả mạo thẻ XML hệ thống và giới hạn kích thước an toàn (8.000 ký tự, không cắt cụt xuống 300 ký tự).
+     */
+    public static String sanitizeVerbatimOriginalMessage(String text) {
+        return sanitizeVerbatimOriginalMessage(text, MAX_VERBATIM_LLM_INPUT_LENGTH);
+    }
+
+    public static String sanitizeVerbatimOriginalMessage(String text, int maxSafeChars) {
+        if (text == null) {
+            return "";
+        }
+        int cap = maxSafeChars > 0 ? maxSafeChars : MAX_VERBATIM_LLM_INPUT_LENGTH;
+        String clipped = text.length() > cap ? text.substring(0, cap) : text;
+        String noControl = DANGEROUS_ASCII_CONTROL_PATTERN.matcher(clipped.replace("\r\n", "\n").replace('\r', '\n')).replaceAll("");
+        String noTagSpoof = XML_CONTRACT_TAG_SPOOF_PATTERN.matcher(noControl).replaceAll("[escaped_tag]");
+        String sanitized = sanitizeUnicodeSpaces(noTagSpoof);
+        if (sanitized.isBlank()) {
+            return "";
+        }
+        String[] lines = sanitized.split("\n", -1);
+        StringBuilder sb = new StringBuilder(sanitized.length());
+        for (String line : lines) {
+            String trimmedLine = line.replaceAll("[ \\t]+", " ").strip();
+            if (!trimmedLine.isEmpty()) {
+                if (!sb.isEmpty()) {
+                    sb.append('\n');
+                }
+                sb.append(trimmedLine);
+            }
+        }
+        return sb.toString();
     }
 
     /**

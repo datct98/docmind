@@ -140,6 +140,54 @@ public class RetrievalService {
         return retrieveWithRulesInternal(documentIds, question, topK, extraRules, pageId, effectiveSynonyms, pageScopeKeywords);
     }
 
+    /**
+     * Nạp động toàn bộ {@code learned_rules} đang {@code active = true} (đã duyệt, không bị từ chối/staging)
+     * của Page cho kiến trúc {@code LLM_COGNITIVE_V2} mà KHÔNG lọc ẩn ngầm bằng Regex tiền-LLM.
+     */
+    @Transactional(readOnly = true)
+    public List<LearnedRuleDto> getAllActiveApprovedRulesForPage(UUID pageId) {
+        if (learnedRuleRepository == null) {
+            return List.of();
+        }
+        try {
+            List<LearnedRuleEntity> entities = pageId != null
+                    ? learnedRuleRepository.findActiveForPage(pageId)
+                    : learnedRuleRepository.findByActiveTrue();
+            if (entities == null || entities.isEmpty()) {
+                return List.of();
+            }
+            List<LearnedRuleDto> activeApproved = entities.stream()
+                    .filter(r -> r != null
+                            && r.isActive()
+                            && isRuleConfidenceEligible(r)
+                            && (r.getReviewStatus() == null
+                                || r.getReviewStatus().isBlank()
+                                || "APPROVED".equalsIgnoreCase(r.getReviewStatus().strip())))
+                    .sorted((a, b) -> {
+                        int alwaysCmp = Boolean.compare(b.isAlwaysOn(), a.isAlwaysOn());
+                        if (alwaysCmp != 0) {
+                            return alwaysCmp;
+                        }
+                        boolean aPageSpecific = pageId != null && pageId.equals(a.getPageId());
+                        boolean bPageSpecific = pageId != null && pageId.equals(b.getPageId());
+                        int pageCmp = Boolean.compare(bPageSpecific, aPageSpecific);
+                        if (pageCmp != 0) {
+                            return pageCmp;
+                        }
+                        return Double.compare(
+                                b.getConfidenceScore() > 0.0 ? b.getConfidenceScore() : 0.85,
+                                a.getConfidenceScore() > 0.0 ? a.getConfidenceScore() : 0.85
+                        );
+                    })
+                    .map(LearnedRuleDto::fromEntity)
+                    .toList();
+            return deduplicateRulesByText(activeApproved);
+        } catch (Exception e) {
+            log.warn("Không thể tải toàn bộ learned_rules active cho pageId={}: {}", pageId, e.getMessage());
+            return List.of();
+        }
+    }
+
     private PagePersonaConfig resolvePagePersonaConfig(UUID pageId) {
         if (pageId == null || knowledgePageRepository == null) {
             return null;

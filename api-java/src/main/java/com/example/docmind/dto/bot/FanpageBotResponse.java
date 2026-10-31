@@ -62,7 +62,19 @@ public record FanpageBotResponse(
         Long pendingTurnSequence,
 
         @JsonProperty("price_bubble_sent_at_ns")
-        Long priceBubbleSentAtNs
+        Long priceBubbleSentAtNs,
+
+        @JsonProperty("available_skills")
+        List<AgentSkillDto> availableSkills,
+
+        @JsonProperty("selected_skills")
+        List<AgentSkillDto> selectedSkills,
+
+        @JsonProperty("activated_skills")
+        List<AgentSkillDto> activatedSkills,
+
+        @JsonProperty("turn_profiling")
+        TurnProfiling turnProfiling
 ) {
     public FanpageBotResponse {
         if (appliedRules == null) {
@@ -70,6 +82,15 @@ public record FanpageBotResponse(
         }
         if (activeSkills == null) {
             activeSkills = List.of();
+        }
+        if (availableSkills == null) {
+            availableSkills = activeSkills;
+        }
+        if (selectedSkills == null) {
+            selectedSkills = activeSkills;
+        }
+        if (activatedSkills == null) {
+            activatedSkills = activeSkills;
         }
         if (triggeredHooks == null) {
             triggeredHooks = List.of();
@@ -79,6 +100,79 @@ public record FanpageBotResponse(
                     ? replyBubbles.stream().map(ReplyBubble::typingDelayMs).toList()
                     : List.of();
         }
+    }
+
+    public FanpageBotResponse(
+            String replyText,
+            List<ReplyBubble> replyBubbles,
+            List<Integer> bubbleDelaysMs,
+            String salesStage,
+            double confidenceScore,
+            boolean needsHumanHandoff,
+            String handoffCategory,
+            String handoffReason,
+            ExtractedLead extractedLead,
+            List<LearnedRuleDto> appliedRules,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            List<String> triggeredHooks,
+            boolean pendingSecondBubble,
+            Long pendingTurnSequence,
+            Long priceBubbleSentAtNs
+    ) {
+        this(
+                replyText,
+                replyBubbles,
+                bubbleDelaysMs,
+                salesStage,
+                confidenceScore,
+                needsHumanHandoff,
+                handoffCategory,
+                handoffReason,
+                extractedLead,
+                appliedRules,
+                customerInsight,
+                activeSkills,
+                triggeredHooks,
+                pendingSecondBubble,
+                pendingTurnSequence,
+                priceBubbleSentAtNs,
+                activeSkills,
+                activeSkills,
+                activeSkills,
+                null
+        );
+    }
+
+    public FanpageBotResponse withSkillTiersAndProfiling(
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            List<AgentSkillDto> activatedSkills,
+            TurnProfiling turnProfiling
+    ) {
+        List<AgentSkillDto> safeActivated = activatedSkills != null ? List.copyOf(activatedSkills) : List.of();
+        return new FanpageBotResponse(
+                this.replyText,
+                this.replyBubbles,
+                this.bubbleDelaysMs,
+                this.salesStage,
+                this.confidenceScore,
+                this.needsHumanHandoff,
+                this.handoffCategory,
+                this.handoffReason,
+                this.extractedLead,
+                this.appliedRules,
+                this.customerInsight,
+                safeActivated,
+                this.triggeredHooks,
+                this.pendingSecondBubble,
+                this.pendingTurnSequence,
+                this.priceBubbleSentAtNs,
+                availableSkills != null ? List.copyOf(availableSkills) : List.of(),
+                selectedSkills != null ? List.copyOf(selectedSkills) : safeActivated,
+                safeActivated,
+                turnProfiling
+        );
     }
 
     public FanpageBotResponse(
@@ -201,7 +295,11 @@ public record FanpageBotResponse(
                 this.triggeredHooks,
                 pendingSecondBubble,
                 pendingTurnSequence,
-                priceBubbleSentAtNs
+                priceBubbleSentAtNs,
+                this.availableSkills,
+                this.selectedSkills,
+                this.activatedSkills,
+                this.turnProfiling
         );
     }
 
@@ -434,5 +532,29 @@ public record FanpageBotResponse(
         public boolean hasAnyLead() {
             return (phoneNumber != null && !phoneNumber.isBlank()) || hasBuyingOrBookingSignal;
         }
+    }
+
+    public record TurnProfiling(
+            @JsonProperty("input_tokens")
+            int inputTokens,
+
+            @JsonProperty("output_tokens")
+            int outputTokens,
+
+            @JsonProperty("reflection_tokens")
+            int reflectionTokens,
+
+            @JsonProperty("model_latency_ms")
+            long modelLatencyMs,
+
+            @JsonProperty("retrieval_latency_ms")
+            long retrievalLatencyMs,
+
+            @JsonProperty("retry_count")
+            int retryCount,
+
+            @JsonProperty("total_turn_ms")
+            long totalTurnMs
+    ) {
     }
 }

@@ -129,6 +129,8 @@ services:
       - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
       - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-2048}
       - DOCMIND_LOG_LEVEL=${DOCMIND_LOG_LEVEL:-INFO}
+      - DOCMIND_BOT_AGENT_MODE=${DOCMIND_BOT_AGENT_MODE:-CLEAN}
+      - DOCMIND_BOT_COGNITIVE_MODE=${DOCMIND_BOT_COGNITIVE_MODE:-LLM_COGNITIVE_V2}
       # Facebook Messenger Fanpage Webhook & Graph Send API
       - DOCMIND_FANPAGE_VERIFY_TOKEN=${DOCMIND_FANPAGE_VERIFY_TOKEN:-docmind-fb-verify-token}
       - DOCMIND_FANPAGE_APP_SECRET=${DOCMIND_FANPAGE_APP_SECRET:-}
@@ -137,6 +139,7 @@ services:
       - DOCMIND_FANPAGE_BUBBLE_DELAY_MS=${DOCMIND_FANPAGE_BUBBLE_DELAY_MS:-2500}
     volumes:
       - ./.env:/app/.env:ro
+      - ./config:/app/config:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

@@ -1,3 +1,5 @@
+> ⚠️ **GHI CHÚ KIẾN TRÚC HIỆN HÀNH:** Luồng nhận thức hội thoại chính của `docmind-api` hiện chạy trên **`LLM_COGNITIVE_V2` (Single-Pass ACI)** trong Java. Xem [`ACI_V2_SOURCE_OF_TRUTH.md`](../ACI_V2_SOURCE_OF_TRUTH.md); không sử dụng khuôn mẫu cố định 3 nhịp / 2-3 bong bóng cũ bên dưới cho `LLM_COGNITIVE_V2`.
+
 # Agent Brain (`agent-brain`)
 
 **Bộ não Độc lập & Tái sử dụng (Cognitive Memory, Customer Insight & Psychological Strategy Engine)** dành cho các hệ thống AI Agent Bán hàng & Chăm sóc Khách hàng đa kênh (Messenger, Zalo, Web Chat, CRM, E-Commerce).

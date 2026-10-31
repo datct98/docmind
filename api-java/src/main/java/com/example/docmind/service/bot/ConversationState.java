@@ -229,7 +229,7 @@ public record ConversationState(
 
     private static final Pattern EXPLICIT_CLOCK_TIME_PATTERN = Pattern.compile(
             "(?iU)(?:\\b(?:lúc|vào|tầm|khoảng|khung(?:\\s+giờ)?)\\s+)?"
-            + "\\b([01]?\\d|2[0-3])\\s*(?:giờ|g\\b|h\\b|:)\\s*([0-5]?\\d|rưỡi)?(?:\\s*(sáng|trưa|chiều|tối|đêm|am|pm))?(?=\\s|$|[.,!?;:)])"
+            + "\\b([01]?\\d|2[0-3])\\s*(?:giờ|(?:g|h)(?=\\d|\\b)|:)\\s*([0-5]?\\d|rưỡi)?(?:\\s*(sáng|trưa|chiều|tối|đêm|am|pm))?(?=\\s|$|[.,!?;:)])"
     );
 
     /**
@@ -447,6 +447,77 @@ public record ConversationState(
             current = initial();
         }
         ConversationState updated = current.withStructuredBookingState(bs);
+        SESSION_STORE.put(sessionKey, updated);
+        LastTurnPreStateSnapshot snap = LAST_TURN_PRE_STATE_STORE.get(sessionKey);
+        if (snap != null) {
+            LAST_TURN_PRE_STATE_STORE.put(sessionKey, new LastTurnPreStateSnapshot(
+                    snap.historySize(),
+                    snap.normalizedUserMessage(),
+                    snap.preTurnState(),
+                    snap.enrichedTurnState(),
+                    updated
+            ));
+        }
+        return updated;
+    }
+
+    public ConversationState withAuthoritativeSymptomDuration(String authoritativeDuration) {
+        String normalizedDur = (authoritativeDuration != null && !authoritativeDuration.isBlank())
+                ? authoritativeDuration.strip()
+                : null;
+        return new ConversationState(
+                greetingSent, introSent, stage, lastIntent, lastQuestion, lastQuestionIntent,
+                usedQuestionIntents, lastBotAction, known, priceDiscussed, pricesShown, recommendedOptions,
+                objectionCount, ackCount, clarificationCount, conditionAskedCount, preferenceAskedCount,
+                clarifyServiceTypeCount, clarifyDurationCount, frustrationCount, ambiguousCount,
+                recommendationCount, priceRepeatGuardCount, conditionClarified, serviceFamilyKnown,
+                packageRecommended, priceRequestedInSession, knownSymptoms, knownBodyAreas,
+                knownSeverity, normalizedDur, knownTrigger, knownServiceFamily,
+                knownPreferredPressure, knownRecommendedPackage, lastQuotePackage, lastSentiment,
+                lastEmotion, usedTemplates, humanTakeover, optedOut,
+                downsellOffered, trialInviteOffered, explicitDownsellRequest, packageRejectionDetected,
+                lastQuotedPackage, lastQuotedDuration, lastQuotedPrice, heldPackage, heldDuration,
+                downsellPackage, downsellDuration, downsellPrice, rejectedDurations, rejectedPackages,
+                objectionStage, telemetrySubtype, docsHasFeedback, docsHasRelaxationBenefit, docsHasPrivateRoom, neurologicalRisk,
+                preferredRegion, mentionedPackages, quotedPackages, heldPrice, alternativeRequestCount,
+                customerCorrectionDetected, rejectedWrongOffer, availablePackageCatalog, lastBotBubbleHashes,
+                outstandingRequests, lastAssistantMessage,
+                confirmedScopes, forbiddenScopes, apologizedErrorIds, activeErrorId,
+                customerCareNotes, scopeSupersessionEvents, possibleCorrection,
+                packageExplicitlySelected, selectedPackageId,
+                knownFrequency, knownSymptomDistribution, pendingQuestionSlot,
+                normalizedDur != null ? knownEpisodeDuration : null,
+                packageInterestAccepted,
+                bookingIntentConfirmed,
+                visitTime,
+                contactInfo,
+                bookingStatus,
+                selectedProductId,
+                bookingDate,
+                bookingTime,
+                bookingStatusEnum
+        );
+    }
+
+    /**
+     * Trong chế độ {@code LLM_COGNITIVE_V2}: khóa chặt {@code knownDurationOfProblem} theo xác nhận ngữ nghĩa của LLM Brain
+     * (ngăn chặn bộ phân tích regex cũ trong {@code updateAfterSend -> ensureTurnEnriched} ghi đè ẩn dụ ngày công như "1 ngày công r" thành "1 ngày").
+     */
+    public static ConversationState syncAuthoritativeSymptomDurationInSession(
+            UUID pageId,
+            String senderId,
+            String conversationId,
+            String authoritativeDuration
+    ) {
+        String sessionKey = buildSessionKey(pageId, senderId, conversationId);
+        if (sessionKey == null) {
+            return null;
+        }
+        ConversationState current = SESSION_STORE.get(sessionKey);
+        if (current == null) {
+            return null;
+        }
+        ConversationState updated = current.withAuthoritativeSymptomDuration(authoritativeDuration);
         SESSION_STORE.put(sessionKey, updated);
         LastTurnPreStateSnapshot snap = LAST_TURN_PRE_STATE_STORE.get(sessionKey);
         if (snap != null) {

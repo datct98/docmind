@@ -183,14 +183,47 @@ public class CleanAgentOrchestratorService {
     );
 
     private static final Pattern INVITE_TRIAL_OR_ASK_TIME_BOT_REPLY_CLEAN_PATTERN = Pattern.compile(
-            "(?isU).*\\b(thử\\s+trải\\s+nghiệm|trải\\s+nghiệm\\s+(?:trước|thử)\\s+1\\s+(?:buổi|lần)|"
+            "(?isU).*\\b(thử\\s+trải\\s+nghiệm|trải\\s+nghiệm\\s+(?:trước\\s+|thử\\s+)?(?:1|một)\\s+(?:buổi|lần)|"
+            + "thử\\s+(?:trước\\s+)?(?:1|một)\\s+(?:buổi|lần)|(?:làm|dùng|tham\\s+khảo|trải\\s+nghiệm)\\s+thử\\b|"
+            + "thử\\s+(?:phương\\s+án|gói|mẫu|khóa|lộ\\s+trình|dịch\\s+vụ|dòng)\\b|thử\\s+xem\\b|"
+            + "(?:mình|chị|anh|bạn)\\s+thử\\b[^.!?]{0,180}\\b(?:nhé|nha|chứ|không)\\s*\\?|"
+            + "hợp\\s+lý\\s+để\\s+(?:mình\\s+|chị\\s+|anh\\s+)?thử|"
+            + "(?:ghé|qua)\\s+(?:thăm\\s+khám|kiểm\\s+tra|xem\\s+mẫu|trải\\s+nghiệm)\\b[^.!?]{0,180}\\b(?:nhé|nha|ạ)?\\s*\\?|"
             + "khung\\s+giờ\\s+nào|mấy\\s+giờ|giờ\\s+nào\\s+(?:để\\s+em|tiện|ạ|nhỉ)|"
-            + "hôm\\s+nay\\s+(?:hay|hoặc)\\s+ngày\\s+mai|tiện\\s+ghé)\\b.*"
+            + "thời\\s+gian\\s+nào|lịch\\s+nào\\s+(?:tiện|thuận\\s+tiện|phù\\s+hợp)|"
+            + "(?:muốn|cần\\s+em|để\\s+em)\\s+(?:sắp\\s+xếp|đặt|lên)\\s+(?:thời\\s+gian|lịch)|"
+            + "sắp\\s+xếp\\s+(?:thời\\s+gian|lịch)\\s+nào|kiểm\\s+tra\\s+lịch\\s+trống|"
+            + "hôm\\s+nay\\s+(?:hay|hoặc)\\s+ngày\\s+mai|tiện\\s+(?:ghé|qua)|"
+            + "(?:ghé|qua|hẹn)\\s+(?:lúc|khung|vào|tầm)\\s+\\d{1,2}\\s*(?:(?:h|g)(?:\\d{1,2})?|giờ(?:\\s*\\d{1,2})?|:\\d{2}))\\b.*"
+    );
+
+    private static final Pattern SINGLE_PRODUCT_FIT_CONFIRMATION_QUESTION_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:xem\\s+thử|thấy)\\s+(?:hướng|phương\\s+án|gói|liệu\\s+trình|mẫu|khóa|dòng|lựa\\s+chọn|mức)[^.!?]{0,120}\\b(?:vừa\\s+vặn|phù\\s+hợp|hợp\\s+lý|đúng\\s+ý|ưng|ổn)\\b[^.!?]{0,80}\\b(?:nhé|nha|chưa|không)(?:\\s+ạ)?\\s*\\?\\s*$"
+    );
+
+    private static final Pattern CONCRETE_TIME_PROPOSAL_CUE_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\?|\\b(?:nhé|nha|ghé\\s+lúc|qua\\s+lúc|hẹn\\s+lúc|vào\\s+lúc|còn\\s+khung|còn\\s+lịch|giữ\\s+lịch|sắp\\s+xếp\\s+lúc)\\b).*"
+    );
+
+    private static final Pattern PROACTIVE_PRICE_OR_PRODUCT_REQUEST_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(giá|bảng\\s+giá|chi\\s+phí|học\\s+phí|bao\\s+nhiêu|báo\\s+giá|tư\\s+vấn\\s+giá|menu|"
+            + "các\\s+(?:gói|mẫu|khóa|dòng)|(?:gói|mẫu|khóa|dòng)\\s+nào|toàn\\s+thân|toàn\\s+hàm|cả\\s+người|full\\s+body)\\b.*"
+    );
+
+    private static final Pattern PRODUCT_COMPARISON_QUESTION_CLEAN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(khác\\s+(?:gì|j|nhau|sao|thế\\s+nào)|so\\s+với|so\\s+sánh|hơn\\s+(?:gì|j|nhau))\\b.*"
     );
 
     private LlmClient llmClient;
     private AgentBrainService agentBrainService;
     private AgentSkillService agentSkillService;
+    private volatile AdaptiveConversationIntelligence.CognitiveMode cognitiveMode =
+            AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+    private volatile AdaptiveConversationIntelligence.HandoffEventDispatcher handoffEventDispatcher;
+    private volatile AdaptiveConversationIntelligence.AdaptiveCognitiveReflection lastAciReflection;
+    private volatile AdaptiveConversationIntelligence.ConditionalHandoffDecision lastHandoffDecision;
+    private volatile ThinkingModePolicy.AciTurnTelemetry lastAciTurnTelemetry;
+    private volatile String lastBuiltPrompt;
     private volatile ThinkingModePolicy.TurnTelemetry lastTurnTelemetry;
     private volatile ConversationState.StructuredBookingState lastTurnBookingState =
             ConversationState.StructuredBookingState.none();
@@ -208,6 +241,45 @@ public class CleanAgentOrchestratorService {
         this.llmClient = llmClient;
         this.agentBrainService = agentBrainService;
         this.agentSkillService = agentSkillService;
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${docmind.bot.cognitive-mode:DETERMINISTIC_V1}")
+    public void setCognitiveModeProperty(String rawMode) {
+        this.cognitiveMode = AdaptiveConversationIntelligence.CognitiveMode.fromProperty(rawMode);
+    }
+
+    public void setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode cognitiveMode) {
+        this.cognitiveMode = cognitiveMode != null
+                ? cognitiveMode
+                : AdaptiveConversationIntelligence.CognitiveMode.DETERMINISTIC_V1;
+    }
+
+    public AdaptiveConversationIntelligence.CognitiveMode getCognitiveMode() {
+        return cognitiveMode;
+    }
+
+    public void setHandoffEventDispatcher(AdaptiveConversationIntelligence.HandoffEventDispatcher handoffEventDispatcher) {
+        this.handoffEventDispatcher = handoffEventDispatcher;
+    }
+
+    public AdaptiveConversationIntelligence.HandoffEventDispatcher getHandoffEventDispatcher() {
+        return handoffEventDispatcher;
+    }
+
+    public AdaptiveConversationIntelligence.AdaptiveCognitiveReflection getLastAciReflection() {
+        return lastAciReflection;
+    }
+
+    public AdaptiveConversationIntelligence.ConditionalHandoffDecision getLastHandoffDecision() {
+        return lastHandoffDecision;
+    }
+
+    public ThinkingModePolicy.AciTurnTelemetry getLastAciTurnTelemetry() {
+        return lastAciTurnTelemetry;
+    }
+
+    public String getLastBuiltPrompt() {
+        return lastBuiltPrompt;
     }
 
     public void setLlmClient(LlmClient llmClient) {
@@ -253,6 +325,70 @@ public class CleanAgentOrchestratorService {
             long turnStartNs,
             long retrievalMs
     ) {
+        return executeCleanAgentTurn(
+                pageId,
+                request,
+                mergedMessage,
+                honorific,
+                pagePersona,
+                priorStateWithChunks,
+                convState,
+                fused,
+                appliedRules,
+                extractedLead,
+                customerInsight,
+                activeSkills,
+                candidateSkills,
+                salesStage,
+                incomingHistorySize,
+                turnStartNs,
+                retrievalMs,
+                null
+        );
+    }
+
+    public FanpageBotResponse executeCleanAgentTurn(
+            UUID pageId,
+            FanpageBotRequest request,
+            String mergedMessage,
+            String honorific,
+            PromptBuilder.PagePersona pagePersona,
+            ConversationState priorStateWithChunks,
+            ConversationState convState,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            List<LearnedRuleDto> appliedRules,
+            FanpageBotResponse.ExtractedLead extractedLead,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            List<AgentSkillDto> candidateSkills,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            int incomingHistorySize,
+            long turnStartNs,
+            long retrievalMs,
+            AdaptiveConversationIntelligence.ThreeStreamTurnInput prebuiltThreeStreamInput
+    ) {
+        if (this.cognitiveMode == AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2) {
+            return executeAciCognitiveTurn(
+                    pageId,
+                    request,
+                    mergedMessage,
+                    honorific,
+                    pagePersona,
+                    priorStateWithChunks,
+                    convState,
+                    fused,
+                    appliedRules,
+                    extractedLead,
+                    customerInsight,
+                    activeSkills,
+                    candidateSkills,
+                    salesStage,
+                    incomingHistorySize,
+                    turnStartNs,
+                    retrievalMs,
+                    prebuiltThreeStreamInput
+            );
+        }
         ConversationState safePrior = priorStateWithChunks != null ? priorStateWithChunks : ConversationState.initial();
         ConversationState safeConv = convState != null ? convState : safePrior;
         String safeHonorific = (honorific != null && !honorific.isBlank()) ? honorific.strip() : "mình";
@@ -437,11 +573,25 @@ public class CleanAgentOrchestratorService {
                 allCatalog,
                 effectivePersonaConfig
         );
+        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
         String statedContextOrTiming = resolveStatedContextOrTiming(safeConv, safePrior, safeHistory, mergedMessage, isMetaOrChallenge);
         int discoveryQuestionCount = resolveDiscoveryQuestionCount(safePrior, safeHistory);
-        boolean conditionClarified = safeConv.conditionClarified()
-                || discoveryQuestionCount >= 1
-                || !"chưa có".equals(statedContextOrTiming);
+        boolean customerProactivelyAskedPriceOrProduct = safeConv.priceRequestedInSession()
+                || isProactivePriceOrProductRequest(mergedMessage, allCatalog);
+        boolean pageRequiresTargetScopeDiscovery = !domainKeywords.isEmpty() && !allCatalog.isEmpty();
+        boolean narrowedTargetScopePresent = hasNarrowedTargetScope(knownBodyAreas, domainKeywords);
+        boolean missingInitialTargetScopeForDiscovery = pageRequiresTargetScopeDiscovery
+                && !hadPriorPackageInConversation
+                && discoveryQuestionCount == 0
+                && !narrowedTargetScopePresent
+                && !customerProactivelyAskedPriceOrProduct
+                && !isOperationalQuestion;
+        boolean conditionClarified = !missingInitialTargetScopeForDiscovery
+                && (safeConv.conditionClarified()
+                    || discoveryQuestionCount >= 1
+                    || narrowedTargetScopePresent
+                    || customerProactivelyAskedPriceOrProduct
+                    || !"chưa có".equals(statedContextOrTiming));
         String rawHeldPackage = (isMismatch || !hadPriorPackageInConversation)
                 ? null
                 : (safeConv.heldPackage() != null ? safeConv.heldPackage()
@@ -454,12 +604,13 @@ public class CleanAgentOrchestratorService {
                 ? null
                 : (safeConv.heldPrice() != null ? safeConv.heldPrice() : safeConv.lastQuotedPrice());
 
+        boolean isProductComparison = !isMetaOrChallenge && isProductComparisonQuestion(mergedMessage);
         CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
                 CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                         allCatalog,
                         knownSymptoms,
                         knownBodyAreas,
-                        safeConv.rejectedPackages(),
+                        isProductComparison ? Set.of() : safeConv.rejectedPackages(),
                         isMismatch
                 );
         boolean hasEconomicalAltInCatalog = tieredCatalog.economicalAlternatives() != null
@@ -505,7 +656,8 @@ public class CleanAgentOrchestratorService {
                     || "POLITE_CLOSING_ACKNOWLEDGMENT".equals(shortUtteranceRes.decodedMeaning())
                     || "PRICE_HESITATION_NO_UNPRESENTED_ECONOMICAL_OPTION".equals(shortUtteranceRes.decodedMeaning()));
         boolean brainDecodedLukewarmPostQuote = shortUtteranceRes.isContextualShortUtterance()
-                && "LUKEWARM_POST_PRICE_QUOTE_EVALUATION".equals(shortUtteranceRes.decodedMeaning());
+                && ("LUKEWARM_POST_PRICE_QUOTE_EVALUATION".equals(shortUtteranceRes.decodedMeaning())
+                    || "ACKNOWLEDGED_GENERAL_INFO_WARM_BRIDGE".equals(shortUtteranceRes.decodedMeaning()));
 
         if (brainDecodedPriceHesitation || brainDecodedPoliteDeferral) {
             isHesitation = true;
@@ -549,7 +701,6 @@ public class CleanAgentOrchestratorService {
         CleanAgentCatalogAndPromptBuilder.ReplyResolutionState replyResolutionState =
                 quotedReplyResolution.resolutionState();
 
-        boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
         boolean isQuestionSentence = mergedMessage != null && mergedMessage.contains("?");
         PackageCatalogService.PackageSummary preMatchedExplicitSelection = (!isMetaOrChallenge
                 && !hasPriceObjectionKeyword
@@ -620,6 +771,7 @@ public class CleanAgentOrchestratorService {
                 && (isAckForOfferedDetails
                     || brainDecodedOperationalAck
                     || isOperationalQuestion
+                    || isProductComparison
                     || (!hasProactiveBookingInfo && SentimentIntentLayer.isDetailOrFaqQuestion(mergedMessage, safeConv))
                     || isNormalPriceOrDetailInquiryMessage(mergedMessage)
                     || isPromoOrDiscountInquiryMessage(mergedMessage)
@@ -676,7 +828,8 @@ public class CleanAgentOrchestratorService {
                 tieredCatalog,
                 hasProactiveBookingInfo ? quotedReplyResolution : CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
                 pageZoneId,
-                null
+                null,
+                prevBotTurnText
         );
         String bookingFunnelStatus = bookingState.status().name();
 
@@ -781,6 +934,16 @@ public class CleanAgentOrchestratorService {
             if (holdSinglePackageFirstObjection && tieredCatalog.economicalAlternatives() != null) {
                 excludedCatalog.addAll(tieredCatalog.economicalAlternatives());
             }
+            if (isProductComparison && !presentedPackagesInHistory.isEmpty()) {
+                for (PackageCatalogService.PackageSummary pp : deduplicateNonAddonProducts(presentedPackagesInHistory)) {
+                    boolean alreadyAllowed = scopeFilteredCatalog.stream()
+                            .anyMatch(a -> a != null && (a.equals(pp) || a.priceAmountVnd() == pp.priceAmountVnd()));
+                    if (!alreadyAllowed) {
+                        scopeFilteredCatalog.add(pp);
+                    }
+                    excludedCatalog.removeIf(ex -> ex != null && (ex.equals(pp) || ex.priceAmountVnd() == pp.priceAmountVnd()));
+                }
+            }
         }
         boolean enforceReplyScopeGuard = !isMetaOrChallenge
                 && !isPoliteClosingAck
@@ -876,14 +1039,41 @@ public class CleanAgentOrchestratorService {
                     }
                 }
             }
-        } else if (!isMetaOrChallenge
+        }
+        Set<String> turnTargetScopeSet = new LinkedHashSet<>(
+                ConversationState.extractTargetScopes(mergedMessage, List.of()));
+        boolean postObjectionEconMatch = !holdSinglePackageFirstObjection
+                && !isMetaOrChallenge
                 && !isPoliteClosingAck
-                && customerProactivelyPickedDownsell
                 && tieredCatalog.economicalAlternatives() != null
-                && !tieredCatalog.economicalAlternatives().isEmpty()) {
-            PackageCatalogService.PackageSummary downsellPkg = tieredCatalog.economicalAlternatives().get(0);
-            heldPackageDisplay = downsellPkg.canonicalLabel();
-            heldPriceDisplay = downsellPkg.priceDisplay();
+                && !tieredCatalog.economicalAlternatives().isEmpty()
+                && (CleanAgentCatalogAndPromptBuilder.customerExplicitlyAskedForEconomicalGroup(
+                        mergedMessage, tieredCatalog.economicalAlternatives())
+                    || ((priceObjectionCount >= 1 || hasPresentedDownsell)
+                        && !turnTargetScopeSet.isEmpty()
+                        && tieredCatalog.economicalAlternatives().stream().anyMatch(e ->
+                                CleanAgentCatalogAndPromptBuilder.computePackageScopeDirectHits(
+                                        e, turnTargetScopeSet, safeConv.knownSymptoms()) > 0)));
+        PackageCatalogService.PackageSummary preferredEconForTurn =
+                (tieredCatalog.economicalAlternatives() != null && !tieredCatalog.economicalAlternatives().isEmpty())
+                        ? CleanAgentCatalogAndPromptBuilder.selectPreferredEconomicalAlternative(
+                                tieredCatalog.economicalAlternatives(),
+                                request != null ? request.history() : List.of(),
+                                heldPackageDisplay,
+                                heldPriceDisplay,
+                                mergedMessage,
+                                turnTargetScopeSet,
+                                safeConv.knownSymptoms()
+                        )
+                        : null;
+        if (selectedBookingPkg == null
+                && bookingState.status() != ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION
+                && !isMetaOrChallenge
+                && !isPoliteClosingAck
+                && (customerProactivelyPickedDownsell || postObjectionEconMatch)
+                && preferredEconForTurn != null) {
+            heldPackageDisplay = preferredEconForTurn.canonicalLabel();
+            heldPriceDisplay = preferredEconForTurn.priceDisplay();
         }
         boolean heldPkgIsNull = (rawHeldPackage == null || rawHeldPackage.isBlank())
                 && ("null".equalsIgnoreCase(heldPackageDisplay) || heldPackageDisplay == null || heldPackageDisplay.isBlank());
@@ -915,10 +1105,9 @@ public class CleanAgentOrchestratorService {
                                 ? explicitlyNamedPkgInTurn
                                 : ((!isMetaOrChallenge
                                     && !isPoliteClosingAck
-                                    && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell)
-                                    && tieredCatalog.economicalAlternatives() != null
-                                    && !tieredCatalog.economicalAlternatives().isEmpty())
-                                    ? tieredCatalog.economicalAlternatives().get(0)
+                                    && (isDownsellOrRepeatObjectionStage || isExplicitDownsell || isPriceContextHesitationTurn || customerProactivelyPickedDownsell || postObjectionEconMatch)
+                                    && preferredEconForTurn != null)
+                                    ? preferredEconForTurn
                                     : CleanAgentCatalogAndPromptBuilder.findHeldOrTopPrimaryPackage(
                                             tieredCatalog, heldPackageDisplay, heldPriceDisplay))))));
 
@@ -931,6 +1120,9 @@ public class CleanAgentOrchestratorService {
                 activeSkills,
                 candidateSkills,
                 cleanStage,
+                bookingFunnelStatus,
+                conditionClarified,
+                mergedMessage,
                 isHesitation || isPoliteClosingAck || isPriceContextHesitationTurn || isPureDeferralOrBusyTurn,
                 isPostBookingClosingAck,
                 isDetailOrUnitQuestion && !packageInterestAccepted
@@ -2081,6 +2273,36 @@ public class CleanAgentOrchestratorService {
             java.time.ZoneId pageZone,
             java.time.LocalDate referenceDate
     ) {
+        return resolveMultiIndustryBookingState(
+                mergedMessage,
+                priorBookingState,
+                bookingIntentActiveThisTurn,
+                shouldCancelActiveBooking,
+                officiallyConfirmedByToolOrStaff,
+                presentedPackagesInHistory,
+                allCatalog,
+                tieredCatalog,
+                quotedReplyResolution,
+                pageZone,
+                referenceDate,
+                null
+        );
+    }
+
+    public static ConversationState.StructuredBookingState resolveMultiIndustryBookingState(
+            String mergedMessage,
+            ConversationState.StructuredBookingState priorBookingState,
+            boolean bookingIntentActiveThisTurn,
+            boolean shouldCancelActiveBooking,
+            boolean officiallyConfirmedByToolOrStaff,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution,
+            java.time.ZoneId pageZone,
+            java.time.LocalDate referenceDate,
+            String precedingBotTurnText
+    ) {
         java.time.ZoneId safeZone = pageZone != null ? pageZone : java.time.ZoneId.of("Asia/Ho_Chi_Minh");
         ConversationState.StructuredBookingState safePrior = priorBookingState != null
                 ? priorBookingState
@@ -2116,15 +2338,30 @@ public class CleanAgentOrchestratorService {
                 quotedReplyResolution
         );
 
+        boolean shortAffirmativeNod = isShortAffirmativeBookingNod(mergedMessage);
+        boolean concreteTimeProposalFromBot = shortAffirmativeNod
+                && isConcreteTimeSlotProposalBotReply(precedingBotTurnText, safeZone, referenceDate);
+        PackageCatalogService.PackageSummary singleInvitedPkgFromBot = (explicitPkgInTurn == null && shortAffirmativeNod)
+                ? matchSingleInvitedProductInPrecedingBotTurn(
+                        precedingBotTurnText,
+                        distinctPresented,
+                        allCatalog,
+                        safeZone,
+                        referenceDate
+                )
+                : null;
+
         PackageCatalogService.PackageSummary selectedPkg = null;
         if (explicitPkgInTurn != null) {
             selectedPkg = explicitPkgInTurn;
         } else if (safePrior.selectedProductId() != null && !safePrior.selectedProductId().isBlank()) {
             selectedPkg = findProductByIdInCatalog(safePrior.selectedProductId(), distinctPresented, allCatalog);
+        } else if (singleInvitedPkgFromBot != null) {
+            selectedPkg = singleInvitedPkgFromBot;
         } else if (distinctPresented.size() == 1) {
             selectedPkg = distinctPresented.get(0);
         }
-        // Khi distinctPresented.size() >= 2 hoặc == 0 mà khách chưa chủ động chỉ định sản phẩm:
+        // Khi distinctPresented.size() >= 2 hoặc == 0 mà khách chưa chủ động chỉ định sản phẩm (và câu bot liền trước không mời đích danh 1 sản phẩm duy nhất):
         // selectedPkg BẮT BUỘC giữ nguyên null (tuyệt đối không lấy từ heldPackage!)
 
         String selectedProductId = selectedPkg != null
@@ -2158,6 +2395,27 @@ public class CleanAgentOrchestratorService {
                 safeZone,
                 referenceDate
         );
+        if (concreteTimeProposalFromBot && (parsedDT.bookingTime() == null || parsedDT.bookingDate() == null)) {
+            ConversationState.ParsedBookingDateTime botProposedDT = ConversationState.parseBookingDateTime(
+                    precedingBotTurnText,
+                    parsedDT.bookingDate(),
+                    parsedDT.bookingTime(),
+                    safeZone,
+                    referenceDate
+            );
+            if (botProposedDT.bookingTime() != null) {
+                String inheritedDate = botProposedDT.bookingDate() != null
+                        ? botProposedDT.bookingDate()
+                        : (parsedDT.bookingDate() != null ? parsedDT.bookingDate() : "hôm nay");
+                parsedDT = ConversationState.parseBookingDateTime(
+                        inheritedDate + " " + botProposedDT.bookingTime(),
+                        inheritedDate,
+                        botProposedDT.bookingTime(),
+                        safeZone,
+                        referenceDate
+                );
+            }
+        }
 
         ConversationState.BookingStatus nextStatus;
         if (selectedProductId == null || selectedProductId.isBlank()) {
@@ -2180,6 +2438,110 @@ public class CleanAgentOrchestratorService {
                 nextStatus,
                 candidateProductIds
         );
+    }
+
+    private static boolean isShortAffirmativeBookingNod(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (trimmed.contains("?") || isHesitationOrDeferralMessage(trimmed)) {
+            return false;
+        }
+        if (isBareAcknowledgmentMessage(trimmed)) {
+            return true;
+        }
+        return trimmed.toLowerCase(Locale.ROOT).matches(
+                "(?isU)^\\s*(?:dạ\\s+|ừ\\s+|à\\s+|nghe\\s+)?(?:cũng\\s+được|tạm\\s+được|cũng\\s+ổn|được\\s+đấy|nhất\\s+trí|đồng\\s+ý|chốt\\s+nhé|ok\\s+nhé|ừ\\s+nhé|uk\\s+nhé)(?:\\s+(?:em|chị|anh|shop|ạ|nhé|nha|nhỉ))?\\s*[.!?~…]*\\s*$"
+        );
+    }
+
+    private static PackageCatalogService.PackageSummary matchSingleInvitedProductInPrecedingBotTurn(
+            String botText,
+            List<PackageCatalogService.PackageSummary> distinctPresented,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            java.time.ZoneId safeZone,
+            java.time.LocalDate referenceDate
+    ) {
+        if (botText == null || botText.isBlank() || isPauseOrDeferralBotReply(botText)) {
+            return null;
+        }
+        boolean invitedProductOrTime = isInviteTrialOrAskTimeBotReply(botText)
+                || isConcreteTimeSlotProposalBotReply(botText, safeZone, referenceDate);
+        if (!invitedProductOrTime) {
+            return null;
+        }
+        List<PackageCatalogService.PackageSummary> searchPool = (distinctPresented != null && !distinctPresented.isEmpty())
+                ? distinctPresented
+                : deduplicateNonAddonProducts(allCatalog);
+        if (searchPool.isEmpty()) {
+            return null;
+        }
+        PackageCatalogService.PackageSummary wholeTurnMatch = matchUniqueProductInInviteText(botText, searchPool, distinctPresented);
+        if (wholeTurnMatch != null) {
+            return wholeTurnMatch;
+        }
+        String trailingInviteQuestion = extractTrailingInviteSentence(botText);
+        if (!trailingInviteQuestion.isEmpty()
+                && !trailingInviteQuestion.equals(botText.strip())
+                && (isInviteTrialOrAskTimeBotReply(trailingInviteQuestion)
+                    || isConcreteTimeSlotProposalBotReply(trailingInviteQuestion, safeZone, referenceDate))) {
+            return matchUniqueProductInInviteText(trailingInviteQuestion, searchPool, distinctPresented);
+        }
+        return null;
+    }
+
+    private static String extractTrailingInviteSentence(String botText) {
+        if (botText == null || botText.isBlank()) {
+            return "";
+        }
+        String[] parts = botText.strip().split("(?<=[.!?\\n])\\s+");
+        for (int i = parts.length - 1; i >= 0; i--) {
+            String candidate = parts[i].strip();
+            if (!candidate.isEmpty()) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    private static PackageCatalogService.PackageSummary matchUniqueProductInInviteText(
+            String text,
+            List<PackageCatalogService.PackageSummary> searchPool,
+            List<PackageCatalogService.PackageSummary> distinctPresented
+    ) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String lowText = java.text.Normalizer.normalize(text.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        if (lowText.matches("(?isU).*\\b(phương\\s+án\\s+nào|gói\\s+nào|mẫu\\s+nào|khóa\\s+nào|dòng\\s+nào)\\b.*")) {
+            return null;
+        }
+        Set<Long> botPrices = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(text);
+        if (!botPrices.isEmpty()) {
+            List<PackageCatalogService.PackageSummary> priceMatched = searchPool.stream()
+                    .filter(p -> p != null && botPrices.contains(p.priceAmountVnd()))
+                    .toList();
+            if (priceMatched.size() > 1) {
+                return null;
+            }
+        }
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution botPkgRes =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext("", text, searchPool, distinctPresented);
+        if (!botPkgRes.ambiguousMultiplePackages() && botPkgRes.quotedPackage() != null) {
+            return botPkgRes.quotedPackage();
+        }
+        if (botPrices.size() == 1) {
+            long singlePrice = botPrices.iterator().next();
+            List<PackageCatalogService.PackageSummary> exactByPrice = searchPool.stream()
+                    .filter(p -> p != null && p.priceAmountVnd() == singlePrice)
+                    .toList();
+            if (exactByPrice.size() == 1) {
+                return exactByPrice.get(0);
+            }
+        }
+        return null;
     }
 
     public static PackageCatalogService.PackageSummary matchExplicitProductSelectionInMessage(
@@ -2231,7 +2593,7 @@ public class CleanAgentOrchestratorService {
             }
         }
 
-        // 2. Khớp theo mức giá khách nêu tường minh trong câu đặt lịch (ví dụ: "Đặt gói 239k cho mình", "Gói 239k nhé")
+        // 2. Khớp theo mức giá niêm yết khách nêu tường minh trong câu đặt lịch (ví dụ: nêu đúng con số giá của mục muốn chọn)
         Set<Long> mentionedPrices = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(normMsg);
         if (!mentionedPrices.isEmpty()) {
             for (List<PackageCatalogService.PackageSummary> pool : searchPools) {
@@ -2354,7 +2716,63 @@ public class CleanAgentOrchestratorService {
         if (botText == null || botText.isBlank() || isPauseOrDeferralBotReply(botText)) {
             return false;
         }
-        return INVITE_TRIAL_OR_ASK_TIME_BOT_REPLY_CLEAN_PATTERN.matcher(botText.strip()).matches();
+        String trimmed = botText.strip();
+        if (INVITE_TRIAL_OR_ASK_TIME_BOT_REPLY_CLEAN_PATTERN.matcher(trimmed).matches()) {
+            return true;
+        }
+        if (CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(trimmed)
+                && SINGLE_PRODUCT_FIT_CONFIRMATION_QUESTION_CLEAN_PATTERN.matcher(trimmed).matches()) {
+            String trailingQuestion = extractTrailingInviteSentence(trimmed).toLowerCase(Locale.ROOT);
+            return !trailingQuestion.matches("(?isU).*\\bhay\\b.*");
+        }
+        return false;
+    }
+
+    public static boolean isConcreteTimeSlotProposalBotReply(
+            String botText,
+            java.time.ZoneId pageZone,
+            java.time.LocalDate referenceDate
+    ) {
+        if (botText == null || botText.isBlank() || isPauseOrDeferralBotReply(botText)) {
+            return false;
+        }
+        String trimmed = botText.strip();
+        if (AgentBrainService.isOperationalAnswerContext(trimmed, List.of())) {
+            return false;
+        }
+        if (!CONCRETE_TIME_PROPOSAL_CUE_CLEAN_PATTERN.matcher(trimmed).matches()) {
+            return false;
+        }
+        java.time.ZoneId safeZone = pageZone != null ? pageZone : java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        ConversationState.ParsedBookingDateTime dt = ConversationState.parseBookingDateTime(
+                trimmed, null, null, safeZone, referenceDate
+        );
+        return dt.bookingTime() != null && !dt.bookingTime().isBlank();
+    }
+
+    public static boolean isProactivePriceOrProductRequest(
+            String message,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (isNormalPriceOrDetailInquiryMessage(trimmed)
+                || isExplicitDownsellOrLowBudgetRequest(trimmed, null)
+                || hasProactiveBookingOrPackageSelectionInMessage(trimmed)
+                || PROACTIVE_PRICE_OR_PRODUCT_REQUEST_CLEAN_PATTERN.matcher(trimmed).matches()) {
+            return true;
+        }
+        return allCatalog != null
+                && !allCatalog.isEmpty()
+                && matchExplicitProductSelectionInMessage(trimmed, List.of(), allCatalog, null, null) != null;
+    }
+
+    public static boolean isProductComparisonQuestion(String message) {
+        return message != null
+                && !message.isBlank()
+                && PRODUCT_COMPARISON_QUESTION_CLEAN_PATTERN.matcher(message.strip()).matches();
     }
 
     public static boolean wasPriorCustomerTurnHesitation(List<FanpageBotRequest.ConversationTurn> history) {
@@ -2459,7 +2877,8 @@ public class CleanAgentOrchestratorService {
         if (safeSignals.contains("POLITE_CLOSING_ACKNOWLEDGMENT")) {
             return "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE";
         }
-        if (safeSignals.contains("ACKNOWLEDGED_OPERATIONAL_INFO")) {
+        if (safeSignals.contains("ACKNOWLEDGED_OPERATIONAL_INFO")
+                || safeSignals.contains("ACKNOWLEDGED_GENERAL_INFO")) {
             return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
         }
         if (safeSignals.contains("POSITIVE_CONFIRMATION_SIGNAL")) {
@@ -2485,7 +2904,8 @@ public class CleanAgentOrchestratorService {
                 "NONE"
         );
         if (shortRes.isContextualShortUtterance() && !shortRes.recommendedStage().isEmpty()) {
-            if ("ACKNOWLEDGED_OPERATIONAL_INFO".equals(shortRes.decodedMeaning())) {
+            if ("ACKNOWLEDGED_OPERATIONAL_INFO".equals(shortRes.decodedMeaning())
+                    || "ACKNOWLEDGED_GENERAL_INFO_WARM_BRIDGE".equals(shortRes.decodedMeaning())) {
                 return "STAGE_1_DISCOVERY_AND_FIRST_QUOTE";
             }
             if ("POSITIVE_CONFIRMATION_SIGNAL".equals(shortRes.decodedMeaning())) {
@@ -2661,6 +3081,8 @@ public class CleanAgentOrchestratorService {
         }
         String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
         if (Set.of(
+                "warm_nod_to_gentle_scheduling",
+                "booking_careful_preparation",
                 "spa_trial_acceptance_booking",
                 "spa_booking_advance_after_ack",
                 "booking_soft_confirm",
@@ -2668,14 +3090,40 @@ public class CleanAgentOrchestratorService {
                 "sales_appointment_hook_close"
         ).contains(codeLower)
                 || codeLower.contains("booking")
-                || codeLower.contains("closing")) {
+                || codeLower.contains("closing")
+                || codeLower.contains("scheduling")) {
             return true;
         }
         String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
         return nameLower.contains("chốt khung giờ")
                 || nameLower.contains("đặt lịch")
                 || nameLower.contains("giữ lịch")
+                || nameLower.contains("khung giờ thuận tiện")
                 || nameLower.contains("trial acceptance");
+    }
+
+    private static boolean isWarmNodSchedulingSkill(AgentSkillDto skill) {
+        if (skill == null || skill.code() == null) {
+            return false;
+        }
+        String codeLower = skill.code().strip().toLowerCase(Locale.ROOT);
+        return "warm_nod_to_gentle_scheduling".equals(codeLower);
+    }
+
+    private static boolean isBookingCarefulPreparationSkill(AgentSkillDto skill) {
+        if (skill == null || skill.code() == null) {
+            return false;
+        }
+        String codeLower = skill.code().strip().toLowerCase(Locale.ROOT);
+        return "booking_careful_preparation".equals(codeLower);
+    }
+
+    private static boolean isSoftEconomicalBridgeOrCompareSkill(AgentSkillDto skill) {
+        if (skill == null || skill.code() == null) {
+            return false;
+        }
+        String codeLower = skill.code().strip().toLowerCase(Locale.ROOT);
+        return "soft_economical_bridge_and_compare".equals(codeLower);
     }
 
     private static boolean isLukewarmMoodBoostSkill(AgentSkillDto skill) {
@@ -2695,7 +3143,8 @@ public class CleanAgentOrchestratorService {
         }
         String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
         String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
-        return "spa_graceful_exit_after_rejection".equals(codeLower)
+        return "graceful_pause_keep_warmth".equals(codeLower)
+                || "spa_graceful_exit_after_rejection".equals(codeLower)
                 || "graceful_exit_after_rejection".equals(codeLower)
                 || "spa_stage3_graceful_exit".equals(codeLower)
                 || nameLower.contains("graceful exit");
@@ -2707,7 +3156,8 @@ public class CleanAgentOrchestratorService {
         }
         String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
         String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
-        return "price_objection_soft_anchor".equals(codeLower)
+        return "price_objection_sensory_value".equals(codeLower)
+                || "price_objection_soft_anchor".equals(codeLower)
                 || "spa_objection_value_trial".equals(codeLower)
                 || "spa_objection_dynamic_downsell".equals(codeLower)
                 || nameLower.contains("đồng cảm chi phí")
@@ -2726,12 +3176,42 @@ public class CleanAgentOrchestratorService {
         }
         String codeLower = skill.code() != null ? skill.code().strip().toLowerCase(Locale.ROOT) : "";
         String nameLower = skill.name() != null ? skill.name().strip().toLowerCase(Locale.ROOT) : "";
-        return "spa_condition_first_discovery".equals(codeLower)
+        return "discovery_empathy_and_scope".equals(codeLower)
+                || "spa_condition_first_discovery".equals(codeLower)
                 || "discovery_ask_one_need".equals(codeLower)
                 || "spa_cautious_symptom_clarification".equals(codeLower)
                 || codeLower.contains("discovery")
                 || nameLower.contains("condition-first")
                 || nameLower.contains("khám phá tình trạng");
+    }
+
+    private static List<AgentSkillDto> capSingleFocalSkill(List<AgentSkillDto> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return List.of();
+        }
+        return skills.size() > 1 ? new ArrayList<>(skills.subList(0, 1)) : skills;
+    }
+
+    private static AgentSkillDto findFirstMatchingSkill(
+            List<AgentSkillDto> current,
+            List<AgentSkillDto> candidates,
+            java.util.function.Predicate<AgentSkillDto> predicate
+    ) {
+        if (current != null) {
+            for (AgentSkillDto s : current) {
+                if (s != null && predicate.test(s)) {
+                    return s;
+                }
+            }
+        }
+        if (candidates != null) {
+            for (AgentSkillDto c : candidates) {
+                if (c != null && predicate.test(c)) {
+                    return c;
+                }
+            }
+        }
+        return null;
     }
 
     public static List<AgentSkillDto> alignCleanAgentActiveSkills(
@@ -2745,6 +3225,9 @@ public class CleanAgentOrchestratorService {
                 activeSkills,
                 candidateSkills,
                 null,
+                null,
+                true,
+                null,
                 isHesitationOrPoliteClosing,
                 isPostBookingClosingAck,
                 isPureDetailOrFaqTurn
@@ -2755,6 +3238,30 @@ public class CleanAgentOrchestratorService {
             List<AgentSkillDto> activeSkills,
             List<AgentSkillDto> candidateSkills,
             String finalStage,
+            boolean isHesitationOrPoliteClosing,
+            boolean isPostBookingClosingAck,
+            boolean isPureDetailOrFaqTurn
+    ) {
+        return alignCleanAgentActiveSkills(
+                activeSkills,
+                candidateSkills,
+                finalStage,
+                null,
+                true,
+                null,
+                isHesitationOrPoliteClosing,
+                isPostBookingClosingAck,
+                isPureDetailOrFaqTurn
+        );
+    }
+
+    public static List<AgentSkillDto> alignCleanAgentActiveSkills(
+            List<AgentSkillDto> activeSkills,
+            List<AgentSkillDto> candidateSkills,
+            String finalStage,
+            String bookingFunnelStatus,
+            boolean conditionClarified,
+            String customerMessage,
             boolean isHesitationOrPoliteClosing,
             boolean isPostBookingClosingAck,
             boolean isPureDetailOrFaqTurn
@@ -2783,65 +3290,105 @@ public class CleanAgentOrchestratorService {
                     || isDiscoveryOrSymptomSkill(s)
                     || isLukewarmMoodBoostSkill(s)
                     || isPriceObjectionEmpathySkill(s)
+                    || isSoftEconomicalBridgeOrCompareSkill(s)
                     || isGracefulExitSkill(s)
                     || (s.category() != null && ("SALES".equalsIgnoreCase(s.category()) || "CLOSING".equalsIgnoreCase(s.category()) || "DISCOVERY".equalsIgnoreCase(s.category()))));
-            return current;
+            return capSingleFocalSkill(current);
         }
 
-        boolean isPriceObjectionStage = "STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(finalStage)
-                || "STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(finalStage);
-        if (isPriceObjectionStage) {
+        // 1. STAGE_2: Chê đắt lần đầu -> ưu tiên price_objection_sensory_value (1 skill trọng tâm duy nhất)
+        if ("STAGE_2_FIRST_PRICE_OBJECTION_HOLD_VALUE".equals(finalStage)) {
             current.removeIf(s -> isGracefulExitSkill(s)
                     || isLukewarmMoodBoostSkill(s)
                     || isBookingOrClosingSkill(s)
-                    || isDiscoveryOrSymptomSkill(s));
-            if (current.stream().noneMatch(CleanAgentOrchestratorService::isPriceObjectionEmpathySkill)) {
-                for (AgentSkillDto cand : sanitizedCandidates) {
-                    if (isPriceObjectionEmpathySkill(cand)) {
-                        current.add(0, cand);
-                        break;
-                    }
-                }
+                    || isDiscoveryOrSymptomSkill(s)
+                    || isSoftEconomicalBridgeOrCompareSkill(s));
+            AgentSkillDto matched = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isPriceObjectionEmpathySkill);
+            if (matched != null) {
+                return List.of(matched);
             }
-            if (current.stream().noneMatch(CleanAgentOrchestratorService::isPriceObjectionEmpathySkill)) {
-                current.add(0, new AgentSkillDto(
-                        null,
-                        "price_objection_soft_anchor",
-                        VALUE_HOLD_PRICE_OBJECTION_SKILL_DISPLAY_NAME,
-                        "OBJECTION",
-                        "Hóa giải khi khách chê đắt lần đầu bằng công thức Đồng cảm - Bảo vệ giá trị liệu trình - Đổi góc nhìn.",
-                        "đắt quá, cao nhỉ, giá căng, hơi mắc, gần 1 ngày công",
-                        "Đồng cảm tự nhiên, làm nổi bật giá trị trọn gói và mời khách trải nghiệm thử 1 buổi.",
-                        "Dạ mức giá này đã bao gồm trọn gói chuyên viên tay nghề cao chăm sóc chuyên sâu ạ.",
-                        "Tự động hạ giá ngay ở lần đầu khách cảm thán giá.",
-                        96,
-                        true,
-                        null,
-                        null,
-                        null
-                ));
-            }
-            if (current.size() > 3) {
-                return new ArrayList<>(current.subList(0, 3));
-            }
-            return current;
+            return List.of(new AgentSkillDto(
+                    null,
+                    "price_objection_soft_anchor",
+                    VALUE_HOLD_PRICE_OBJECTION_SKILL_DISPLAY_NAME,
+                    "OBJECTION",
+                    "Hóa giải khi khách chê đắt lần đầu bằng công thức Đồng cảm - Bảo vệ giá trị liệu trình - Đổi góc nhìn.",
+                    "đắt quá, cao nhỉ, giá căng, hơi mắc, gần 1 ngày công",
+                    "Đồng cảm tự nhiên, làm nổi bật giá trị trọn gói và mời khách trải nghiệm thử 1 buổi.",
+                    "Dạ mức giá này đã bao gồm trọn gói chuyên viên tay nghề cao chăm sóc chuyên sâu ạ.",
+                    "Tự động hạ giá ngay ở lần đầu khách cảm thán giá.",
+                    96,
+                    true,
+                    null,
+                    null,
+                    null
+            ));
         }
 
-        boolean isPositiveBookingStage = "STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(finalStage);
-        if (isPositiveBookingStage) {
+        // 2. STAGE_3 (Downsell / chê đắt lần 2): ưu tiên soft_economical_bridge_and_compare, fallback về priceObjectionEmpathySkill
+        if ("STAGE_3_DOWNSELL_OR_REPEAT_OBJECTION".equals(finalStage)) {
+            AgentSkillDto bridgeSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isSoftEconomicalBridgeOrCompareSkill);
+            if (bridgeSkill != null) {
+                return List.of(bridgeSkill);
+            }
+            AgentSkillDto fallbackEmpathy = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isPriceObjectionEmpathySkill);
+            if (fallbackEmpathy != null) {
+                return List.of(fallbackEmpathy);
+            }
+            return List.of(new AgentSkillDto(
+                    null,
+                    "price_objection_soft_anchor",
+                    VALUE_HOLD_PRICE_OBJECTION_SKILL_DISPLAY_NAME,
+                    "OBJECTION",
+                    "Đồng cảm chi phí và giới thiệu phương án tiết kiệm phù hợp nhu cầu.",
+                    "đắt quá, có gói rẻ hơn không",
+                    "Giới thiệu phương án tiết kiệm phù hợp phạm vi nhu cầu mà không dìm hàng gói nhỏ.",
+                    "Dạ bên em có phương án tiết kiệm hơn tập trung đúng phạm vi nhu cầu của mình ạ.",
+                    "Chê bai phương án tiết kiệm chỉ làm qua loa.",
+                    96,
+                    true,
+                    null,
+                    null,
+                    null
+            ));
+        }
+
+        // 3. STAGE_4 / STAGE_4B: Đặt lịch / gật đầu đồng thuận -> phân biệt warm_nod_to_gentle_scheduling vs booking_careful_preparation
+        if ("STAGE_4_POSITIVE_TRIAL_OR_BOOKING".equals(finalStage)
+                || "STAGE_4B_POST_BOOKING_CONFIRMED_CLOSING".equals(finalStage)
+                || isPostBookingClosingAck) {
             current.removeIf(s -> isGracefulExitSkill(s) || isLukewarmMoodBoostSkill(s));
-            if (current.stream().noneMatch(CleanAgentOrchestratorService::isBookingOrClosingSkill)) {
-                for (AgentSkillDto cand : sanitizedCandidates) {
-                    if (isBookingOrClosingSkill(cand)) {
-                        current.add(0, cand);
-                        break;
-                    }
+            boolean isPreparationOrConfirmPhase = isPostBookingClosingAck
+                    || "STAGE_4B_POST_BOOKING_CONFIRMED_CLOSING".equals(finalStage)
+                    || "AWAITING_AVAILABILITY_CHECK".equalsIgnoreCase(bookingFunnelStatus)
+                    || "AWAITING_CUSTOMER_CONFIRMATION".equalsIgnoreCase(bookingFunnelStatus)
+                    || "CONFIRMED".equalsIgnoreCase(bookingFunnelStatus);
+            if (isPreparationOrConfirmPhase) {
+                AgentSkillDto prepSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isBookingCarefulPreparationSkill);
+                if (prepSkill != null) {
+                    return List.of(prepSkill);
+                }
+            } else {
+                AgentSkillDto nodSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isWarmNodSchedulingSkill);
+                if (nodSkill != null) {
+                    return List.of(nodSkill);
                 }
             }
-            if (current.size() > 3) {
-                return new ArrayList<>(current.subList(0, 3));
+            if (!isPostBookingClosingAck) {
+                AgentSkillDto anyBookingSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isBookingOrClosingSkill);
+                if (anyBookingSkill != null) {
+                    return List.of(anyBookingSkill);
+                }
             }
-            return current;
+            return capSingleFocalSkill(current);
+        }
+
+        // 4. STAGE_3B (Ngập ngừng vì giá -> cầu nối mềm sang phương án tiết kiệm): ưu tiên soft_economical_bridge_and_compare, fallback về gracefulExitSkill cho mock test cũ
+        if ("STAGE_3B_PRICE_HESITATION_SOFT_DOWNSELL".equals(finalStage)) {
+            AgentSkillDto bridgeSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isSoftEconomicalBridgeOrCompareSkill);
+            if (bridgeSkill != null) {
+                return List.of(bridgeSkill);
+            }
         }
 
         boolean isFinalHesitationOrPauseStage = (finalStage != null && !finalStage.isBlank())
@@ -2849,50 +3396,58 @@ public class CleanAgentOrchestratorService {
                     || "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(finalStage))
                 : isHesitationOrPoliteClosing;
 
-        if (!isFinalHesitationOrPauseStage && !isPostBookingClosingAck && !isPureDetailOrFaqTurn) {
-            if (current.size() > 3) {
-                return new ArrayList<>(current.subList(0, 3));
+        if (isFinalHesitationOrPauseStage) {
+            AgentSkillDto gracefulSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isGracefulExitSkill);
+            if (gracefulSkill != null) {
+                return List.of(gracefulSkill);
             }
-            return current;
+            return List.of(new AgentSkillDto(
+                    null,
+                    "spa_graceful_exit_after_rejection",
+                    "Tôn trọng quyết định cân nhắc & Giữ thiện cảm (Graceful Exit)",
+                    "OBJECTION",
+                    "Tôn trọng quyết định cân nhắc của khách, không thúc ép đặt lịch.",
+                    "xem đã, để suy nghĩ thêm, có gì nhắn sau",
+                    "Tôn trọng nhịp độ của khách, hẹn khi nào tiện nhắn lại.",
+                    "Dạ vâng ạ, em đã lưu lại thông tin gói cho mình rồi ạ.",
+                    "Cố ép chốt khung giờ đặt lịch khi khách xin tạm dừng.",
+                    95,
+                    true,
+                    null,
+                    null,
+                    null
+            ));
         }
 
-        current.removeIf(s -> isBookingOrClosingSkill(s) || isLukewarmMoodBoostSkill(s));
+        // 5. STAGE_1: Nếu khách đang hỏi so sánh 2 phương án ("khác gì", "khác j", "so với") -> ưu tiên soft_economical_bridge_and_compare
+        if (isProductComparisonQuestion(customerMessage)) {
+            AgentSkillDto compareSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isSoftEconomicalBridgeOrCompareSkill);
+            if (compareSkill != null) {
+                return List.of(compareSkill);
+            }
+        }
 
-        if (isFinalHesitationOrPauseStage) {
-            for (AgentSkillDto cand : sanitizedCandidates) {
-                if (isGracefulExitSkill(cand)) {
-                    boolean alreadyIn = current.stream().anyMatch(s -> s != null && cand.code() != null && cand.code().equalsIgnoreCase(s.code()));
-                    if (!alreadyIn) {
-                        current.add(0, cand);
-                    }
-                    break;
+        // 6. STAGE_1: Khám phá nhu cầu & phạm vi ưu tiên -> ưu tiên discovery_empathy_and_scope
+        if (!conditionClarified) {
+            AgentSkillDto discSkill = findFirstMatchingSkill(current, sanitizedCandidates, CleanAgentOrchestratorService::isDiscoveryOrSymptomSkill);
+            if (discSkill != null) {
+                return List.of(discSkill);
+            }
+        }
+
+        if (isPureDetailOrFaqTurn) {
+            current.removeIf(s -> isBookingOrClosingSkill(s) || isLukewarmMoodBoostSkill(s) || isGracefulExitSkill(s));
+        } else {
+            current.removeIf(s -> isGracefulExitSkill(s) || isLukewarmMoodBoostSkill(s));
+            if (current.isEmpty()) {
+                AgentSkillDto discFallback = findFirstMatchingSkill(List.of(), sanitizedCandidates, CleanAgentOrchestratorService::isDiscoveryOrSymptomSkill);
+                if (discFallback != null) {
+                    return List.of(discFallback);
                 }
             }
-            if (current.stream().noneMatch(CleanAgentOrchestratorService::isGracefulExitSkill)) {
-                current.add(0, new AgentSkillDto(
-                        null,
-                        "spa_graceful_exit_after_rejection",
-                        "Tôn trọng quyết định cân nhắc & Giữ thiện cảm (Graceful Exit)",
-                        "OBJECTION",
-                        "Tôn trọng quyết định cân nhắc của khách, không thúc ép đặt lịch.",
-                        "xem đã, để suy nghĩ thêm, có gì nhắn sau",
-                        "Tôn trọng nhịp độ của khách, hẹn khi nào tiện nhắn lại.",
-                        "Dạ vâng ạ, em đã lưu lại thông tin gói cho mình rồi ạ.",
-                        "Cố ép chốt khung giờ đặt lịch khi khách xin tạm dừng.",
-                        95,
-                        true,
-                        null,
-                        null,
-                        null
-                ));
-            }
-            current.removeIf(s -> !isGracefulExitSkill(s) && (s.category() == null || !"OBJECTION".equalsIgnoreCase(s.category())));
         }
 
-        if (current.size() > 3) {
-            return new ArrayList<>(current.subList(0, 3));
-        }
-        return current;
+        return capSingleFocalSkill(current);
     }
 
     public static List<String> classifyCleanCurrentTurnSignals(
@@ -3027,10 +3582,11 @@ public class CleanAgentOrchestratorService {
                 && isPositiveInterestForTrialInvite(mergedMessage);
         boolean isPromoQuestion = isPromoOrDiscountInquiryMessage(mergedMessage);
         boolean isOperationalQuestion = isOperationalOrLogisticsQuestion(mergedMessage);
+        boolean isComparisonQuestion = isProductComparisonQuestion(mergedMessage);
         if (isOperationalQuestion) {
             signals.add("OPERATIONAL_OR_LOGISTICS_QUESTION");
         }
-        if ((isDetailOrUnitQuestion || isPromoQuestion || isOperationalQuestion) && !isPriceObj) {
+        if ((isDetailOrUnitQuestion || isComparisonQuestion || isPromoQuestion || isOperationalQuestion) && !isPriceObj) {
             signals.add("SERVICE_OR_UNIT_DETAIL_QUESTION");
         }
         if (isPromoQuestion) {
@@ -3189,33 +3745,83 @@ public class CleanAgentOrchestratorService {
         return parts.isEmpty() ? "chưa có" : String.join(", ", parts);
     }
 
+    private static boolean hasNarrowedTargetScope(List<String> knownBodyAreas, List<String> taxonomyKeywords) {
+        if (knownBodyAreas == null || knownBodyAreas.isEmpty()) {
+            return false;
+        }
+        List<String> cleanScopes = knownBodyAreas.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(s -> s.strip().toLowerCase(Locale.ROOT))
+                .toList();
+        if (cleanScopes.isEmpty()) {
+            return false;
+        }
+        if (cleanScopes.size() > 1 || cleanScopes.get(0).contains(" ")) {
+            return true;
+        }
+        String singleToken = cleanScopes.get(0);
+        if (taxonomyKeywords == null || taxonomyKeywords.isEmpty()) {
+            return true;
+        }
+        long refiningMultiWordCount = taxonomyKeywords.stream()
+                .filter(k -> k != null && !k.isBlank())
+                .map(k -> k.strip().toLowerCase(Locale.ROOT))
+                .distinct()
+                .filter(k -> k.contains(" ") && k.matches("(?U).*\\b" + Pattern.quote(singleToken) + "\\b.*"))
+                .count();
+        return refiningMultiWordCount < 4;
+    }
+
     public static int resolveDiscoveryQuestionCount(
             ConversationState priorState,
             List<FanpageBotRequest.ConversationTurn> history
     ) {
         int fromState = priorState != null ? Math.max(0, priorState.conditionAskedCount()) : 0;
+        if (history == null || history.isEmpty()) {
+            return fromState;
+        }
         int fromHistory = 0;
-        if (history != null) {
-            for (FanpageBotRequest.ConversationTurn t : history) {
-                if (t == null || t.content() == null || t.content().isBlank()) continue;
-                if (!"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())) continue;
-                String low = t.content().toLowerCase(Locale.ROOT);
-                if (low.contains("?") && (low.contains("lâu chưa")
-                        || low.contains("mới gần đây")
-                        || low.contains("mới xuất hiện")
-                        || low.contains("mấy hôm nay")
-                        || low.contains("hay đã kéo dài")
-                        || low.contains("thời điểm nào")
-                        || low.contains("khi nào")
-                        || low.contains("bao lâu")
-                        || low.contains("tần suất")
-                        || low.contains("thường xảy ra")
-                        || low.contains("tự nhiên bị")
-                        || low.contains("vận động/tập luyện")
-                        || low.contains("ngồi lâu hay vận động"))) {
-                    fromHistory++;
+        boolean sawSubstantiveCustomerTurn = false;
+        for (FanpageBotRequest.ConversationTurn t : history) {
+            if (t == null || t.content() == null || t.content().isBlank()) continue;
+            boolean isAssistant = "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role());
+            String trimmed = t.content().strip();
+            String low = trimmed.toLowerCase(Locale.ROOT);
+            if (!isAssistant) {
+                boolean isBareOpener = SIMPLE_GREETING_MESSAGE_PATTERN.matcher(trimmed).matches()
+                        || low.matches("^(?:dạ\\s+)?(?:cần\\s+|muốn\\s+|cho\\s+(?:mình|tôi|anh|chị|em)\\s+)?tư\\s+vấn(?:\\s+(?:giúp|với|ạ|nhé|shop|em))*[.!?]*$");
+                if (!isBareOpener) {
+                    sawSubstantiveCustomerTurn = true;
                 }
+                continue;
             }
+            boolean askedTimingOrContext = low.contains("lâu chưa")
+                    || low.contains("mới gần đây")
+                    || low.contains("mới xuất hiện")
+                    || low.contains("mấy hôm nay")
+                    || low.contains("hay đã kéo dài")
+                    || low.contains("thời điểm nào")
+                    || low.contains("khi nào")
+                    || low.contains("bao lâu")
+                    || low.contains("tần suất")
+                    || low.contains("thường xảy ra")
+                    || low.contains("tự nhiên bị")
+                    || low.contains("vận động/tập luyện")
+                    || low.contains("ngồi lâu hay vận động");
+            boolean askedPriorityScopeAfterNeed = sawSubstantiveCustomerTurn
+                    && (low.matches("(?isU).*\\b(vùng|vị\\s+trí|khu\\s+vực|phạm\\s+vi|mảng|hạng\\s+mục|chiếc|phòng)\\b[^.?]{0,24}\\bnào\\b.*")
+                        || low.contains("ưu tiên")
+                        || low.contains("nhiều nhất")
+                        || low.contains("rõ nhất")
+                        || low.contains("mỏi nhất")
+                        || low.contains("khó chịu nhất")
+                        || low.contains("nhức nhất"));
+            if (low.contains("?") && (askedTimingOrContext || askedPriorityScopeAfterNeed)) {
+                fromHistory++;
+            }
+        }
+        if (!sawSubstantiveCustomerTurn) {
+            return 0;
         }
         return Math.max(fromState, fromHistory);
     }
@@ -3414,5 +4020,1439 @@ public class CleanAgentOrchestratorService {
                 "CLEAN_AGENT_CONSULTATION",
                 null
         );
+    }
+
+    // =========================================================================
+    // ACI – ADAPTIVE CONVERSATION INTELLIGENCE (LLM_COGNITIVE_V2) EXECUTION
+    // =========================================================================
+
+    private record LlmTokenUsageSnapshot(
+            int promptTokens,
+            int completionTokens,
+            int reasoningTokens
+    ) {
+        static LlmTokenUsageSnapshot zero() {
+            return new LlmTokenUsageSnapshot(0, 0, 0);
+        }
+
+        LlmTokenUsageSnapshot plus(LlmTokenUsageSnapshot other) {
+            if (other == null) return this;
+            return new LlmTokenUsageSnapshot(
+                    this.promptTokens + other.promptTokens,
+                    this.completionTokens + other.completionTokens,
+                    this.reasoningTokens + other.reasoningTokens
+            );
+        }
+    }
+
+    private FanpageBotResponse executeAciCognitiveTurn(
+            UUID pageId,
+            FanpageBotRequest request,
+            String legacyNormalizedMessage,
+            String honorific,
+            PromptBuilder.PagePersona pagePersona,
+            ConversationState priorStateWithChunks,
+            ConversationState convState,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            List<LearnedRuleDto> appliedRules,
+            FanpageBotResponse.ExtractedLead extractedLead,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            List<AgentSkillDto> candidateSkills,
+            FanpageBotPromptBuilder.SalesStage salesStage,
+            int incomingHistorySize,
+            long turnStartNs,
+            long retrievalMs,
+            AdaptiveConversationIntelligence.ThreeStreamTurnInput prebuiltThreeStreamInput
+    ) {
+        ConversationState safePrior = priorStateWithChunks != null ? priorStateWithChunks : ConversationState.initial();
+        ConversationState safeConv = convState != null ? convState : safePrior;
+        com.example.docmind.dto.PagePersonaConfig effectivePersonaConfig = (pagePersona != null && pagePersona.resolvedConfig() != null)
+                ? pagePersona.resolvedConfig()
+                : com.example.docmind.dto.PagePersonaConfig.empty();
+        if (request != null && Boolean.TRUE.equals(request.resetSession()) && agentBrainService != null) {
+            agentBrainService.clearCustomerMemory(pageId, request.senderId());
+        }
+        String senderIdForPronoun = request != null ? request.senderId() : null;
+        String defaultCustomerPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
+                ? effectivePersonaConfig.resolvedDefaultCustomerPronoun()
+                : ((honorific != null && !honorific.isBlank()) ? honorific.strip() : "mình");
+        String priorInferredCustomerPronoun = (agentBrainService != null && pageId != null && senderIdForPronoun != null && !senderIdForPronoun.isBlank())
+                ? agentBrainService.getInferredCustomerPronoun(pageId, senderIdForPronoun)
+                : null;
+        String safeHonorific = (priorInferredCustomerPronoun != null && !priorInferredCustomerPronoun.isBlank())
+                ? priorInferredCustomerPronoun.strip()
+                : defaultCustomerPronoun;
+        String selfPronoun = effectivePersonaConfig.resolvedSelfPronoun();
+        int minDelayMs = effectivePersonaConfig.resolvedPostPriceDelayMs() > 0
+                ? effectivePersonaConfig.resolvedPostPriceDelayMs()
+                : (int) PriceQuoteReadingBudgetScheduler.PRICE_QUOTE_READING_BUDGET_MS;
+        java.time.ZoneId pageZoneId = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+
+        // System Gate 1: Phiên đã tắt bot (HUMAN_TAKEOVER hoặc lệnh hệ thống OPT_OUT thực sự trước đó)
+        if (safePrior.optedOut() || safePrior.humanTakeover()) {
+            FanpageBotService.markProvenanceV38Logged();
+            return new FanpageBotResponse(
+                    "",
+                    List.of(),
+                    List.of(),
+                    "HUMAN_HANDOFF",
+                    1.0,
+                    safePrior.humanTakeover(),
+                    null,
+                    null,
+                    extractedLead,
+                    List.of(),
+                    customerInsight,
+                    List.of(),
+                    List.of("BOT_MUTED")
+            );
+        }
+
+        // Khôi phục Catalog đầy đủ (không bao giờ làm mù nhận thức LLM)
+        List<String> domainKeywords = effectivePersonaConfig.resolvedScopeTaxonomy();
+        List<PackageCatalogService.PackageSummary> extractedFromChunks = PackageCatalogService.filterByRegion(
+                PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
+                safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN"
+        );
+        List<PackageCatalogService.PackageSummary> allCatalog = new ArrayList<>();
+        Set<String> seenCatalogIds = new LinkedHashSet<>();
+        if (safeConv.availablePackageCatalog() != null) {
+            for (PackageCatalogService.PackageSummary p : safeConv.availablePackageCatalog()) {
+                if (p != null && seenCatalogIds.add(p.productId())) {
+                    allCatalog.add(p);
+                }
+            }
+        }
+        if (safePrior.availablePackageCatalog() != null) {
+            for (PackageCatalogService.PackageSummary p : safePrior.availablePackageCatalog()) {
+                if (p != null && seenCatalogIds.add(p.productId())) {
+                    allCatalog.add(p);
+                }
+            }
+        }
+        for (PackageCatalogService.PackageSummary p : extractedFromChunks) {
+            if (p != null && seenCatalogIds.add(p.productId())) {
+                allCatalog.add(p);
+            }
+        }
+
+        // Tách biệt 3 luồng dữ liệu đầu vào (Mục 2.1): Original Message vs Normalized Query vs Unverified Parser Candidates
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput = prebuiltThreeStreamInput != null
+                ? prebuiltThreeStreamInput
+                : AdaptiveConversationIntelligence.buildThreeStreamInput(request, allCatalog, effectivePersonaConfig, pageZoneId);
+        String originalVerbatim = !threeStreamInput.originalMessage().isBlank()
+                ? threeStreamInput.originalMessage()
+                : (legacyNormalizedMessage != null ? legacyNormalizedMessage : "");
+
+        // System Gate 2: Lệnh Opt-out hệ thống tường minh (STOP, UNSUBSCRIBE, HỦY ĐĂNG KÝ, ĐỪNG NHẮN NỮA).
+        // Câu từ chối hội thoại lịch sự như "Thôi, không cần nữa" (S06) KHÔNG đi vào nhánh này và mặc định opted_out = false!
+        if (PrimaryActionRouter.isStrictSystemOptOutMessage(originalVerbatim)) {
+            String stopText = "Dạ " + selfPronoun + " xin phép dừng nhắn tin để tránh làm phiền " + safeHonorific
+                    + " ạ. Khi nào cần hỗ trợ, " + safeHonorific + " cứ nhắn lại cho " + selfPronoun + " bất cứ lúc nào nhé.";
+            List<FanpageBotResponse.ReplyBubble> optOutBubbles = List.of(
+                    new FanpageBotResponse.ReplyBubble(stopText, 0)
+            );
+            PrimaryActionRouter.RoutingDecision optOutDecision = new PrimaryActionRouter.RoutingDecision(
+                    PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    PrimaryActionRouter.PrimaryAction.GENERIC_SHORT_DISCOVERY,
+                    false,
+                    1,
+                    "EXPLICIT_OPT_OUT",
+                    "spa_ambiguous_confirm_once"
+            );
+            if (agentBrainService != null) {
+                agentBrainService.applyAciTurnMemoryUpdates(
+                        pageId,
+                        request != null ? request.senderId() : null,
+                        CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(request != null ? request.history() : List.of()),
+                        originalVerbatim,
+                        threeStreamInput.unverifiedParserCandidates(),
+                        AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                        agentBrainService.recallBookingState(pageId, request != null ? request.senderId() : null),
+                        null,
+                        true,
+                        null,
+                        "SYSTEM_OPT_OUT_ACK"
+                );
+            }
+            ConversationState.updateAfterSend(
+                    pageId,
+                    request != null ? request.senderId() : null,
+                    request != null ? request.conversationId() : null,
+                    safeConv,
+                    originalVerbatim,
+                    optOutDecision,
+                    optOutBubbles,
+                    false,
+                    incomingHistorySize
+            );
+            FanpageBotService.markProvenanceV38Logged();
+            return new FanpageBotResponse(
+                    stopText,
+                    optOutBubbles,
+                    List.of(0),
+                    "DISCOVERY",
+                    1.0,
+                    false,
+                    null,
+                    null,
+                    extractedLead,
+                    List.of(),
+                    customerInsight,
+                    List.of(),
+                    List.of("EXPLICIT_OPT_OUT")
+            );
+        }
+
+        List<FanpageBotRequest.ConversationTurn> safeHistory = (request != null && request.history() != null)
+                ? request.history()
+                : List.of();
+
+        // Shadow Scope Candidates (chỉ dùng để xếp thứ tự gợi ý PRIMARY vs ECONOMICAL_OPTION, KHÔNG ẩn gói hợp lệ!)
+        List<String> shadowScopeCandidates = new ArrayList<>();
+        if (safePrior.knownBodyAreas() != null) {
+            shadowScopeCandidates.addAll(safePrior.knownBodyAreas());
+        }
+        for (AdaptiveConversationIntelligence.UnverifiedParserCandidate cand : threeStreamInput.unverifiedParserCandidates()) {
+            if ("SCOPE_OR_AREA_CANDIDATE".equals(cand.candidateType()) && !shadowScopeCandidates.contains(cand.rawValue())) {
+                shadowScopeCandidates.add(cand.rawValue());
+            }
+        }
+        CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
+                CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
+                        allCatalog,
+                        List.of(),
+                        shadowScopeCandidates,
+                        Set.of(),
+                        false
+                );
+
+        // Epistemic Unblinding (Mục 3.2): Mở đầy đủ tất cả gói non-addon hợp lệ của Page với nhãn PRIMARY / ECONOMICAL_OPTION
+        List<PackageCatalogService.PackageSummary> unblindedPrimaries = new ArrayList<>(tieredCatalog.primaryRecommendations());
+        List<PackageCatalogService.PackageSummary> unblindedEconomicals = new ArrayList<>(tieredCatalog.economicalAlternatives());
+        Set<String> includedProductIds = new LinkedHashSet<>();
+        for (PackageCatalogService.PackageSummary p : unblindedPrimaries) {
+            if (p != null) includedProductIds.add(p.productId());
+        }
+        for (PackageCatalogService.PackageSummary p : unblindedEconomicals) {
+            if (p != null) includedProductIds.add(p.productId());
+        }
+        long maxCatalogPrice = allCatalog.stream()
+                .filter(p -> p != null && !p.isAddon())
+                .mapToLong(PackageCatalogService.PackageSummary::priceAmountVnd)
+                .max()
+                .orElse(0L);
+        long minCatalogPrice = allCatalog.stream()
+                .filter(p -> p != null && !p.isAddon() && p.priceAmountVnd() > 0L)
+                .mapToLong(PackageCatalogService.PackageSummary::priceAmountVnd)
+                .min()
+                .orElse(0L);
+        long midpointPrice = (maxCatalogPrice > 0L && minCatalogPrice > 0L)
+                ? ((maxCatalogPrice + minCatalogPrice) / 2L)
+                : 300_000L;
+        for (PackageCatalogService.PackageSummary p : allCatalog) {
+            if (p == null || p.isAddon() || !includedProductIds.add(p.productId())) {
+                continue;
+            }
+            if (p.priceAmountVnd() > 0L && p.priceAmountVnd() < midpointPrice && !unblindedPrimaries.isEmpty()) {
+                unblindedEconomicals.add(p);
+            } else {
+                unblindedPrimaries.add(p);
+            }
+        }
+        List<PackageCatalogService.PackageSummary> unblindedEligibleCatalog = new ArrayList<>(unblindedPrimaries);
+        unblindedEligibleCatalog.addAll(unblindedEconomicals);
+        List<PackageCatalogService.PackageSummary> excludedAddonsOnly = new ArrayList<>();
+        for (PackageCatalogService.PackageSummary p : allCatalog) {
+            if (p != null && p.isAddon()) {
+                excludedAddonsOnly.add(p);
+            }
+        }
+
+        // Quote-Reply Metadata Resolution (Sự thật hệ thống)
+        String replyToMid = request != null && request.replyToMid() != null ? request.replyToMid().strip() : "";
+        String quotedMessageText = request != null && request.quotedMessageText() != null ? request.quotedMessageText().strip() : "";
+        if (quotedMessageText.isEmpty() && !replyToMid.isEmpty() && request != null) {
+            String lookedUpQuoted = SentBubbleLedger.lookupMessageByMid(request.pageId(), request.senderId(), replyToMid);
+            quotedMessageText = lookedUpQuoted != null ? lookedUpQuoted.strip() : "";
+        }
+        List<PackageCatalogService.PackageSummary> presentedPackagesInHistory =
+                CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(safeHistory, safePrior, allCatalog);
+        CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution =
+                CleanAgentCatalogAndPromptBuilder.resolveQuotedReplyContext(
+                        replyToMid,
+                        quotedMessageText,
+                        allCatalog,
+                        presentedPackagesInHistory
+                );
+        String prevBotTurnText = resolveImmediatelyPrecedingBotText(safeHistory, safePrior.lastAssistantMessage());
+
+        // Khôi phục 5 Tầng Bộ nhớ & Giữ nguyên priorBookingState (TUYỆT ĐỐI KHÔNG reset bookingState về NONE khi đắn đo/báo CK!)
+        String senderId = request != null ? request.senderId() : null;
+        ConversationState.StructuredBookingState priorBookingState = ConversationState.StructuredBookingState.none();
+        if (agentBrainService != null) {
+            ConversationState.StructuredBookingState fromBrain = agentBrainService.recallBookingState(pageId, senderId);
+            if (fromBrain != null && fromBrain.status() != ConversationState.BookingStatus.NONE) {
+                priorBookingState = fromBrain;
+            }
+        }
+        if (priorBookingState.status() == ConversationState.BookingStatus.NONE
+                && safePrior.structuredBookingState() != null
+                && safePrior.structuredBookingState().status() != ConversationState.BookingStatus.NONE) {
+            priorBookingState = safePrior.structuredBookingState();
+        }
+
+        List<AdaptiveConversationIntelligence.CustomerStatementRecord> tier1Statements =
+                agentBrainService != null ? agentBrainService.getAciCustomerStatements(pageId, senderId) : List.of();
+        AdaptiveConversationIntelligence.WorkingHypothesisRecord tier2Hypothesis =
+                agentBrainService != null ? agentBrainService.getAciWorkingHypothesis(pageId, senderId)
+                        : AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty();
+        List<AdaptiveConversationIntelligence.VerifiedBusinessFact> tier4Facts =
+                agentBrainService != null ? agentBrainService.getAuthoritativeBusinessFacts(pageId, senderId) : List.of();
+        AdaptiveConversationIntelligence.OperationalStateSnapshot tier5OpState =
+                agentBrainService != null ? agentBrainService.getAciOperationalState(pageId, senderId)
+                        : AdaptiveConversationIntelligence.OperationalStateSnapshot.initial();
+        AdaptiveConversationIntelligence.PreviousStrategyRecord previousStrategy =
+                agentBrainService != null ? agentBrainService.getPreviousStrategyRecord(pageId, senderId)
+                        : AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone();
+        List<AdaptiveConversationIntelligence.CommitmentRecord> sessionCommitments =
+                agentBrainService != null ? agentBrainService.getSessionCommitments(pageId, senderId) : List.of();
+        AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Before =
+                agentBrainService != null ? agentBrainService.getCustomerUnderstandingDraft2Snapshot(pageId, senderId)
+                        : AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial();
+
+        boolean hasAuthoritativePaymentVerification = tier4Facts.stream()
+                .anyMatch(f -> f != null
+                        && "PAYMENT_VERIFIED".equalsIgnoreCase(f.factKey())
+                        && "true".equalsIgnoreCase(f.factValue()));
+        String verifiedPageSlaPolicy = tier4Facts.stream()
+                .filter(f -> f != null && "VERIFIED_SLA_POLICY".equalsIgnoreCase(f.factKey()))
+                .map(AdaptiveConversationIntelligence.VerifiedBusinessFact::factValue)
+                .findFirst()
+                .orElse(null);
+
+        String previousBotSpeechAct = agentBrainService != null
+                ? agentBrainService.getRecalledActualSentSpeechAct(pageId, senderId)
+                : "";
+        int priceObjectionCountBefore = agentBrainService != null
+                ? agentBrainService.getPriceObjectionCount(pageId, senderId)
+                : 0;
+        String brainVerifiedSymptomDurBefore = agentBrainService != null
+                ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId)
+                : null;
+        String symptomDurationBefore = (brainVerifiedSymptomDurBefore != null && !brainVerifiedSymptomDurBefore.isBlank())
+                ? brainVerifiedSymptomDurBefore
+                : safePrior.knownDurationOfProblem();
+        AdaptiveConversationIntelligence.WorkingHypothesisRecord workingHypothesisBefore = tier2Hypothesis;
+
+        List<AgentSkillDto> rawPageSkills = (candidateSkills != null && !candidateSkills.isEmpty())
+                ? candidateSkills
+                : (agentSkillService != null && pageId != null ? agentSkillService.getActiveSkillsForPage(pageId) : List.of());
+        List<AgentSkillDto> enabledPageSkills = CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(rawPageSkills, pageId);
+        List<LearnedRuleDto> activePageRules = appliedRules != null
+                ? appliedRules.stream().filter(r -> r != null && r.active()).toList()
+                : List.of();
+        List<LearnedRuleDto> turnRelevantRules = CleanAgentCatalogAndPromptBuilder.selectTurnRelevantCompactRules(
+                activePageRules,
+                originalVerbatim,
+                safeHistory.isEmpty(),
+                5
+        );
+        String resolvedBranchForPrompt = com.example.docmind.service.sales.PriceLadderTracker.resolveBranch(
+                originalVerbatim,
+                safeHistory,
+                safeConv.preferredRegion()
+        );
+        boolean catalogHasHnRegionalEntries = allCatalog.stream()
+                .anyMatch(p -> p != null && "HN".equalsIgnoreCase(p.region()));
+        String effectivePromptRegion = (resolvedBranchForPrompt != null && !resolvedBranchForPrompt.isBlank())
+                ? resolvedBranchForPrompt
+                : (catalogHasHnRegionalEntries ? "HN" : null);
+        List<PackageCatalogService.PackageSummary> regionScopedPrimaries = effectivePromptRegion != null
+                ? PackageCatalogService.filterByRegion(unblindedPrimaries, effectivePromptRegion)
+                : unblindedPrimaries;
+        List<PackageCatalogService.PackageSummary> regionScopedEconomicals = effectivePromptRegion != null
+                ? PackageCatalogService.filterByRegion(unblindedEconomicals, effectivePromptRegion)
+                : unblindedEconomicals;
+        List<PackageCatalogService.PackageSummary> promptPrimaries =
+                CleanAgentCatalogAndPromptBuilder.deduplicateCatalogByCanonicalSignature(
+                        regionScopedPrimaries.isEmpty() ? unblindedPrimaries : regionScopedPrimaries);
+        List<PackageCatalogService.PackageSummary> promptEconomicals =
+                CleanAgentCatalogAndPromptBuilder.deduplicateCatalogByCanonicalSignature(
+                        regionScopedEconomicals.isEmpty() && !unblindedEconomicals.isEmpty() && regionScopedPrimaries.isEmpty()
+                                ? unblindedEconomicals
+                                : regionScopedEconomicals);
+
+        // Xây dựng Single-Pass Cognitive Contract Prompt (và đo kích thước prompt cũ tương đương cho Telemetry Mục 7.1)
+        long promptStartNs = System.nanoTime();
+        String aciPrompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
+                pagePersona,
+                defaultCustomerPronoun,
+                priorInferredCustomerPronoun,
+                safeHonorific,
+                threeStreamInput,
+                promptPrimaries,
+                promptEconomicals,
+                quotedReplyResolution,
+                tier1Statements,
+                tier2Hypothesis,
+                tier4Facts,
+                priorBookingState,
+                tier5OpState,
+                previousStrategy,
+                sessionCommitments,
+                verifiedPageSlaPolicy,
+                hasAuthoritativePaymentVerification,
+                fused != null ? fused : List.of(),
+                safeHistory,
+                enabledPageSkills,
+                turnRelevantRules,
+                draft2Before
+        );
+        this.lastBuiltPrompt = aciPrompt;
+        int legacyEquivalentPromptChars = computeLegacyEquivalentPromptChars(
+                pagePersona,
+                safeHonorific,
+                tieredCatalog,
+                fused,
+                safeHistory,
+                originalVerbatim,
+                customerInsight,
+                activeSkills,
+                quotedReplyResolution,
+                pageId,
+                appliedRules,
+                priorBookingState
+        );
+        long promptBuildMs = Math.max(0L, (System.nanoTime() - promptStartNs) / 1_000_000L);
+
+        // Chọn chế độ ThinkingMode thích ứng (tôn trọng BenchmarkConfigMode cho thực nghiệm FAST_NO_THINK vs DEEP_THINK)
+        ThinkingMode selectedThinkingMode = selectAciAdaptiveThinkingMode(originalVerbatim, threeStreamInput, sessionCommitments);
+        this.lastSelectedThinkingMode = selectedThinkingMode;
+        ReasoningBudget aciBudget = buildAciReasoningBudget(selectedThinkingMode);
+
+        String rawReply = null;
+        int llmRegenerationCount = 0;
+        LlmTokenUsageSnapshot tokenUsage = LlmTokenUsageSnapshot.zero();
+        long modelLatencyMs = 0L;
+        try {
+            if (llmClient != null) {
+                long callStartNs = System.nanoTime();
+                rawReply = llmClient.complete(aciPrompt, aciBudget);
+                modelLatencyMs += Math.max(1L, (System.nanoTime() - callStartNs) / 1_000_000L);
+                tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                if (rawReply == null || rawReply.isBlank()) {
+                    llmRegenerationCount++;
+                    long fallbackStartNs = System.nanoTime();
+                    rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
+                    tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ACI-V2] Exception calling llmClient {}: {}", llmClient != null ? llmClient.name() : "null", e.getMessage());
+        }
+
+        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                request != null ? request.pageId() : null,
+                request != null ? request.senderId() : null,
+                SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+            return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+
+        String sanitizedReply = isUpstreamLlmClientErrorPayload(rawReply)
+                ? ""
+                : PromptSecurityGuard.sanitizeModelOutput(rawReply);
+        String effectiveStructuredOutputForProfiling = sanitizedReply;
+        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput structured =
+                sanitizedReply.isBlank()
+                        ? null
+                        : CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(sanitizedReply, 0);
+        if ((structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
+                && llmRegenerationCount < 1) {
+            try {
+                if (llmClient != null) {
+                    llmRegenerationCount++;
+                    long retryStartNs = System.nanoTime();
+                    String retryRaw = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    modelLatencyMs += Math.max(1L, (System.nanoTime() - retryStartNs) / 1_000_000L);
+                    tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                    if (retryRaw != null && !retryRaw.isBlank() && !isUpstreamLlmClientErrorPayload(retryRaw)) {
+                        rawReply = retryRaw;
+                        sanitizedReply = PromptSecurityGuard.sanitizeModelOutput(rawReply);
+                        effectiveStructuredOutputForProfiling = sanitizedReply;
+                        structured = CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(sanitizedReply, 0);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[ACI-V2] JSON retry exception: {}", e.getMessage());
+            }
+            if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                    request != null ? request.pageId() : null,
+                    request != null ? request.senderId() : null,
+                    SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+                return buildSupersededAbortedResponse(extractedLead, customerInsight);
+            }
+        }
+
+        AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection =
+                (structured != null && structured.aciReflection() != null)
+                        ? structured.aciReflection()
+                        : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
+        if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
+            safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
+        }
+
+        List<FanpageBotResponse.ReplyBubble> candidateBubbles =
+                (isUpstreamLlmClientErrorPayload(sanitizedReply) || isLeakedReasoningWithoutJsonContract(structured, sanitizedReply))
+                        ? List.of()
+                        : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, 0);
+        boolean usedStructuredFallbackOnLlmFailure = false;
+        if (candidateBubbles.isEmpty()) {
+            log.warn("[ACI-V2] Empty/unreachable LLM output (msg='{}') -> activating Safe Structural Fallback", originalVerbatim);
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+                    quotedReplyResolution,
+                    priorBookingState,
+                    "ACI_COGNITIVE_V2",
+                    !unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null,
+                    unblindedEligibleCatalog,
+                    allCatalog,
+                    effectivePersonaConfig,
+                    originalVerbatim,
+                    selfPronoun,
+                    safeHonorific
+            );
+            usedStructuredFallbackOnLlmFailure = true;
+        } else {
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                    candidateBubbles, selfPronoun, safeHonorific);
+        }
+
+        // Áp dụng ProposedBookingPatch qua cổng thẩm quyền Java Core & đánh giá Conditional Handoff (Mục 3.4 & Mục 4)
+        ConversationState.StructuredBookingState authoritativeBookingState =
+                AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                        priorBookingState,
+                        reflection.proposedBookingPatch(),
+                        originalVerbatim,
+                        prevBotTurnText,
+                        allCatalog,
+                        presentedPackagesInHistory,
+                        pageZoneId,
+                        reflection.customerUnderstanding().bookingReadiness(),
+                        reflection.priority().primary()
+                );
+        AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision =
+                AdaptiveConversationIntelligence.evaluateAndExecuteConditionalHandoff(
+                        pageId,
+                        senderId,
+                        originalVerbatim,
+                        reflection,
+                        handoffEventDispatcher
+                );
+
+        // Kiểm định Referee V2 (CHỈ giữ Sự thật, Quyền hạn & An toàn — TẮT ép chiến thuật bán hàng thay LLM)
+        long validationStartNs = System.nanoTime();
+        List<String> refereeViolations = new ArrayList<>(
+                CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                        candidateBubbles,
+                        allCatalog,
+                        unblindedEligibleCatalog,
+                        excludedAddonsOnly,
+                        quotedReplyResolution,
+                        authoritativeBookingState,
+                        presentedPackagesInHistory,
+                        effectivePersonaConfig,
+                        originalVerbatim,
+                        hasAuthoritativePaymentVerification,
+                        verifiedPageSlaPolicy,
+                        handoffDecision,
+                        reflection,
+                        fused != null ? fused : List.of()
+                )
+        );
+
+        boolean repairApplied = usedStructuredFallbackOnLlmFailure;
+        boolean usedSafeHandoffFallback = false;
+        if (!refereeViolations.isEmpty() && !usedStructuredFallbackOnLlmFailure) {
+            log.warn("[ACI-V2] Referee detected truth/authority/safety violations: {} (msg='{}')",
+                    refereeViolations, originalVerbatim);
+            PackageCatalogService.PackageSummary focusPkgForRepair = authoritativeBookingState.selectedProductId() != null
+                    ? AdaptiveConversationIntelligence.resolveCatalogProductByFlexibleIdentifier(
+                            authoritativeBookingState.selectedProductId(), presentedPackagesInHistory, allCatalog)
+                    : (quotedReplyResolution.quotedPackage() != null
+                        ? quotedReplyResolution.quotedPackage()
+                        : (!unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null));
+            if (llmClient != null && llmRegenerationCount < 1) {
+                String repairPrompt = CleanAgentOutputRefereeAndSanitizer.buildCleanRepairPrompt(
+                        aciPrompt, refereeViolations, selfPronoun, safeHonorific, focusPkgForRepair);
+                try {
+                    llmRegenerationCount++;
+                    long repairCallStartNs = System.nanoTime();
+                    String repairedRaw = llmClient.complete(repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                    modelLatencyMs += Math.max(1L, (System.nanoTime() - repairCallStartNs) / 1_000_000L);
+                    tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                    if (repairedRaw != null && !repairedRaw.isBlank() && !isUpstreamLlmClientErrorPayload(repairedRaw)) {
+                        String repairedSanitized = PromptSecurityGuard.sanitizeModelOutput(repairedRaw);
+                        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput repairedStructured =
+                                CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(repairedSanitized, 0);
+                        List<FanpageBotResponse.ReplyBubble> repairedBubbles =
+                                (isUpstreamLlmClientErrorPayload(repairedSanitized)
+                                        || isLeakedReasoningWithoutJsonContract(repairedStructured, repairedSanitized))
+                                        ? List.of()
+                                        : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(
+                                                repairedStructured, repairedSanitized, 0);
+                        if (!repairedBubbles.isEmpty()) {
+                            effectiveStructuredOutputForProfiling = repairedSanitized;
+                            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                                    repairedBubbles, selfPronoun, safeHonorific);
+                            structured = repairedStructured;
+                            if (repairedStructured != null && repairedStructured.aciReflection() != null
+                                    && repairedStructured.aciReflection().parsedFromV2Schema()) {
+                                reflection = repairedStructured.aciReflection();
+                                if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
+                                    safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
+                                }
+                                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
+                                        candidateBubbles, selfPronoun, safeHonorific);
+                                authoritativeBookingState = AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                                        priorBookingState,
+                                        reflection.proposedBookingPatch(),
+                                        originalVerbatim,
+                                        prevBotTurnText,
+                                        allCatalog,
+                                        presentedPackagesInHistory,
+                                        pageZoneId,
+                                        reflection.customerUnderstanding().bookingReadiness(),
+                                        reflection.priority().primary()
+                                );
+                                handoffDecision = AdaptiveConversationIntelligence.evaluateAndExecuteConditionalHandoff(
+                                        pageId,
+                                        senderId,
+                                        originalVerbatim,
+                                        reflection,
+                                        handoffEventDispatcher
+                                );
+                            }
+                            repairApplied = true;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[ACI-V2] Referee targeted repair exception: {}", e.getMessage());
+                }
+                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                        request != null ? request.pageId() : null,
+                        request != null ? request.senderId() : null,
+                        SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
+            }
+
+            List<String> postRepairViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                    candidateBubbles,
+                    allCatalog,
+                    unblindedEligibleCatalog,
+                    excludedAddonsOnly,
+                    quotedReplyResolution,
+                    authoritativeBookingState,
+                    presentedPackagesInHistory,
+                    effectivePersonaConfig,
+                    originalVerbatim,
+                    hasAuthoritativePaymentVerification,
+                    verifiedPageSlaPolicy,
+                    handoffDecision,
+                    reflection,
+                    fused != null ? fused : List.of()
+            );
+            if (!postRepairViolations.isEmpty()) {
+                boolean hasUngroundedPrice = postRepairViolations.stream()
+                        .anyMatch(v -> v != null && v.startsWith("UNGROUNDED_PRICE_MENTIONED:"));
+                if (hasUngroundedPrice) {
+                    log.warn("[ACI-V2] Post-repair still has UNGROUNDED_PRICE_MENTIONED ({}) -> triggering SAFE_HANDOFF", postRepairViolations);
+                    candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(FanpageBotService.SAFE_HANDOFF_BUBBLE_TEXT, 0));
+                    usedSafeHandoffFallback = true;
+                    repairApplied = true;
+                } else if (postRepairViolations.stream().anyMatch(v -> v != null && v.startsWith("PRICE_ENTITY_MISMATCH:"))) {
+                    candidateBubbles = CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
+                            candidateBubbles,
+                            focusPkgForRepair,
+                            allCatalog,
+                            selfPronoun,
+                            safeHonorific,
+                            effectivePersonaConfig
+                    );
+                    repairApplied = true;
+                } else {
+                    log.warn("[ACI-V2] Post-repair still has authority/safety violation ({}) -> building safe factual response", postRepairViolations);
+                    candidateBubbles = buildSafeAciAuthorityFallbackBubbles(
+                            postRepairViolations,
+                            selfPronoun,
+                            safeHonorific,
+                            authoritativeBookingState,
+                            handoffDecision,
+                            originalVerbatim
+                    );
+                    repairApplied = true;
+                }
+            }
+        }
+        long validationMs = Math.max(0L, (System.nanoTime() - validationStartNs) / 1_000_000L);
+        long llmElapsedMs = Math.max(1L, modelLatencyMs);
+
+        // Chuẩn hóa nhẹ hình thức câu chữ (viết hoa chữ cái đầu & dấu chấm hỏi câu trần thuật — KHÔNG sửa ý định/chiến thuật LLM)
+        List<FanpageBotResponse.ReplyBubble> formattedBubbles = new ArrayList<>(candidateBubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String txt = b.text().strip();
+            if (!usedSafeHandoffFallback) {
+                txt = ReplyContractValidator.normalizeDeclarativeQuestionMarks(txt);
+                txt = BubbleCapHook.capitalizeFirstLetter(txt);
+            }
+            formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0));
+        }
+
+        // Price Quote Reading Budget (10s) (Mục 6):
+        // Chỉ kích hoạt ở lượt thực sự báo giá/giới thiệu gói; tìm đúng chỉ số bong bóng chứa giá + gói (không gán cứng bubble 0);
+        // tuyệt đối không kích hoạt trên lượt phản đối giá như S03B ("Bằng cả ngày đi làm").
+        boolean isQuoteIntroTurn = !usedSafeHandoffFallback
+                && PriceQuoteReadingBudgetScheduler.isActualPriceQuoteIntroductionTurn(
+                        originalVerbatim,
+                        safeHistory,
+                        formattedBubbles,
+                        allCatalog,
+                        reflection
+                );
+        int quoteBubbleIndex = PriceQuoteReadingBudgetScheduler.findActualPriceQuoteBubbleIndex(
+                formattedBubbles,
+                allCatalog,
+                isQuoteIntroTurn
+        );
+        List<FanpageBotResponse.ReplyBubble> finalBubbles = PriceQuoteReadingBudgetScheduler.applyReadingBudgetTypingDelays(
+                formattedBubbles,
+                quoteBubbleIndex,
+                minDelayMs,
+                PriceQuoteReadingBudgetScheduler.DEFAULT_INTER_BUBBLE_TYPING_DELAY_MS
+        );
+
+        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                request != null ? request.pageId() : null,
+                request != null ? request.senderId() : null,
+                SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+            return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+
+        boolean shouldHandoff = usedSafeHandoffFallback || handoffDecision.isHandoffCreated();
+        String combinedReplyText = String.join("\n\n", finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
+        boolean replyHasPrice = CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(combinedReplyText);
+        String actualSentSpeechAct = CleanAgentOutputRefereeAndSanitizer.resolveActualSentSpeechActV2(
+                reflection,
+                authoritativeBookingState.status().name(),
+                structured != null && structured.brainReflection() != null ? structured.brainReflection().intendedSpeechAct() : ""
+        );
+        String sequentialTurnId = CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(safeHistory);
+
+        // Ghi nhận nguyên tử 5 tầng bộ nhớ, vòng đời Working Hypothesis, chiến thuật lượt trước & Session Commitments (Mục 4)
+        if (agentBrainService != null) {
+            agentBrainService.applyAciTurnMemoryUpdates(
+                    pageId,
+                    senderId,
+                    sequentialTurnId,
+                    originalVerbatim,
+                    threeStreamInput.unverifiedParserCandidates(),
+                    reflection,
+                    authoritativeBookingState,
+                    handoffDecision,
+                    false,
+                    verifiedPageSlaPolicy,
+                    actualSentSpeechAct
+            );
+            agentBrainService.recordBookingState(pageId, senderId, authoritativeBookingState);
+        }
+
+        // Đồng bộ Ledger & ConversationState (giữ opted_out = false cho mọi câu hội thoại thông thường như S06!)
+        String ledgerKey = SentBubbleLedger.key(
+                request != null ? request.pageId() : null,
+                senderId,
+                request != null ? request.conversationId() : null
+        );
+        String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, originalVerbatim);
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, originalVerbatim);
+        PrimaryActionRouter.RoutingDecision v2StateSyncDecision = new PrimaryActionRouter.RoutingDecision(
+                shouldHandoff
+                        ? PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
+                        : (replyHasPrice
+                            ? PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
+                            : PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE),
+                shouldHandoff
+                        ? PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
+                        : (replyHasPrice
+                            ? PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE
+                            : PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE),
+                false,
+                Math.max(1, finalBubbles.size()),
+                !reflection.customerUnderstanding().detectedIntent().isBlank()
+                        ? reflection.customerUnderstanding().detectedIntent()
+                        : reflection.priority().primary(),
+                null
+        );
+        if (!finalBubbles.isEmpty()) {
+            SentBubbleLedger.recordAssistantTurn(
+                    ledgerKey,
+                    ledgerUserTurnId + ":a",
+                    finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
+                    SentBubbleLedger.DeliveryStatus.DELIVERED,
+                    List.of()
+            );
+            ConversationState.updateAfterSend(
+                    pageId,
+                    senderId,
+                    request != null ? request.conversationId() : null,
+                    safeConv,
+                    originalVerbatim,
+                    v2StateSyncDecision,
+                    finalBubbles,
+                    false, // Không khóa cứng humanTakeover toàn phiên khi mới tạo ticket xác minh thanh toán/lời hứa để khách còn hỏi tiến độ (A06/A09)!
+                    incomingHistorySize
+            );
+            ConversationState.updateStructuredBookingStateInSession(
+                    pageId,
+                    senderId,
+                    request != null ? request.conversationId() : null,
+                    authoritativeBookingState
+            );
+            String verifiedSymptomDurationAfterSync = agentBrainService != null
+                    ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId)
+                    : reflection.customerUnderstanding().verifiedSymptomDuration();
+            String authoritativeSymptomDuration = (verifiedSymptomDurationAfterSync != null && !verifiedSymptomDurationAfterSync.isBlank())
+                    ? verifiedSymptomDurationAfterSync
+                    : symptomDurationBefore;
+            ConversationState.syncAuthoritativeSymptomDurationInSession(
+                    pageId,
+                    senderId,
+                    request != null ? request.conversationId() : null,
+                    authoritativeSymptomDuration
+            );
+        }
+
+        this.lastTurnBookingState = authoritativeBookingState;
+        this.lastAciReflection = reflection;
+        this.lastHandoffDecision = handoffDecision;
+
+        long plannedWaitMs = (quoteBubbleIndex >= 0 && quoteBubbleIndex + 1 < finalBubbles.size())
+                ? finalBubbles.get(quoteBubbleIndex + 1).typingDelayMs()
+                : 0L;
+        long totalTurnMs = Math.max(1L, (System.nanoTime() - turnStartNs) / 1_000_000L);
+        int reflectionTokens = CleanAgentOutputRefereeAndSanitizer.estimateReflectionTokensFromJsonOutput(
+                effectiveStructuredOutputForProfiling,
+                tokenUsage.completionTokens(),
+                tokenUsage.reasoningTokens()
+        );
+
+        List<AgentSkillDto> availableSkills = enabledPageSkills != null ? List.copyOf(enabledPageSkills) : List.of();
+        List<AgentSkillDto> selectedSkills = selectAciTurnCandidateSkills(
+                availableSkills,
+                reflection,
+                authoritativeBookingState,
+                replyHasPrice
+        );
+        List<AgentSkillDto> activatedSkills = resolveAciTurnActivatedSkills(
+                availableSkills,
+                selectedSkills,
+                reflection,
+                authoritativeBookingState
+        );
+        if (agentSkillService != null && !activatedSkills.isEmpty()) {
+            try {
+                agentSkillService.recordSkillsApplied(activatedSkills);
+            } catch (Exception e) {
+                log.debug("[ACI-V2] Non-fatal: failed to record activated skills telemetry: {}", e.getMessage());
+            }
+        }
+
+        FanpageBotResponse.TurnProfiling turnProfiling = new FanpageBotResponse.TurnProfiling(
+                tokenUsage.promptTokens(),
+                tokenUsage.completionTokens(),
+                reflectionTokens,
+                llmElapsedMs,
+                retrievalMs,
+                llmRegenerationCount,
+                totalTurnMs
+        );
+
+        ThinkingModePolicy.AciTurnTelemetry aciTelemetry = new ThinkingModePolicy.AciTurnTelemetry(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                selectedThinkingMode,
+                aciPrompt.length(),
+                legacyEquivalentPromptChars,
+                tokenUsage.promptTokens(),
+                tokenUsage.completionTokens(),
+                tokenUsage.reasoningTokens(),
+                llmElapsedMs,
+                quoteBubbleIndex,
+                plannedWaitMs,
+                totalTurnMs,
+                repairApplied,
+                refereeViolations,
+                reflection.priority().primary(),
+                reflection.strategy().chosen(),
+                reflection.strategy().adaptation().name(),
+                handoffDecision.resultingStatus().name(),
+                authoritativeBookingState.status().name(),
+                reflectionTokens,
+                retrievalMs,
+                llmRegenerationCount
+        );
+        this.lastAciTurnTelemetry = aciTelemetry;
+        ThinkingModePolicy.recordAciTurnTelemetry(aciTelemetry);
+
+        final String bubbleSourceTag = usedSafeHandoffFallback ? "SAFE_HANDOFF_FALLBACK" : "ACI_COGNITIVE_V2_LLM";
+        this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
+                v2StateSyncDecision.effectiveResponseAction(),
+                selectedThinkingMode,
+                v2StateSyncDecision.detectedIntent(),
+                List.of(),
+                List.of(),
+                !usedSafeHandoffFallback,
+                usedSafeHandoffFallback ? "UNGROUNDED_CATALOG_PRICE" : null,
+                llmElapsedMs,
+                0L,
+                0L,
+                llmElapsedMs,
+                plannedWaitMs,
+                "ACI_" + reflection.priority().primary(),
+                selectedThinkingMode.isDeepThink(),
+                aciBudget.maxTokens(),
+                reflectionTokens,
+                0L,
+                llmElapsedMs,
+                quoteBubbleIndex >= 0 ? minDelayMs : 0,
+                0L,
+                (int) plannedWaitMs,
+                false,
+                promptBuildMs,
+                retrievalMs,
+                validationMs,
+                0L,
+                llmRegenerationCount,
+                totalTurnMs,
+                usedSafeHandoffFallback,
+                usedSafeHandoffFallback ? "UNGROUNDED_CATALOG_PRICE" : null,
+                bubbleSourceTag,
+                repairApplied,
+                llmRegenerationCount,
+                usedSafeHandoffFallback ? "BLOCKED" : (repairApplied ? "REPAIRED_PASS" : "PASS"),
+                refereeViolations,
+                "aci_cognitive_v2",
+                llmClient != null ? llmClient.name() : "none",
+                "chat",
+                finalBubbles.stream().map(b -> bubbleSourceTag).toList()
+        );
+        ThinkingModePolicy.recordTurnTelemetry(this.lastTurnTelemetry);
+
+        CustomerInsightDto enrichedInsight = customerInsight;
+        if (agentBrainService != null) {
+            enrichedInsight = agentBrainService.enrichCustomerInsight(pageId, senderId, enrichedInsight, null);
+        }
+        if (enrichedInsight != null && !safeHonorific.equals(enrichedInsight.honorific())) {
+            enrichedInsight = new CustomerInsightDto(
+                    enrichedInsight.buyerArchetype(),
+                    enrichedInsight.archetypeLabel(),
+                    enrichedInsight.buyingTemperature(),
+                    enrichedInsight.previousTemperature(),
+                    enrichedInsight.temperatureDelta(),
+                    enrichedInsight.momentum(),
+                    enrichedInsight.temperatureLabel(),
+                    enrichedInsight.decayReason(),
+                    safeHonorific,
+                    enrichedInsight.extractedPains(),
+                    enrichedInsight.hiddenConcerns(),
+                    enrichedInsight.recommendedStrategy(),
+                    enrichedInsight.careNotes(),
+                    enrichedInsight.workingHypothesis(),
+                    enrichedInsight.lastActualSentSpeechAct(),
+                    enrichedInsight.priceObjectionCount(),
+                    enrichedInsight.inPriceObjectionContext(),
+                    enrichedInsight.hasPresentedDownsell()
+            );
+        }
+        String resolvedSalesStage = shouldHandoff
+                ? "HUMAN_HANDOFF"
+                : (authoritativeBookingState.status().isActiveOrConfirmed()
+                    ? FanpageBotPromptBuilder.SalesStage.SOFT_BOOKING_CLOSE.code()
+                    : (replyHasPrice || safeConv.priceDiscussed()
+                        ? FanpageBotPromptBuilder.SalesStage.VALUE_CONSULTATION.code()
+                        : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
+        List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
+
+        String inferredPronounAfter = agentBrainService != null
+                ? agentBrainService.getInferredCustomerPronoun(pageId, senderId)
+                : reflection.customerUnderstanding().inferredCustomerPronoun();
+        double inferredPronounConfAfter = agentBrainService != null
+                ? agentBrainService.getInferredPronounConfidence(pageId, senderId)
+                : reflection.customerUnderstanding().pronounConfidence();
+        ConversationState postTurnSessionState = ConversationState.getSessionState(
+                pageId,
+                senderId,
+                request != null ? request.conversationId() : null
+        );
+        String symptomDurationAfter = postTurnSessionState != null
+                ? postTurnSessionState.knownDurationOfProblem()
+                : (agentBrainService != null ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId) : null);
+        AdaptiveConversationIntelligence.WorkingHypothesisRecord workingHypothesisAfter = agentBrainService != null
+                ? agentBrainService.getAciWorkingHypothesis(pageId, senderId)
+                : AdaptiveConversationIntelligence.applyWorkingHypothesisLifecycle(
+                        workingHypothesisBefore, reflection.workingHypothesis(), sequentialTurnId);
+        int priceObjectionCountAfter = agentBrainService != null
+                ? agentBrainService.getPriceObjectionCount(pageId, senderId)
+                : (Boolean.TRUE.equals(reflection.customerUnderstanding().costConcernExpressed()) ? priceObjectionCountBefore + 1 : priceObjectionCountBefore);
+
+        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptTokens={} completionTokens={} reflectionTokens={} llmMs={} retrievalMs={} retryCount={} totalTurnMs={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
+                pageId,
+                senderId,
+                sequentialTurnId,
+                selectedThinkingMode,
+                aciPrompt.length(),
+                legacyEquivalentPromptChars,
+                tokenUsage.promptTokens(),
+                tokenUsage.completionTokens(),
+                reflectionTokens,
+                llmElapsedMs,
+                retrievalMs,
+                llmRegenerationCount,
+                totalTurnMs,
+                reflection.priority().primary(),
+                reflection.strategy().adaptation(),
+                reflection.workingHypothesis().lifecycleOp(),
+                authoritativeBookingState.status(),
+                handoffDecision.resultingStatus(),
+                quoteBubbleIndex,
+                plannedWaitMs,
+                activatedSkills.stream().map(AgentSkillDto::code).toList(),
+                refereeViolations
+        );
+        log.info("[ACI-V2-PROFILING] page_id={} sender_id={} turn={} inputTokens={} outputTokens={} reflectionTokens={} modelLatencyMs={} retrievalLatencyMs={} retryCount={} totalTurnMs={} availableSkills={} selectedSkills={} activatedSkills={}",
+                pageId,
+                senderId,
+                sequentialTurnId,
+                tokenUsage.promptTokens(),
+                tokenUsage.completionTokens(),
+                reflectionTokens,
+                llmElapsedMs,
+                retrievalMs,
+                llmRegenerationCount,
+                totalTurnMs,
+                availableSkills.size(),
+                selectedSkills.stream().map(AgentSkillDto::code).toList(),
+                activatedSkills.stream().map(AgentSkillDto::code).toList()
+        );
+        AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After =
+                agentBrainService != null ? agentBrainService.getCustomerUnderstandingDraft2Snapshot(pageId, senderId)
+                        : AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial();
+        log.info("[ACI-V2-DRAFT2] page_id={} sender_id={} turn={} promptVersion={} promptSource={} thinkingMode={} modelLatencyMs={} layer1_context={{current_topic=\"{}\", topic_history={}, unresolved_requests={}, pending_references={}, last_bot_action=\"{}\"}} layer2_profile={{turn_intent=\"{}\", conversation_goal=\"{}\", need_revision={}, confirmed_facts={}, self_reported_symptoms={}, barrier_hypothesis={{type=\"{}\", confidence=\"{}\", summary=\"{}\"}}, emotion=\"{}\", communication_preference=\"{}\", effective_turn_depth=\"{}\"}} layer3_commitment={{interested_package={}, selected_package={}, booking_status=\"{}\", booking_readiness=\"{}\"}} response_plan={{objective=\"{}\", strategy=\"{}\", tone=\"{}\", depth=\"{}\", next_action=\"{}\"}}",
+                pageId,
+                senderId,
+                sequentialTurnId,
+                CleanAgentCatalogAndPromptBuilder.getActiveAciPromptVersion(),
+                CleanAgentCatalogAndPromptBuilder.getActiveAciPromptSource(),
+                selectedThinkingMode,
+                llmElapsedMs,
+                draft2After.conversationalContext().currentTopic(),
+                draft2After.conversationalContext().topicHistory(),
+                draft2After.conversationalContext().unresolvedRequests(),
+                draft2After.conversationalContext().pendingReferences(),
+                draft2After.conversationalContext().lastBotAction(),
+                draft2After.consultativeProfile().turnIntent(),
+                draft2After.consultativeProfile().conversationGoal(),
+                reflection.needRevisionDetected(),
+                draft2After.consultativeProfile().confirmedFacts(),
+                draft2After.consultativeProfile().selfReportedSymptoms(),
+                draft2After.consultativeProfile().barrierHypothesis().barrierType(),
+                draft2After.consultativeProfile().barrierHypothesis().confidenceLevel(),
+                draft2After.consultativeProfile().barrierHypothesis().summary(),
+                draft2After.consultativeProfile().emotion(),
+                draft2After.consultativeProfile().communicationPreference(),
+                draft2After.consultativeProfile().effectiveTurnDepth(),
+                draft2After.businessCommitment().interestedPackageId(),
+                draft2After.businessCommitment().selectedPackageId(),
+                draft2After.businessCommitment().bookingStatus(),
+                draft2After.businessCommitment().bookingReadiness(),
+                draft2After.lastResponsePlan().objective(),
+                draft2After.lastResponsePlan().strategy(),
+                draft2After.lastResponsePlan().tone(),
+                draft2After.lastResponsePlan().depth(),
+                draft2After.lastResponsePlan().nextAction()
+        );
+        log.info("[ACI-V2-BRAIN-TRACE] page_id={} sender_id={} turn={} rawVerbatimMessage=\"{}\" previousBotSpeechAct={} actualSentSpeechAct={} defaultCustomerPronoun=\"{}\" inferredCustomerPronounBefore={} inferredCustomerPronounAfter={} pronounConfidence={} effectiveCustomerPronoun=\"{}\" unverifiedParserCandidates={} symptomDurationBefore={} symptomDurationAfter={} workingHypothesisBefore={{content=\"{}\", op={}, conf={}, evidence={}}} workingHypothesisAfter={{content=\"{}\", lifecycle_op={}, confidence={}, evidence_turn_ids={}}} priority={{primary={}, secondary={}}} strategy={{chosen=\"{}\", adaptation={}, previous_outcome={}, evidence_turn_ids={}}} priceObjectionCountBefore={} priceObjectionCountAfter={} bubbleCount={} typingDelaysMs={} llmMs={} totalTurnMs={}",
+                pageId,
+                senderId,
+                sequentialTurnId,
+                originalVerbatim,
+                previousBotSpeechAct,
+                actualSentSpeechAct,
+                defaultCustomerPronoun,
+                priorInferredCustomerPronoun,
+                inferredPronounAfter,
+                String.format(Locale.ROOT, "%.2f", inferredPronounConfAfter),
+                safeHonorific,
+                threeStreamInput.unverifiedParserCandidates(),
+                symptomDurationBefore,
+                symptomDurationAfter,
+                workingHypothesisBefore.content(),
+                workingHypothesisBefore.lastLifecycleOp(),
+                String.format(Locale.ROOT, "%.2f", workingHypothesisBefore.confidence()),
+                workingHypothesisBefore.evidenceTurnIds(),
+                workingHypothesisAfter.content(),
+                workingHypothesisAfter.lastLifecycleOp(),
+                String.format(Locale.ROOT, "%.2f", workingHypothesisAfter.confidence()),
+                workingHypothesisAfter.evidenceTurnIds(),
+                reflection.priority().primary(),
+                reflection.priority().secondary(),
+                reflection.strategy().chosen(),
+                reflection.strategy().adaptation(),
+                reflection.strategy().previousOutcome(),
+                reflection.strategy().evidenceTurnIds(),
+                priceObjectionCountBefore,
+                priceObjectionCountAfter,
+                finalBubbles.size(),
+                delays,
+                llmElapsedMs,
+                totalTurnMs
+        );
+
+        FanpageBotService.markProvenanceV38Logged();
+        return new FanpageBotResponse(
+                combinedReplyText,
+                finalBubbles,
+                delays,
+                resolvedSalesStage,
+                computeConfidenceScore(fused != null ? fused : List.of()),
+                shouldHandoff,
+                shouldHandoff ? (handoffDecision.handoffCategory() != null ? handoffDecision.handoffCategory() : "HUMAN_HANDOFF") : null,
+                shouldHandoff ? handoffDecision.handoffReason() : null,
+                extractedLead,
+                turnRelevantRules,
+                enrichedInsight,
+                activatedSkills,
+                List.of("LLM_COGNITIVE_V2", "ACI_SINGLE_PASS")
+        ).withSkillTiersAndProfiling(
+                availableSkills,
+                selectedSkills,
+                activatedSkills,
+                turnProfiling
+        );
+    }
+
+    static List<AgentSkillDto> selectAciTurnCandidateSkills(
+            List<AgentSkillDto> availableSkills,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState bookingState,
+            boolean replyHasPrice
+    ) {
+        if (availableSkills == null || availableSkills.isEmpty()) {
+            return List.of();
+        }
+        String prio = (reflection != null && reflection.priority() != null && reflection.priority().primary() != null)
+                ? reflection.priority().primary().toUpperCase(Locale.ROOT)
+                : "";
+        AdaptiveConversationIntelligence.StrategyAdaptationMode adaptation =
+                (reflection != null && reflection.strategy() != null && reflection.strategy().adaptation() != null)
+                        ? reflection.strategy().adaptation()
+                        : AdaptiveConversationIntelligence.StrategyAdaptationMode.CONTINUATION;
+        boolean costConcern = reflection != null
+                && reflection.customerUnderstanding() != null
+                && Boolean.TRUE.equals(reflection.customerUnderstanding().costConcernExpressed());
+        boolean bookingActive = bookingState != null && bookingState.status().isActiveOrConfirmed();
+
+        List<AgentSkillDto> candidates = new ArrayList<>();
+        for (AgentSkillDto s : availableSkills) {
+            if (s == null || !s.active()) continue;
+            String code = (s.code() != null ? s.code() : "").toLowerCase(Locale.ROOT);
+            String cat = (s.category() != null ? s.category() : "").toUpperCase(Locale.ROOT);
+            boolean match = false;
+            if ("POLITE_CLOSURE".equals(prio) || adaptation == AdaptiveConversationIntelligence.StrategyAdaptationMode.STOP) {
+                match = code.contains("pause") || code.contains("graceful") || code.contains("close");
+            } else if ("BOOKING_COMPLETION".equals(prio) || bookingActive) {
+                match = code.contains("booking") || code.contains("schedul") || code.contains("nod");
+            } else if (costConcern || "BUDGET_FIT".equals(prio) || "VALUE_ALIGNMENT".equals(prio)) {
+                if (adaptation == AdaptiveConversationIntelligence.StrategyAdaptationMode.PIVOT || "BUDGET_FIT".equals(prio)) {
+                    match = code.contains("economical") || code.contains("compare") || code.contains("objection") || code.contains("price");
+                } else {
+                    match = code.contains("objection") || code.contains("value") || code.contains("price");
+                }
+            } else if ("PRICE_INFORMATION".equals(prio) || replyHasPrice) {
+                match = code.contains("compare") || code.contains("economical") || code.contains("price") || code.contains("discovery");
+            } else {
+                match = code.contains("discovery") || code.contains("empathy") || code.contains("scope") || "PSYCHOLOGY".equals(cat);
+            }
+            if (match && candidates.size() < 3) {
+                candidates.add(s);
+            }
+        }
+        if (candidates.isEmpty() && !availableSkills.isEmpty()) {
+            candidates.add(availableSkills.get(0));
+        }
+        return List.copyOf(candidates);
+    }
+
+    static List<AgentSkillDto> resolveAciTurnActivatedSkills(
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection
+    ) {
+        return resolveAciTurnActivatedSkills(availableSkills, selectedSkills, reflection, null);
+    }
+
+    static List<AgentSkillDto> resolveAciTurnActivatedSkills(
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        if (availableSkills == null || availableSkills.isEmpty()) {
+            return List.of();
+        }
+        boolean bookingActive = bookingState != null && bookingState.status().isActiveOrConfirmed();
+        boolean readyToBook = bookingActive
+                || (reflection != null
+                    && ((reflection.customerUnderstanding() != null
+                            && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK)
+                        || (reflection.priority() != null
+                            && "BOOKING_COMPLETION".equalsIgnoreCase(reflection.priority().primary()))));
+
+        List<AgentSkillDto> activated = new ArrayList<>();
+        if (reflection != null && reflection.activatedSkillCodes() != null && !reflection.activatedSkillCodes().isEmpty()) {
+            for (String rawCode : reflection.activatedSkillCodes()) {
+                if (rawCode == null || rawCode.isBlank()) continue;
+                String normCode = rawCode.strip().toLowerCase(Locale.ROOT);
+                for (AgentSkillDto sk : availableSkills) {
+                    if (sk == null) continue;
+                    String skCode = sk.code() != null ? sk.code().strip().toLowerCase(Locale.ROOT) : "";
+                    String skName = sk.name() != null ? sk.name().strip().toLowerCase(Locale.ROOT) : "";
+                    if ((!skCode.isEmpty() && (skCode.equals(normCode) || normCode.contains(skCode)))
+                            || (!skName.isEmpty() && skName.equals(normCode))) {
+                        if (!readyToBook && isBookingOrSchedulingSkillCode(skCode)) {
+                            break;
+                        }
+                        if (!activated.contains(sk)) {
+                            activated.add(sk);
+                        }
+                        break;
+                    }
+                }
+                if (activated.size() >= 2) {
+                    break;
+                }
+            }
+        }
+        if (!activated.isEmpty()) {
+            return List.copyOf(activated);
+        }
+        // Không tự động gán skill mặc định khi Brain không chọn hoặc chỉ trả lời vận hành / thông tin trực tiếp
+        return List.of();
+    }
+
+    private static boolean isBookingOrSchedulingSkillCode(String lowerCode) {
+        if (lowerCode == null || lowerCode.isBlank()) {
+            return false;
+        }
+        return lowerCode.contains("booking")
+                || lowerCode.contains("schedul")
+                || lowerCode.contains("warm_nod");
+    }
+
+    private static ThinkingMode selectAciAdaptiveThinkingMode(
+            String originalMessage,
+            AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput,
+            List<AdaptiveConversationIntelligence.CommitmentRecord> sessionCommitments
+    ) {
+        ThinkingModePolicy.BenchmarkConfigMode bench = ThinkingModePolicy.getBenchmarkConfigMode();
+        if (bench == ThinkingModePolicy.BenchmarkConfigMode.FORCE_NO_THINK_A) {
+            return ThinkingMode.FAST_NO_THINK;
+        }
+        if (bench == ThinkingModePolicy.BenchmarkConfigMode.FORCE_ALWAYS_THINK_B) {
+            return ThinkingMode.OBJECTION_REFRAME_THINK;
+        }
+        String msg = originalMessage != null ? originalMessage.strip() : "";
+        boolean multiBubbleBurst = threeStreamInput != null && threeStreamInput.originalBurstBubbles().size() >= 2;
+        boolean hasPendingCommitments = sessionCommitments != null && sessionCommitments.stream()
+                .anyMatch(c -> c != null && c.commitmentStatus() == AdaptiveConversationIntelligence.CommitmentStatus.pending);
+        if (multiBubbleBurst
+                || hasPendingCommitments
+                || AdaptiveConversationIntelligence.isPaymentClaimMessage(msg)
+                || AdaptiveConversationIntelligence.isStaffPromiseClaimMessage(msg)
+                || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(msg)
+                || PrimaryActionRouter.isFrustrationMessage(msg)
+                || isConfirmedCustomerPriceObjection(msg, true)) {
+            return ThinkingMode.OBJECTION_REFRAME_THINK;
+        }
+        return ThinkingMode.FAST_NO_THINK;
+    }
+
+    private static boolean isUpstreamLlmClientErrorPayload(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String stripped = raw.strip();
+        if (stripped.matches("(?s)^\\[[A-Za-z0-9_.-]+-error\\].*")) {
+            return true;
+        }
+        return !stripped.startsWith("{")
+                && stripped.contains("Không thể kết nối hoặc nhận phản hồi từ");
+    }
+
+    private static boolean isLeakedReasoningWithoutJsonContract(
+            CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput structured,
+            String sanitizedReply
+    ) {
+        if (structured != null && structured.parsedFromJson()) {
+            return false;
+        }
+        if (sanitizedReply == null || sanitizedReply.isBlank()) {
+            return false;
+        }
+        String low = sanitizedReply.strip().toLowerCase(Locale.ROOT);
+        return low.contains("<think>")
+                || low.startsWith("we need ")
+                || low.startsWith("let's analyze")
+                || low.contains("need produce final json")
+                || low.contains("user's request")
+                || low.contains("brain_reflection");
+    }
+
+    private static ReasoningBudget buildAciReasoningBudget(ThinkingMode mode) {
+        ThinkingMode effective = mode != null ? mode : ThinkingMode.FAST_NO_THINK;
+        boolean deep = effective.isDeepThink();
+        com.example.docmind.service.reasoning.QueryComplexity complexity = deep
+                ? com.example.docmind.service.reasoning.QueryComplexity.DEEP_REASONING
+                : com.example.docmind.service.reasoning.QueryComplexity.SIMPLE;
+        // Bảo đảm đủ ngân sách token (gồm cả reasoning_tokens nội tâm + ~700 token JSON) để không bao giờ bị cắt cụt giữa chừng
+        int maxTokens = deep ? 3600 : 2800;
+        String effort = deep ? "medium" : "low";
+        int timeoutSec = deep ? 60 : 45;
+        return new ReasoningBudget(
+                complexity,
+                effort,
+                timeoutSec,
+                complexity.getMinLatencyMs(),
+                complexity.getMaxLatencyMs(),
+                maxTokens,
+                ReasoningBudget.SALES_CHAT_TEMPERATURE,
+                ReasoningBudget.SALES_TOP_P,
+                ReasoningBudget.SALES_REPEAT_PENALTY,
+                effective
+        );
+    }
+
+    private static LlmTokenUsageSnapshot extractLlmTokenUsage(LlmClient client) {
+        if (client == null) {
+            return LlmTokenUsageSnapshot.zero();
+        }
+        LlmClient target = client;
+        if (target instanceof com.example.docmind.service.llm.ResilientFallbackLlmClient resilient) {
+            target = resilient.getPrimary();
+        }
+        if (target instanceof com.example.docmind.service.llm.OpenAiCompatibleLlmClient openAi) {
+            com.example.docmind.service.llm.OpenAiCompatibleLlmClient.OpenAiCallTelemetry tel = openAi.getLastCallTelemetry();
+            if (tel != null) {
+                return new LlmTokenUsageSnapshot(tel.promptTokens(), tel.completionTokens(), tel.reasoningTokens());
+            }
+        }
+        if (target instanceof com.example.docmind.service.llm.OllamaLlmClient ollama) {
+            com.example.docmind.service.llm.OllamaLlmClient.OllamaCallTelemetry tel = ollama.getLastCallTelemetry();
+            if (tel != null) {
+                return new LlmTokenUsageSnapshot(tel.promptEvalCount(), tel.evalCount(), tel.thinkingChars());
+            }
+        }
+        return LlmTokenUsageSnapshot.zero();
+    }
+
+    private static int computeLegacyEquivalentPromptChars(
+            PromptBuilder.PagePersona pagePersona,
+            String safeHonorific,
+            CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog,
+            List<ReciprocalRankFusion.FusedChunk> fused,
+            List<FanpageBotRequest.ConversationTurn> safeHistory,
+            String customerMessage,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quotedReplyResolution,
+            UUID pageId,
+            List<LearnedRuleDto> appliedRules,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        try {
+            String legacyPrompt = CleanAgentCatalogAndPromptBuilder.buildCleanAgentPrompt(
+                    pagePersona,
+                    safeHonorific,
+                    List.of(),
+                    List.of(),
+                    "chưa có",
+                    true,
+                    "null",
+                    "null",
+                    0,
+                    false,
+                    bookingState != null ? bookingState.status().name() : "NONE",
+                    List.of("GENERAL_CONSULTATION"),
+                    "không có",
+                    1,
+                    tieredCatalog,
+                    fused != null ? fused : List.of(),
+                    safeHistory,
+                    customerMessage,
+                    customerInsight,
+                    activeSkills,
+                    Map.of(),
+                    quotedReplyResolution,
+                    pageId,
+                    appliedRules,
+                    bookingState
+            );
+            return legacyPrompt != null ? legacyPrompt.length() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static List<FanpageBotResponse.ReplyBubble> buildSafeAciAuthorityFallbackBubbles(
+            List<String> violations,
+            String selfPronoun,
+            String custPronoun,
+            ConversationState.StructuredBookingState bookingState,
+            AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision,
+            String originalCustomerMessage
+    ) {
+        if (AdaptiveConversationIntelligence.isPaymentClaimMessage(originalCustomerMessage)
+                || violations.contains("UNVERIFIED_PAYMENT_CONFIRMATION_CLAIM")) {
+            String bookingSuffix = (bookingState != null && bookingState.bookingTime() != null)
+                    ? (" Thông tin yêu cầu lịch hẹn lúc " + bookingState.bookingTime()
+                        + (bookingState.bookingDate() != null ? (" " + bookingState.bookingDate()) : "")
+                        + " của " + custPronoun + " vẫn đang được lưu giữ nguyên ạ.")
+                    : "";
+            String text = "Dạ " + selfPronoun + " đã ghi nhận thông tin " + custPronoun
+                    + " báo chuyển khoản và đang chuyển bộ phận thu ngân đối soát giao dịch thực tế ạ."
+                    + bookingSuffix
+                    + " Ngay khi có kết quả đối soát, bên " + selfPronoun + " sẽ phản hồi " + custPronoun + " sớm nhất nhé ạ.";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
+        }
+        if (handoffDecision != null && handoffDecision.resultingStatus() == AdaptiveConversationIntelligence.HandoffLifecycleStatus.HANDOFF_FAILED) {
+            String text = "Dạ " + selfPronoun + " đã ghi nhận đầy đủ thông tin của " + custPronoun
+                    + " ạ. Hiện hệ thống chuyển tiếp tự động đang tạm gián đoạn nên " + selfPronoun
+                    + " chưa thể bàn giao phiếu ngay lúc này; " + custPronoun
+                    + " vui lòng để lại số điện thoại hoặc nhắn thêm nội dung cần ưu tiên để bên " + selfPronoun + " hỗ trợ trực tiếp nhé ạ.";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
+        }
+        if (bookingState != null && bookingState.status() == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK) {
+            String pkgPart = bookingState.selectedProductLabel() != null ? (" cho gói " + bookingState.selectedProductLabel()) : "";
+            String timePart = bookingState.bookingTime() != null
+                    ? (" vào lúc " + bookingState.bookingTime() + (bookingState.bookingDate() != null ? (" " + bookingState.bookingDate()) : ""))
+                    : "";
+            String text = "Dạ " + selfPronoun + " đã ghi nhận yêu cầu đặt lịch" + pkgPart + timePart + " của " + custPronoun
+                    + " và đang kiểm tra lịch trống thực tế tại cơ sở. Bên " + selfPronoun + " sẽ báo lại kết quả kiểm tra lịch sớm nhất cho " + custPronoun + " nhé ạ.";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
+        }
+        String text = "Dạ " + selfPronoun + " đã ghi nhận thông tin của " + custPronoun
+                + " và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho " + custPronoun + " nhé ạ.";
+        return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
     }
 }
