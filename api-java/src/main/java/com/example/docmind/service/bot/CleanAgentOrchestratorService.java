@@ -4589,7 +4589,8 @@ public class CleanAgentOrchestratorService {
                         handoffDecision,
                         reflection,
                         fused != null ? fused : List.of(),
-                        pagePersona != null ? pagePersona.name() : null
+                        pagePersona != null ? pagePersona.name() : null,
+                        prevBotTurnText
                 )
         );
 
@@ -4684,7 +4685,8 @@ public class CleanAgentOrchestratorService {
                     handoffDecision,
                     reflection,
                     fused != null ? fused : List.of(),
-                    pagePersona != null ? pagePersona.name() : null
+                    pagePersona != null ? pagePersona.name() : null,
+                    prevBotTurnText
             );
             if (!postRepairViolations.isEmpty()) {
                 boolean hasSecurityOrCrossTenantLeak = postRepairViolations.stream()
@@ -4718,6 +4720,15 @@ public class CleanAgentOrchestratorService {
                             effectivePersonaConfig
                     );
                     repairApplied = true;
+                } else if (CleanAgentOutputRefereeAndSanitizer.isStyleOrToneOnlyViolationList(postRepairViolations)) {
+                    candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                            candidateBubbles,
+                            originalVerbatim,
+                            prevBotTurnText,
+                            selfPronoun,
+                            safeHonorific
+                    );
+                    repairApplied = true;
                 } else {
                     log.warn("[ACI-V2] Post-repair still has authority/safety violation ({}) -> building safe factual response", postRepairViolations);
                     candidateBubbles = buildSafeAciAuthorityFallbackBubbles(
@@ -4731,6 +4742,18 @@ public class CleanAgentOrchestratorService {
                     repairApplied = true;
                 }
             }
+        }
+        if (!usedSafeHandoffFallback) {
+            if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim)) {
+                reflection = reflection.withForcedNoCta();
+            }
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                    candidateBubbles,
+                    originalVerbatim,
+                    prevBotTurnText,
+                    selfPronoun,
+                    safeHonorific
+            );
         }
         long validationMs = Math.max(0L, (System.nanoTime() - validationStartNs) / 1_000_000L);
         long llmElapsedMs = Math.max(1L, modelLatencyMs);
@@ -5484,14 +5507,24 @@ public class CleanAgentOrchestratorService {
         if (draft2After != null && draft2After.consultativeProfile() != null) {
             if (draft2After.consultativeProfile().selfReportedSymptoms() != null) {
                 for (AdaptiveConversationIntelligence.VersionedCustomerFact s : draft2After.consultativeProfile().selfReportedSymptoms()) {
-                    if (s != null && !"NEGATED".equalsIgnoreCase(s.status()) && s.value() != null && !s.value().isBlank()) {
+                    if (s != null
+                            && !"NEGATED".equalsIgnoreCase(s.status())
+                            && s.validity() != AdaptiveConversationIntelligence.FactValidity.NEGATED
+                            && s.validity() != AdaptiveConversationIntelligence.FactValidity.SUPERSEDED
+                            && s.validity() != AdaptiveConversationIntelligence.FactValidity.RESOLVED
+                            && s.value() != null && !s.value().isBlank()) {
                         painsSet.add(s.value().strip());
                     }
                 }
             }
             if (draft2After.consultativeProfile().confirmedFacts() != null) {
                 for (AdaptiveConversationIntelligence.VersionedCustomerFact f : draft2After.consultativeProfile().confirmedFacts()) {
-                    if (f != null && !"NEGATED".equalsIgnoreCase(f.status()) && f.value() != null && !f.value().isBlank()) {
+                    if (f != null
+                            && !"NEGATED".equalsIgnoreCase(f.status())
+                            && f.validity() != AdaptiveConversationIntelligence.FactValidity.NEGATED
+                            && f.validity() != AdaptiveConversationIntelligence.FactValidity.SUPERSEDED
+                            && f.validity() != AdaptiveConversationIntelligence.FactValidity.RESOLVED
+                            && f.value() != null && !f.value().isBlank()) {
                         painsSet.add(f.value().strip());
                     }
                 }

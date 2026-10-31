@@ -3388,6 +3388,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (violations.stream().anyMatch(v -> v.startsWith("CROSS_TENANT_BRAND_OR_CATALOG_LEAKAGE"))) {
             sb.append("- RÒ RỈ THƯƠNG HIỆU / DANH MỤC CHÉO TENANT (`CROSS_TENANT_BRAND_OR_CATALOG_LEAKAGE`): TUYỆT ĐỐI CẤM tự nhận thương hiệu, gói dịch vụ, mã gói hay địa chỉ cơ sở không thuộc `<VERIFIED_BUSINESS_CATALOG>` và `<DOCUMENT_CONTEXT>` của Page hiện tại. Nếu khách hỏi dịch vụ ngoài ngành, chỉ làm rõ phạm vi dịch vụ thực tế của Page hiện tại.\n");
         }
+        if (violations.stream().anyMatch(v -> v.startsWith("FORBIDDEN_THAO_MAI_EMPATHY_CLICHE"))) {
+            sb.append("- CẤM CÂU CẢM THÁN THẢO MAI (`FORBIDDEN_THAO_MAI_EMPATHY_CLICHE`): TUYỆT ĐỐI CẤM dùng các cụm cảm thán thảo mai sáo rỗng như 'thấy thương quá', 'thấy thương lắm', 'em thương quá', 'khổ tâm quá'. Hãy phản chiếu tinh tế, tự nhiên hoàn cảnh thực tế của khách.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT"))) {
+            sb.append("- KHÁCH ĐANG PHÀN NÀN CÁCH GIAO TIẾP (`CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT`): BẮT BUỘC đặt `cta_level: \"NO_CTA\"`, `next_action: \"NO_ADDITIONAL_ACTION\"`. Chỉ tiếp thu tự nhiên, chân thành lời góp ý của khách trong 1 bong bóng ngắn gọn; TUYỆT ĐỐI CẤM gài câu hỏi mời đặt lịch, hỏi khung giờ/cơ sở hoặc hỏi chọn gói dịch vụ ở cuối câu.\n");
+        }
+        if (violations.stream().anyMatch(v -> v.startsWith("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT"))) {
+            sb.append("- LẶP LẠI VĂN MẪU XIN LỖI HÀNH CHÍNH (`REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT`): Lượt liền trước đã mở đầu bằng câu xin lỗi hành chính nên TUYỆT ĐỐI CẤM lặp lại cấu trúc 'Dạ ").append(selfPronoun).append(" xin lỗi...' / '").append(selfPronoun).append(" thành thật xin lỗi...'. Hãy tiếp thu thẳng thắn, tự nhiên bằng cách diễn đạt mới và điều chỉnh ngay cách trao đổi (`cta_level: \"NO_CTA\"`, không hỏi ép đặt lịch/chọn gói).\n");
+        }
         List<String> matchedForbiddenWords = violations.stream()
                 .filter(v -> v != null && v.startsWith("FORBIDDEN_PAGE_WORD_USED:"))
                 .map(v -> v.substring("FORBIDDEN_PAGE_WORD_USED:".length()))
@@ -4015,6 +4024,44 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             List<ReciprocalRankFusion.FusedChunk> retrievedChunks,
             String activeBrandName
     ) {
+        return checkAciV2TruthAuthorityAndSafety(
+                bubbles,
+                allCatalog,
+                unblindedEligibleCatalog,
+                excludedCatalog,
+                quoteResolution,
+                authoritativeBookingState,
+                presentedPackagesInHistory,
+                personaConfig,
+                originalCustomerMessage,
+                hasAuthoritativePaymentVerification,
+                verifiedPageSlaPolicy,
+                handoffDecision,
+                reflection,
+                retrievedChunks,
+                activeBrandName,
+                null
+        );
+    }
+
+    public static List<String> checkAciV2TruthAuthorityAndSafety(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> unblindedEligibleCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            String originalCustomerMessage,
+            boolean hasAuthoritativePaymentVerification,
+            String verifiedPageSlaPolicy,
+            AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            List<ReciprocalRankFusion.FusedChunk> retrievedChunks,
+            String activeBrandName,
+            String previousAssistantMessage
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of("EMPTY_REPLY_BUBBLES");
         }
@@ -4191,7 +4238,186 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             addUniqueViolation(violations, secOrTenantViolation);
         }
 
+        // Unit P1.3: Chặn câu cảm thán thảo mai sáo rỗng ("thấy thương quá", "thấy thương lắm", "em thương quá", "khổ tâm quá")
+        if (detectForbiddenThaoMaiEmpathyCliche(combinedText)) {
+            addUniqueViolation(violations, "FORBIDDEN_THAO_MAI_EMPATHY_CLICHE");
+        }
+
+        // Unit P1.3: Khi khách phàn nàn về cách nói chuyện/giao tiếp của bot -> bắt buộc NO_CTA, cấm lặp xin lỗi hành chính, cấm câu hỏi mời đặt lịch/chọn gói ở cuối câu
+        if (isCommunicationStyleComplaintMessage(originalCustomerMessage)) {
+            boolean nonNoCtaPlan = reflection != null
+                    && reflection.responsePlan() != null
+                    && reflection.responsePlan().ctaLevel() != null
+                    && reflection.responsePlan().ctaLevel() != AdaptiveConversationIntelligence.CtaLevel.NO_CTA;
+            if (nonNoCtaPlan || hasTrailingSalesOrBookingCtaOnStyleComplaint(combinedText, originalCustomerMessage)) {
+                addUniqueViolation(violations, "CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT");
+            }
+            if (repeatsPreviousAdministrativeApologyStructure(combinedText, previousAssistantMessage)) {
+                addUniqueViolation(violations, "REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT");
+            }
+        }
+
         return violations;
+    }
+
+    private static final Pattern FORBIDDEN_THAO_MAI_CLICHE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:thấy\\s+thương\\s+(?:quá|lắm|ghê)|(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|nghe\\s+(?:mình\\s+)?(?:chia\\s+sẻ|kể)\\s+thấy\\s+thương|khổ\\s+tâm\\s+(?:quá|lắm))\\b"
+    );
+
+    private static final Pattern COMMUNICATION_STYLE_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bthảo\\s+mai\\b|\\b(?:nch|nói\\s+chuyện|trả\\s+lời|nhắn)\\s+(?:cụt\\s+(?:ngủn|lủn)|chán|máy\\s+móc|nhạt|sến)\\b|"
+            + "\\bcụt\\s+(?:ngủn|lủn)\\s+quá\\b|\\bkiểu\\s+văn\\s+mẫu\\b|\\bxin\\s+lỗi\\s+(?:kiểu\\s+)?văn\\s+mẫu\\b|"
+            + "\\bvăn\\s+mẫu\\s+(?:thế|quá|vậy)\\b|\\bvăn\\s+vở\\s+(?:thế|quá)\\b|\\bnói\\s+nghe\\s+sến\\b|"
+            + "\\btư\\s+vấn\\s+chán\\s+(?:thế|quá|vậy)\\b|\\b(?:chẳng|chả|không)\\s+hiểu\\s+ý\\s+khách\\b|"
+            + "\\btụt\\s+(?:hứng|mood|cảm\\s+xúc)\\s+quá\\b)"
+    );
+
+    private static final Pattern TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|khung\\s+giờ\\s+nào|mấy\\s+giờ|cơ\\s+sở\\s+nào|chi\\s+nhánh\\s+nào|"
+            + "chọn\\s+gói\\s+nào|tham\\s+khảo\\s+gói|trải\\s+nghiệm\\s+gói|làm\\s+gói\\s+nào|ghé\\s+bên\\s+em|tiện\\s+ghé)\\b[^.!?\\n]*[?？]|"
+            + "\\b(?:mình|chị|anh|bạn)\\s+(?:muốn|thích|ưng|chọn|đặt)\\s+[^.!?\\n]*\\b(?:gói|lịch|giờ|buổi)\\b[^.!?\\n]*[?？])"
+    );
+
+    private static final Pattern ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:vâng\\s+)?(?:cho\\s+)?(?:em|bên\\s+em|mình)\\s+(?:thành\\s+thật\\s+|rất\\s+|chân\\s+thành\\s+)?xin\\s+lỗi\\b[^.!?,;\\n]{0,90}[.!?,;:]?\\s*"
+    );
+
+    public static boolean detectForbiddenThaoMaiEmpathyCliche(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFC);
+        return FORBIDDEN_THAO_MAI_CLICHE_PATTERN.matcher(norm).find();
+    }
+
+    public static boolean isCommunicationStyleComplaintMessage(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        return COMMUNICATION_STYLE_COMPLAINT_PATTERN.matcher(norm).find();
+    }
+
+    public static boolean hasTrailingSalesOrBookingCtaOnStyleComplaint(String text, String customerMessage) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(text.strip(), java.text.Normalizer.Form.NFC);
+        if (TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(norm).find()) {
+            return true;
+        }
+        // Nếu khách chỉ đang phàn nàn giao tiếp (không hỏi giá) mà câu kết thúc bằng dấu hỏi chấm mời chào/khảo sát
+        String custNorm = customerMessage != null
+                ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+                : "";
+        boolean customerAlsoAskedServiceQuestion = custNorm.contains("giá")
+                || custNorm.contains("bao nhiêu")
+                || custNorm.contains("mấy tiền")
+                || custNorm.contains("ở đâu");
+        return !customerAlsoAskedServiceQuestion && (norm.endsWith("?") || norm.endsWith("？"));
+    }
+
+    public static boolean repeatsPreviousAdministrativeApologyStructure(String currentText, String previousAssistantMessage) {
+        if (currentText == null || currentText.isBlank() || previousAssistantMessage == null || previousAssistantMessage.isBlank()) {
+            return false;
+        }
+        String currNorm = java.text.Normalizer.normalize(currentText.strip(), java.text.Normalizer.Form.NFC);
+        String prevNorm = java.text.Normalizer.normalize(previousAssistantMessage.strip(), java.text.Normalizer.Form.NFC);
+        return ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(prevNorm).find()
+                && ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(currNorm).find();
+    }
+
+    public static boolean isStyleOrToneOnlyViolationList(List<String> violations) {
+        if (violations == null || violations.isEmpty()) {
+            return false;
+        }
+        return violations.stream().allMatch(v -> "FORBIDDEN_THAO_MAI_EMPATHY_CLICHE".equals(v)
+                || "CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT".equals(v)
+                || "REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT".equals(v));
+    }
+
+    /**
+     * Unit P1.3: Chốt chặn hậu kiểm nhẹ cho lượt phàn nàn giao tiếp và cụm sáo rỗng "thấy thương quá/thương lắm":
+     * gỡ bỏ câu hỏi mời đặt lịch/chọn gói ở cuối câu và thay mở đầu xin lỗi hành chính bị lặp từ lượt liền trước.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage,
+            String previousAssistantMessage,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        boolean isStyleComplaint = isCommunicationStyleComplaintMessage(customerMessage);
+        boolean prevHadAdminApology = previousAssistantMessage != null
+                && ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(
+                        java.text.Normalizer.normalize(previousAssistantMessage.strip(), java.text.Normalizer.Form.NFC)
+                ).find();
+
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (int idx = 0; idx < bubbles.size(); idx++) {
+            FanpageBotResponse.ReplyBubble b = bubbles.get(idx);
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+
+            // 1. Gỡ bỏ cụm cảm thán thảo mai "thấy thương quá / thấy thương lắm / em thương quá"
+            if (detectForbiddenThaoMaiEmpathyCliche(txt)) {
+                txt = txt.replaceAll("(?isU)^\\s*(?:dạ\\s+)?[^.!?\\n]*\\b(?:thấy\\s+thương|(?:em|mình)\\s+thương|khổ\\s+tâm)\\b[^.!?\\n]*[.!?]?\\s*", "")
+                         .strip();
+                if (txt.isEmpty()) {
+                    txt = "Dạ nghe " + safeCust + " kể vậy chắc hẳn cơ thể đang mệt và căng nhiều ạ.";
+                }
+            }
+
+            if (isStyleComplaint) {
+                // 2. Nếu lượt liền trước đã mở đầu bằng "Dạ em xin lỗi...", cấm lặp lại cấu trúc xin lỗi hành chính
+                if (idx == 0 && prevHadAdminApology && ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(txt).find()) {
+                    txt = ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(txt).replaceFirst("").strip();
+                    String prefix = "Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ";
+                    txt = txt.isEmpty()
+                            ? (prefix + ", để " + safeSelf + " trao đổi ngắn gọn và đúng trọng tâm " + safeCust + " cần nhé ạ.")
+                            : (prefix + ". " + Character.toUpperCase(txt.charAt(0)) + txt.substring(1));
+                }
+
+                // 3. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc NO_CTA)
+                String[] sentences = txt.split("(?<=[.!?？])\\s+");
+                List<String> kept = new ArrayList<>();
+                for (String s : sentences) {
+                    String trimmed = s.strip();
+                    if (trimmed.isEmpty()) continue;
+                    boolean isQuestion = trimmed.endsWith("?") || trimmed.endsWith("？");
+                    boolean isSalesInvite = TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(trimmed).find()
+                            || trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đặt\\s+lịch|khung\\s+giờ|chọn\\s+gói|tham\\s+khảo\\s+gói|giữ\\s+chỗ)\\b.*");
+                    if (isQuestion || isSalesInvite) {
+                        continue;
+                    }
+                    kept.add(trimmed);
+                }
+                txt = String.join(" ", kept).strip();
+            }
+
+            if (!txt.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs()));
+            }
+        }
+
+        if (isStyleComplaint) {
+            if (out.isEmpty()) {
+                String naturalAck = prevHadAdminApology
+                        ? ("Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ, để " + safeSelf + " trao đổi tự nhiên, đi thẳng vào điều " + safeCust + " đang quan tâm nhé ạ.")
+                        : ("Dạ " + safeSelf + " tiếp thu góp ý của " + safeCust + " ạ, để " + safeSelf + " trao đổi gọn gàng và sát đúng nhu cầu của " + safeCust + " hơn nha.");
+                return List.of(new FanpageBotResponse.ReplyBubble(naturalAck, 0));
+            }
+            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp (NO_CTA)
+            if (out.size() > 1) {
+                return List.of(out.get(0));
+            }
+        }
+        return out;
     }
 
     private static final Pattern INTERNAL_SCHEMA_OR_POLICY_TOKEN_LEAK_PATTERN = Pattern.compile(

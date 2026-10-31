@@ -1503,6 +1503,44 @@ public final class AdaptiveConversationIntelligence {
             responsePlan = responsePlan != null ? responsePlan : AdaptiveResponsePlan.empty();
         }
 
+        public AdaptiveCognitiveReflection withForcedNoCta() {
+            AdaptiveResponsePlan noCtaPlan = new AdaptiveResponsePlan(
+                    responsePlan.objective(),
+                    responsePlan.strategy(),
+                    responsePlan.tone(),
+                    responsePlan.depth(),
+                    "NO_ADDITIONAL_ACTION",
+                    CtaLevel.NO_CTA,
+                    responsePlan.adaptation(),
+                    responsePlan.previousOutcome()
+            );
+            return new AdaptiveCognitiveReflection(
+                    customerUnderstanding,
+                    priority,
+                    workingHypothesis,
+                    strategy,
+                    uncertainties,
+                    customerStatements,
+                    commitmentDelta,
+                    handoffRequest,
+                    ProposedBookingPatch.empty(),
+                    blockedUnauthorizedCompletionCount,
+                    parsedFromV2Schema,
+                    activatedSkillCodes,
+                    explicitActivatedSkillCodes,
+                    currentTopic,
+                    unresolvedRequestsDelta,
+                    pendingReferences,
+                    conversationGoal,
+                    needRevisionDetected,
+                    confirmedFactsDelta,
+                    barrierType,
+                    hypothesisConfidenceLevel,
+                    interestedPackageId,
+                    noCtaPlan
+            );
+        }
+
         public AdaptiveCognitiveReflection(
                 CustomerUnderstanding customerUnderstanding,
                 PriorityFocus priority,

@@ -4368,4 +4368,246 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(directPricePrompt).doesNotContain("configured_opening_bubbles (Dùng linh hoạt cho Hospitality");
         assertThat(directPricePrompt).contains("nếu khách hỏi thẳng giá/thông tin cụ thể ngay lượt 1 thì trả lời trực diện ý đó");
     }
+
+    @Test
+    @DisplayName("Unit P1.3: Chặn đứng ALWAYS_ON_RULE_POLLUTION (score > 0 gate), sửa CTA_CONTEXT_MISMATCH khi phàn nàn giao tiếp, và MIGRATE_TO_V2_TEST cho F-04 & F-07")
+    void testP13_ZeroRulePollutionScoreGateStyleComplaintNoCtaAndMigratedF04F07() {
+        // 1. Kiểm chứng score > 0 gate trên tập rules thực tế (kể cả khi tổng số rules <= maxRules = 7 và chứa từ khóa nhiễu "gội", "đầu", "mình", "shop")
+        com.example.docmind.dto.LearnedRuleDto safetyRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "POLICY", "", "", "Phân tầng 4 cấp độ tuyên bố sức khỏe",
+                List.of("safety", "pregnancy", "đang", "mang", "bầu", "làm", "gội", "đầu"), true, PAGE_ID.toString(),
+                0.99, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Khi khách nói/hỏi: Bầu 2 tháng đi gội đầu được không em?", null, false,
+                "APPROVED", null, "PB-SPA-SAFETY-001", "Sàng lọc an toàn", "SAFETY", "DISCOVERY", 100,
+                "Chỉ khuyên khám y tế khi có chóng mặt bất thường kéo dài", "Cấm dọa khám bác sĩ với mệt mỏi thường", "kb", "none", "PLAYBOOK"
+        );
+        com.example.docmind.dto.LearnedRuleDto neuroRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "POLICY", "", "", "Cờ đỏ thần kinh cấp tính",
+                List.of("safety", "neurological", "mang", "thai", "đau", "tai"), true, PAGE_ID.toString(),
+                0.99, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Khi khách nói: chóng mặt dữ dội / tê tay lan", null, false,
+                "APPROVED", null, "SAFE-NEURO-001", "Red flag thần kinh", "SAFETY", "DISCOVERY", 100,
+                "Dừng báo giá và chuyển chuyên viên", "Không báo giá", "kb", "none", "PLAYBOOK"
+        );
+        com.example.docmind.dto.LearnedRuleDto correctionRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "PLAYBOOK_CONSULTATION", "", "", "Đính chính & Need Revision",
+                List.of("correction", "phải", "mình", "hỏi", "gội", "đầu", "chứ", "nói", "rồi"), true, PAGE_ID.toString(),
+                0.98, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Khi khách nói: Mình hỏi gội đầu chứ không phải massage body", null, false,
+                "APPROVED", null, "PB-SPA-CORRECTION-001", "Need Revision", "CLARIFICATION", "CONSULTING", 99,
+                "Cập nhật CURRENT/NEGATED/SUPERSEDED mượt mà", "Không hỏi vặn lại", "kb", "none", "PLAYBOOK"
+        );
+        com.example.docmind.dto.LearnedRuleDto emotionalRepairRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "PLAYBOOK_CONSULTATION", "", "", "Phàn nàn cách diễn đạt",
+                List.of("emotional_repair", "nói", "nghe", "sến", "shop", "văn", "quá", "tụt", "hứng"), true, PAGE_ID.toString(),
+                0.98, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Khi khách nói: Nói nghe sến thế shop | Văn vở quá", null, false,
+                "APPROVED", null, "PB-SPA-EMOTIONAL-REPAIR-001", "Sửa giao tiếp", "TRUST_ASSURANCE", "CONSULTING", 99,
+                "Tiếp thu tự nhiên trong 1 câu ngắn, NO_CTA", "Không ép đặt lịch khi tụt mood", "kb", "none", "PLAYBOOK"
+        );
+        com.example.docmind.dto.LearnedRuleDto priceAnchorRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "PRICING_CALCULATION", "", "", "Neo giá thông minh 239k & 399k",
+                List.of("chi phí", "massage", "giá", "báo giá", "mấy tiền"), true, PAGE_ID.toString(),
+                0.96, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Khi khách hỏi giá gói 60 phút", null, false,
+                "APPROVED", null, "PB-SPA-PRICE-ANCHOR-001", "Neo giá 60p", "PRICE_INFORMATION", "CONSULTING", 96,
+                "Báo trực diện gói 60 phút phù hợp", "Cấm dọa giá trần 1.990k", "kb", "none", "PLAYBOOK"
+        );
+        com.example.docmind.dto.LearnedRuleDto alwaysOnBrandRule = new com.example.docmind.dto.LearnedRuleDto(
+                UUID.randomUUID(), "POLICY", "", "", "Cam kết 0 Tip",
+                List.of(), true, PAGE_ID.toString(),
+                0.99, 1, 1, 0, 1, null, null, Instant.now(), Instant.now(), Instant.now(),
+                "DOM", "Luôn áp dụng", null, true,
+                "APPROVED", null, "PB-SPA-ZERO-TIP-ALWAYS", "Cam kết 0 Tip", "TRUST_ASSURANCE", "ALL", 90,
+                "Giá niêm yết trọn gói 0 Tip", "Cấm thu phụ phí", "kb", "none", "PLAYBOOK"
+        );
+        List<com.example.docmind.dto.LearnedRuleDto> sixRulesUnderCap = List.of(
+                safetyRule, neuroRule, correctionRule, emotionalRepairRule, priceAnchorRule, alwaysOnBrandRule
+        );
+
+        // Dù sixRulesUnderCap.size() == 6 <= maxRules (7), lượt hỏi giá thường TUYỆT ĐỐI KHÔNG backfill SAFETY / CORRECTION / EMOTIONAL-REPAIR!
+        List<String> normalPriceSelected = CleanAgentCatalogAndPromptBuilder
+                .selectTurnRelevantCompactRules(sixRulesUnderCap, "Gội đầu dưỡng sinh mấy tiền shop ơi?", false, 7)
+                .stream().map(com.example.docmind.dto.LearnedRuleDto::ruleCode).toList();
+        assertThat(normalPriceSelected)
+                .contains("PB-SPA-ZERO-TIP-ALWAYS", "PB-SPA-PRICE-ANCHOR-001")
+                .doesNotContain("PB-SPA-SAFETY-001", "SAFE-NEURO-001", "PB-SPA-CORRECTION-001", "PB-SPA-EMOTIONAL-REPAIR-001");
+
+        // Khi khách thực sự có dấu hiệu tương ứng thì đúng rule chuyên biệt mới được nạp (score > 0)
+        assertThat(CleanAgentCatalogAndPromptBuilder.selectTurnRelevantCompactRules(
+                sixRulesUnderCap, "Tôi hoa mắt chóng mặt đau đầu", false, 7))
+                .extracting(com.example.docmind.dto.LearnedRuleDto::ruleCode)
+                .contains("PB-SPA-SAFETY-001");
+        assertThat(CleanAgentCatalogAndPromptBuilder.selectTurnRelevantCompactRules(
+                sixRulesUnderCap, "Dở à, đau chân mất ngủ mà đi massage vai làm j", false, 7))
+                .extracting(com.example.docmind.dto.LearnedRuleDto::ruleCode)
+                .contains("PB-SPA-CORRECTION-001");
+        assertThat(CleanAgentCatalogAndPromptBuilder.selectTurnRelevantCompactRules(
+                sixRulesUnderCap, "Nghe thảo mai quá", false, 7))
+                .extracting(com.example.docmind.dto.LearnedRuleDto::ruleCode)
+                .contains("PB-SPA-EMOTIONAL-REPAIR-001");
+
+        // 2. MIGRATE_TO_V2_TEST cho F-04 ("Dở à, đau chân mất ngủ mà đi massage vai làm j" -> chân=CURRENT, vai=NEGATED)
+        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AtomicInteger f07AttemptCounter = new AtomicInteger(0);
+        FanpageBotService v2Bot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    if (prompt.contains("đau chân mất ngủ mà đi massage vai làm j")) {
+                        return """
+                                {
+                                  "brain_reflection": {
+                                    "customer_understanding": {
+                                      "turn_intent": "CORRECT_BOT_SCOPE_MISMATCH",
+                                      "conversation_goal": "RELIEVE_LEG_PAIN_AND_INSOMNIA",
+                                      "need_revision": true,
+                                      "interaction_permission": "OPEN",
+                                      "buying_signal": "MODERATE",
+                                      "confirmed_facts_delta": [
+                                        {"key": "self_reported_symptom", "value": "đau chân", "op": "ADD", "status": "CURRENT"},
+                                        {"key": "self_reported_symptom", "value": "mất ngủ", "op": "ADD", "status": "CURRENT"},
+                                        {"key": "need_scope", "value": "massage vai", "op": "REVISE", "status": "NEGATED"}
+                                      ],
+                                      "emotional_state": {"primary": "FRUSTRATED", "secondary": [], "confidence": 0.90},
+                                      "booking_readiness": "EXPLORING"
+                                    },
+                                    "priority": {"primary": "CLARIFICATION", "secondary": ["VALUE_ALIGNMENT"]},
+                                    "response_plan": {
+                                      "objective": "Đính chính đúng vùng chân & giấc ngủ",
+                                      "strategy": "Clarify Gently",
+                                      "tone": "LEVEL_1_NATURAL",
+                                      "depth": "CONCISE",
+                                      "cta_level": "SOFT_CTA",
+                                      "next_action": "SOFT_FEELING_CHECK",
+                                      "adaptation": "PIVOT",
+                                      "previous_outcome": "REJECTED"
+                                    }
+                                  },
+                                  "bubbles": [
+                                    "Dạ em sơ suất quá, mình đang đau nhức vùng chân kèm khó ngủ thì gói Massage cơ bản 60 phút (399k) để kỹ thuật viên tập trung chăm sóc kỹ đôi chân giúp nhẹ người và dễ vào giấc hơn sẽ sát nhu cầu của mình nhất ạ."
+                                  ]
+                                }
+                                """;
+                    }
+                    // F-07: Cố tình trả về bản nháp lỗi ở lần 1 (có "thấy thương quá", lặp xin lỗi hành chính hoặc gài CTA hỏi đặt lịch cuối câu)
+                    // để chứng minh Referee + Sanitizer V2 chặn và khóa chặt NO_CTA!
+                    int callNo = f07AttemptCounter.incrementAndGet();
+                    if (callNo == 1) {
+                        return """
+                                {
+                                  "brain_reflection": {
+                                    "customer_understanding": {
+                                      "turn_intent": "STYLE_COMPLAINT",
+                                      "interaction_permission": "PAUSED",
+                                      "buying_signal": "NONE",
+                                      "emotional_state": {"primary": "FRUSTRATED", "secondary": [], "confidence": 0.92},
+                                      "booking_readiness": "EXPLORING"
+                                    },
+                                    "priority": {"primary": "TRUST_ASSURANCE", "secondary": []},
+                                    "response_plan": {
+                                      "objective": "Tiếp thu góp ý giao tiếp",
+                                      "strategy": "Direct Answer",
+                                      "tone": "LEVEL_1_NATURAL",
+                                      "depth": "CONCISE",
+                                      "cta_level": "DIRECT_CTA",
+                                      "next_action": "GENTLE_SCHEDULE_CHECK",
+                                      "adaptation": "PIVOT",
+                                      "previous_outcome": "REJECTED"
+                                    }
+                                  },
+                                  "bubbles": [
+                                    "Dạ em thành thật xin lỗi mình vì cách nói chuyện vừa rồi ạ, nghe mình nói em thấy thương quá. Vậy mình muốn chọn gói nào hay đặt lịch khung giờ nào để em giữ chỗ luôn ạ?"
+                                  ]
+                                }
+                                """;
+                    }
+                    return """
+                            {
+                              "brain_reflection": {
+                                "customer_understanding": {
+                                  "turn_intent": "STYLE_COMPLAINT",
+                                  "interaction_permission": "PAUSED",
+                                  "buying_signal": "NONE",
+                                  "emotional_state": {"primary": "FRUSTRATED", "secondary": [], "confidence": 0.92},
+                                  "booking_readiness": "EXPLORING"
+                                },
+                                "priority": {"primary": "TRUST_ASSURANCE", "secondary": []},
+                                "response_plan": {
+                                  "objective": "Tiếp thu tự nhiên không văn mẫu",
+                                  "strategy": "Warm Acknowledgment",
+                                  "tone": "LEVEL_1_NATURAL",
+                                  "depth": "CONCISE",
+                                  "cta_level": "NO_CTA",
+                                  "next_action": "NO_ADDITIONAL_ACTION",
+                                  "adaptation": "PIVOT",
+                                  "previous_outcome": "REJECTED"
+                                }
+                              },
+                              "bubbles": [
+                                "Dạ em thành thật xin lỗi mình nhiều ạ. Để em điều chỉnh lại cách trao đổi ngắn gọn, tự nhiên và đi thẳng vào thông tin mình cần nha. Mình muốn đặt lịch mấy giờ ạ?"
+                              ]
+                            }
+                            """;
+                }
+        );
+
+        // Chạy F-04
+        FanpageBotResponse f04Resp = v2Bot.handleCustomerMessage(buildBotRequest(
+                "sender-p13-f04",
+                "Anh Hoàng",
+                "Dở à, đau chân mất ngủ mà đi massage vai làm j",
+                null,
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Tôi đau nhức chân và mất ngủ"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ mình mỏi vai gáy lâu chưa ạ?")
+                )
+        ));
+        assertThat(f04Resp.replyText()).contains("chân").contains("399k");
+        var draft2F04 = sharedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, "sender-p13-f04");
+        assertThat(draft2F04.consultativeProfile().selfReportedSymptoms())
+                .anyMatch(f -> "đau chân".equalsIgnoreCase(f.value())
+                        && f.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT)
+                .anyMatch(f -> "mất ngủ".equalsIgnoreCase(f.value())
+                        && f.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT);
+        assertThat(draft2F04.consultativeProfile().confirmedFacts())
+                .anyMatch(f -> "massage vai".equalsIgnoreCase(f.value())
+                        && ("NEGATED".equalsIgnoreCase(f.status())
+                                || f.validity() == AdaptiveConversationIntelligence.FactValidity.NEGATED));
+        assertThat(f04Resp.customerInsight().extractedPains())
+                .contains("đau chân", "mất ngủ")
+                .doesNotContain("massage vai");
+
+        // 3. MIGRATE_TO_V2_TEST cho F-07 (3 biến thể phàn nàn giao tiếp liên tiếp sau lượt xin lỗi hành chính)
+        List<String> f07Variants = List.of(
+                "Nghe thảo mai quá",
+                "Nch cụt ngủn quá chả muốn làm j luôn",
+                "Sao cứ xin lỗi kiểu văn mẫu thế, tư vấn chán thế chẳng hiểu ý khách gì cả"
+        );
+        for (int i = 0; i < f07Variants.size(); i++) {
+            f07AttemptCounter.set(0);
+            String complaintMsg = f07Variants.get(i);
+            String senderF07 = "sender-p13-f07-" + i;
+            FanpageBotResponse f07Resp = v2Bot.handleCustomerMessage(buildBotRequest(
+                    senderF07,
+                    "Chị Lan",
+                    complaintMsg,
+                    null,
+                    List.of(
+                            new FanpageBotRequest.ConversationTurn("user", "Tôi hoa mắt chóng mặt đau đầu"),
+                            new FanpageBotRequest.ConversationTurn("assistant", "Dạ em xin lỗi mình vì sự bất tiện vừa rồi ạ.")
+                    )
+            ));
+            assertThat(f07Resp.replyBubbles()).hasSize(1);
+            String finalText = f07Resp.replyText().strip();
+            assertThat(finalText)
+                    .doesNotContainIgnoringCase("thấy thương")
+                    .doesNotContainIgnoringCase("thành thật xin lỗi")
+                    .doesNotContainIgnoringCase("đặt lịch")
+                    .doesNotContainIgnoringCase("chọn gói")
+                    .doesNotEndWith("?");
+            var draft2F07 = sharedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, senderF07);
+            assertThat(draft2F07.lastResponsePlan().nextAction()).isEqualTo("NO_ADDITIONAL_ACTION");
+        }
+    }
 }

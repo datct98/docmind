@@ -104,6 +104,7 @@ class DocmindV340EmotionalRefereeTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("TEST W (Gate 3, Mục 4 & Mục 6) — COMPASS + SENSORY_PALETTE + SPACE NOTE + OPENER GUARD")
     void testW_CompassSensoryPaletteAndSpaceNoteAndOpenerGuard() {
         // 1. Mục 6: roomType() giữ nguyên cho TEST K, customerFacingSpaceNote() ẩn chữ "phòng chung"
@@ -277,6 +278,7 @@ class DocmindV340EmotionalRefereeTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("TEST X (v3.5.0-ULTIMATE) — BODY MISMATCH GUARD, MOOD DROP RECOVERY, POLITE PRICE REMINDER, PROMO INQUIRY & 10S POST-PRICE DELAY")
     void testX_V350BodyMismatchMoodDropPolitePriceReminderPromoInquiryAndPostPriceDelay() {
         ConversationState.clearSessionCache();

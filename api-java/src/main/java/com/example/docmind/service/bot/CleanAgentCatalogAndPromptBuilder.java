@@ -3964,78 +3964,141 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 deduplicated.add(r);
             }
         }
-        if (deduplicated.size() <= maxRules) {
-            return List.copyOf(deduplicated);
-        }
-
         String normMsg = Normalizer.normalize(currentMessage != null ? currentMessage : "", Normalizer.Form.NFC)
                 .toLowerCase(Locale.ROOT);
         String[] msgTokens = normMsg.split("[^\\p{L}\\p{N}]+");
 
+        // Unit P1.3: Xóa hoàn toàn nhánh backfill mù (deduplicated.size() <= maxRules -> return all).
+        // Chỉ luôn nạp các rule có Boolean.TRUE.equals(r.alwaysOn()); với rule ngữ cảnh (alwaysOn == false),
+        // bắt buộc scoreLearnedRuleRelevance(...) > 0 mới được đưa vào <PAGE_PLAYBOOK_COMPACT_DIRECTIVES>.
         List<LearnedRuleDto> selected = new ArrayList<>();
-        List<LearnedRuleDto> contextualPool = new ArrayList<>();
+        record ScoredContextualRule(LearnedRuleDto rule, int score) {}
+        List<ScoredContextualRule> scoredContextualPool = new ArrayList<>();
         for (LearnedRuleDto r : deduplicated) {
-            if (r.alwaysOn() && selected.size() < maxRules) {
-                selected.add(r);
+            if (Boolean.TRUE.equals(r.alwaysOn())) {
+                if (selected.size() < maxRules) {
+                    selected.add(r);
+                }
             } else {
-                contextualPool.add(r);
+                int score = scoreLearnedRuleRelevance(r, normMsg, msgTokens);
+                if (score > 0) {
+                    scoredContextualPool.add(new ScoredContextualRule(r, score));
+                }
             }
         }
-        contextualPool.sort((a, b) -> {
-            int scoreA = scoreLearnedRuleRelevance(a, normMsg, msgTokens);
-            int scoreB = scoreLearnedRuleRelevance(b, normMsg, msgTokens);
-            if (scoreA != scoreB) {
-                return Integer.compare(scoreB, scoreA);
+        scoredContextualPool.sort((a, b) -> {
+            if (a.score() != b.score()) {
+                return Integer.compare(b.score(), a.score());
             }
-            int prioA = a.priority() != null ? a.priority() : 80;
-            int prioB = b.priority() != null ? b.priority() : 80;
+            int prioA = a.rule().priority() != null ? a.rule().priority() : 80;
+            int prioB = b.rule().priority() != null ? b.rule().priority() : 80;
             return Integer.compare(prioB, prioA);
         });
-        for (LearnedRuleDto r : contextualPool) {
+        for (ScoredContextualRule sc : scoredContextualPool) {
             if (selected.size() >= maxRules) {
                 break;
             }
-            selected.add(r);
+            selected.add(sc.rule());
         }
         return List.copyOf(selected);
     }
 
-    private static int scoreLearnedRuleRelevance(LearnedRuleDto r, String normMsg, String[] msgTokens) {
-        if (r == null || normMsg.isEmpty()) {
+    private static final Set<String> LEARNED_RULE_MATCH_STOPWORDS = Set.of(
+            "mình", "chị", "anh", "em", "bạn", "tôi", "shop", "bên", "hỏi", "nói", "làm",
+            "đang", "phải", "chứ", "trên", "rồi", "vậy", "xem", "muốn", "giúp", "cho",
+            "của", "với", "nhé", "nha", "không", "được", "khi", "khách", "quá", "hơi",
+            "còn", "hơn", "nữa", "chưa", "vâng", "mới", "mấy", "hôm", "nay", "nào",
+            "sao", "thế", "như", "cái", "này", "kia", "đâu", "luôn", "thôi", "nhỉ"
+    );
+
+    static int scoreLearnedRuleRelevance(LearnedRuleDto r, String normMsg, String[] msgTokens) {
+        if (r == null || normMsg == null || normMsg.isBlank()) {
             return 0;
         }
+        String codeUpper = r.ruleCode() != null ? r.ruleCode().strip().toUpperCase(Locale.ROOT) : "";
+        String catUpper = r.category() != null ? r.category().strip().toUpperCase(Locale.ROOT) : "";
+
+        // Gate chuyên biệt cho các rule SAFETY / CORRECTION / EMOTIONAL-REPAIR:
+        // ngăn từ khóa dịch vụ chung ("gội", "đầu", "làm", "đau", "lưng", "mình", "shop") kích hoạt nhầm ở lượt hỏi giá thông thường,
+        // đồng thời cộng điểm khớp ngữ nghĩa trực tiếp khi tin nhắn thực sự chứa tín hiệu an toàn / đính chính / phàn nàn giao tiếp!
+        int semanticGateBonus = 0;
+        if (codeUpper.contains("SAFETY") || codeUpper.startsWith("SAFE-")) {
+            if (!hasSafetyOrContraindicationCue(normMsg)) {
+                return 0;
+            }
+            semanticGateBonus = 20;
+        } else if (codeUpper.contains("CORRECTION")) {
+            if (!hasCorrectionOrNeedRevisionCue(normMsg)) {
+                return 0;
+            }
+            semanticGateBonus = 20;
+        } else if (codeUpper.contains("EMOTIONAL-REPAIR") || codeUpper.contains("STYLE-REPAIR")) {
+            if (!hasCommunicationOrMoodComplaintCue(normMsg)) {
+                return 0;
+            }
+            semanticGateBonus = 20;
+        }
+
+        Set<String> msgTokenSet = new LinkedHashSet<>();
+        if (msgTokens != null) {
+            for (String tok : msgTokens) {
+                if (tok != null && !tok.isBlank()) {
+                    msgTokenSet.add(tok.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+
         StringBuilder corpus = new StringBuilder(256);
         if (r.triggerCondition() != null) corpus.append(r.triggerCondition()).append(' ');
         if (r.title() != null) corpus.append(r.title()).append(' ');
-        if (r.category() != null) corpus.append(r.category()).append(' ');
-        if (r.ruleCode() != null) corpus.append(r.ruleCode()).append(' ');
-        if (r.retrievalKeywords() != null) {
-            for (String kw : r.retrievalKeywords()) {
-                if (kw != null && !kw.isBlank()) {
-                    String nkw = Normalizer.normalize(kw.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-                    if (!nkw.isEmpty() && normMsg.contains(nkw)) {
-                        corpus.append(' ').append(nkw);
-                    }
-                }
-            }
-        }
+        if (!catUpper.isEmpty()) corpus.append(catUpper).append(' ');
+        if (!codeUpper.isEmpty()) corpus.append(codeUpper).append(' ');
         String normCorpus = Normalizer.normalize(corpus.toString(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        int score = 0;
+        Set<String> corpusTokenSet = new LinkedHashSet<>(java.util.Arrays.asList(normCorpus.split("[^\\p{L}\\p{N}]+")));
+
+        int score = semanticGateBonus;
         if (r.retrievalKeywords() != null) {
             for (String kw : r.retrievalKeywords()) {
                 if (kw == null || kw.isBlank()) continue;
-                String nkw = Normalizer.normalize(kw.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-                if (nkw.length() >= 2 && normMsg.contains(nkw)) {
-                    score += 12;
+                String nkw = Normalizer.normalize(kw.strip(), Normalizer.Form.NFC)
+                        .toLowerCase(Locale.ROOT)
+                        .replaceAll("\\s+", " ");
+                if (nkw.length() < 2) continue;
+                boolean multiWord = nkw.contains(" ");
+                if (!multiWord && LEARNED_RULE_MATCH_STOPWORDS.contains(nkw)) {
+                    continue;
+                }
+                if (multiWord ? containsWholePhrase(normMsg, nkw) : msgTokenSet.contains(nkw)) {
+                    score += multiWord ? 16 : 12;
                 }
             }
         }
-        for (String tok : msgTokens) {
-            if (tok != null && tok.length() >= 3 && normCorpus.contains(tok)) {
+        for (String tok : msgTokenSet) {
+            if (tok.length() >= 3 && !LEARNED_RULE_MATCH_STOPWORDS.contains(tok) && corpusTokenSet.contains(tok)) {
                 score += 4;
             }
         }
         return score;
+    }
+
+    private static boolean containsWholePhrase(String normMsg, String phrase) {
+        if (normMsg == null || phrase == null || phrase.isEmpty()) {
+            return false;
+        }
+        Pattern pat = Pattern.compile("(?iU)(?:^|[^\\p{L}\\p{N}])" + Pattern.quote(phrase) + "(?:$|[^\\p{L}\\p{N}])");
+        return pat.matcher(normMsg).find();
+    }
+
+    private static boolean hasSafetyOrContraindicationCue(String normMsg) {
+        return normMsg.matches("(?isU).*\\b(mang\\s+thai|có\\s+bầu|đang\\s+bầu|bầu\\s+\\d+|thai\\s+kỳ|huyết\\s+áp|tim\\s+mạch|chóng\\s+mặt|hoa\\s+mắt|choáng\\s+váng|tê\\s+lan|tê\\s+tay|tê\\s+bì|thoát\\s+vị|chèn\\s+ép|phẫu\\s+thuật|vết\\s+thương|bỏng\\s+rát|sưng\\s+tấy|viêm\\s+tai|ù\\s+tai|chảy\\s+dịch|dị\\s+ứng)\\b.*");
+    }
+
+    private static boolean hasCorrectionOrNeedRevisionCue(String normMsg) {
+        return normMsg.matches("(?isU).*(\\bkhông\\s+phải\\b|\\bnhầm\\b|\\bhiểu\\s+sai\\b|\\bý\\s+(mình|tôi|chị|anh)\\s+là\\b|\\bthôi\\s+không\\b|\\bđổi\\s+(sang|ý|gói)\\b|\\bchuyển\\s+sang\\b|\\bnói\\s+ở\\s+trên\\b|\\bdở\\s+à\\b|\\blàm\\s+(gì|j)\\b|\\bchứ\\s+không\\b|\\bhết\\s+[\\p{L}\\s]{1,20}\\s+rồi\\b|\\bkhỏi\\s+lâu\\s+rồi\\b).*");
+    }
+
+    private static boolean hasCommunicationOrMoodComplaintCue(String normMsg) {
+        return normMsg.matches("(?isU).*(\\bthảo\\s+mai\\b|\\bsến\\b|\\bvăn\\s+vở\\b|\\bvăn\\s+mẫu\\b|\\bcụt\\s+(ngủn|lủn)\\b|\\bnch\\s+cụt\\b|\\btụt\\s+(hứng|mood|cảm\\s+xúc)\\b|\\btư\\s+vấn\\s+chán\\b|\\b(chẳng|chả|không)\\s+hiểu\\s+ý\\b|\\bmáy\\s+móc\\b|\\brập\\s+khuôn\\b|\\bđau\\s+lòng\\s+đâu\\b|\\bchán\\s+chả\\s+(buồn|muốn)\\b).*");
     }
 
     private static boolean isRedundantCatalogTableChunkForAciV2(String chunkText, String currentMessage) {
@@ -4098,7 +4161,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
             II. UNIFIED ADAPTIVE RESPONSE PLANNER & QUY TẮC BONG BÓNG (`bubbles`):
             - Lập `response_plan` TRƯỚC `bubbles`: `objective`, `strategy`, `tone` (`LEVEL_1_NATURAL | LEVEL_2_REFLECTIVE | LEVEL_3_SENSORY`), `depth` (`CONCISE | STANDARD | DETAILED_ON_DEMAND`), `cta_level` (`NO_CTA | SOFT_CTA | DIRECT_CTA | TRANSACTION_HANDOFF`), `next_action`, `adaptation`, `previous_outcome`.
             - Quy tắc `bubbles`: Mỗi phần tử mảng `bubbles` là 1 bong bóng Messenger độc lập (CẤM gộp nhiều đoạn bằng `\\n\\n` trong 1 phần tử; chỉ dùng `\\n` đơn khi liệt kê ngắn trong 1 ý). Dùng **1 bong bóng** khi trả lời trực diện (`LEVEL_1_NATURAL`), `CONCISE`, `BOUNDED_INFO_ONLY` hoặc `Respectful Pause`; tách **2 bong bóng** khi chuyển nhịp từ đồng cảm/giá trị gói sang câu hỏi bước kế tiếp (Lượt 1 chào `"Hi shop"` có `configured_opening_bubbles` -> đón tiếp theo `configured_opening_bubbles`, chưa báo giá).
-            - Ma trận thích ứng: Hỏi thẳng thông tin/giá/giờ (*"Massage toàn thân mấy tiền?"*) -> `LEVEL_1_NATURAL` + `CONCISE`, đi thẳng giá, không vòng vo cảm xúc. Tâm sự rã rời/mệt mỏi (*"Đi làm về cả người rã rời..."*) -> `LEVEL_2_REFLECTIVE` / `LEVEL_3_SENSORY` đồng điệu nhẹ nhàng rồi gợi ý gói. Khách khó chịu/góp ý cách nói -> nhận lỗi ngắn gọn và điều chỉnh ngay, không chào bán lượt đó.
+            - Ma trận thích ứng: Hỏi thẳng thông tin/giá/giờ (*"Massage toàn thân mấy tiền?"*) -> `LEVEL_1_NATURAL` + `CONCISE`, đi thẳng giá, không vòng vo cảm xúc. Tâm sự rã rời/mệt mỏi (*"Đi làm về cả người rã rời..."*) -> `LEVEL_2_REFLECTIVE` / `LEVEL_3_SENSORY` đồng điệu nhẹ nhàng (CẤM câu cảm thán thảo mai *"thấy thương quá/thương lắm"*) rồi gợi ý gói. Khách khó chịu/phàn nàn cách nói chuyện của bot (*"Nghe thảo mai quá"*, *"Nch cụt ngủn quá"*, *"Sao cứ xin lỗi kiểu văn mẫu thế"*, *"Tư vấn chán thế, chẳng hiểu ý khách gì cả"*) -> bắt buộc `cta_level: "NO_CTA"`, `next_action: "NO_ADDITIONAL_ACTION"`, tiếp thu tự nhiên bằng cách diễn đạt mới (CẤM lặp lại cấu trúc câu xin lỗi hành chính của lượt liền trước, CẤM gài câu hỏi mời đặt lịch/hỏi chọn gói ở cuối câu).
 
             III. 5 NGUYÊN TẮC TƯ VẤN, KIỂM SOÁT TRI THỨC & AN TOÀN GIAO DỊCH:
             1. Chọn chi tiết đắt giá & `4-Tier Claim Taxonomy` (`SERVICE_FACT | CUSTOMER_FEEDBACK | EXPECTED_EXPERIENCE | MEDICAL_CLAIM`):
