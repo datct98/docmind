@@ -5010,7 +5010,7 @@ class AciCognitiveV2AndReadingBudgetTest {
 
         // 5. Verify Nàng Sen skills & learned_rules eliminated fabricated social proof, sappy clichés, and forced CTA on style feedback
         String safetyRuleText = jdbc.queryForObject(
-                "SELECT generalized_rule FROM public.learned_rules WHERE id = 'ac601093-402d-4eae-aeef-c4aca7bce34d'::uuid",
+                "SELECT generalized_rule FROM public.learned_rules WHERE page_id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'::uuid AND rule_code = 'PB-SPA-SAFETY-001' LIMIT 1",
                 String.class
         );
         assertThat(safetyRuleText)
@@ -5018,11 +5018,178 @@ class AciCognitiveV2AndReadingBudgetTest {
                 .doesNotContain("nhiều khách bên em chia sẻ");
 
         String emotionalRepairRuleText = jdbc.queryForObject(
-                "SELECT generalized_rule FROM public.learned_rules WHERE id = '250bf6a0-f16c-4bb8-bb43-c0054a6a1f3a'::uuid",
+                "SELECT generalized_rule FROM public.learned_rules WHERE page_id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'::uuid AND rule_code = 'PB-SPA-EMOTIONAL-REPAIR-001' LIMIT 1",
                 String.class
         );
         assertThat(emotionalRepairRuleText)
                 .contains("NO_CTA")
                 .doesNotContain("Câu hỏi gợi mở:");
+    }
+
+    // =========================================================================
+    // UNIT P2.3: NGĂN TỰ SUY DIỄN NHU CẦU TỪ TRIỆU CHỨNG, ĐỒNG BỘ SKILLS, ẨN SKU & KHÓA CATALOG GROUNDING
+    // =========================================================================
+
+    @Test
+    @DisplayName("Unit P2.3: Ngăn tự suy diễn nhu cầu từ triệu chứng chưa xác nhận, đồng bộ selectedSkills <-> activatedSkills (T11 không bật OBJECTION_REFRAME_THINK/priceObjectionCount), ẩn mã SKU, gộp dấu ':' & khóa Catalog Grounding 339k/399k/530k")
+    void testP23_UnconfirmedSymptomGuard_SkillSync_SkuStrip_ColonMerge_AndCatalogGroundingLock() throws Exception {
+        AgentBrainService sharedBrain = new AgentBrainService("LLM_COGNITIVE_V2");
+        List<com.example.docmind.dto.bot.AgentSkillDto> sixPageSkills = List.of(
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "discovery_empathy_and_scope", "Khám phá nhu cầu", "PSYCHOLOGY", "", "Khám phá vùng mỏi", "", null, null, 98, true, PAGE_ID.toString(), Instant.now(), Instant.now()),
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "price_objection_sensory_value", "Giá trị dịch vụ", "PSYCHOLOGY", "", "Giải thích giá trị", "", null, null, 97, true, PAGE_ID.toString(), Instant.now(), Instant.now()),
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "soft_economical_bridge_and_compare", "So sánh gói", "SALES_STRATEGY", "", "So sánh tinh tế", "", null, null, 96, true, PAGE_ID.toString(), Instant.now(), Instant.now()),
+                new com.example.docmind.dto.bot.AgentSkillDto(UUID.randomUUID(), "warm_nod_to_gentle_scheduling", "Mời khung giờ", "COMMUNICATION", "", "Mời khung giờ", "", null, null, 95, true, PAGE_ID.toString(), Instant.now(), Instant.now())
+        );
+
+        // 1. Khi khách mới chia sẻ triệu chứng ("Tôi đau đầu chóng mặt và thi thoảng hoa mắt") mà chưa hỏi giá/dịch vụ:
+        //    Nếu draft tự ý gạ gói massage đầu cổ 239k + "thấy thương", Referee bắt UNCONFIRMED_SYMPTOM_PREMATURE_SERVICE_PITCH & sửa về trung tính
+        AtomicInteger symptomCalls = new AtomicInteger(0);
+        FanpageBotService symptomBot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    int call = symptomCalls.incrementAndGet();
+                    if (call == 1) {
+                        return """
+                                {"brain_reflection":{"customer_understanding":{"turn_intent":"SHARE_SYMPTOM","cost_concern_expressed":false},"priority":{"primary":"CLARIFICATION","secondary":[]},"activated_skill_codes":["discovery_empathy_and_scope"]},"bubbles":["Dạ nghe mình kể thấy thương lắm ạ. Bên em có gói DS02 massage đầu cổ vai gáy 239k/60p giúp mình hết đau đầu ngay ạ."]}
+                                """;
+                    }
+                    return """
+                            {"brain_reflection":{"customer_understanding":{"turn_intent":"SHARE_SYMPTOM","cost_concern_expressed":false},"priority":{"primary":"CLARIFICATION","secondary":[]},"response_plan":{"strategy":"Clarify Gently","tone":"LEVEL_1_NATURAL","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"ASK_ONE_CLARIFYING_QUESTION"},"activated_skill_codes":["discovery_empathy_and_scope"]},"bubbles":["Dạ em ghi nhận tình trạng đau đầu, chóng mặt và thi thoảng hoa mắt mình vừa chia sẻ ạ. Nếu triệu chứng hay tái diễn mình nên lưu ý kiểm tra sức khỏe để yên tâm hơn, hiện tại mình đang muốn tìm hiểu thông tin gì để em hỗ trợ đúng ý mình ạ?"]}
+                            """;
+                }
+        );
+        AgentSkillService mockedSkillSvc = mock(AgentSkillService.class);
+        when(mockedSkillSvc.getActiveSkillsForPage(PAGE_ID)).thenReturn(sixPageSkills);
+        java.lang.reflect.Field fSkill = FanpageBotService.class.getDeclaredField("agentSkillService");
+        fSkill.setAccessible(true);
+        fSkill.set(symptomBot, mockedSkillSvc);
+
+        FanpageBotResponse symptomResp = symptomBot.handleCustomerMessage(buildBotRequest(
+                "sender-p23-symptom",
+                "Khách Mới",
+                "Tôi đau đầu chóng mặt và thi thoảng hoa mắt",
+                null,
+                List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "Tư vấn"),
+                        new FanpageBotRequest.ConversationTurn("assistant", "Dạ chào mình, em là An Nhiên tại Nàng Sen Spa ạ. Em có thể hỗ trợ thông tin gì cho mình hôm nay ạ?")
+                )
+        ));
+        assertThat(symptomCalls.get()).isEqualTo(2);
+        assertThat(symptomResp.replyText())
+                .doesNotContainIgnoringCase("thấy thương")
+                .doesNotContainIgnoringCase("239k")
+                .doesNotContainIgnoringCase("DS02")
+                .doesNotContainIgnoringCase("massage đầu cổ");
+        assertThat(symptomResp.selectedSkills())
+                .extracting(com.example.docmind.dto.bot.AgentSkillDto::code)
+                .isEqualTo(symptomResp.activatedSkills().stream().map(com.example.docmind.dto.bot.AgentSkillDto::code).toList());
+
+        // 2. T11 ("Mỗi khi khách chê đắt, bạn được dạy phải reply vậy à"):
+        //    - KHÔNG nhận nhầm thành price objection
+        //    - KHÔNG bật OBJECTION_REFRAME_THINK
+        //    - KHÔNG tăng priceObjectionCount
+        //    - selectedSkills == [] và activatedSkills == [] đồng bộ 100%
+        String t11MetaMsg = "Mỗi khi khách chê đắt, bạn được dạy phải reply vậy à";
+        assertThat(CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(t11MetaMsg, true)).isFalse();
+        FanpageBotRequest t11Req = buildBotRequest("sender-p23-t11", "Chị Lan", t11MetaMsg, null, List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Nhưng đắt nhỉ"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em gói dưỡng sinh 239k kéo dài 60 phút trọn gói ạ.")
+        ));
+        var t11Streams = AdaptiveConversationIntelligence.buildThreeStreamInput(
+                t11Req, catalogPackages, nangSenPersona.resolvedConfig(), ZoneId.of("Asia/Ho_Chi_Minh"));
+        assertThat(CleanAgentOrchestratorService.selectAciAdaptiveThinkingMode(t11MetaMsg, t11Streams, List.of()))
+                .isEqualTo(ThinkingMode.FAST_NO_THINK);
+
+        AtomicReference<String> t11PromptRef = new AtomicReference<>("");
+        FanpageBotService t11Bot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    t11PromptRef.set(prompt);
+                    return """
+                            {"brain_reflection":{"customer_understanding":{"turn_intent":"META_COMMUNICATION_REMARK","cost_concern_expressed":true},"priority":{"primary":"TRUST_ASSURANCE","secondary":[]},"response_plan":{"strategy":"Reassure Honestly","tone":"LEVEL_1_NATURAL","depth":"CONCISE","cta_level":"NO_CTA","next_action":"NO_ADDITIONAL_ACTION"},"activated_skill_codes":["price_objection_sensory_value"]},"bubbles":["Dạ không phải trả lời rập khuôn theo bài đâu ạ, tại em sợ báo giá ngắn quá làm mình chưa hình dung rõ quy trình nên mới giải thích kỹ hơn chút thôi ạ."]}
+                            """;
+                }
+        );
+        fSkill.set(t11Bot, mockedSkillSvc);
+        FanpageBotResponse t11Resp = t11Bot.handleCustomerMessage(t11Req);
+        assertThat(sharedBrain.getPriceObjectionCount(PAGE_ID, "sender-p23-t11")).isZero();
+        assertThat(t11PromptRef.get()).doesNotContain("enabled_agent_skills:");
+        assertThat(t11Resp.selectedSkills()).isEmpty();
+        assertThat(t11Resp.activatedSkills()).isEmpty();
+        assertThat(t11Resp.replyBubbles()).hasSize(1);
+        assertThat(t11Resp.replyText()).doesNotEndWith("?");
+
+        // 3. In-place SKU hiding (DS01..NS07, HN_DS02) & gộp câu dẫn dấu ":" / Lượt 1 hỏi giá ngắn 1–2 bubbles
+        List<FanpageBotResponse.ReplyBubble> rawSkuAndColon = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ bên em hiện có các gói phù hợp như sau ạ:", 0),
+                new FanpageBotResponse.ReplyBubble("- Gói HN_DS02 (239k/60p) chăm sóc đầu cổ vai gáy\n- Gói Massage cơ bản (NS01 - 399k/60p) toàn thân", 1200),
+                new FanpageBotResponse.ReplyBubble("Mình đang nghiêng về gội dưỡng sinh hay massage toàn thân hơn ạ?", 1200)
+        );
+        List<FanpageBotResponse.ReplyBubble> cleanedTurn1 =
+                CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
+                        CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(rawSkuAndColon, catalogPackages),
+                        "Massage mấy tiền?",
+                        true
+                );
+        assertThat(cleanedTurn1).hasSize(2);
+        String joinedTurn1 = String.join("\n", cleanedTurn1.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
+        assertThat(joinedTurn1)
+                .doesNotContain("DS02")
+                .doesNotContain("HN_DS02")
+                .doesNotContain("NS01")
+                .contains("239k")
+                .contains("399k");
+
+        // 4. Bare "Ok" & "Để xem đã" giữ nguyên BookingStatus.NONE kể cả khi lượt trước bot có câu mời giờ hẹn
+        ConversationState.StructuredBookingState afterBareOk = AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                ConversationState.StructuredBookingState.none(),
+                new AdaptiveConversationIntelligence.ProposedBookingPatch("NS01", "hôm nay", null),
+                "Ok",
+                "Mình muốn ghé trải nghiệm vào khung giờ nào để em kiểm tra lịch trống ạ?",
+                catalogPackages,
+                catalogPackages,
+                ZoneId.of("Asia/Ho_Chi_Minh")
+        );
+        assertThat(afterBareOk.status()).isEqualTo(ConversationState.BookingStatus.NONE);
+        assertThat(afterBareOk.selectedProductId()).isNull();
+
+        // 5. Catalog Grounding Lock (339k/399k/530k: chặn bịa ngâm bồn cho 399k, bịa xông hơi/VIP cho 530k, bịa nhược điểm & gạ đẩy lên gói đắt hơn khi chê đắt)
+        String fullNangSenTable = """
+                | Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian |
+                | --- | --- | --- | --- | --- | --- |
+                | DS02 | Gói dưỡng sinh cơ bản | 239.000VNĐ | 60 phút | Gội thảo dược ấm + massage cổ vai gáy + ăn nhẹ | Phòng chung có rèm che riêng |
+                | DS03 | Gói dưỡng sinh cao cấp | 339.000VNĐ | 80 phút | Gội dưỡng sinh chuyên sâu + massage đầu cổ vai + ăn nhẹ | Phòng chung có rèm che riêng |
+                | NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | 60p massage toàn thân + Buffet thực dưỡng | Phòng chung có rèm che riêng |
+                | NS02 | Massage cơ bản nâng cao | 530.000VNĐ | 80 phút | 10p ngâm bồn thảo dược + tắm tráng + 70p massage + Buffet thực dưỡng | Phòng chung có rèm che riêng |
+                | NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage + Buffet thực dưỡng | Phòng VIP riêng |
+                """;
+        List<PackageCatalogService.PackageSummary> fullPkgs = PackageCatalogService.extractCatalog(
+                List.of(new ReciprocalRankFusion.FusedChunk(
+                        new RetrievedChunk(UUID.randomUUID(), DOC_ID, List.of("BẢNG GIÁ"), List.of(), 1, new double[]{0, 0, 0, 0}, fullNangSenTable, 0.99),
+                        0.99)),
+                List.of()
+        );
+        List<String> v399Bath = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ gói Massage cơ bản 399k bên em có ngâm bồn thảo dược ấm rất thích ạ.", 0)),
+                fullPkgs, fullPkgs, List.of()
+        );
+        assertThat(v399Bath).contains("UNGROUNDED_HERBAL_BATH_AMENITY:NS01");
+
+        List<String> v530SteamAndVip = CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ gói 530k bên em có 10 phút ngâm bồn, xông hơi và nằm trong Phòng VIP riêng ạ.", 0)),
+                fullPkgs, fullPkgs, List.of()
+        );
+        assertThat(v530SteamAndVip)
+                .contains("UNGROUNDED_STEAM_AMENITY:NS02")
+                .contains("UNGROUNDED_PRIVATE_ROOM:NS02");
+
+        assertThat(CleanAgentOutputRefereeAndSanitizer.detectFabricatedCatalogDrawback(
+                "Dạ gói 239k chỉ làm qua loa bề mặt và không dùng thảo dược nấu tươi đâu ạ.")).isTrue();
+        assertThat(CleanAgentOutputRefereeAndSanitizer.detectUpwardPricePitchOnCostObjection(
+                "Dạ gói 239k kéo dài 60 phút ạ. Hay mình tham khảo thêm gói massage toàn thân 399k để thả lỏng sâu hơn ạ?",
+                "239k đắt quá",
+                fullPkgs)).isTrue();
     }
 }

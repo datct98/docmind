@@ -1555,6 +1555,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                             addUniqueViolation(violations, "UNGROUNDED_BUFFET_AMENITY:" + firstCode);
                             addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + firstCode + ":buffet");
                         }
+                        boolean anyClausePkgAllowsHerbalBath = clausePkgs.stream().anyMatch(CleanAgentOutputRefereeAndSanitizer::packageConfirmedAllowsHerbalBath);
+                        if (!anyClausePkgAllowsHerbalBath && clauseLow.contains("ngâm bồn")
+                                && !isAttributeNegatedBeforeMatch(clauseLow, "ngâm bồn")) {
+                            String firstCode = clausePkgs.get(0).code();
+                            addUniqueViolation(violations, "UNGROUNDED_HERBAL_BATH_AMENITY:" + firstCode);
+                            addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + firstCode + ":ngâm bồn");
+                        }
+                        boolean anyClausePkgAllowsSteam = clausePkgs.stream().anyMatch(CleanAgentOutputRefereeAndSanitizer::packageConfirmedAllowsSteam);
+                        if (!anyClausePkgAllowsSteam && clauseLow.contains("xông hơi")
+                                && !isAttributeNegatedBeforeMatch(clauseLow, "xông hơi")) {
+                            String firstCode = clausePkgs.get(0).code();
+                            addUniqueViolation(violations, "UNGROUNDED_STEAM_AMENITY:" + firstCode);
+                            addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + firstCode + ":xông hơi");
+                        }
                         continue;
                     }
                     if (refPkg != null) {
@@ -1578,6 +1592,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                 && !isAttributeNegatedBeforeMatch(clauseLow, "buffet")) {
                             addUniqueViolation(violations, "UNGROUNDED_BUFFET_AMENITY:" + refPkg.code());
                             addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":buffet");
+                        }
+
+                        boolean pkgAllowsHerbalBath = packageConfirmedAllowsHerbalBath(refPkg);
+                        if (!pkgAllowsHerbalBath && clauseLow.contains("ngâm bồn")
+                                && !isAttributeNegatedBeforeMatch(clauseLow, "ngâm bồn")) {
+                            addUniqueViolation(violations, "UNGROUNDED_HERBAL_BATH_AMENITY:" + refPkg.code());
+                            addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":ngâm bồn");
+                        }
+
+                        boolean pkgAllowsSteam = packageConfirmedAllowsSteam(refPkg);
+                        if (!pkgAllowsSteam && clauseLow.contains("xông hơi")
+                                && !isAttributeNegatedBeforeMatch(clauseLow, "xông hơi")) {
+                            addUniqueViolation(violations, "UNGROUNDED_STEAM_AMENITY:" + refPkg.code());
+                            addUniqueViolation(violations, "CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:" + refPkg.code() + ":xông hơi");
                         }
 
                         // Kiểm tra thuộc tính PENDING_CONFIRMATION theo ma trận branch_scope + package_code + attribute
@@ -1898,6 +1926,30 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String incAndProc = ((pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
                 + (pkg.processSummary() != null ? pkg.processSummary() : "")).toLowerCase(Locale.ROOT);
         return incAndProc.contains("thực dưỡng");
+    }
+
+    static boolean packageConfirmedAllowsHerbalBath(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return false;
+        }
+        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
+        // Catalog Grounding Lock (339k DS03 / 399k NS01 / DS01..DS04): KHÔNG có ngâm bồn thảo dược; từ NS02 (530k/80p) mới có 10p ngâm bồn.
+        if (code.startsWith("DS") || "NS01".equals(code)) {
+            return false;
+        }
+        return buildPackageAttributeCorpusLower(pkg).contains("ngâm bồn");
+    }
+
+    static boolean packageConfirmedAllowsSteam(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return false;
+        }
+        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
+        // Catalog Grounding Lock (339k DS03 / 399k NS01 / 530k NS02): KHÔNG có xông hơi; từ NS03 (580k/100p) trở lên mới có xông hơi.
+        if (code.startsWith("DS") || "NS01".equals(code) || "NS02".equals(code)) {
+            return false;
+        }
+        return buildPackageAttributeCorpusLower(pkg).contains("xông hơi");
     }
 
     private static List<String> detectPendingConfirmationAttributeViolations(
@@ -4588,12 +4640,27 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             addUniqueViolation(violations, secOrTenantViolation);
         }
 
-        // Unit P1.3: Chặn câu cảm thán thảo mai sáo rỗng ("thấy thương quá", "thấy thương lắm", "em thương quá", "khổ tâm quá")
+        // Unit P1.3 / P3.3: Chặn các cụm đặt khách vào vị trí đáng thương ("nghe mình kể thấy thương", "thấy thương", "thương quá", "thương lắm", "xót quá")
         if (detectForbiddenThaoMaiEmpathyCliche(combinedText)) {
             addUniqueViolation(violations, "FORBIDDEN_THAO_MAI_EMPATHY_CLICHE");
         }
 
-        // Unit P1.3: Khi khách phàn nàn về cách nói chuyện/giao tiếp của bot -> bắt buộc NO_CTA, cấm lặp xin lỗi hành chính, cấm câu hỏi mời đặt lịch/chọn gói ở cuối câu
+        // Unit P2.3: Chặn tự suy diễn nhu cầu dịch vụ / tự chào gói massage từ triệu chứng sức khỏe chưa xác nhận nhu cầu
+        if (isUnconfirmedHealthSymptomWithoutServiceDemand(originalCustomerMessage, conversationHistory)
+                && hasPrematureServiceOrPackagePitchOnUnconfirmedSymptom(combinedText, allCatalog)) {
+            addUniqueViolation(violations, "UNCONFIRMED_SYMPTOM_PREMATURE_SERVICE_PITCH");
+        }
+
+        // Unit P2.3: Catalog Grounding Lock — chặn tự bịa nhược điểm hạ thấp gói trong Catalog & chặn gạ đẩy lên gói đắt hơn khi khách đang chê đắt
+        boolean hasCatalog = allCatalog != null && !allCatalog.isEmpty();
+        if (hasCatalog && detectFabricatedCatalogDrawback(combinedText)) {
+            addUniqueViolation(violations, "FABRICATED_CATALOG_DRAWBACK");
+        }
+        if (hasCatalog && detectUpwardPricePitchOnCostObjection(combinedText, originalCustomerMessage, allCatalog)) {
+            addUniqueViolation(violations, "UPWARD_PRICE_PITCH_ON_COST_OBJECTION");
+        }
+
+        // Unit P1.3 / P2.3: Khi khách phàn nàn về cách nói chuyện hoặc hỏi xoáy kịch bản của bot -> bắt buộc NO_CTA, cấm lặp xin lỗi hành chính, cấm câu hỏi mời đặt lịch/chọn gói ở cuối câu
         if (isCommunicationStyleComplaintMessage(originalCustomerMessage)) {
             boolean nonNoCtaPlan = reflection != null
                     && reflection.responsePlan() != null
@@ -4611,7 +4678,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     private static final Pattern FORBIDDEN_THAO_MAI_CLICHE_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:thấy\\s+thương\\s+(?:quá|lắm|ghê)|(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|nghe\\s+(?:mình\\s+)?(?:chia\\s+sẻ|kể)\\s+thấy\\s+thương|khổ\\s+tâm\\s+(?:quá|lắm))\\b"
+            "(?isU)\\b(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+)?(?:chia\\s+sẻ|kể|nói)\\s+thấy\\s+thương|"
+            + "thấy\\s+thương(?:\\s+(?:quá|lắm|ghê|thật))?|"
+            + "(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|"
+            + "thương\\s+(?:quá|lắm)\\b|"
+            + "xót\\s+(?:quá|lắm|xa\\s+quá)\\b|"
+            + "khổ\\s+tâm\\s+(?:quá|lắm))\\b"
     );
 
     private static final Pattern COMMUNICATION_STYLE_COMPLAINT_PATTERN = Pattern.compile(
@@ -4619,8 +4691,309 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\bcụt\\s+(?:ngủn|lủn)\\s+quá\\b|\\bkiểu\\s+văn\\s+mẫu\\b|\\bxin\\s+lỗi\\s+(?:kiểu\\s+)?văn\\s+mẫu\\b|"
             + "\\bvăn\\s+mẫu\\s+(?:thế|quá|vậy)\\b|\\bvăn\\s+vở\\s+(?:thế|quá)\\b|\\bnói\\s+nghe\\s+sến\\b|"
             + "\\btư\\s+vấn\\s+chán\\s+(?:thế|quá|vậy)\\b|\\b(?:chẳng|chả|không)\\s+hiểu\\s+ý\\s+khách\\b|"
-            + "\\btụt\\s+(?:hứng|mood|cảm\\s+xúc)\\s+quá\\b)"
+            + "\\btụt\\s+(?:hứng|mood|cảm\\s+xúc)\\s+quá\\b|"
+            + "\\bđược\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train|bày|chỉ)\\s+(?:phải\\s+|để\\s+|cách\\s+)?(?:reply|trả\\s+lời|nói|nhắn|tư\\s+vấn|đáp)\\b|"
+            + "\\b(?:trả\\s+lời|reply|nói\\s+chuyện|tư\\s+vấn)\\s+theo\\s+(?:kịch\\s+bản|bài|mẫu|công\\s+thức|script)\\b|"
+            + "\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản|lòng)\\b|"
+            + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\s*(?:à|hả|vậy|đấy\\s+à|phải\\s+không)\\b|"
+            + "\\brập\\s+khuôn\\s+(?:thế|quá|vậy)\\b)"
     );
+
+    private static final Pattern META_SCRIPT_TRAINING_REMARK_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bđược\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train|bày|chỉ)\\b|"
+            + "\\btheo\\s+(?:kịch\\s+bản|công\\s+thức|script)\\b|\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản)\\b|"
+            + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\b)"
+    );
+
+    private static final Pattern ACUTE_OR_NEUROLOGICAL_HEALTH_SYMPTOM_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:đau\\s+đầu|nhức\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|choáng\\s+váng|mất\\s+thăng\\s+bằng|"
+            + "buồn\\s+nôn|tức\\s+ngực|khó\\s+thở|tê\\s+(?:bì|tay|chân)|huyết\\s+áp|tiền\\s+đình)\\b"
+    );
+
+    private static final Pattern EXPLICIT_SERVICE_OR_PRICE_DEMAND_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|bảng\\s+giá|gói|liệu\\s+trình|dịch\\s+vụ|"
+            + "massage|mát\\s+xa|gội|dưỡng\\s+sinh|ngâm\\s+bồn|xông\\s+hơi|thư\\s+giãn|chăm\\s+sóc|trị\\s+liệu|"
+            + "đặt\\s+lịch|giữ\\s+chỗ|còn\\s+lịch|ghé\\s+spa|làm\\s+gói|cạo\\s+vôi|trám\\s+răng|bọc\\s+sứ|tẩy\\s+trắng|"
+            + "\\d{2,4}\\s*k)\\b"
+    );
+
+    private static final Pattern PREMATURE_SERVICE_PITCH_ON_SYMPTOM_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:bên\\s+em\\s+có\\s+gói|(?:em|mình)\\s+gợi\\s+ý\\s+(?:mình\\s+|chị\\s+|anh\\s+)?(?:tham\\s+khảo\\s+)?gói|"
+            + "tham\\s+khảo\\s+gói|massage\\s+(?:đầu\\s+cổ|cổ\\s+vai|toàn\\s+thân|cơ\\s+bản|phục\\s+hồi)|"
+            + "gội\\s+(?:đầu\\s+|thảo\\s+dược\\s+)?dưỡng\\s+sinh|liệu\\s+trình\\s+\\d{2,3}\\s*(?:phút|p))\\b"
+    );
+
+    private static final Pattern FABRICATED_CATALOG_DRAWBACK_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bchỉ\\s+(?:làm|gội|massage|chăm\\s+sóc)\\s+(?:qua\\s+loa|hời\\s+hợt|sơ\\s+sài)\\b|"
+            + "\\bkhông\\s+dùng\\s+thảo\\s+dược\\s+(?:tươi|nấu\\s+tươi)\\b|"
+            + "\\bdùng\\s+nguyên\\s+liệu\\s+thường\\b|"
+            + "\\bbị\\s+cắt\\s+bớt\\s+(?:bước|quy\\s+trình)\\b|"
+            + "\\bkhông\\s+đủ\\s+(?:lực|giải\\s+tỏa|thư\\s+giãn)\\b)"
+    );
+
+    private static final Pattern UPWARD_UPSELL_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:tham\\s+khảo\\s+thêm\\s+gói|thử\\s+(?:sang\\s+)?gói|nâng\\s+lên\\s+gói|chuyển\\s+sang\\s+gói|chọn\\s+gói\\s+cao\\s+hơn)\\b[^.!?\\n]*"
+    );
+
+    private static final Pattern INTERNAL_SKU_FALLBACK_TOKEN_PATTERN = Pattern.compile(
+            "(?i)\\b(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\b"
+    );
+
+    public static boolean isUnconfirmedHealthSymptomWithoutServiceDemand(
+            String currentMessage,
+            List<FanpageBotRequest.ConversationTurn> conversationHistory
+    ) {
+        if (currentMessage == null || currentMessage.isBlank()) {
+            return false;
+        }
+        String normCurrent = java.text.Normalizer.normalize(currentMessage.strip(), java.text.Normalizer.Form.NFC);
+        if (!ACUTE_OR_NEUROLOGICAL_HEALTH_SYMPTOM_PATTERN.matcher(normCurrent).find()) {
+            return false;
+        }
+        if (EXPLICIT_SERVICE_OR_PRICE_DEMAND_PATTERN.matcher(normCurrent).find()) {
+            return false;
+        }
+        if (conversationHistory != null) {
+            for (FanpageBotRequest.ConversationTurn turn : conversationHistory) {
+                if (turn == null || turn.content() == null || turn.content().isBlank()) continue;
+                String role = turn.role() != null ? turn.role().strip().toLowerCase(Locale.ROOT) : "";
+                if ("user".equals(role) || "customer".equals(role)) {
+                    String normHist = java.text.Normalizer.normalize(turn.content().strip(), java.text.Normalizer.Form.NFC);
+                    if (EXPLICIT_SERVICE_OR_PRICE_DEMAND_PATTERN.matcher(normHist).find()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    public static boolean hasPrematureServiceOrPackagePitchOnUnconfirmedSymptom(
+            String combinedText,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(combinedText.strip(), java.text.Normalizer.Form.NFC);
+        if (hasQuotedPriceInText(norm) || PREMATURE_SERVICE_PITCH_ON_SYMPTOM_PATTERN.matcher(norm).find()) {
+            return true;
+        }
+        if (allCatalog != null && !allCatalog.isEmpty()) {
+            return CleanAgentCatalogAndPromptBuilder.isAnyPackagePresentedInBotText(norm, allCatalog);
+        }
+        return false;
+    }
+
+    public static boolean detectFabricatedCatalogDrawback(String combinedText) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(combinedText.strip(), java.text.Normalizer.Form.NFC);
+        return FABRICATED_CATALOG_DRAWBACK_PATTERN.matcher(norm).find();
+    }
+
+    public static boolean detectUpwardPricePitchOnCostObjection(
+            String combinedText,
+            String originalCustomerMessage,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (combinedText == null || combinedText.isBlank()
+                || originalCustomerMessage == null || originalCustomerMessage.isBlank()
+                || allCatalog == null || allCatalog.isEmpty()) {
+            return false;
+        }
+        if (isCommunicationStyleComplaintMessage(originalCustomerMessage)
+                || !CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(originalCustomerMessage, true)) {
+            return false;
+        }
+        Set<Long> catalogPrices = new LinkedHashSet<>();
+        for (PackageCatalogService.PackageSummary p : allCatalog) {
+            if (p != null && !p.isAddon() && p.priceAmountVnd() > 0L) {
+                catalogPrices.add(p.priceAmountVnd());
+            }
+        }
+        Set<Long> objectedCatalogPrices = extractPricesInVndFromText(originalCustomerMessage).stream()
+                .filter(catalogPrices::contains)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (objectedCatalogPrices.isEmpty()) {
+            return false;
+        }
+        long maxObjectedPrice = objectedCatalogPrices.stream().mapToLong(Long::longValue).max().orElse(Long.MAX_VALUE);
+        Matcher upsellMatcher = UPWARD_UPSELL_CLAUSE_PATTERN.matcher(combinedText);
+        while (upsellMatcher.find()) {
+            String upsellClause = upsellMatcher.group();
+            for (Long pitchedPrice : extractPricesInVndFromText(upsellClause)) {
+                if (pitchedPrice != null && catalogPrices.contains(pitchedPrice) && pitchedPrice > maxObjectedPrice) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Unit P2.3: Ẩn sạch mã SKU nội bộ ({@code DS01..NS07}, {@code ADD01}, {@code HN_DS02}, hoặc {@code pkg.code()} nội bộ)
+     * khỏi {@code reply_bubbles} bằng in-place sanitizer mà vẫn giữ câu tiếng Việt tự nhiên.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> stripInternalCatalogSkuCodesInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<String, String> skuToDisplayName = new java.util.LinkedHashMap<>();
+        if (allCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : allCatalog) {
+                if (p == null || p.code() == null || p.code().isBlank()) continue;
+                String rawCode = p.code().strip();
+                String disp = p.displayName() != null ? p.displayName().strip() : "";
+                if (!disp.isEmpty() && disp.toLowerCase(Locale.ROOT).contains(rawCode.toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                String upper = rawCode.toUpperCase(Locale.ROOT);
+                skuToDisplayName.putIfAbsent(upper, disp);
+                for (String prefix : List.of("HN_", "HP_", "QN_", "SG_", "HCM_")) {
+                    skuToDisplayName.putIfAbsent(prefix + upper, disp);
+                }
+            }
+        }
+        // Fallback mặc định cho họ mã nội bộ DS01..DS09 / NS01..NS09 / ADD01..ADD09 kể cả khi catalog chưa truyền vào
+        java.util.Map<String, String> defaultKnownNames = java.util.Map.ofEntries(
+                java.util.Map.entry("DS01", "Lấy ráy tai cơ bản"),
+                java.util.Map.entry("DS02", "Gói dưỡng sinh cơ bản"),
+                java.util.Map.entry("DS03", "Gói dưỡng sinh cao cấp"),
+                java.util.Map.entry("DS04", "Gói gội kết hợp spa thư giãn"),
+                java.util.Map.entry("DS05", "Gói dưỡng sinh nâng cao"),
+                java.util.Map.entry("DS06", "Gói dưỡng sinh chuyên sâu"),
+                java.util.Map.entry("NS01", "Massage cơ bản"),
+                java.util.Map.entry("NS02", "Massage cơ bản nâng cao"),
+                java.util.Map.entry("NS03", "Massage phục hồi"),
+                java.util.Map.entry("NS04", "Massage kết hợp gội dưỡng sinh")
+        );
+        for (java.util.Map.Entry<String, String> e : defaultKnownNames.entrySet()) {
+            skuToDisplayName.putIfAbsent(e.getKey(), e.getValue());
+            for (String prefix : List.of("HN_", "HP_", "QN_", "SG_", "HCM_")) {
+                skuToDisplayName.putIfAbsent(prefix + e.getKey(), e.getValue());
+            }
+        }
+
+        List<String> sortedCodes = new ArrayList<>(skuToDisplayName.keySet());
+        sortedCodes.sort((a, b) -> Integer.compare(b.length(), a.length()));
+
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String txt = b.text();
+            for (String code : sortedCodes) {
+                if (!Pattern.compile("(?i)\\b" + Pattern.quote(code) + "\\b").matcher(txt).find()) {
+                    continue;
+                }
+                String disp = skuToDisplayName.getOrDefault(code, "");
+                String cleanDispAfterGoi = disp.replaceFirst("(?iU)^gói\\s+", "").strip();
+
+                // 1. Gỡ ngoặc đơn / ngoặc vuông chỉ chứa mã SKU: "(DS02)", "(mã DS02)", "[NS01]"
+                txt = txt.replaceAll("(?iU)\\s*[\\(\\[]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*[\\)\\]]", "");
+                // 2. Rút gọn ngoặc có mã SKU kèm giá/thời lượng: "(NS03 - 580k/100p)" -> "(580k/100p)"
+                txt = txt.replaceAll("(?iU)\\(\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*[-–—:|,]\\s*([^)]+)\\)", "($1)");
+                txt = txt.replaceAll("(?iU)\\(\\s*([^)]+?)\\s*[-–—:|,]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*\\)", "($1)");
+
+                // 3. Nếu viết "gói DS02" / "liệu trình NS01" mà chưa có tên gói ngay cạnh -> thế bằng tên hiển thị của gói
+                if (!cleanDispAfterGoi.isEmpty()
+                        && !txt.toLowerCase(Locale.ROOT).contains(cleanDispAfterGoi.toLowerCase(Locale.ROOT))) {
+                    txt = txt.replaceAll(
+                            "(?iU)\\b(gói|liệu\\s+trình|dịch\\s+vụ)\\s+(?:mã\\s+)?" + Pattern.quote(code) + "\\b",
+                            "$1 " + Matcher.quoteReplacement(cleanDispAfterGoi)
+                    );
+                } else {
+                    txt = txt.replaceAll(
+                            "(?iU)\\b(gói|liệu\\s+trình|dịch\\s+vụ)\\s+(?:mã\\s+)?" + Pattern.quote(code) + "\\b",
+                            "$1"
+                    );
+                }
+
+                // 4. Xóa mọi token mã SKU đứng lẻ còn sót lại ("mã DS02", "DS01..DS06", "NS01")
+                txt = txt.replaceAll("(?iU)\\bmã(?:\\s+gói)?\\s*[:\\-]?\\s*" + Pattern.quote(code) + "\\b\\s*[-–—:]?", "");
+                txt = txt.replaceAll("(?iU)\\b" + Pattern.quote(code) + "\\b\\s*[-–—:]?", "");
+            }
+            // Quét thêm họ DS0x/NS0x/ADD0x phòng trường hợp ngoài danh sách trên
+            if (INTERNAL_SKU_FALLBACK_TOKEN_PATTERN.matcher(txt).find()) {
+                txt = txt.replaceAll("(?iU)\\s*[\\(\\[]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\s*[\\)\\]]", "");
+                txt = txt.replaceAll("(?iU)\\b(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\b\\s*[-–—:]?", "");
+            }
+            txt = txt.replaceAll("[ \\t]{2,}", " ")
+                     .replaceAll("\\s+([,.;:!?])", "$1")
+                     .strip();
+            if (!txt.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs()));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Unit P2.3: Gộp bong bóng câu dẫn kết thúc bằng dấu {@code :} vào bong bóng kế tiếp, và đảm bảo lượt 1 hỏi giá
+     * ngắn trực diện gọn trong {@code 1–2} bong bóng (gộp bong bóng chào ngắn không chứa giá vào bong bóng báo giá).
+     */
+    public static List<FanpageBotResponse.ReplyBubble> mergeTrailingColonAndTurn1PriceIntroBubbles(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage,
+            boolean isOpeningTurn
+    ) {
+        if (bubbles == null || bubbles.size() <= 1) {
+            return bubbles != null ? bubbles : List.of();
+        }
+        // Bước 1: Luôn gộp mọi bong bóng kết thúc bằng dấu ":" vào bong bóng liền sau bằng "\n"
+        List<FanpageBotResponse.ReplyBubble> mergedColon = new ArrayList<>(bubbles.size());
+        int i = 0;
+        while (i < bubbles.size()) {
+            FanpageBotResponse.ReplyBubble curr = bubbles.get(i);
+            if (curr == null || curr.text() == null || curr.text().isBlank()) {
+                i++;
+                continue;
+            }
+            String currText = curr.text().strip();
+            while ((currText.endsWith(":") || currText.endsWith("：")) && i + 1 < bubbles.size()) {
+                FanpageBotResponse.ReplyBubble next = bubbles.get(i + 1);
+                i++;
+                if (next != null && next.text() != null && !next.text().isBlank()) {
+                    currText = currText + "\n" + next.text().strip();
+                }
+            }
+            mergedColon.add(new FanpageBotResponse.ReplyBubble(currText, curr.typingDelayMs()));
+            i++;
+        }
+
+        // Bước 2: Ở lượt 1 khi khách hỏi thẳng giá/vận hành ngắn ("Massage toàn thân mấy tiền?", "Giá?"),
+        // nếu bubble 0 chỉ là câu chào dẫn nhập không chứa giá còn bubble 1 là câu báo giá -> gộp vào bubble báo giá (1–2 bubbles)
+        if (isOpeningTurn
+                && mergedColon.size() >= 2
+                && CleanAgentCatalogAndPromptBuilder.isDirectTurnOnePriceOrOperationalQuestion(customerMessage)) {
+            String b0 = mergedColon.get(0).text().strip();
+            String b1 = mergedColon.get(1).text().strip();
+            if (!hasQuotedPriceInText(b0) && hasQuotedPriceInText(b1)) {
+                String joiner = (b0.endsWith(":") || b0.endsWith("：")) ? "\n" : " ";
+                List<FanpageBotResponse.ReplyBubble> collapsed = new ArrayList<>(mergedColon.size() - 1);
+                collapsed.add(new FanpageBotResponse.ReplyBubble(b0 + joiner + b1, mergedColon.get(0).typingDelayMs()));
+                for (int k = 2; k < mergedColon.size(); k++) {
+                    collapsed.add(mergedColon.get(k));
+                }
+                mergedColon = collapsed;
+            }
+            while (mergedColon.size() > 2) {
+                String first = mergedColon.get(0).text().strip();
+                String second = mergedColon.get(1).text().strip();
+                List<FanpageBotResponse.ReplyBubble> nextList = new ArrayList<>(mergedColon.size() - 1);
+                nextList.add(new FanpageBotResponse.ReplyBubble(first + " " + second, mergedColon.get(0).typingDelayMs()));
+                for (int k = 2; k < mergedColon.size(); k++) {
+                    nextList.add(mergedColon.get(k));
+                }
+                mergedColon = nextList;
+            }
+        }
+        return mergedColon;
+    }
 
     private static final Pattern TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|khung\\s+giờ\\s+nào|mấy\\s+giờ|cơ\\s+sở\\s+nào|chi\\s+nhánh\\s+nào|"
@@ -4714,12 +5087,31 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
 
-            // 1. Gỡ bỏ cụm cảm thán thảo mai "thấy thương quá / thấy thương lắm / em thương quá"
+            // 1. Gỡ bỏ in-place trên mọi lượt các cụm đặt khách vào vị trí đáng thương ("nghe mình kể thấy thương", "thấy thương", "thương quá", "thương lắm", "xót quá")
             if (detectForbiddenThaoMaiEmpathyCliche(txt)) {
-                txt = txt.replaceAll("(?isU)^\\s*(?:dạ\\s+)?[^.!?\\n]*\\b(?:thấy\\s+thương|(?:em|mình)\\s+thương|khổ\\s+tâm)\\b[^.!?\\n]*[.!?]?\\s*", "")
-                         .strip();
+                String[] rawSentences = txt.split("(?<=[.!?？])\\s+");
+                List<String> cleanSentences = new ArrayList<>();
+                for (String s : rawSentences) {
+                    String sTrim = s.strip();
+                    if (sTrim.isEmpty()) continue;
+                    if (!detectForbiddenThaoMaiEmpathyCliche(sTrim)) {
+                        cleanSentences.add(sTrim);
+                    } else {
+                        String clauseCleaned = sTrim.replaceAll(
+                                "(?isU)[,;–—-]?\\s*(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+)?(?:chia\\s+sẻ|kể|nói)\\s+thấy\\s+thương(?:\\s+(?:quá|lắm|ghê))?|"
+                                + "(?:em\\s+|mình\\s+)?thấy\\s+thương(?:\\s+(?:mình|chị|anh|bạn))?(?:\\s+(?:quá|lắm|ghê|thật))?|"
+                                + "(?:em|mình)\\s+thương\\s+(?:mình|chị|anh|bạn)?\\s*(?:quá|lắm|ghê)|"
+                                + "thương\\s+(?:quá|lắm)|xót\\s+(?:quá|lắm|xa\\s+quá)|khổ\\s+tâm\\s+(?:quá|lắm))(?:\\s+(?:ạ|nha|nhé))?\\s*[,;–—-]?",
+                                ""
+                        ).replaceAll("^\\s*(?:dạ\\s+)?(?:ạ|nha|nhé)?\\s*[.!?,;:]*\\s*$", "").strip();
+                        if (!clauseCleaned.isEmpty() && !detectForbiddenThaoMaiEmpathyCliche(clauseCleaned)) {
+                            cleanSentences.add(clauseCleaned);
+                        }
+                    }
+                }
+                txt = String.join(" ", cleanSentences).strip();
                 if (txt.isEmpty()) {
-                    txt = "Dạ nghe " + safeCust + " kể vậy chắc hẳn cơ thể đang mệt và căng nhiều ạ.";
+                    txt = "Dạ " + safeSelf + " ghi nhận chia sẻ của " + safeCust + " ạ.";
                 }
             }
 
@@ -4757,12 +5149,23 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
         if (isStyleComplaint) {
             if (out.isEmpty()) {
-                String naturalAck = prevHadAdminApology
-                        ? ("Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ, để " + safeSelf + " trao đổi tự nhiên, đi thẳng vào điều " + safeCust + " đang quan tâm nhé ạ.")
-                        : ("Dạ " + safeSelf + " tiếp thu góp ý của " + safeCust + " ạ, để " + safeSelf + " trao đổi gọn gàng và sát đúng nhu cầu của " + safeCust + " hơn nha.");
+                String normCustMsg = customerMessage != null
+                        ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
+                        : "";
+                boolean isMetaScriptQuestion = META_SCRIPT_TRAINING_REMARK_PATTERN.matcher(normCustMsg).find();
+                String naturalAck;
+                if (isMetaScriptQuestion) {
+                    naturalAck = "Dạ không phải trả lời rập khuôn theo bài đâu ạ, tại " + safeSelf
+                            + " sợ báo giá ngắn quá làm " + safeCust
+                            + " khó hình dung rõ dịch vụ nên mới chia sẻ kỹ hơn chút thôi ạ.";
+                } else {
+                    naturalAck = prevHadAdminApology
+                            ? ("Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ, để " + safeSelf + " trao đổi tự nhiên, đi thẳng vào điều " + safeCust + " đang quan tâm nhé ạ.")
+                            : ("Dạ " + safeSelf + " tiếp thu góp ý của " + safeCust + " ạ, để " + safeSelf + " trao đổi gọn gàng và sát đúng nhu cầu của " + safeCust + " hơn nha.");
+                }
                 return List.of(new FanpageBotResponse.ReplyBubble(naturalAck, 0));
             }
-            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp (NO_CTA)
+            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp / nhận xét kịch bản (NO_CTA)
             if (out.size() > 1) {
                 return List.of(out.get(0));
             }

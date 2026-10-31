@@ -2106,6 +2106,9 @@ public class CleanAgentOrchestratorService {
             return false;
         }
         String trimmed = message.strip();
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)) {
+            return false;
+        }
         if (NON_PRICE_CAO_EXCLUSION_PATTERN.matcher(trimmed).matches()
                 && !trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(giá|chi\\s+phí|tiền|gói|đắt|mắc|chát)\\b.*")) {
             return false;
@@ -4414,6 +4417,14 @@ public class CleanAgentOrchestratorService {
                                 ? unblindedEconomicals
                                 : regionScopedEconomicals);
 
+        List<AgentSkillDto> availableSkills = enabledPageSkills != null ? List.copyOf(enabledPageSkills) : List.of();
+        List<AgentSkillDto> preSelectedTurnSkills = selectPreLlmTurnRelevantSkills(
+                availableSkills,
+                originalVerbatim,
+                safeHistory,
+                priorBookingState
+        );
+
         // Xây dựng Single-Pass Cognitive Contract Prompt (và đo kích thước prompt cũ tương đương cho Telemetry Mục 7.1)
         long promptStartNs = System.nanoTime();
         String aciPrompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
@@ -4436,7 +4447,7 @@ public class CleanAgentOrchestratorService {
                 hasAuthoritativePaymentVerification,
                 fused != null ? fused : List.of(),
                 safeHistory,
-                enabledPageSkills,
+                preSelectedTurnSkills,
                 turnRelevantRules,
                 draft2Before
         );
@@ -4794,6 +4805,15 @@ public class CleanAgentOrchestratorService {
                     selfPronoun,
                     safeHonorific
             );
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
+                    candidateBubbles,
+                    allCatalog
+            );
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
+                    candidateBubbles,
+                    originalVerbatim,
+                    safeHistory.isEmpty()
+            );
         }
         long validationMs = Math.max(0L, (System.nanoTime() - validationStartNs) / 1_000_000L);
         long llmElapsedMs = Math.max(1L, modelLatencyMs);
@@ -4941,19 +4961,17 @@ public class CleanAgentOrchestratorService {
                 tokenUsage.reasoningTokens()
         );
 
-        List<AgentSkillDto> availableSkills = enabledPageSkills != null ? List.copyOf(enabledPageSkills) : List.of();
-        List<AgentSkillDto> selectedSkills = selectAciTurnCandidateSkills(
-                availableSkills,
-                reflection,
-                authoritativeBookingState,
-                replyHasPrice
-        );
-        List<AgentSkillDto> activatedSkills = resolveAciTurnActivatedSkills(
-                availableSkills,
-                selectedSkills,
-                reflection,
-                authoritativeBookingState
-        );
+        List<AgentSkillDto> activatedSkills = (usedSafeHandoffFallback
+                || CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim))
+                ? List.of()
+                : resolveAciTurnActivatedSkills(
+                        preSelectedTurnSkills,
+                        preSelectedTurnSkills,
+                        reflection,
+                        authoritativeBookingState
+                );
+        // Unit P2.3: Đồng bộ nhất quán selectedSkills <-> activatedSkills để chỉ ghi nhận đúng skill thực sự phục vụ lượt hiện tại
+        List<AgentSkillDto> selectedSkills = activatedSkills;
         if (agentSkillService != null && !activatedSkills.isEmpty()) {
             try {
                 agentSkillService.recordSkillsApplied(activatedSkills);
@@ -5337,6 +5355,75 @@ public class CleanAgentOrchestratorService {
         return List.of();
     }
 
+    static List<AgentSkillDto> selectPreLlmTurnRelevantSkills(
+            List<AgentSkillDto> availableSkills,
+            String currentMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            ConversationState.StructuredBookingState priorBookingState
+    ) {
+        if (availableSkills == null || availableSkills.isEmpty()) {
+            return List.of();
+        }
+        String msg = currentMessage != null ? currentMessage.strip() : "";
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                || PromptSecurityGuard.isDirectJailbreakAttempt(msg)) {
+            return List.of();
+        }
+        String normLower = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        boolean bookingActive = priorBookingState != null && priorBookingState.status().isActiveOrConfirmed();
+        boolean explicitBookingCue = bookingActive || normLower.matches(
+                "(?isU).*\\b(đặt\\s+lịch|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+lịch|còn\\s+giường|còn\\s+phòng|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay|\\d{1,2}\\s*h\\d{0,2}|mấy\\s+giờ\\s+còn)\\b.*"
+        );
+        boolean deferOrBareClose = isHesitationOrDeferralMessage(msg)
+                || (!bookingActive && isBareAcknowledgmentMessage(msg) && history != null && !history.isEmpty());
+        boolean priceObjection = isConfirmedCustomerPriceObjection(msg, true);
+        boolean priceOrPackageQuery = normLower.matches(
+                "(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|gói|liệu\\s+trình|khác\\s+gì|so\\s+sánh|\\d{2,4}\\s*k)\\b.*"
+        );
+
+        List<AgentSkillDto> matched = new ArrayList<>();
+        List<AgentSkillDto> customFallback = new ArrayList<>();
+        for (AgentSkillDto s : availableSkills) {
+            if (s == null || !s.active()) continue;
+            String code = (s.code() != null ? s.code() : "").strip().toLowerCase(Locale.ROOT);
+            boolean isBookingSkill = isBookingOrSchedulingSkillCode(code);
+            if (isBookingSkill && !explicitBookingCue) {
+                continue;
+            }
+            boolean isPauseSkill = code.contains("pause") || code.contains("graceful") || code.contains("close");
+            boolean isObjectionSkill = code.contains("objection") || code.contains("sensory_value");
+            boolean isCompareOrPriceSkill = code.contains("economical") || code.contains("compare") || code.contains("price");
+            boolean isDiscoverySkill = code.contains("discovery") || code.contains("empathy") || code.contains("scope");
+            boolean hasStandardTag = isBookingSkill || isPauseSkill || isObjectionSkill || isCompareOrPriceSkill || isDiscoverySkill;
+            if (!hasStandardTag) {
+                customFallback.add(s);
+            }
+
+            boolean keep = false;
+            if (deferOrBareClose) {
+                keep = isPauseSkill;
+            } else if (explicitBookingCue) {
+                keep = isBookingSkill || (priceOrPackageQuery && isCompareOrPriceSkill);
+            } else if (priceObjection) {
+                keep = isObjectionSkill || isCompareOrPriceSkill;
+            } else if (priceOrPackageQuery) {
+                keep = isCompareOrPriceSkill || isDiscoverySkill;
+            } else {
+                keep = isDiscoverySkill || (history != null && !history.isEmpty() && isCompareOrPriceSkill);
+            }
+            if (keep && matched.size() < 3) {
+                matched.add(s);
+            }
+        }
+        for (AgentSkillDto custom : customFallback) {
+            if (matched.size() >= 3) break;
+            if (!matched.contains(custom)) {
+                matched.add(custom);
+            }
+        }
+        return List.copyOf(matched);
+    }
+
     private static boolean isBookingOrSchedulingSkillCode(String lowerCode) {
         if (lowerCode == null || lowerCode.isBlank()) {
             return false;
@@ -5362,6 +5449,11 @@ public class CleanAgentOrchestratorService {
         boolean multiBubbleBurst = threeStreamInput != null && threeStreamInput.originalBurstBubbles().size() >= 2;
         boolean hasPendingCommitments = sessionCommitments != null && sessionCommitments.stream()
                 .anyMatch(c -> c != null && c.commitmentStatus() == AdaptiveConversationIntelligence.CommitmentStatus.pending);
+        if (!multiBubbleBurst
+                && !hasPendingCommitments
+                && CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)) {
+            return ThinkingMode.FAST_NO_THINK;
+        }
         if (multiBubbleBurst
                 || hasPendingCommitments
                 || AdaptiveConversationIntelligence.isPaymentClaimMessage(msg)
@@ -5643,6 +5735,13 @@ public class CleanAgentOrchestratorService {
             String neutralScopeText = "Dạ " + lowerSelf
                     + " chỉ hỗ trợ cung cấp thông tin dịch vụ và lịch hẹn thực tế của bên mình thôi ạ.";
             return List.of(new FanpageBotResponse.ReplyBubble(neutralScopeText, 0));
+        }
+        if (violations != null && violations.contains("UNCONFIRMED_SYMPTOM_PREMATURE_SERVICE_PITCH")) {
+            String text = "Dạ " + selfPronoun + " ghi nhận tình trạng " + custPronoun
+                    + " vừa chia sẻ ạ. Nếu triệu chứng hay tái diễn hoặc kéo dài " + custPronoun
+                    + " nên lưu ý kiểm tra sức khỏe để yên tâm hơn, còn hiện tại " + custPronoun
+                    + " đang muốn tìm hiểu thông tin gì để " + selfPronoun + " hỗ trợ đúng ý " + custPronoun + " ạ?";
+            return List.of(new FanpageBotResponse.ReplyBubble(text, 0));
         }
         if (AdaptiveConversationIntelligence.isPaymentClaimMessage(originalCustomerMessage)
                 || violations.contains("UNVERIFIED_PAYMENT_CONFIRMATION_CLAIM")) {

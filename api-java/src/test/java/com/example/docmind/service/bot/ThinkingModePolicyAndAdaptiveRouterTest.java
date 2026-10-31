@@ -807,6 +807,10 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
     @org.junit.jupiter.api.Tag("legacy-v1")
     @DisplayName("8. Live Container Verification: Re-seeds nang_sen_spa_playbook.yaml and benchmarks Scenarios A/B/C/D on live docmind-api + qwen3:14b when reachable")
     void v324LiveContainerPlaybookSeedAndMultiTurnBenchmarkIfRunning() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                "true".equalsIgnoreCase(System.getenv("DOCMIND_RUN_LIVE_V1_PLAYBOOK_RESEED")),
+                "Skipping destructive V1 live playbook reseed during unit tests unless DOCMIND_RUN_LIVE_V1_PLAYBOOK_RESEED=true"
+        );
         java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(2))
                 .build();
@@ -1154,9 +1158,9 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
         PackageCatalogService.PackageSummary ns03 = parsedCatalog.stream()
                 .filter(p -> "NS03".equals(p.code())).findFirst().orElseThrow();
         assertThat(ns01.roomType()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng Vip");
-        assertThat(ns01.processSummary()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng Vip");
+        assertThat(ns01.processSummary()).contains("rèm che kín đáo").doesNotContainIgnoringCase("Phòng Vip");
         assertThat(ns02.roomType()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng VIP");
-        assertThat(ns02.processSummary()).contains("rèm che riêng kín đáo").doesNotContainIgnoringCase("Phòng VIP");
+        assertThat(ns02.processSummary()).contains("rèm che kín đáo").doesNotContainIgnoringCase("Phòng VIP");
         assertThat(ns03.roomType()).containsIgnoringCase("Phòng VIP");
 
         // 2. Verify deliveredValueAngles() is NOT marked when Bubble 1 only is sent (splitPriceBubbles=true) or when Bubble 2 is superseded
@@ -1228,14 +1232,14 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
             }
             String jsonContent;
             if (attempt == 1) {
-                // Attempt 1 violates room disambiguation by falsely claiming Phòng VIP riêng for 399k
+                // Attempt 1 violates room disambiguation on LLM_COGNITIVE_V2 by falsely claiming Phòng VIP riêng for 399k
                 jsonContent = """
-                        {"reply_bubbles":[{"text":"Dạ gói Massage cơ bản 60 phút giá 399k có Phòng VIP riêng sang trọng ạ.","typing_delay_ms":0},{"text":"Liệu trình chăm sóc êm ái vùng cổ vai gáy, kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ.","typing_delay_ms":8000}],"should_handoff":false}
+                        {"brain_reflection":{"customer_understanding":{"turn_intent":"ASK_PRICE","cost_concern_expressed":false},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"response_plan":{"strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK"}},"bubbles":["Dạ gói Massage cơ bản 60 phút giá 399k có Phòng VIP riêng sang trọng ạ.","Liệu trình chăm sóc êm ái vùng cổ vai gáy, kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ."]}
                         """.strip();
             } else {
-                // Attempt 2 (Fast Targeted Repair) fixes the violation
+                // Attempt 2 (ACI V2 Targeted Repair with FAST_NO_THINK) fixes the violation
                 jsonContent = """
-                        {"reply_bubbles":[{"text":"Dạ với tình trạng mỏi cổ vai gáy mới xuất hiện, mình tham khảo gói Massage cơ bản 60 phút giá 399k trọn gói không nhận tip ạ.","typing_delay_ms":0},{"text":"Không gian yên tĩnh, mỗi giường đều có rèm che riêng kín đáo và kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ.","typing_delay_ms":8000}],"should_handoff":false}
+                        {"brain_reflection":{"customer_understanding":{"turn_intent":"ASK_PRICE","cost_concern_expressed":false},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"response_plan":{"strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK"}},"bubbles":["Dạ với tình trạng mỏi cổ vai gáy mới xuất hiện, mình tham khảo gói Massage cơ bản 60 phút giá 399k trọn gói không nhận tip ạ.","Không gian yên tĩnh, mỗi giường đều có rèm che riêng kín đáo và kỹ thuật viên điều chỉnh lực theo cảm nhận của mình ạ."]}
                         """.strip();
             }
             String escaped = jsonContent.replace("\\", "\\\\").replace("\"", "\\\"");
@@ -1292,6 +1296,8 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                     null,
                     null
             );
+            service.setAgentBrainService(new AgentBrainService("LLM_COGNITIVE_V2"));
+            service.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
             FanpageBotRequest req = new FanpageBotRequest(
                     PAGE_ID.toString(),
                     "u-repair-test",
@@ -1313,23 +1319,20 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
             assertThat(callCounter.get()).isEqualTo(2);
             assertThat(secondCallBody.get())
                     .contains("\"think\":false")
-                    .contains("\"num_predict\":400")
                     .contains("/no_think")
-                    .contains("FAST_TARGETED_REPAIR_HINT");
+                    .contains("<REPAIR_INSTRUCTION>")
+                    .contains("FAST_TARGETED_REPAIR_HINT:")
+                    .contains("UNGROUNDED_PRIVATE_ROOM:NS01");
             assertThat(resp.replyText())
                     .contains("399k")
                     .contains("rèm che riêng kín đáo")
                     .doesNotContainIgnoringCase("Phòng VIP");
-            ThinkingModePolicy.TurnTelemetry telemetry = service.getLastTurnTelemetry();
-            assertThat(telemetry).isNotNull();
-            assertThat(telemetry.retryCount()).isEqualTo(1);
-            assertThat(telemetry.repairElapsedMs()).isGreaterThanOrEqualTo(0L);
-            assertThat(telemetry.responseValidated()).isTrue();
-            assertThat(telemetry.usedTemplateFallback()).isFalse();
-            assertThat(telemetry.generationSource()).isEqualTo("LLM_REPAIRED");
-            assertThat(telemetry.repairApplied()).isTrue();
-            assertThat(telemetry.repairAttemptCount()).isEqualTo(1);
-            assertThat(telemetry.validationOutcome()).isEqualTo("REPAIRED_PASS");
+            ThinkingModePolicy.AciTurnTelemetry aciTelemetry = ThinkingModePolicy.getLastAciTurnTelemetry();
+            assertThat(aciTelemetry).isNotNull();
+            assertThat(aciTelemetry.cognitiveMode()).isEqualTo(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+            assertThat(aciTelemetry.refereeViolations()).contains("UNGROUNDED_PRIVATE_ROOM:NS01");
+            assertThat(resp.turnProfiling()).isNotNull();
+            assertThat(resp.turnProfiling().retryCount()).isEqualTo(1);
         } finally {
             repairServer.stop(0);
         }

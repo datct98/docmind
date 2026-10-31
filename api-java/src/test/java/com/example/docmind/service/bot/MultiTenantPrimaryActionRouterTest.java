@@ -243,93 +243,152 @@ class MultiTenantPrimaryActionRouterTest {
                 .doesNotContain("?");
     }
 
-    @Test
-    @DisplayName("RT-MULTI-TENANT-001: 2nd Industry Page (Dental Clinic) executes full discovery, scope-grounded quote, and price objection defense with zero Spa leakage")
-    void rtMultiTenant001_dentalClinicPageExecutesDomainAgnosticallyWithZeroSpaLeakage() {
-        UUID pageId = UUID.randomUUID();
-        PagePersona persona = dentalPersona();
-        List<ReciprocalRankFusion.FusedChunk> chunks = dentalCatalogChunks();
-        List<String> keywords = persona.resolvedConfig().safeDomainKeywords();
-        List<ConversationTurn> history = new ArrayList<>();
+    private static FanpageBotService createDentalV2BotService(
+            UUID pageId,
+            PagePersona persona,
+            List<ReciprocalRankFusion.FusedChunk> chunks,
+            AgentBrainService sharedBrain,
+            java.util.function.BiFunction<String, com.example.docmind.service.llm.ReasoningBudget, String> responder
+    ) {
+        com.example.docmind.service.retrieval.RetrievalService retrieval =
+                org.mockito.Mockito.mock(com.example.docmind.service.retrieval.RetrievalService.class);
+        org.mockito.Mockito.when(retrieval.retrieveWithRules(
+                org.mockito.Mockito.any(),
+                org.mockito.Mockito.anyString(),
+                org.mockito.Mockito.anyInt(),
+                org.mockito.Mockito.any(),
+                org.mockito.Mockito.any()
+        )).thenReturn(new com.example.docmind.service.retrieval.RetrievalService.RetrievalResult(chunks, List.of()));
 
-        // Turn 1: "Giá"
-        String u1 = "Giá";
-        ConversationState s1 = ConversationState.hydrate(pageId, "u-dental", history, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d1 = PrimaryActionRouter.route(u1, s1, chunks, keywords);
-        assertThat(d1.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.CLARIFY_SERVICE_DURATION);
-        List<ReplyBubble> b1 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d1, u1, s1, "mình", persona, chunks, null),
-                s1, u1, d1.effectiveResponseAction(), d1.openingRequired(), 15_000
-        ).validatedBubbles();
-        String reply1 = joinBubbles(b1);
-        assertThat(reply1)
+        com.example.docmind.repository.KnowledgePageRepository pageRepo =
+                org.mockito.Mockito.mock(com.example.docmind.repository.KnowledgePageRepository.class);
+        com.example.docmind.entity.KnowledgePageEntity entity = new com.example.docmind.entity.KnowledgePageEntity();
+        entity.setId(pageId);
+        entity.setName(persona.name());
+        entity.setIndustry(persona.industry());
+        entity.setTargetAudience(persona.targetAudience());
+        entity.setDescription(persona.description());
+        entity.setPersonaConfig(persona.resolvedConfig());
+        org.mockito.Mockito.when(pageRepo.findById(pageId)).thenReturn(java.util.Optional.of(entity));
+
+        com.example.docmind.service.llm.LlmClient mockLlmClient = new com.example.docmind.service.llm.LlmClient() {
+            @Override
+            public String complete(String prompt) {
+                return responder.apply(prompt, null);
+            }
+
+            @Override
+            public String complete(String prompt, com.example.docmind.service.llm.ReasoningBudget budget) {
+                return responder.apply(prompt, budget);
+            }
+
+            @Override
+            public String name() {
+                return "mock-dental-v2-llm";
+            }
+        };
+
+        com.example.docmind.config.ChatProperties chatProps = new com.example.docmind.config.ChatProperties();
+        chatProps.setTopK(5);
+        FanpageBotService bot = new FanpageBotService(retrieval, mockLlmClient, chatProps, null, pageRepo);
+        bot.setAgentBrainService(sharedBrain);
+        bot.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
+        return bot;
+    }
+
+    @Test
+    @DisplayName("RT-MULTI-TENANT-001 (Migrated F-05 -> LLM_COGNITIVE_V2): Nha Khoa Tỏa Sáng executes 4-turn discovery, scope-grounded quote, and price objection defense on V2 with zero Spa leakage")
+    void rtMultiTenant001_dentalClinicPageExecutesDomainAgnosticallyWithZeroSpaLeakage() {
+        UUID pageId = UUID.fromString("d3000000-0000-0000-0000-000000000001");
+        PagePersona persona = new PagePersona(
+                "Nha Khoa Tỏa Sáng",
+                "dental_clinic",
+                "Khách hàng nha khoa",
+                "Nha khoa thẩm mỹ & chăm sóc răng miệng chuẩn Y khoa",
+                dentalPersona().resolvedConfig()
+        );
+        List<ReciprocalRankFusion.FusedChunk> chunks = dentalCatalogChunks();
+        AgentBrainService sharedBrain = new AgentBrainService("LLM_COGNITIVE_V2");
+
+        FanpageBotService dentalV2Bot = createDentalV2BotService(pageId, persona, chunks, sharedBrain, (prompt, budget) -> {
+            assertThat(prompt)
+                    .contains("Nha Khoa Tỏa Sáng")
+                    .doesNotContain("6 Bích Câu")
+                    .doesNotContain("319 Hồng Tiến");
+            if (prompt.contains("[T_CURRENT] Khách: Giá")) {
+                return """
+                        {"brain_reflection":{"customer_understanding":{"turn_intent":"ASK_PRICE","cost_concern_expressed":false},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"response_plan":{"strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"CONCISE","cta_level":"SOFT_CTA","next_action":"ASK_ONE_CLARIFYING_QUESTION"}},"bubbles":["Dạ chào mình, em là Minh Anh tại Nha Khoa Tỏa Sáng ạ. Dịch vụ cạo vôi răng siêu âm 30 phút bên em có giá 300k, hàn trám răng thẩm mỹ 450k ạ.","Mình đang muốn kiểm tra răng nướu hay quan tâm dịch vụ nào để em tư vấn chi tiết hơn ạ?"]}
+                        """;
+            }
+            if (prompt.contains("[T_CURRENT] Khách: Tôi bị đau răng, ê buốt chân răng")) {
+                return """
+                        {"brain_reflection":{"customer_understanding":{"turn_intent":"SHARE_SYMPTOM","confirmed_facts_delta":[{"key":"self_reported_symptom","value":"đau răng","op":"ADD","status":"CURRENT"},{"key":"self_reported_symptom","value":"ê buốt chân răng","op":"ADD","status":"CURRENT"}],"cost_concern_expressed":false},"priority":{"primary":"CLARIFICATION","secondary":[]},"response_plan":{"strategy":"Clarify Gently","tone":"LEVEL_2_REFLECTIVE","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"ASK_ONE_CLARIFYING_QUESTION"}},"bubbles":["Dạ em ghi nhận tình trạng đau răng và ê buốt chân răng của mình ạ. Mình thường thấy ê buốt khi uống đồ lạnh hay nhức liên tục cả ngày ạ?"]}
+                        """;
+            }
+            if (prompt.contains("[T_CURRENT] Khách: thi thoảng")) {
+                return """
+                        {"brain_reflection":{"customer_understanding":{"turn_intent":"CLARIFY_FREQUENCY","verified_symptom_duration":"thi thoảng","cost_concern_expressed":false},"priority":{"primary":"PRICE_INFORMATION","secondary":[]},"response_plan":{"strategy":"Soft Recommendation","tone":"LEVEL_1_NATURAL","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK"}},"bubbles":["Dạ nếu chỉ thi thoảng ê buốt nhẹ ở chân răng, mình có thể tham khảo dịch vụ Cạo vôi răng siêu âm 30 phút giá 300k giúp làm sạch mảng bám chân răng êm ái ạ.","Khi ghé bác sĩ sẽ kiểm tra kỹ men răng và điều chỉnh đầu máy siêu âm nhẹ nhàng cho mình nha."]}
+                        """;
+            }
+            return """
+                    {"brain_reflection":{"customer_understanding":{"turn_intent":"PRICE_OBJECTION","cost_concern_expressed":true},"priority":{"primary":"VALUE_ALIGNMENT","secondary":[]},"working_hypothesis":{"hypothesis":"Khách cân nhắc chi phí cạo vôi 300k","barrier_type":"UNCLEAR_VALUE","lifecycle_op":"ADJUST","confidence":0.84,"evidence":["T_CURRENT"]},"response_plan":{"strategy":"Explain Value","tone":"LEVEL_2_REFLECTIVE","depth":"STANDARD","cta_level":"SOFT_CTA","next_action":"SOFT_FEELING_CHECK"}},"bubbles":["Dạ mức 300k cho buổi cạo vôi răng siêu âm 30 phút đã bao gồm bác sĩ thăm khám trực tiếp và làm sạch mảng bám chân răng nhẹ nhàng để hạn chế ê buốt răng nướu tối đa ạ."]}
+                    """;
+        });
+
+        List<ConversationTurn> history = new ArrayList<>();
+        List<UUID> dentalDocIds = List.of(chunks.get(0).chunk().documentId());
+        java.util.function.Function<String, com.example.docmind.dto.bot.FanpageBotResponse> sendTurn = msg -> {
+            com.example.docmind.dto.bot.FanpageBotRequest req = new com.example.docmind.dto.bot.FanpageBotRequest(
+                    pageId.toString(), "u-dental-v2", "Khách Nha Khoa", msg,
+                    null, List.copyOf(history), dentalDocIds, null, null, null, 5, null, false, null, null
+            );
+            com.example.docmind.dto.bot.FanpageBotResponse resp = dentalV2Bot.handleCustomerMessage(req);
+            history.add(new ConversationTurn("user", msg));
+            history.add(new ConversationTurn("assistant", resp.replyText()));
+            return resp;
+        };
+
+        // Turn 1: "Giá" (1-2 bubbles concise, zero Spa leakage, Reading Budget >= 10_000ms applied on first quote)
+        var r1 = sendTurn.apply("Giá");
+        assertThat(r1.replyBubbles()).hasSize(2);
+        assertThat(r1.replyBubbles().get(1).typingDelayMs()).isGreaterThanOrEqualTo(10_000);
+        assertThat(r1.replyText())
                 .contains("Minh Anh")
-                .contains("Nha Khoa Minh Châu")
+                .contains("Nha Khoa Tỏa Sáng")
                 .contains("cạo vôi răng")
                 .doesNotContainIgnoringCase("Nàng Sen")
                 .doesNotContainIgnoringCase("An Nhiên")
                 .doesNotContainIgnoringCase("massage")
                 .doesNotContainIgnoringCase("thảo dược");
-        history.add(new ConversationTurn("user", u1));
-        history.add(new ConversationTurn("assistant", reply1));
 
         // Turn 2: "Tôi bị đau răng, ê buốt chân răng"
-        String u2 = "Tôi bị đau răng, ê buốt chân răng";
-        ConversationState s2 = ConversationState.hydrate(pageId, "u-dental", history, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d2 = PrimaryActionRouter.route(u2, s2, chunks, keywords);
-        assertThat(d2.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.ACKNOWLEDGE_AND_ASK_PREFERENCE);
-        List<ReplyBubble> b2 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d2, u2, s2, "mình", persona, chunks, null),
-                s2, u2, d2.effectiveResponseAction(), d2.openingRequired(), 15_000
-        ).validatedBubbles();
-        String reply2 = joinBubbles(b2);
-        assertThat(reply2.toLowerCase(Locale.ROOT))
+        var r2 = sendTurn.apply("Tôi bị đau răng, ê buốt chân răng");
+        assertThat(r2.replyText().toLowerCase(Locale.ROOT))
                 .contains("đau răng")
                 .contains("ê buốt")
+                .doesNotContain("thấy thương")
                 .doesNotContain("massage")
                 .doesNotContain("thảo dược");
-        history.add(new ConversationTurn("user", u2));
-        history.add(new ConversationTurn("assistant", reply2));
 
-        // Turn 3: "thi thoảng" -> Scope-grounded recommendation selects "cạo vôi răng siêu âm 30 phút" (300k)
-        String u3 = "thi thoảng";
-        ConversationState s3 = ConversationState.hydrate(pageId, "u-dental", history, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d3 = PrimaryActionRouter.route(u3, s3, chunks, keywords);
-        assertThat(d3.effectiveResponseAction()).isIn(
-                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                PrimaryActionRouter.PrimaryAction.RECOMMEND_ONE_PACKAGE
-        );
-        List<ReplyBubble> b3 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d3, u3, s3, "mình", persona, chunks, null),
-                s3, u3, d3.effectiveResponseAction(), d3.openingRequired(), 15_000
-        ).validatedBubbles();
-        assertThat(b3).hasSize(2);
-        String reply3 = joinBubbles(b3);
-        assertThat(reply3.toLowerCase(Locale.ROOT))
+        // Turn 3: "thi thoảng" -> Scope-grounded recommendation ("cạo vôi răng siêu âm", "300k") without duplicate 10s stall
+        var r3 = sendTurn.apply("thi thoảng");
+        assertThat(r3.replyBubbles()).hasSize(2);
+        assertThat(r3.replyText().toLowerCase(Locale.ROOT))
                 .contains("cạo vôi răng siêu âm")
                 .contains("300k")
                 .doesNotContain("massage")
                 .doesNotContain("thảo dược");
-        assertThat(b3.get(1).typingDelayMs()).isGreaterThanOrEqualTo(15_000);
-        history.add(new ConversationTurn("user", u3));
-        history.add(new ConversationTurn("assistant", reply3));
+        assertThat(r3.replyBubbles().get(1).typingDelayMs()).isGreaterThan(0);
 
-        // Turn 4: "300k hơi đắt" -> Step-1 Value Defense holds 300k and uses dental value pillars from chunks
-        String u4 = "300k hơi đắt";
-        ConversationState s4 = ConversationState.hydrate(pageId, "u-dental", history, keywords, chunks);
-        PrimaryActionRouter.RoutingDecision d4 = PrimaryActionRouter.route(u4, s4, chunks, keywords);
-        assertThat(d4.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HANDLE_PRICE_OBJECTION_FIRST_TIME);
-        List<ReplyBubble> b4 = ReplyContractValidator.validateAndEnforce(
-                PrimaryActionRouter.executeActionBubbles(d4, u4, s4, "mình", persona, chunks, null),
-                s4, u4, d4.effectiveResponseAction(), d4.openingRequired(), 15_000
-        ).validatedBubbles();
-        String reply4 = joinBubbles(b4);
-        assertThat(reply4.toLowerCase(Locale.ROOT))
+        // Turn 4: "300k hơi đắt" -> Value Defense holds 300k and uses dental value pillars from chunks
+        var r4 = sendTurn.apply("300k hơi đắt");
+        assertThat(r4.replyText().toLowerCase(Locale.ROOT))
                 .contains("cạo vôi răng siêu âm 30 phút")
                 .contains("làm sạch mảng bám chân răng")
                 .doesNotContain("massage")
                 .doesNotContain("thảo dược")
                 .doesNotContain("vùng mỏi");
+        assertThat(sharedBrain.getPriceObjectionCount(pageId, "u-dental-v2")).isEqualTo(1);
     }
 
     @Test
@@ -416,23 +475,35 @@ class MultiTenantPrimaryActionRouterTest {
         assertThat(dPostCond.effectiveResponseAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT);
         assertThat(dPostCond.detectedIntent()).isEqualTo("UNGROUNDED_SCOPE_HANDOFF");
 
-        // Case C: Non-Spa Dental Service Detail FAQ ("Cạo vôi răng siêu âm là gì?") -> SERVICE_DETAIL_AND_FAQ_QA without Spa leakage or stutter
-        PagePersona dentalPersona = dentalPersona();
+        // Case C (Migrated F-06 -> LLM_COGNITIVE_V2): Non-Spa Dental Service Detail FAQ ("Cạo vôi răng siêu âm là gì?") on Nha Khoa Tỏa Sáng
+        UUID dentalPageId = UUID.fromString("d3000000-0000-0000-0000-000000000001");
+        PagePersona dentalPersona = new PagePersona(
+                "Nha Khoa Tỏa Sáng",
+                "dental_clinic",
+                "Khách hàng nha khoa",
+                "Nha khoa thẩm mỹ & chăm sóc răng miệng",
+                dentalPersona().resolvedConfig()
+        );
         List<ReciprocalRankFusion.FusedChunk> dentalChunks = dentalCatalogChunks();
-        List<String> dentalKws = dentalPersona.resolvedConfig().safeDomainKeywords();
-        ConversationState dentalState = ConversationState.hydrate(
-                UUID.randomUUID(), "u-dental-faq",
-                List.of(new ConversationTurn("user", "Báo giá cạo vôi răng"),
-                        new ConversationTurn("assistant", "Dạ cạo vôi răng siêu âm 30 phút bên em có giá 250k ạ.")),
-                dentalKws, dentalChunks
-        );
+        AgentBrainService faqBrain = new AgentBrainService("LLM_COGNITIVE_V2");
         String dentalFaqMsg = "Cạo vôi răng siêu âm là gì?";
-        PrimaryActionRouter.RoutingDecision dDentalFaq = PrimaryActionRouter.route(dentalFaqMsg, dentalState, dentalChunks, dentalKws);
-        assertThat(dDentalFaq.primaryAction()).isEqualTo(PrimaryActionRouter.PrimaryAction.SERVICE_DETAIL_AND_FAQ_QA);
-        List<ReplyBubble> dentalFaqBubbles = PrimaryActionRouter.executeActionBubbles(
-                dDentalFaq, dentalFaqMsg, dentalState, "mình", dentalPersona, dentalChunks, null
-        );
-        String dentalFaqReply = joinBubbles(dentalFaqBubbles).toLowerCase(Locale.ROOT);
+        FanpageBotService dentalFaqBot = createDentalV2BotService(dentalPageId, dentalPersona, dentalChunks, faqBrain, (prompt, budget) -> """
+                {"brain_reflection":{"customer_understanding":{"turn_intent":"ASK_SERVICE_DETAIL","cost_concern_expressed":false},"priority":{"primary":"CLARIFICATION","secondary":[]},"response_plan":{"strategy":"Direct Answer","tone":"LEVEL_1_NATURAL","depth":"STANDARD","cta_level":"NO_CTA","next_action":"NO_ADDITIONAL_ACTION"}},"bubbles":["Dạ cạo vôi răng siêu âm là phương pháp dùng sóng siêu âm nhẹ nhàng làm sạch mảng bám cứng ở cổ và chân răng trong khoảng 30 phút (giá 300k), giúp giảm ê buốt và bảo vệ men răng nướu ạ."]}
+                """);
+        var dentalFaqResp = dentalFaqBot.handleCustomerMessage(new com.example.docmind.dto.bot.FanpageBotRequest(
+                dentalPageId.toString(),
+                "u-dental-faq-v2",
+                "Khách Nha Khoa",
+                dentalFaqMsg,
+                null,
+                List.of(
+                        new ConversationTurn("user", "Báo giá cạo vôi răng"),
+                        new ConversationTurn("assistant", "Dạ cạo vôi răng siêu âm 30 phút bên em có giá 300k ạ.")
+                ),
+                List.of(dentalChunks.get(0).chunk().documentId()),
+                null, null, null, 5, null, false, null, null
+        ));
+        String dentalFaqReply = dentalFaqResp.replyText().toLowerCase(Locale.ROOT);
         assertThat(dentalFaqReply)
                 .contains("cạo vôi răng siêu âm")
                 .contains("mảng bám")

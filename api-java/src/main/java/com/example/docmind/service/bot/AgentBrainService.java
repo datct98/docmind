@@ -1053,9 +1053,10 @@ public class AgentBrainService {
                 if (cu.verifiedSymptomDuration() != null && !cu.verifiedSymptomDuration().isBlank()) {
                     mem.verifiedSymptomDuration = cu.verifiedSymptomDuration().strip();
                 }
-                boolean llmCostConcern = Boolean.TRUE.equals(cu.costConcernExpressed())
+                boolean isMetaStyleComplaint = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalCustomerMessage);
+                boolean llmCostConcern = !isMetaStyleComplaint && (Boolean.TRUE.equals(cu.costConcernExpressed())
                         || (cu.costConcernExpressed() == null
-                            && "BUDGET_FIT".equalsIgnoreCase(reflection.priority().primary()));
+                            && "BUDGET_FIT".equalsIgnoreCase(reflection.priority().primary())));
                 if (llmCostConcern) {
                     mem.priceObjectionCount = mem.priceObjectionCount + 1;
                     mem.inPriceObjectionContext = true;

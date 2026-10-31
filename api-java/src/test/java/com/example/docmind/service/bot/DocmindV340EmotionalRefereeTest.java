@@ -104,33 +104,56 @@ class DocmindV340EmotionalRefereeTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Tag("legacy-v1")
-    @DisplayName("TEST W (Gate 3, Mục 4 & Mục 6) — COMPASS + SENSORY_PALETTE + SPACE NOTE + OPENER GUARD")
+    @DisplayName("TEST W (Migrated F-03 -> LLM_COGNITIVE_V2) — ACI V2 PAGE POLICY + VERIFIED SPACE NOTE + SKU/CLICHE GUARD")
     void testW_CompassSensoryPaletteAndSpaceNoteAndOpenerGuard() {
         // 1. Mục 6: roomType() giữ nguyên cho TEST K, customerFacingSpaceNote() ẩn chữ "phòng chung"
         assertTrue(ns01Package.roomType().toLowerCase().contains("phòng chung"));
         assertFalse(ns01Package.customerFacingSpaceNote().toLowerCase().contains("phòng chung"));
         assertEquals("không gian yên tĩnh, sạch thoáng, mỗi giường đều có rèm che riêng kín đáo", ns01Package.customerFacingSpaceNote());
 
-        // 2. Gate 3 (Mục 7 & 8): buildAuthenticEmotionalCompassBlock chứa 3 Quy tắc Vàng + <SENSORY_PALETTE>
-        String compass = FanpageBotPromptBuilder.buildAuthenticEmotionalCompassBlock(
-                ThinkingMode.PRICE_ANCHOR_THINK, "mình", ns01Package, "Nàng Sen Spa"
+        // 2. F-03 Migrated to LLM_COGNITIVE_V2: CleanAgentCatalogAndPromptBuilder nạp <VERIFIED_PAGE_POLICY> + <VERIFIED_BUSINESS_CATALOG> chuẩn không lộ mã SKU ra bubbles
+        com.example.docmind.dto.PagePersonaConfig cfg = new com.example.docmind.dto.PagePersonaConfig(
+                "spa_wellness", "An Nhiên", "em", "mình", "Ấm áp, nhẹ nhàng, tinh tế", "THẤP",
+                List.of(), List.of("massage", "dưỡng sinh"), null, "kỹ thuật viên", List.of(), 10_000,
+                null, null, null, null, List.of(), List.of(), java.util.Map.of(), java.util.Map.of()
         );
-        assertTrue(compass.contains("<AUTHENTIC_EMOTIONAL_COMPASS>"));
-        assertTrue(compass.contains("3 QUY TẮC VÀNG CỦA NGƯỜI TƯ VẤN CÓ HỒN"));
-        assertTrue(compass.contains("<SENSORY_PALETTE>"));
-        assertTrue(compass.contains("Không gian: " + ns01Package.customerFacingSpaceNote()), "Compass phải dùng customerFacingSpaceNote() thay vì roomType()");
+        com.example.docmind.service.retrieval.PromptBuilder.PagePersona persona =
+                new com.example.docmind.service.retrieval.PromptBuilder.PagePersona("Nàng Sen Spa", "spa_wellness", "Khách spa", "Thư giãn", cfg);
+        com.example.docmind.dto.bot.FanpageBotRequest req = new com.example.docmind.dto.bot.FanpageBotRequest(
+                UUID.randomUUID().toString(), "sender-f03-v2", "Khách", "Gói massage 60 phút giá bao nhiêu?",
+                null, List.of(), List.of(), null, null, null, 5, null, false, null, null
+        );
+        AdaptiveConversationIntelligence.ThreeStreamTurnInput streams =
+                AdaptiveConversationIntelligence.buildThreeStreamInput(req, List.of(ns01Package), cfg, java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        String v2Prompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
+                persona, "mình", streams, List.of(ns01Package), List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                List.of(), AdaptiveConversationIntelligence.WorkingHypothesisRecord.initialEmpty(),
+                List.of(), ConversationState.StructuredBookingState.none(),
+                AdaptiveConversationIntelligence.OperationalStateSnapshot.initial(),
+                AdaptiveConversationIntelligence.PreviousStrategyRecord.initialNone(),
+                List.of(), null, false, List.of(), List.of()
+        );
+        assertTrue(v2Prompt.contains("<VERIFIED_PAGE_POLICY>"));
+        assertTrue(v2Prompt.contains("tone_style: \"Ấm áp, nhẹ nhàng, tinh tế\""));
+        assertTrue(v2Prompt.contains("<VERIFIED_BUSINESS_CATALOG>"));
+        assertTrue(v2Prompt.contains("KHÔNG phòng VIP riêng"));
 
-        // 3. Mục 4: Chặn văn mẫu mở đầu "Dạ với tình trạng ... xuất hiện của mình"
-        ReplyContractValidator.ValidationResult mechOpenerRes = ReplyContractValidator.validateAndEnforce(
-                List.of(new ReplyBubble("Dạ với tình trạng đau đầu, mất ngủ và mỏi vai thi thoảng xuất hiện của mình, bên em có gói Massage cơ bản 60 phút giá 399k ạ.", 0)),
-                null,
-                "Thi thoảng bị",
-                PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
-                false,
-                10000
+        // 3. V2 Sanitizer ẩn sạch mã SKU nội bộ (NS01) và lọc cụm sáo rỗng "thấy thương" tại chỗ
+        List<ReplyBubble> sanitized = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
+                CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                        List.of(new ReplyBubble("Dạ nghe mình kể thấy thương lắm ạ. Bên em có gói NS01 (399k/60p) trong không gian có rèm che riêng kín đáo ạ.", 0)),
+                        "Thi thoảng bị mỏi vai, giá sao?",
+                        null,
+                        "em",
+                        "mình"
+                ),
+                List.of(ns01Package)
         );
-        assertTrue(mechOpenerRes.errors().contains("FORBIDDEN_MECHANICAL_OPENER"));
+        assertEquals(1, sanitized.size());
+        assertFalse(sanitized.get(0).text().toLowerCase().contains("thấy thương"));
+        assertFalse(sanitized.get(0).text().contains("NS01"));
+        assertTrue(sanitized.get(0).text().contains("399k"));
     }
 
     @Test

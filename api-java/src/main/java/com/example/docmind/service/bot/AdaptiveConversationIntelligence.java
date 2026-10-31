@@ -2701,12 +2701,12 @@ public final class AdaptiveConversationIntelligence {
             return ConversationState.StructuredBookingState.none();
         }
 
-        // Chặn lỗi Split-Brain S10B: Nếu khách chỉ nhắn "Ừ"/"Ok" trần và chưa từng có bookingState mở
-        // VÀ lượt bot liền trước KHÔNG phải câu mời đặt lịch/hỏi giờ hẹn -> cấm tự kích hoạt booking từ bare ack!
+        // Chặn lỗi tự hiểu nhầm "Ok" / "Ừ" / "Để xem đã" thành xác nhận đặt lịch:
+        // Khi chưa có bookingState mở (status == NONE), nếu khách chỉ nhắn bare ack ("Ok", "Ừ", "Vâng") hoặc câu lưỡng lự/xin suy nghĩ thêm,
+        // BẮT BUỘC giữ nguyên BookingStatus.NONE bất kể lượt bot liền trước có câu mời nhẹ hay không!
         boolean isBareAck = CleanAgentOrchestratorService.isBareAcknowledgmentMessage(originalCustomerMessage);
-        boolean prevBotInvitedBookingOrTime = precedingBotText != null
-                && CleanAgentOrchestratorService.isInviteTrialOrAskTimeBotReply(precedingBotText);
-        if (isBareAck && safePrior.status() == ConversationState.BookingStatus.NONE && !prevBotInvitedBookingOrTime) {
+        boolean isDeferOrHesitation = CleanAgentOrchestratorService.isHesitationOrDeferralMessage(originalCustomerMessage);
+        if ((isBareAck || isDeferOrHesitation) && safePrior.status() == ConversationState.BookingStatus.NONE) {
             return safePrior;
         }
 
