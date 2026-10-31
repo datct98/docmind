@@ -565,7 +565,7 @@ class MultiIndustryRefereeAndE2EC3DTest {
                     """;
         });
 
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
         PromptBuilder.PagePersona tilePersona = buildTilePersona();
         List<ReciprocalRankFusion.FusedChunk> tileChunks = List.of(buildChunk("Bảng giá Gạch", TILE_KB_TABLE));
@@ -643,7 +643,7 @@ class MultiIndustryRefereeAndE2EC3DTest {
     // =========================================================================
     @Test
     void testEndToEnd_ThreeIndustries_Spa_BuildingMaterials_Education_AndSimulatedLlmFailureFallback() {
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
 
         // ---------------------------------------------------------------------
         // NGÀNH 1: NÀNG SEN SPA (Khám phá -> Báo giá 399k -> Chê đắt -> Hỏi giờ -> "Biết thế" -> "Ok để cân nhắc thêm")

@@ -1760,7 +1760,7 @@ public class FanpageBotService {
         // 7. DỰNG PROMPT RIÊNG CỦA BOT FANPAGE (KÈM CUSTOMER INSIGHT, AGENT SKILLS & LANGGRAPH DIRECTIVE) & GỌI LLM
         if (!v2Mode && agentBrainService != null) {
             try {
-                com.example.docmind.client.AgentBrainClient.RecallAndAdviseResponse brainAdvice =
+                AgentBrainService.RecallAndAdviseResponse brainAdvice =
                         agentBrainService.recallAndAdvise(
                                 pageId,
                                 request.senderId(),

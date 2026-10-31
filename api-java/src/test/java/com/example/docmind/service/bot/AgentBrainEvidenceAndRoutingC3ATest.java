@@ -54,7 +54,7 @@ class AgentBrainEvidenceAndRoutingC3ATest {
 
     @Test
     void testTripleContextShortUtterance_CungDuoc_RoutesDistinctlyAcrossThreeContexts() {
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID pageId = UUID.randomUUID();
         List<PackageCatalogService.PackageSummary> spaCatalog = PackageCatalogService.extractCatalog(
                 List.of(buildChunk("Bảng giá Spa", SPA_KB_TABLE)),
@@ -199,7 +199,7 @@ class AgentBrainEvidenceAndRoutingC3ATest {
     void testTurn1ToTurn6Flow_BietTheSoftDownsell_ThenOkDeCanNhacThemWarmGoodbyeZeroGhostProduct() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();
@@ -376,7 +376,7 @@ class AgentBrainEvidenceAndRoutingC3ATest {
 
     @Test
     void testFiveMemoryFactOperations_AddUpdateSupersedeRetractUncertain_AcrossMultiIndustrySlots() {
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID tilePageId = UUID.randomUUID();
         String tileSender = "tile-customer-c3a";
 
@@ -493,7 +493,7 @@ class AgentBrainEvidenceAndRoutingC3ATest {
     void testOperationalPivotAfterPriceObjection_LivingHypothesisRules_AndAntiBotPromotionalFluffGuard() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();

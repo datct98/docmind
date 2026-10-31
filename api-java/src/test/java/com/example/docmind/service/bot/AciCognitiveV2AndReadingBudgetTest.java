@@ -402,7 +402,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         AdaptiveConversationIntelligence.ThreeStreamTurnInput s04Streams =
                 AdaptiveConversationIntelligence.buildThreeStreamInput(
                         s04Req, catalogPackages, nangSenPersona.resolvedConfig(), ZoneId.of("Asia/Ho_Chi_Minh"));
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         brainService.applyAciTurnMemoryUpdates(
                 PAGE_ID, "sender-s04", "T1", s04Streams.originalMessage(),
                 s04Streams.unverifiedParserCandidates(),
@@ -530,7 +530,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @DisplayName("Mục 1 & Mục 2.3: S06 ('Thôi, không cần nữa') đi qua LLM với opted_out=false, lệnh 'STOP' chặn ở System Gate với opted_out=true, và rollback DETERMINISTIC_V1 tức thì")
     void s06PoliteDeclineGoesToLlmWithOptedOutFalseWhileStrictStopTriggersSystemGateAndRollbackWorks() {
         AtomicInteger llmCallCount = new AtomicInteger(0);
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         FanpageBotService botService = createIsolatedBotServiceWithBrain(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
                 sharedBrain,
@@ -713,7 +713,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(parsed.aciReflection().blockedUnauthorizedCompletionCount()).isEqualTo(1);
         assertThat(parsed.aciReflection().commitmentDelta()).isEmpty();
 
-        AgentBrainService brain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brain = new AgentBrainService();
         // Lượt 1: Tạo cam kết đối soát thanh toán khi Page không có verifiedPageSlaPolicy (null)
         AdaptiveConversationIntelligence.AdaptiveCognitiveReflection createRef =
                 CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput("""
@@ -771,7 +771,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("Mục 4.4: Conditional Handoff — S05 ('Tôi không hài lòng') không tạo ticket mù quáng; S08/S09 tạo HANDOFF_CREATED + giữ nguyên bookingState; lỗi dispatch trả về HANDOFF_FAILED")
     void conditionalHandoffDistinguishesMildDissatisfactionFromVerificationEscalationsAndHandlesDispatchFailure() {
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
 
         // 1. Kịch bản S05 ("Tôi không hài lòng"): Chưa nêu sự cố cụ thể -> LLM lắng nghe & hỏi làm rõ, KHÔNG tạo handoff vô điều kiện!
         FanpageBotService s05Bot = createIsolatedBotServiceWithBrain(
@@ -905,7 +905,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("Mục 3.1 & Mục 4: Sửa triệt để lỗi Split-Brain S10B ('Ừ' không bị tự bịa chốt gói NS01) và hỗ trợ đổi gói -> đổi giờ liên tiếp (A03)")
     void fixesS10bSplitBrainOnBareAffirmAndTracksA03MultiTurnPackageAndTimeSwitches() {
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
 
         // 1. S10B: Bot vừa giải thích giá trị gói 399k (chưa đề xuất đặt lịch), khách đáp cụt "Ừ" -> bookingStatus = NONE, selectedProductId = null!
         FanpageBotService s10bBot = createIsolatedBotServiceWithBrain(
@@ -1102,7 +1102,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     ) {
         return createIsolatedBotServiceWithBrain(
                 cognitiveMode,
-                new AgentBrainService((com.example.docmind.client.AgentBrainClient) null),
+                new AgentBrainService(),
                 responder
         );
     }
@@ -1255,7 +1255,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("Task 1: Tách bạch defaultCustomerPronoun vs inferredCustomerPronoun — chống ghi đè bởi customerName 'Chị ...', chống bẫy ngôi thứ ba, và nhận tức thì khi đổi cấu hình UI Page")
     void pronounSeparationPreventsThirdPersonTrapAndImmediatelyAppliesUiPageConfigUpdate() throws Exception {
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         AtomicReference<String> lastPrompt = new AtomicReference<>("");
         AtomicReference<String> nextInferredJson = new AtomicReference<>("\"inferred_customer_pronoun\": null, \"pronoun_confidence\": 0.0");
 
@@ -1389,7 +1389,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("Task 2 & Task 4.1: Nạp động 100% Compact Directives (agent_skills + learned_rules), cưỡng chế forbidden_words, và không ghi đè symptomDuration='1 ngày' ở ca '1 ngày công r'")
     void uiPageConfigPlaybookCompactDirectivesForbiddenWordsAndWageMetaphorWorkCleanly() {
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         AtomicReference<String> capturedPrompt = new AtomicReference<>("");
         AtomicInteger llmAttempts = new AtomicInteger(0);
 
@@ -2299,7 +2299,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("V2.3 III.1 & III.2: Tách nguyên tử triệu chứng theo 5 trạng thái (CURRENT/RESOLVED/PAST/NEGATED/SUPERSEDED), không đóng mù unresolved_requests và hợp nhất 1 khối Memory 3 Tầng")
     void aciV23FiveStateAtomicSymptomLifecycleInteractionPermissionAndUnresolvedRequests() {
-        AgentBrainService brain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brain = new AgentBrainService();
 
         // Lượt 1: Khách liệt kê gộp "chóng mặt, đau đầu, khó ngủ" + 1 unresolved_request OPEN ("giá phòng VIP")
         AdaptiveConversationIntelligence.AdaptiveCognitiveReflection ref1 =
@@ -2959,7 +2959,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         );
 
         AtomicInteger llmCallCounter = new AtomicInteger(0);
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         FanpageBotService outageBot = createIsolatedBotServiceWithBrain(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
                 sharedBrain,
@@ -3124,7 +3124,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         // Group 4: Prompt injection placed near the end of ~24,900 chars (beyond old 2,000-char truncation!) -> blocked 100% before LLM
         AtomicInteger llmCallCount = new AtomicInteger(0);
         AtomicReference<String> lastPromptSeenByLlm = new AtomicReference<>();
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         FanpageBotService v2Bot = createIsolatedBotServiceWithBrain(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
                 sharedBrain,
@@ -3308,7 +3308,7 @@ class AciCognitiveV2AndReadingBudgetTest {
                 return complete(prompt);
             }
         };
-        AgentBrainService multiBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService multiBrain = new AgentBrainService();
         CleanAgentOrchestratorService multiOrch = new CleanAgentOrchestratorService(multiStubLlm, multiBrain, multiSkillService);
         multiOrch.setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2);
         FanpageBotService multiTenantV2Bot = new FanpageBotService(
@@ -3545,7 +3545,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         );
         FanpageBotService bot = createIsolatedBotServiceWithBrain(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
-                new AgentBrainService((com.example.docmind.client.AgentBrainClient) null),
+                new AgentBrainService(),
                 (prompt, budget) -> {
                     llmCalls.incrementAndGet();
                     return """
@@ -3813,7 +3813,7 @@ class AciCognitiveV2AndReadingBudgetTest {
 
             FanpageBotService c1Bot = createIsolatedBotServiceWithBrain(
                     AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
-                    new AgentBrainService((com.example.docmind.client.AgentBrainClient) null),
+                    new AgentBrainService(),
                     (prompt, budget) -> {
                         llmEntered.countDown();
                         try {
@@ -4160,7 +4160,7 @@ class AciCognitiveV2AndReadingBudgetTest {
             }
         };
 
-        AgentBrainService isolatedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService isolatedBrain = new AgentBrainService();
         com.example.docmind.config.ChatProperties chatProps = new com.example.docmind.config.ChatProperties();
         chatProps.setTopK(4);
         FanpageBotService v2Bot = new FanpageBotService(
@@ -4463,7 +4463,7 @@ class AciCognitiveV2AndReadingBudgetTest {
                 .contains("PB-SPA-EMOTIONAL-REPAIR-001");
 
         // 2. MIGRATE_TO_V2_TEST cho F-04 ("Dở à, đau chân mất ngủ mà đi massage vai làm j" -> chân=CURRENT, vai=NEGATED)
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
         AtomicInteger f07AttemptCounter = new AtomicInteger(0);
         FanpageBotService v2Bot = createIsolatedBotServiceWithBrain(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
@@ -4738,7 +4738,7 @@ class AciCognitiveV2AndReadingBudgetTest {
     @Test
     @DisplayName("Unit P2.1 (2): Đồng bộ 100% SAFE_HANDOFF với handoffStatus=HANDOFF_CREATED & phân biệt rõ lỗi mạng 502 BAD_GATEWAY với lỗi nội dung bịa giá")
     void testP21_SafeHandoffSynchronizesTelemetryHandoffStatus_AndSeparatesUpstream502FromContentViolation() {
-        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService sharedBrain = new AgentBrainService();
 
         // Ca A: Bot cố tình bịa gói 199k cả lần 1 lẫn lần repair -> kích hoạt SAFE_HANDOFF và đồng bộ handoffStatus=HANDOFF_CREATED
         AtomicInteger ungroundedCalls = new AtomicInteger(0);
@@ -5529,7 +5529,7 @@ class AciCognitiveV2AndReadingBudgetTest {
             var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_p24_restart"), 67_108_864L);
             var inboundPersistence = new InboundSessionPersistenceService(jdbc, txMgr, walStore, coordinator);
 
-            AgentBrainService brainBeforeRestart = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+            AgentBrainService brainBeforeRestart = new AgentBrainService();
             brainBeforeRestart.setAciSessionMemoryPersistenceService(persistenceSvc);
             brainBeforeRestart.setAciDbPersistenceEnabled(true);
 
@@ -5628,7 +5628,7 @@ class AciCognitiveV2AndReadingBudgetTest {
             brainBeforeRestart.evictAllInMemoryCachesOnly();
             SentBubbleLedger.reset(SentBubbleLedger.key(PAGE_ID.toString(), restartPsid, null));
 
-            AgentBrainService freshRestartedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+            AgentBrainService freshRestartedBrain = new AgentBrainService();
             freshRestartedBrain.setAciSessionMemoryPersistenceService(persistenceSvc);
             freshRestartedBrain.setAciDbPersistenceEnabled(true);
             assertThat(freshRestartedBrain.hasInMemoryCacheEntry(PAGE_ID, restartPsid)).isFalse();

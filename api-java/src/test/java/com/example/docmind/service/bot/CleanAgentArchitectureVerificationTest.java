@@ -792,7 +792,7 @@ class CleanAgentArchitectureVerificationTest {
 
     @Test
     void testMultiTurnCareNotesAccumulation_DeduplicatedAndBounded_AndReusedInNextPrompt() {
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID pageId = UUID.randomUUID();
         String senderId = "cust_memory_test_01";
         brainService.clearCustomerMemory(pageId, senderId);
@@ -1059,7 +1059,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Tinh tế, giàu cảm xúc"
         );
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID pageId = UUID.randomUUID();
         String senderId = "cust_ok_matrix_01";
         brainService.clearCustomerMemory(pageId, senderId);
@@ -2083,7 +2083,7 @@ class CleanAgentArchitectureVerificationTest {
                 "Tinh tế, giàu cảm xúc"
         );
         List<PackageCatalogService.PackageSummary> allCatalog = sampleSpaCatalog();
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID pageId = UUID.randomUUID();
         String senderId = "cust_brain_to_state_flow_01";
         brainService.clearCustomerMemory(pageId, senderId);
@@ -5087,5 +5087,56 @@ class CleanAgentArchitectureVerificationTest {
         assertTrue(scannedFiles > 50, "Expected full Java source scan (>50 files), scanned=" + scannedFiles);
         assertTrue(violations.isEmpty(),
                 "Unit P2.4 Architecture Lock failed — found write paths bypassing JPA @Version + Monotonic Merge: " + violations);
+    }
+
+    @Test
+    void testP31_AgentBrain8095AndAgentBrainClientCompletelyDecommissionedWhilePreservingInProcessAgentBrainService() throws Exception {
+        // 1. AgentBrainClient must be deleted from source AND absent from compiled classpath (no orphan .class)
+        org.junit.jupiter.api.Assertions.assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName("com.example.docmind.client.AgentBrainClient"),
+                "AgentBrainClient.class MUST NOT exist on classpath (including orphan target/classes)"
+        );
+
+        java.nio.file.Path mainJavaRoot = java.nio.file.Paths.get("src/main/java");
+        if (!java.nio.file.Files.isDirectory(mainJavaRoot)) {
+            mainJavaRoot = java.nio.file.Paths.get("api-java/src/main/java");
+        }
+        assertTrue(java.nio.file.Files.isDirectory(mainJavaRoot));
+        java.nio.file.Path deletedClientPath = mainJavaRoot.resolve("com/example/docmind/client/AgentBrainClient.java");
+        assertFalse(java.nio.file.Files.exists(deletedClientPath), "AgentBrainClient.java MUST be deleted");
+
+        // 2. AgentBrainService MUST remain intact in-process with zero HTTP :8095 / RestClient / HttpServiceProxyFactory fields or imports
+        java.nio.file.Path brainServicePath = mainJavaRoot.resolve("com/example/docmind/service/bot/AgentBrainService.java");
+        assertTrue(java.nio.file.Files.exists(brainServicePath), "In-process AgentBrainService.java MUST be preserved");
+        String brainSrc = java.nio.file.Files.readString(brainServicePath, java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(brainSrc.contains("AgentBrainClient"), "AgentBrainService MUST NOT reference AgentBrainClient");
+        assertFalse(brainSrc.contains("8095"), "AgentBrainService MUST NOT reference port 8095");
+        assertFalse(brainSrc.contains("HttpServiceProxyFactory"), "AgentBrainService MUST NOT instantiate HttpServiceProxyFactory");
+        assertFalse(brainSrc.contains("AGENT_BRAIN_BASE_URL"), "AgentBrainService MUST NOT read AGENT_BRAIN_BASE_URL");
+
+        AgentBrainService inProcessBrain = new AgentBrainService();
+        UUID pageId = UUID.fromString("b23cd382-4f7a-4829-8c54-1d410da14bf8");
+        inProcessBrain.recallAndAdvise(pageId, "psid-p31-check", "Chị Lan", "Cho chị hỏi gói 239k", 0.85, 0.90);
+        inProcessBrain.retainTurnWithReflection(
+                pageId, "psid-p31-check", "Chị Lan",
+                "Cho chị hỏi gói 239k", "Dạ gói 239k kéo dài 60 phút ạ.",
+                List.of(), "Khách quan tâm gói 239k", "", "Khách tìm gói dưỡng sinh 60 phút", List.of("head_neck")
+        );
+        assertNotNull(inProcessBrain.getLastReasoningProvenance(pageId, "psid-p31-check"));
+
+        // 3. docker-compose.yml MUST remove agent-brain:8095, AGENT_BRAIN_BASE_URL, and docmind-braindata while preserving :8091 and :8090
+        java.nio.file.Path composePath = java.nio.file.Paths.get("../docker-compose.yml");
+        if (!java.nio.file.Files.exists(composePath)) {
+            composePath = java.nio.file.Paths.get("docker-compose.yml");
+        }
+        assertTrue(java.nio.file.Files.exists(composePath), "docker-compose.yml must exist");
+        String composeContent = java.nio.file.Files.readString(composePath, java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(composeContent.contains("agent-brain"), "docker-compose.yml MUST NOT contain agent-brain service");
+        assertFalse(composeContent.contains("8095"), "docker-compose.yml MUST NOT expose or reference port 8095");
+        assertFalse(composeContent.contains("AGENT_BRAIN_BASE_URL"), "docker-compose.yml MUST NOT set AGENT_BRAIN_BASE_URL");
+        assertFalse(composeContent.contains("docmind-braindata"), "docker-compose.yml MUST NOT declare docmind-braindata volume");
+        assertTrue(composeContent.contains("doc-service-py:") && composeContent.contains("8091:8091"),
+                "docker-compose.yml MUST preserve doc-service-py:8091 for Cold-Path Upload");
     }
 }

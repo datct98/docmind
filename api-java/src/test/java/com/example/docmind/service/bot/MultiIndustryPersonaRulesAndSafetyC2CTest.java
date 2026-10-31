@@ -446,7 +446,7 @@ class MultiIndustryPersonaRulesAndSafetyC2CTest {
                 "Phải giữ lại ghi chú diện tích/quy cách gạch có căn cứ từ lời khách và cắt bỏ vế quảng cáo của bot");
 
         // 2. Ngành Giáo dục: giữ mục tiêu học tập ("IELTS 6.5", "3 tháng", "buổi tối") vào AgentBrainService kèm đúng careActor
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         UUID eduPageId = UUID.randomUUID();
         String senderId = "student_ielts_01";
         brainService.clearCustomerMemory(eduPageId, senderId);
@@ -618,7 +618,7 @@ class MultiIndustryPersonaRulesAndSafetyC2CTest {
         when(llmClient.complete(anyString(), any(ReasoningBudget.class))).thenReturn(llmTileReplyJson);
         when(llmClient.complete(anyString())).thenReturn(llmTileReplyJson);
 
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         FanpageBotService service = new FanpageBotService(
                 retrievalService,
                 llmClient,

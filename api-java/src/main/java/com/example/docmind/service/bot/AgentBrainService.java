@@ -1,30 +1,19 @@
 package com.example.docmind.service.bot;
 
-import com.example.docmind.client.AgentBrainClient;
-import com.example.docmind.client.AgentBrainClient.RecallAndAdviseRequest;
-import com.example.docmind.client.AgentBrainClient.RecallAndAdviseResponse;
-import com.example.docmind.client.AgentBrainClient.ReflectRequest;
-import com.example.docmind.client.AgentBrainClient.ReflectResponse;
-import com.example.docmind.client.AgentBrainClient.RetainTurnRequest;
-import com.example.docmind.client.AgentBrainClient.RetainTurnResponse;
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.bot.AgentSkillDto;
 import com.example.docmind.dto.bot.CustomerInsightDto;
 import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.service.retrieval.PromptBuilder;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.support.RestClientAdapter;
-import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 
-import java.net.http.HttpClient;
 import java.text.Normalizer;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,7 +24,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -247,8 +235,62 @@ public class AgentBrainService {
             "giả", "thuyết", "cập", "nhật", "lượt", "thứ", "hiện", "tại", "với", "cho", "của"
     );
 
-    private final AgentBrainClient client;
-    private final String baseUrl;
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PsychologicalSkillDirectiveDto(
+            @JsonProperty("skill_code") String skillCode,
+            @JsonProperty("skill_name") String skillName,
+            @JsonProperty("academic_origin") String academicOrigin,
+            @JsonProperty("trigger_reason") String triggerReason,
+            @JsonProperty("bubble_plan") List<String> bubblePlan,
+            @JsonProperty("subtle_flex_hint") String subtleFlexHint,
+            @JsonProperty("scarcity_or_close_hint") String scarcityOrCloseHint,
+            @JsonProperty("prompt_directive") String promptDirective,
+            @JsonProperty("audience_voice_cadence") String audienceVoiceCadence,
+            @JsonProperty("price_disclosure_gate") String priceDisclosureGate
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record MemoryFactDto(
+            @JsonProperty("id") Long id,
+            @JsonProperty("fact_key") String factKey,
+            @JsonProperty("fact_value") String factValue,
+            @JsonProperty("source_type") String sourceType,
+            @JsonProperty("confidence") double confidence,
+            @JsonProperty("is_active") boolean isActive,
+            @JsonProperty("superseded_by") Long supersededBy
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ObjectionItemDto(
+            @JsonProperty("type") String type,
+            @JsonProperty("quote") String quote,
+            @JsonProperty("count") int count,
+            @JsonProperty("confidence") double confidence
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record RecallAndAdviseResponse(
+            @JsonProperty("tenant_id") String tenantId,
+            @JsonProperty("customer_id") String customerId,
+            @JsonProperty("conversation_id") String conversationId,
+            @JsonProperty("normalized_message") String normalizedMessage,
+            @JsonProperty("masked_message") String maskedMessage,
+            @JsonProperty("honorific") String honorific,
+            @JsonProperty("purchase_stage") String purchaseStage,
+            @JsonProperty("sentiment") String sentiment,
+            @JsonProperty("intent") String intent,
+            @JsonProperty("buyer_archetype") String buyerArchetype,
+            @JsonProperty("buying_temperature") int buyingTemperature,
+            @JsonProperty("final_confidence") double finalConfidence,
+            @JsonProperty("next_best_action") String nextBestAction,
+            @JsonProperty("requires_human") boolean requiresHuman,
+            @JsonProperty("handoff_reason") String handoffReason,
+            @JsonProperty("active_skill") PsychologicalSkillDirectiveDto activeSkill,
+            @JsonProperty("customer_memory_block") String customerMemoryBlock,
+            @JsonProperty("active_facts") List<MemoryFactDto> activeFacts,
+            @JsonProperty("objections") List<ObjectionItemDto> objections,
+            @JsonProperty("latency_ms") double latencyMs
+    ) {}
 
     @Autowired(required = false)
     private volatile AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService;
@@ -275,33 +317,10 @@ public class AgentBrainService {
     }
 
     @Autowired
-    public AgentBrainService(
-            @Value("${agent.brain.base-url:${AGENT_BRAIN_BASE_URL:http://localhost:8095}}") String configuredBaseUrl) {
-        this.baseUrl = (configuredBaseUrl != null && !configuredBaseUrl.isBlank())
-                ? configuredBaseUrl.strip()
-                : "http://localhost:8095";
-
-        HttpClient jdkHttp = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(800))
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(jdkHttp);
-        requestFactory.setReadTimeout(Duration.ofMillis(1500));
-
-        RestClient restClient = RestClient.builder()
-                .baseUrl(this.baseUrl)
-                .requestFactory(requestFactory)
-                .build();
-
-        HttpServiceProxyFactory factory = HttpServiceProxyFactory
-                .builderFor(RestClientAdapter.create(restClient))
-                .build();
-        this.client = factory.createClient(AgentBrainClient.class);
+    public AgentBrainService() {
     }
 
-    public AgentBrainService(AgentBrainClient customClient) {
-        this.client = customClient;
-        this.baseUrl = "custom";
+    public AgentBrainService(String ignoredModeHint) {
     }
 
     public RecallAndAdviseResponse recallAndAdvise(
@@ -328,48 +347,10 @@ public class AgentBrainService {
         }
         String tenantId = pageId != null ? pageId.toString() : "global";
         String customerId = (senderId != null && !senderId.isBlank()) ? senderId.strip() : "anonymous_customer";
-        String conversationId = tenantId + ":" + customerId;
 
         CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, customerId);
         double boundedRetrieval = Math.max(0.0, Math.min(1.0, retrievalQuality));
         double boundedGroundedness = Math.max(0.0, Math.min(1.0, groundedness));
-
-        RecallAndAdviseResponse remoteRes = null;
-        if (client != null) {
-            Map<String, Object> domainMeta = new java.util.LinkedHashMap<>();
-            domainMeta.put("is_first_turn", isFirstTurn);
-            if (pagePersona != null) {
-                if (pagePersona.name() != null && !pagePersona.name().isBlank()) {
-                    domainMeta.put("page_name", pagePersona.name().strip());
-                }
-                if (pagePersona.industry() != null && !pagePersona.industry().isBlank()) {
-                    domainMeta.put("industry", pagePersona.industry().strip());
-                }
-                if (pagePersona.targetAudience() != null && !pagePersona.targetAudience().isBlank()) {
-                    domainMeta.put("target_audience", pagePersona.targetAudience().strip());
-                }
-                if (pagePersona.personaConfig() != null && pagePersona.personaConfig().toneStyle() != null) {
-                    domainMeta.put("tone_style", pagePersona.personaConfig().toneStyle().strip());
-                } else if (pagePersona.description() != null && !pagePersona.description().isBlank()) {
-                    domainMeta.put("tone_style", pagePersona.description().strip());
-                }
-            }
-            try {
-                remoteRes = client.recallAndAdvise(new RecallAndAdviseRequest(
-                        tenantId,
-                        customerId,
-                        conversationId,
-                        message,
-                        customerName,
-                        boundedRetrieval,
-                        boundedGroundedness,
-                        domainMeta
-                ));
-            } catch (Exception ex) {
-                log.debug("[AgentBrain] recallAndAdvise unreachable at {} ({}), computing in-JVM evidence provenance",
-                        baseUrl, ex.getMessage());
-            }
-        }
 
         BrainReasoningProvenance provenance = computeRecallProvenance(
                 mem,
@@ -377,7 +358,7 @@ public class AgentBrainService {
                 boundedRetrieval,
                 boundedGroundedness,
                 isFirstTurn,
-                remoteRes
+                null
         );
         synchronized (mem) {
             mem.lastReasoningProvenance = provenance;
@@ -400,7 +381,7 @@ public class AgentBrainService {
                 provenance.supportingCustomerEvidence(),
                 provenance.proposedAction());
 
-        return remoteRes;
+        return null;
     }
 
     /**
@@ -3030,7 +3011,7 @@ public class AgentBrainService {
         String stageSource;
         if (remoteRes != null && remoteRes.purchaseStage() != null && !remoteRes.purchaseStage().isBlank()) {
             stage = remoteRes.purchaseStage();
-            stageSource = "REMOTE_AGENT_BRAIN_HTTP";
+            stageSource = "EXPLICIT_BRAIN_ADVICE_OVERRIDE";
         } else if (shortRes.isContextualShortUtterance() && !shortRes.recommendedStage().isEmpty()) {
             stage = shortRes.recommendedStage();
             stageSource = "IN_JVM_SHORT_UTTERANCE_DECODER(" + shortRes.decodedMeaning() + ")";
@@ -3054,7 +3035,7 @@ public class AgentBrainService {
         String archetypeSource;
         if (remoteRes != null && remoteRes.buyerArchetype() != null && !remoteRes.buyerArchetype().isBlank()) {
             archetype = remoteRes.buyerArchetype();
-            archetypeSource = "REMOTE_AGENT_BRAIN_HTTP";
+            archetypeSource = "EXPLICIT_BRAIN_ADVICE_OVERRIDE";
         } else if (insufficientContext) {
             archetype = "UNKNOWN";
             archetypeSource = "SHORT_UTTERANCE_INSUFFICIENT_EVIDENCE";
@@ -3081,7 +3062,7 @@ public class AgentBrainService {
                 ? remoteRes.finalConfidence()
                 : Math.max(0.20, Math.min(0.95, baseConf + factBonus + retrievalBonus + groundedBonus + opPenalty));
         String confFormula = remoteRes != null && remoteRes.finalConfidence() > 0.0
-                ? ("remote_final_confidence=" + String.format(Locale.ROOT, "%.2f", remoteRes.finalConfidence()))
+                ? ("explicit_final_confidence=" + String.format(Locale.ROOT, "%.2f", remoteRes.finalConfidence()))
                 : String.format(Locale.ROOT, "base=%.2f + facts=%.2f + retrieval=%.2f + grounded=%.2f + pivotAdj=%.2f => %.2f",
                         baseConf, factBonus, retrievalBonus, groundedBonus, opPenalty, computedConf);
 
@@ -3091,7 +3072,7 @@ public class AgentBrainService {
                     : (stage.contains("STAGE_3B") || stage.contains("STAGE_6") ? "spa_graceful_exit_after_rejection"
                         : (stage.contains("STAGE_4") ? "booking_soft_confirm" : "consultative_discovery")));
         String skillSource = (remoteRes != null && remoteRes.activeSkill() != null)
-                ? "REMOTE_AGENT_BRAIN_ACTIVE_SKILL"
+                ? "EXPLICIT_BRAIN_ADVICE_ACTIVE_SKILL"
                 : "IN_JVM_STAGE_GOVERNED_MAP(" + stage + ")";
 
         HypothesisStatus effHypStatus = insufficientContext ? HypothesisStatus.INSUFFICIENT_EVIDENCE : hypState.status();
@@ -3334,56 +3315,6 @@ public class AgentBrainService {
                 String.format(Locale.ROOT, "%.2f", updatedHypState.confidence()),
                 updatedHypState.hypothesisText(),
                 updatedHypState.provenanceReason());
-
-        if (client == null || userMessage == null || userMessage.isBlank()) {
-            return;
-        }
-        StringBuilder enrichedReplySb = new StringBuilder(assistantReply != null ? assistantReply : "");
-        if (!effectiveArtifacts.isEmpty()) {
-            enrichedReplySb.append("\n[CUSTOMER_CARE_NOTES: ").append(effectiveArtifacts).append("]");
-        }
-        if ((observedFact != null && !observedFact.isBlank())
-                || (careNoteDelta != null && !careNoteDelta.isBlank())
-                || !updatedHypState.hypothesisText().isBlank()
-                || (actualSentSpeechAct != null && !actualSentSpeechAct.isBlank())) {
-            enrichedReplySb.append("\n[BRAIN_REFLECTION: observed_fact=")
-                    .append(observedFact != null ? observedFact.strip() : "")
-                    .append(" | care_note_delta=")
-                    .append(careNoteDelta != null ? careNoteDelta.strip() : "")
-                    .append(" | working_hypothesis=")
-                    .append(updatedHypState.hypothesisText())
-                    .append(" | hypothesis_status=")
-                    .append(updatedHypState.status())
-                    .append(" | actual_sent_speech_act=")
-                    .append(actualSentSpeechAct != null ? actualSentSpeechAct.strip() : "")
-                    .append("]");
-        }
-        String enrichedAssistantReply = enrichedReplySb.toString();
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                RetainTurnResponse retained = client.retainTurn(new RetainTurnRequest(
-                        tenantId,
-                        customerId,
-                        conversationId,
-                        userMessage,
-                        enrichedAssistantReply,
-                        customerName,
-                        true
-                ));
-                if (retained != null) {
-                    log.info("[AgentBrain] Retained turn (tenant={}, customer={}, extractedFacts={}, supersededFacts={}, careNotes={}, stage={})",
-                            tenantId,
-                            customerId,
-                            retained.extractedFacts() != null ? retained.extractedFacts().size() : 0,
-                            retained.supersededFactIds() != null ? retained.supersededFactIds().size() : 0,
-                            effectiveArtifacts.size(),
-                            retained.purchaseStage());
-                }
-            } catch (Exception ex) {
-                log.debug("[AgentBrain] retainTurnAsync skipped ({})", ex.getMessage());
-            }
-        });
     }
 
     private static void rebuildArtifactsFromCareNotes(
@@ -3409,21 +3340,6 @@ public class AgentBrainService {
                     note,
                     Instant.now()
             ));
-        }
-    }
-
-    public ReflectResponse reflectCustomer(UUID pageId, String senderId) {
-        if (client == null) {
-            return null;
-        }
-        String tenantId = pageId != null ? pageId.toString() : "global";
-        String customerId = (senderId != null && !senderId.isBlank()) ? senderId.strip() : "anonymous_customer";
-        String conversationId = tenantId + ":" + customerId;
-        try {
-            return client.reflect(new ReflectRequest(tenantId, customerId, conversationId));
-        } catch (Exception ex) {
-            log.debug("[AgentBrain] reflectCustomer unreachable ({})", ex.getMessage());
-            return null;
         }
     }
 
@@ -3523,7 +3439,7 @@ public class AgentBrainService {
             applyFactMemoryMutationLocked(tempMerger, bp, "", MAX_VERIFIED_FACTS_PER_CUSTOMER);
         }
         if (brainAdvice != null && brainAdvice.activeFacts() != null) {
-            for (AgentBrainClient.MemoryFactDto f : brainAdvice.activeFacts()) {
+            for (MemoryFactDto f : brainAdvice.activeFacts()) {
                 if (f != null && f.isActive() && f.factKey() != null && f.factValue() != null) {
                     String factSummary = f.factKey() + "=" + f.factValue();
                     applyFactMemoryMutationLocked(tempMerger, factSummary, "", MAX_VERIFIED_FACTS_PER_CUSTOMER);
@@ -3544,7 +3460,7 @@ public class AgentBrainService {
 
         List<String> mergedConcerns = new ArrayList<>(base.hiddenConcerns());
         if (brainAdvice != null && brainAdvice.objections() != null) {
-            for (AgentBrainClient.ObjectionItemDto obj : brainAdvice.objections()) {
+            for (ObjectionItemDto obj : brainAdvice.objections()) {
                 if (obj != null && obj.type() != null) {
                     String objLabel = "Rào cản [" + obj.type() + "]: " + (obj.quote() != null ? obj.quote() : "");
                     if (mergedConcerns.stream().noneMatch(c -> c.contains("[" + obj.type() + "]"))) {

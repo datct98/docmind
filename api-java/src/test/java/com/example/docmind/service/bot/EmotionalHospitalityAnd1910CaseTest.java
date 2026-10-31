@@ -222,7 +222,7 @@ class EmotionalHospitalityAnd1910CaseTest {
     void testCase1910To1922_FullNangSenTrajectory_DiscoveryDeltaCompareAndWarmNodUk() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         String senderId = "fb-customer-demo-1910";
@@ -413,7 +413,7 @@ class EmotionalHospitalityAnd1910CaseTest {
     void testShortAffirmativeContextB_WarmGeneralBridge_AndContextC_ProposedSlotAvailabilityCheck() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
         PromptBuilder.PagePersona persona = buildNangSenPersona();
         List<ReciprocalRankFusion.FusedChunk> chunks = List.of(buildChunk("Bảng giá Nàng Sen Spa", NANG_SEN_STANDARDIZED_KB));
@@ -471,7 +471,7 @@ class EmotionalHospitalityAnd1910CaseTest {
     void testParallelMultiIndustryTrajectory_NhaKhoaToaSang_ZeroSpaVocabularyLeakageAndMedicalSafetyBounds() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         PromptBuilder.PagePersona dentalPersona = buildDentalPersona();

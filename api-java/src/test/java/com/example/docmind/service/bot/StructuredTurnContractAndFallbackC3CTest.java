@@ -309,7 +309,7 @@ class StructuredTurnContractAndFallbackC3CTest {
                 return "simulated-timeout-llm";
             }
         };
-        AgentBrainService brain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brain = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(failingLlm, brain, null);
 
         // Ca A: Ngành Gạch — Khách reply vào mid_tile_8080 hỏi ưu đãi khi LLM chết kết nối

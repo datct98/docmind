@@ -169,7 +169,7 @@ class MultiIndustryBookingStateMachineC3BTest {
     void testGateA_OkDatLichLuon_AwaitingProductSelection_ThenTurn7_Goi239kNhe_AwaitingDateOrTime() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();
@@ -269,7 +269,7 @@ class MultiIndustryBookingStateMachineC3BTest {
     void testGateB_DatGoi239kChoMinh_LocksDS02_AwaitingDateOrTime_NeverRePitches399k() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();
@@ -330,7 +330,7 @@ class MultiIndustryBookingStateMachineC3BTest {
     void testGateC_DatChoMinhToiNay_RetainsToiNay_NullSelectedProductId_AwaitingProductSelection() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();
@@ -392,7 +392,7 @@ class MultiIndustryBookingStateMachineC3BTest {
     void testGateD_DatGoi239kToiNayLuc7Gio_Parses1900_AwaitingAvailabilityCheck_NeverClaimsConfirmed() {
         LlmClient mockLlm = mock(LlmClient.class);
         when(mockLlm.name()).thenReturn("ollama:qwen3.8-flash");
-        AgentBrainService brainService = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        AgentBrainService brainService = new AgentBrainService();
         CleanAgentOrchestratorService orchestrator = new CleanAgentOrchestratorService(mockLlm, brainService, null);
 
         UUID pageId = UUID.randomUUID();
