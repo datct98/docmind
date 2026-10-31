@@ -74,7 +74,10 @@ public record FanpageBotResponse(
         List<AgentSkillDto> activatedSkills,
 
         @JsonProperty("turn_profiling")
-        TurnProfiling turnProfiling
+        TurnProfiling turnProfiling,
+
+        @JsonProperty("inbound_external_mid")
+        String inboundExternalMid
 ) {
     public FanpageBotResponse {
         if (appliedRules == null) {
@@ -118,6 +121,53 @@ public record FanpageBotResponse(
             List<String> triggeredHooks,
             boolean pendingSecondBubble,
             Long pendingTurnSequence,
+            Long priceBubbleSentAtNs,
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            List<AgentSkillDto> activatedSkills,
+            TurnProfiling turnProfiling
+    ) {
+        this(
+                replyText,
+                replyBubbles,
+                bubbleDelaysMs,
+                salesStage,
+                confidenceScore,
+                needsHumanHandoff,
+                handoffCategory,
+                handoffReason,
+                extractedLead,
+                appliedRules,
+                customerInsight,
+                activeSkills,
+                triggeredHooks,
+                pendingSecondBubble,
+                pendingTurnSequence,
+                priceBubbleSentAtNs,
+                availableSkills,
+                selectedSkills,
+                activatedSkills,
+                turnProfiling,
+                null
+        );
+    }
+
+    public FanpageBotResponse(
+            String replyText,
+            List<ReplyBubble> replyBubbles,
+            List<Integer> bubbleDelaysMs,
+            String salesStage,
+            double confidenceScore,
+            boolean needsHumanHandoff,
+            String handoffCategory,
+            String handoffReason,
+            ExtractedLead extractedLead,
+            List<LearnedRuleDto> appliedRules,
+            CustomerInsightDto customerInsight,
+            List<AgentSkillDto> activeSkills,
+            List<String> triggeredHooks,
+            boolean pendingSecondBubble,
+            Long pendingTurnSequence,
             Long priceBubbleSentAtNs
     ) {
         this(
@@ -140,6 +190,7 @@ public record FanpageBotResponse(
                 activeSkills,
                 activeSkills,
                 activeSkills,
+                null,
                 null
         );
     }
@@ -171,7 +222,34 @@ public record FanpageBotResponse(
                 availableSkills != null ? List.copyOf(availableSkills) : List.of(),
                 selectedSkills != null ? List.copyOf(selectedSkills) : safeActivated,
                 safeActivated,
-                turnProfiling
+                turnProfiling,
+                this.inboundExternalMid
+        );
+    }
+
+    public FanpageBotResponse withInboundExternalMid(String externalMid) {
+        return new FanpageBotResponse(
+                this.replyText,
+                this.replyBubbles,
+                this.bubbleDelaysMs,
+                this.salesStage,
+                this.confidenceScore,
+                this.needsHumanHandoff,
+                this.handoffCategory,
+                this.handoffReason,
+                this.extractedLead,
+                this.appliedRules,
+                this.customerInsight,
+                this.activeSkills,
+                this.triggeredHooks,
+                this.pendingSecondBubble,
+                this.pendingTurnSequence,
+                this.priceBubbleSentAtNs,
+                this.availableSkills,
+                this.selectedSkills,
+                this.activatedSkills,
+                this.turnProfiling,
+                externalMid
         );
     }
 

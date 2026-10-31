@@ -2572,4 +2572,491 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(medicalClaimBlocked)
                 .anyMatch(v -> v.startsWith("FORBIDDEN_MEDICAL_CLAIM") || "EXTREME_MEDICAL_CURE_CLAIM".equals(v));
     }
+
+    // =========================================================================
+    // UNIT P0.1 — V32 Atomic ON CONFLICT, Pure-mid Idempotency, 8-Cond WAL & 503
+    // =========================================================================
+
+    private static org.springframework.jdbc.datasource.DriverManagerDataSource buildLivePostgresDataSource() {
+        String jdbcUrl = System.getProperty(
+                "spring.datasource.url",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_URL", "jdbc:postgresql://localhost:5433/docmind")
+        );
+        String jdbcUser = System.getProperty(
+                "spring.datasource.username",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_USERNAME", "docmind")
+        );
+        String jdbcPass = System.getProperty(
+                "spring.datasource.password",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_PASSWORD", "docmind")
+        );
+        org.springframework.jdbc.datasource.DriverManagerDataSource ds =
+                new org.springframework.jdbc.datasource.DriverManagerDataSource();
+        ds.setDriverClassName("org.postgresql.Driver");
+        ds.setUrl(jdbcUrl);
+        ds.setUsername(jdbcUser);
+        ds.setPassword(jdbcPass);
+        return ds;
+    }
+
+    @Test
+    @DisplayName("P0.1-A: V32 Concurrent DB ON CONFLICT (CyclicBarrier) & 4-Row Pure-mid Idempotency Matrix")
+    void testP01_V32AtomicConcurrentOnConflictAndPureMidIdempotencyMatrix(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempWalDir
+    ) throws Exception {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+
+        // Apply idempotent V32 index DDL
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
+                + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+
+        var walStore = new DurableInboundWalRecoveryStore(tempWalDir.resolve("wal_a"), 67_108_864L);
+        var persistenceSvc = new InboundSessionPersistenceService(jdbc, txMgr, walStore);
+        walStore.setDbReplayer(persistenceSvc::replayWalRecordToDatabase);
+
+        String racePsid = "psid-p01-race-" + UUID.randomUUID();
+        String pureMidPsid = "psid-p01-puremid-" + UUID.randomUUID();
+        String tier3Psid = "psid-p01-tier3-" + UUID.randomUUID();
+
+        try {
+            // 1. Tier-1 pure-mid invariance proof (Spec Item I.2: mergedText NEVER mixed into Tier-1 key)
+            String singleShortKey1 = InboundEventIdResolver.deriveTier1FromSingleMid("m_fb_short_001");
+            assertThat(singleShortKey1).isEqualTo("fbmid:m_fb_short_001");
+
+            String longMid = "m_" + "x".repeat(120);
+            String singleLongKey = InboundEventIdResolver.deriveTier1FromSingleMid(longMid);
+            assertThat(singleLongKey).startsWith("fbmid_sha256:").hasSize(77);
+
+            String burstKeyOrderA = InboundEventIdResolver.deriveTier1FromBurstMids(List.of("m_burst_2", "m_burst_1"));
+            String burstKeyOrderB = InboundEventIdResolver.deriveTier1FromBurstMids(List.of("m_burst_1", "m_burst_2"));
+            assertThat(burstKeyOrderA).isEqualTo(burstKeyOrderB).startsWith("fbmid_sha256:");
+
+            // Mutated text with identical Facebook mid MUST resolve to identical Tier-1 key & hit ON CONFLICT DO NOTHING
+            try {
+                org.slf4j.MDC.put("fb_message_id", "m_same_mid_diff_text");
+                FanpageBotRequest reqV1 = new FanpageBotRequest(
+                        PAGE_ID.toString(), pureMidPsid, "Khách Test Mid", "Xin chào shop",
+                        null, List.of(), null, 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + pureMidPsid, false, null, null
+                );
+                FanpageBotRequest reqMutatedText = new FanpageBotRequest(
+                        PAGE_ID.toString(), pureMidPsid, "Khách Test Mid", "Xin chào shop   (re-normalized!)",
+                        null, List.of(), null, 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + pureMidPsid, false, null, null
+                );
+                var eval1 = persistenceSvc.evaluateEntryAndPersistCustomer(reqV1, "Xin chào shop");
+                var eval2 = persistenceSvc.evaluateEntryAndPersistCustomer(reqMutatedText, "Xin chào shop   (re-normalized!)");
+                assertThat(eval1.action()).isEqualTo(InboundSessionPersistenceService.EntryAction.PROCEED_TO_BOT);
+                assertThat(eval2.action()).isEqualTo(InboundSessionPersistenceService.EntryAction.SUPPRESS_DUPLICATE_INBOUND);
+                assertThat(eval1.resolvedEvent().externalMid()).isEqualTo("fbmid:m_same_mid_diff_text");
+                assertThat(eval2.resolvedEvent().externalMid()).isEqualTo("fbmid:m_same_mid_diff_text");
+
+                Integer countPureMid = jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM conversation_messages m "
+                                + "JOIN conversation_sessions s ON s.id = m.session_id "
+                                + "WHERE s.customer_psid = ?",
+                        Integer.class,
+                        pureMidPsid
+                );
+                assertThat(countPureMid).isEqualTo(1);
+            } finally {
+                org.slf4j.MDC.remove("fb_message_id");
+            }
+
+            // 2. Concurrent CyclicBarrier(2) race on brand-new customer with same mid -> 1 session, 1 CUSTOMER row
+            java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                java.util.concurrent.Callable<InboundSessionPersistenceService.EntryEvaluation> racer = () -> {
+                    org.slf4j.MDC.put("fb_message_id", "m_race_concurrent_01");
+                    try {
+                        FanpageBotRequest raceReq = new FanpageBotRequest(
+                                PAGE_ID.toString(), racePsid, "Khách Đua Luồng", "Gói 239k còn lịch không?",
+                                null, List.of(), null, 4, null, null, null, null, false, null, null,
+                                "fb_webhook_" + racePsid, false, null, null
+                        );
+                        barrier.await(5, TimeUnit.SECONDS);
+                        return persistenceSvc.evaluateEntryAndPersistCustomer(raceReq, "Gói 239k còn lịch không?");
+                    } finally {
+                        org.slf4j.MDC.remove("fb_message_id");
+                    }
+                };
+                var f1 = pool.submit(racer);
+                var f2 = pool.submit(racer);
+                var r1 = f1.get(10, TimeUnit.SECONDS);
+                var r2 = f2.get(10, TimeUnit.SECONDS);
+
+                List<InboundSessionPersistenceService.EntryAction> actions = List.of(r1.action(), r2.action());
+                assertThat(actions).containsExactlyInAnyOrder(
+                        InboundSessionPersistenceService.EntryAction.PROCEED_TO_BOT,
+                        InboundSessionPersistenceService.EntryAction.SUPPRESS_DUPLICATE_INBOUND
+                );
+
+                Integer sessionRows = jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM conversation_sessions WHERE customer_psid = ?",
+                        Integer.class,
+                        racePsid
+                );
+                Integer msgRows = jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM conversation_messages m "
+                                + "JOIN conversation_sessions s ON s.id = m.session_id "
+                                + "WHERE s.customer_psid = ?",
+                        Integer.class,
+                        racePsid
+                );
+                assertThat(sessionRows).isEqualTo(1);
+                assertThat(msgRows).isEqualTo(1);
+            } finally {
+                pool.shutdownNow();
+            }
+
+            // 3. Tier-2 timestamp fallback & Tier-3b missing protocol ID telemetry + two consecutive "ok" turns
+            try {
+                org.slf4j.MDC.put("fb_message_id", "10987654321:1730000123456:Cho chị hỏi giá");
+                FanpageBotRequest tier2Req = new FanpageBotRequest(
+                        PAGE_ID.toString(), tier3Psid, "Khách Tier 2/3", "Cho chị hỏi giá",
+                        null, List.of(), null, 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + tier3Psid, false, null, null
+                );
+                var t2Eval = persistenceSvc.evaluateEntryAndPersistCustomer(tier2Req, "Cho chị hỏi giá");
+                assertThat(t2Eval.resolvedEvent().tier())
+                        .isEqualTo(InboundEventIdResolver.IdempotencyTier.TIER_2_FB_TIMESTAMP_HASH);
+                assertThat(t2Eval.resolvedEvent().externalMid()).startsWith("fb_nomid_sha256:");
+            } finally {
+                org.slf4j.MDC.remove("fb_message_id");
+            }
+
+            assertThat(InboundEventIdResolver.deriveTier3aFromIdempotencyHeader("client-req-99"))
+                    .isEqualTo("idem:client-req-99");
+
+            long beforeMissing = InboundEventIdResolver.getMissingProtocolIdTotal();
+            FanpageBotRequest okReq1 = new FanpageBotRequest(
+                    PAGE_ID.toString(), tier3Psid, "Khách Tier 2/3", "ok",
+                    null, List.of(), null, 4, null, null, null, null, false, null, null,
+                    "sim_conv_" + tier3Psid, false, null, null
+            );
+            var okEval1 = persistenceSvc.evaluateEntryAndPersistCustomer(okReq1, "ok");
+            var okEval2 = persistenceSvc.evaluateEntryAndPersistCustomer(okReq1, "ok");
+            assertThat(InboundEventIdResolver.getMissingProtocolIdTotal()).isEqualTo(beforeMissing + 2);
+            assertThat(okEval1.resolvedEvent().externalMid()).startsWith("turn:");
+            assertThat(okEval2.resolvedEvent().externalMid())
+                    .startsWith("turn:")
+                    .isNotEqualTo(okEval1.resolvedEvent().externalMid());
+
+            Integer okRows = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages m "
+                            + "JOIN conversation_sessions s ON s.id = m.session_id "
+                            + "WHERE s.customer_psid = ? AND m.content = 'ok'",
+                    Integer.class,
+                    tier3Psid
+            );
+            assertThat(okRows).isEqualTo(2);
+        } finally {
+            jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?, ?)",
+                    racePsid, pureMidPsid, tier3Psid);
+        }
+    }
+
+    @Test
+    @DisplayName("P0.1-B: DurableInboundWalRecoveryStore 8-Condition Crash-Point Matrix (a)-(e) & 0700/0600 POSIX")
+    void testP01_DurableWalCrashPointMatrixAtoEAndPosixPermissions(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir
+    ) throws Exception {
+        var ds = buildLivePostgresDataSource();
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        var txMgr = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
+                + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+
+        var realPersistence = new InboundSessionPersistenceService(jdbc, txMgr, null);
+
+        String psidA = "psid-p01-wal-a-" + UUID.randomUUID();
+        String psidB = "psid-p01-wal-b-" + UUID.randomUUID();
+        String psidC = "psid-p01-wal-c-" + UUID.randomUUID();
+        String psidD = "psid-p01-wal-d-" + UUID.randomUUID();
+        String psidEBrandNew = "psid-p01-wal-e-new-" + UUID.randomUUID();
+
+        try {
+            // --- Crash-Point (a): Corrupted checksum + truncated partial line quarantined without hanging ---
+            java.nio.file.Path dirA = tempDir.resolve("case_a");
+            var storeA = new DurableInboundWalRecoveryStore(dirA, 67_108_864L);
+            // Line 1: malformed/corrupted checksum JSON line
+            storeA.appendAndFsync(PAGE_ID.toString(), psidA, "Khách A", "fb_webhook_" + psidA,
+                    "fbmid:m_wal_a_valid", "Dạ cho chị đặt gói 399k 💆‍♀️🌿", System.currentTimeMillis());
+            String validLine = java.nio.file.Files.readString(storeA.getWalFile());
+            String badChecksumLine = "{\"walSeq\":99,\"pageId\":\"" + PAGE_ID + "\",\"senderId\":\"" + psidA
+                    + "\",\"inboundExternalMid\":\"fbmid:m_bad\",\"verbatimText\":\"tampered\","
+                    + "\"receivedAtEpochMs\":1730000000,\"sha256Checksum\":\"deadbeef\"}\n";
+            String truncatedTailNoNewline = "{\"walSeq\":100,\"pageId\":\"" + PAGE_ID + "\",\"senderId\":\"cut_mid_write";
+            java.nio.file.Files.writeString(
+                    storeA.getWalFile(),
+                    badChecksumLine + validLine + truncatedTailNoNewline,
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+
+            var restartedStoreA = new DurableInboundWalRecoveryStore(dirA, 67_108_864L);
+            var reportA = restartedStoreA.replayPendingRecords(realPersistence::replayWalRecordToDatabase);
+            assertThat(reportA.replayedValidRecords()).isEqualTo(1);
+            assertThat(reportA.quarantinedCorruptRecords()).isEqualTo(2);
+            assertThat(reportA.compacted()).isTrue();
+            assertThat(java.nio.file.Files.exists(restartedStoreA.getQuarantineFile())).isTrue();
+
+            // Verify POSIX 0700 on dir and 0600 on files
+            if (java.nio.file.Files.getFileAttributeView(dirA, java.nio.file.attribute.PosixFileAttributeView.class) != null) {
+                var dirPerms = java.nio.file.Files.getPosixFilePermissions(dirA);
+                assertThat(java.nio.file.attribute.PosixFilePermissions.toString(dirPerms)).isEqualTo("rwx------");
+                var walPerms = java.nio.file.Files.getPosixFilePermissions(restartedStoreA.getWalFile());
+                assertThat(java.nio.file.attribute.PosixFilePermissions.toString(walPerms)).isEqualTo("rw-------");
+                var qPerms = java.nio.file.Files.getPosixFilePermissions(restartedStoreA.getQuarantineFile());
+                assertThat(java.nio.file.attribute.PosixFilePermissions.toString(qPerms)).isEqualTo("rw-------");
+            }
+
+            // --- Crash-Point (b) & (e): Crash after fsync before DB commit + brand-new customer with 0 prior session ---
+            java.nio.file.Path dirBE = tempDir.resolve("case_be");
+            var storeBeforeCrashB = new DurableInboundWalRecoveryStore(dirBE, 67_108_864L);
+            var brokenDs = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                    "jdbc:postgresql://127.0.0.1:1/unreachable_db?connectTimeout=1", "bad", "bad"
+            );
+            var outagePersistence = new InboundSessionPersistenceService(
+                    new org.springframework.jdbc.core.JdbcTemplate(brokenDs),
+                    new org.springframework.jdbc.datasource.DataSourceTransactionManager(brokenDs),
+                    storeBeforeCrashB
+            );
+            try {
+                org.slf4j.MDC.put("fb_message_id", "m_wal_brand_new_e01");
+                FanpageBotRequest webhookDuringOutage = new FanpageBotRequest(
+                        PAGE_ID.toString(), psidEBrandNew, "Khách Mới Tinh Chưa Có Session",
+                        "Chị mới nhắn lần đầu hỏi gói 239k ạ",
+                        null, List.of(), null, 4, null, null, null, null, false, null, null,
+                        "fb_webhook_" + psidEBrandNew, false, null, null
+                );
+                var outageEval = outagePersistence.evaluateEntryAndPersistCustomer(
+                        webhookDuringOutage,
+                        "Chị mới nhắn lần đầu hỏi gói 239k ạ"
+                );
+                assertThat(outageEval.action())
+                        .isEqualTo(InboundSessionPersistenceService.EntryAction.BLOCK_FAIL_CLOSED_WEBHOOK);
+            } finally {
+                org.slf4j.MDC.remove("fb_message_id");
+            }
+            assertThat(storeBeforeCrashB.hasPendingWalRecords()).isTrue();
+            Integer preReplaySessions = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_sessions WHERE customer_psid = ?",
+                    Integer.class,
+                    psidEBrandNew
+            );
+            assertThat(preReplaySessions).isEqualTo(0);
+
+            // Simulate container restart with fresh store instance & restored DB -> FK-safe session + message created!
+            var restartedStoreBE = new DurableInboundWalRecoveryStore(dirBE, 67_108_864L);
+            var reportBE = restartedStoreBE.replayPendingRecords(realPersistence::replayWalRecordToDatabase);
+            assertThat(reportBE.replayedValidRecords()).isEqualTo(1);
+            assertThat(reportBE.compacted()).isTrue();
+            Integer postReplayMsgsE = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages m "
+                            + "JOIN conversation_sessions s ON s.id = m.session_id "
+                            + "WHERE s.customer_psid = ? AND m.external_mid = 'fbmid:m_wal_brand_new_e01'",
+                    Integer.class,
+                    psidEBrandNew
+            );
+            assertThat(postReplayMsgsE).isEqualTo(1);
+
+            // --- Crash-Point (c): Crash AFTER DB commit BEFORE checkpoint update -> 0 duplicates on replay ---
+            java.nio.file.Path dirC = tempDir.resolve("case_c");
+            var storeC = new DurableInboundWalRecoveryStore(dirC, 67_108_864L);
+            storeC.appendAndFsync(PAGE_ID.toString(), psidC, "Khách C", "fb_webhook_" + psidC,
+                    "fbmid:m_wal_c_committed", "Tin nhắn đã commit nhưng chưa kịp ghi checkpoint",
+                    System.currentTimeMillis());
+            // Pre-commit the exact same record to DB while leaving checkpoint untouched at 0
+            realPersistence.replayWalRecordToDatabase(new DurableInboundWalRecoveryStore.WalRecord(
+                    1L, PAGE_ID.toString(), psidC, "Khách C", "fb_webhook_" + psidC,
+                    "fbmid:m_wal_c_committed", "Tin nhắn đã commit nhưng chưa kịp ghi checkpoint",
+                    System.currentTimeMillis(), "unused"
+            ));
+            assertThat(java.nio.file.Files.exists(storeC.getCheckpointFile())).isFalse();
+
+            var restartedStoreC = new DurableInboundWalRecoveryStore(dirC, 67_108_864L);
+            var reportC = restartedStoreC.replayPendingRecords(realPersistence::replayWalRecordToDatabase);
+            assertThat(reportC.replayedValidRecords()).isEqualTo(1);
+            assertThat(reportC.compacted()).isTrue();
+            Integer countC = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages m "
+                            + "JOIN conversation_sessions s ON s.id = m.session_id "
+                            + "WHERE s.customer_psid = ?",
+                    Integer.class,
+                    psidC
+            );
+            assertThat(countC).isEqualTo(1);
+
+            // --- Crash-Point (d): Crash mid-compact (checkpoint reset to 0 + orphaned .compact.tmp, wal.jsonl un-truncated) ---
+            java.nio.file.Path dirD = tempDir.resolve("case_d");
+            var storeD = new DurableInboundWalRecoveryStore(dirD, 67_108_864L);
+            storeD.appendAndFsync(PAGE_ID.toString(), psidD, "Khách D", "fb_webhook_" + psidD,
+                    "fbmid:m_wal_d_compact", "Tin nhắn kiểm thử crash giữa lúc compact",
+                    System.currentTimeMillis());
+            byte[] savedWalBytesD = java.nio.file.Files.readAllBytes(storeD.getWalFile());
+            // Run normal replay first so DB has the record, then restore un-truncated wal.jsonl + orphaned .tmp
+            storeD.replayPendingRecords(realPersistence::replayWalRecordToDatabase);
+            java.nio.file.Files.write(storeD.getWalFile(), savedWalBytesD);
+            storeD.writeCheckpointAtomically(0L);
+            java.nio.file.Files.writeString(dirD.resolve("inbound_recovery_wal.jsonl.compact.tmp"), "orphan_tmp");
+            java.nio.file.Files.writeString(dirD.resolve("inbound_recovery_wal.checkpoint.tmp"), "999999");
+
+            var restartedStoreD = new DurableInboundWalRecoveryStore(dirD, 67_108_864L);
+            restartedStoreD.onApplicationReady();
+            var reportD = restartedStoreD.replayPendingRecords(realPersistence::replayWalRecordToDatabase);
+            assertThat(java.nio.file.Files.size(restartedStoreD.getWalFile())).isEqualTo(0L);
+            assertThat(java.nio.file.Files.exists(dirD.resolve("inbound_recovery_wal.jsonl.compact.tmp"))).isFalse();
+            Integer countD = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages m "
+                            + "JOIN conversation_sessions s ON s.id = m.session_id "
+                            + "WHERE s.customer_psid = ?",
+                    Integer.class,
+                    psidD
+            );
+            assertThat(countD).isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM conversation_sessions WHERE customer_psid IN (?, ?, ?, ?, ?)",
+                    psidA, psidB, psidC, psidD, psidEBrandNew);
+        }
+    }
+
+    @Test
+    @DisplayName("P0.1-C: Sync REST HTTP 503 (Retry-After: 5), WAL Max-Bytes Overflow Counter & HUMAN_TAKEOVER 0-LLM Lifecycle")
+    void testP01_SyncRestHttp503RetryAfterWalMaxBytesOverflowAndHumanTakeoverLifecycle(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir
+    ) {
+        // 1. Sync REST channel with unreachable DB -> throws InboundPersistenceUnavailableException -> HTTP 503 + Retry-After: 5
+        var brokenDs = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:postgresql://127.0.0.1:1/unreachable_db?connectTimeout=1", "bad", "bad"
+        );
+        var tinyWal = new DurableInboundWalRecoveryStore(tempDir.resolve("tiny_wal"), 350L);
+        var brokenPersistence = new InboundSessionPersistenceService(
+                new org.springframework.jdbc.core.JdbcTemplate(brokenDs),
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(brokenDs),
+                tinyWal
+        );
+
+        AtomicInteger llmCallCounter = new AtomicInteger(0);
+        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+        FanpageBotService outageBot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    llmCallCounter.incrementAndGet();
+                    return "{\"reply_bubbles\":[\"Dạ bên em chào chị ạ.\"]}";
+                }
+        );
+        outageBot.setInboundSessionPersistenceService(brokenPersistence);
+
+        FanpageBotRequest syncRestReq = new FanpageBotRequest(
+                PAGE_ID.toString(), "psid-rest-503", "Khách REST", "Cho chị hỏi giá gói 239k",
+                null, List.of(), null, 4, null, null, null, null, false, null, null,
+                "rest_conv_503", false, null, null
+        );
+        InboundPersistenceUnavailableException thrown503 = org.junit.jupiter.api.Assertions.assertThrows(
+                InboundPersistenceUnavailableException.class,
+                () -> outageBot.handleCustomerMessage(syncRestReq)
+        );
+        var exceptionHandler = new com.example.docmind.controller.InboundPersistenceExceptionHandler();
+        var responseEntity = exceptionHandler.handleInboundPersistenceUnavailable(thrown503);
+        assertThat(responseEntity.getStatusCode().value()).isEqualTo(503);
+        assertThat(responseEntity.getHeaders().getFirst("Retry-After")).isEqualTo("5");
+        assertThat(llmCallCounter.get()).isEqualTo(0);
+
+        // 2. Webhook channel hitting max-bytes cap (350 bytes) -> increments docmind_inbound_wal_overflow_total & stays Fail-Closed
+        try {
+            org.slf4j.MDC.put("fb_message_id", "m_overflow_1");
+            FanpageBotRequest wh1 = new FanpageBotRequest(
+                    PAGE_ID.toString(), "psid-wh-ovf", "Khách WH", "Tin ngắn 1",
+                    null, List.of(), null, 4, null, null, null, null, false, null, null,
+                    "fb_webhook_psid-wh-ovf", false, null, null
+            );
+            FanpageBotResponse r1 = outageBot.handleCustomerMessage(wh1);
+            assertThat(r1.replyBubbles()).isEmpty();
+            assertThat(r1.needsHumanHandoff()).isFalse();
+            assertThat(r1.triggeredHooks()).contains("STATE_GUARD_FAIL_CLOSED");
+
+            org.slf4j.MDC.put("fb_message_id", "m_overflow_2");
+            FanpageBotRequest wh2 = new FanpageBotRequest(
+                    PAGE_ID.toString(), "psid-wh-ovf", "Khách WH",
+                    "Tin nhắn thứ hai vượt ngưỡng 350 bytes để kích hoạt bộ đếm tràn WAL bền vững trên đĩa!",
+                    null, List.of(), null, 4, null, null, null, null, false, null, null,
+                    "fb_webhook_psid-wh-ovf", false, null, null
+            );
+            FanpageBotResponse r2 = outageBot.handleCustomerMessage(wh2);
+            assertThat(r2.replyBubbles()).isEmpty();
+            assertThat(r2.needsHumanHandoff()).isFalse();
+            assertThat(tinyWal.getWalOverflowTotal()).isGreaterThanOrEqualTo(1L);
+            assertThat(llmCallCounter.get()).isEqualTo(0);
+        } finally {
+            org.slf4j.MDC.remove("fb_message_id");
+        }
+
+        // 3. Live Postgres HUMAN_TAKEOVER -> 0 LLM, 0 outbound, needsHumanHandoff=false, CUSTOMER saved, 0 AI_BOT rows
+        var liveDs = buildLivePostgresDataSource();
+        var liveJdbc = new org.springframework.jdbc.core.JdbcTemplate(liveDs);
+        liveJdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conv_messages_session_ext_mid "
+                + "ON conversation_messages (session_id, external_mid) WHERE external_mid IS NOT NULL");
+        var liveTx = new org.springframework.jdbc.datasource.DataSourceTransactionManager(liveDs);
+        var liveWal = new DurableInboundWalRecoveryStore(tempDir.resolve("live_wal"), 67_108_864L);
+        var livePersistence = new InboundSessionPersistenceService(liveJdbc, liveTx, liveWal);
+
+        FanpageBotService liveBot = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    llmCallCounter.incrementAndGet();
+                    return "{\"reply_bubbles\":[\"Dạ bên em chào chị ạ.\"]}";
+                }
+        );
+        liveBot.setInboundSessionPersistenceService(livePersistence);
+
+        String takeoverPsid = "psid-p01-takeover-" + UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        try {
+            liveJdbc.update(
+                    "INSERT INTO conversation_sessions ("
+                            + "id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, "
+                            + "control_mode, buying_temperature, temperature_delta, temperature_label, momentum, "
+                            + "buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, "
+                            + "last_message_preview, last_sender_role, last_message_at, created_at, updated_at"
+                            + ") VALUES (?, ?, ?, 'Khách Takeover', 'Chị', 'Tư vấn', 'GENERAL', "
+                            + "'HUMAN_TAKEOVER', 50, 0, 'WARM', 'STABLE', "
+                            + "'EXPLORING_CONSULTATION', 'Đang tìm hiểu', 'DISCOVERY', TRUE, FALSE, "
+                            + "'Sale đang hỗ trợ', 'HUMAN_SALE', NOW(), NOW(), NOW())",
+                    sessionId, PAGE_ID, takeoverPsid
+            );
+
+            FanpageBotRequest takeoverTurn = new FanpageBotRequest(
+                    PAGE_ID.toString(), takeoverPsid, "Khách Takeover", "Em ơi chị chuyển khoản cọc rồi nhé",
+                    null, List.of(), null, 4, null, null, null, null, false, null, null,
+                    "fb_webhook_" + takeoverPsid, false, null, null
+            );
+            FanpageBotResponse blockedResp = liveBot.handleCustomerMessage(takeoverTurn);
+            assertThat(llmCallCounter.get()).isEqualTo(0);
+            assertThat(blockedResp.replyBubbles()).isEmpty();
+            assertThat(blockedResp.replyText()).isEmpty();
+            assertThat(blockedResp.needsHumanHandoff()).isFalse();
+            assertThat(blockedResp.handoffCategory()).isNull();
+            assertThat(blockedResp.triggeredHooks()).contains("HUMAN_TAKEOVER_SILENT_HOLD");
+
+            Integer savedCustCount = liveJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages WHERE session_id = ? AND sender_role = 'CUSTOMER'",
+                    Integer.class,
+                    sessionId
+            );
+            Integer savedBotCount = liveJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM conversation_messages WHERE session_id = ? AND sender_role = 'AI_BOT'",
+                    Integer.class,
+                    sessionId
+            );
+            assertThat(savedCustCount).isEqualTo(1);
+            assertThat(savedBotCount).isEqualTo(0);
+        } finally {
+            liveJdbc.update("DELETE FROM conversation_sessions WHERE id = ?", sessionId);
+        }
+    }
 }

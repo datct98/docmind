@@ -47,6 +47,8 @@ public class ConversationInboxService {
     private final MetaLearningService metaLearningService;
     private final LearnedRuleRepository learnedRuleRepository;
     private KnowledgePageRepository knowledgePageRepository;
+    @Autowired(required = false)
+    private InboundSessionPersistenceService inboundSessionPersistenceService;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Autowired
@@ -157,9 +159,26 @@ public class ConversationInboxService {
         return toSessionDetailMap(session, msgs);
     }
 
+    public static boolean isSilentSuppressedBotResponse(FanpageBotResponse botResponse) {
+        if (botResponse == null) {
+            return true;
+        }
+        boolean emptyBubbles = botResponse.replyBubbles() == null || botResponse.replyBubbles().isEmpty();
+        boolean emptyText = botResponse.replyText() == null || botResponse.replyText().isBlank();
+        return emptyBubbles && emptyText;
+    }
+
+    public void setInboundSessionPersistenceService(InboundSessionPersistenceService inboundSessionPersistenceService) {
+        this.inboundSessionPersistenceService = inboundSessionPersistenceService;
+    }
+
     @Transactional
     public void recordCustomerAndBotTurn(FanpageBotRequest request, FanpageBotResponse botResponse) {
         if (request == null || botResponse == null) {
+            return;
+        }
+        if (botResponse.triggeredHooks() != null
+                && botResponse.triggeredHooks().contains("DUPLICATE_INBOUND_EVENT_SUPPRESSED")) {
             return;
         }
         try {
@@ -172,19 +191,55 @@ public class ConversationInboxService {
                 return;
             }
 
+            String inboundExtMid = (botResponse.inboundExternalMid() != null && !botResponse.inboundExternalMid().isBlank())
+                    ? botResponse.inboundExternalMid()
+                    : InboundEventIdResolver.resolveForCurrentContext(request, custMsg).externalMid();
+
             ConversationSessionEntity session = findOrCreateSession(pageId, psid, request.customerName());
-            applyBotResponseToSession(session, custMsg, botResponse);
-            session = sessionRepository.saveAndFlush(session);
             Instant now = Instant.now();
 
-            ConversationMessageEntity userMsgEntity = ConversationMessageEntity.builder()
-                    .id(UUID.randomUUID())
-                    .sessionId(session.getId())
-                    .senderRole("CUSTOMER")
-                    .content(custMsg)
-                    .createdAt(now)
-                    .build();
-            messageRepository.save(userMsgEntity);
+            if (isSilentSuppressedBotResponse(botResponse)) {
+                session.setLastMessagePreview(custMsg);
+                session.setLastSenderRole("CUSTOMER");
+                session.setLastMessageAt(now);
+                session.setUpdatedAt(now);
+                session = sessionRepository.saveAndFlush(session);
+                if (inboundSessionPersistenceService != null) {
+                    inboundSessionPersistenceService.persistCustomerMessageForExistingSession(
+                            session.getId(), custMsg, inboundExtMid, now
+                    );
+                } else {
+                    ConversationMessageEntity userMsgEntity = ConversationMessageEntity.builder()
+                            .id(UUID.randomUUID())
+                            .sessionId(session.getId())
+                            .senderRole("CUSTOMER")
+                            .content(custMsg)
+                            .externalMid(inboundExtMid)
+                            .createdAt(now)
+                            .build();
+                    messageRepository.save(userMsgEntity);
+                }
+                return;
+            }
+
+            applyBotResponseToSession(session, custMsg, botResponse);
+            session = sessionRepository.saveAndFlush(session);
+
+            if (inboundSessionPersistenceService != null) {
+                inboundSessionPersistenceService.persistCustomerMessageForExistingSession(
+                        session.getId(), custMsg, inboundExtMid, now
+                );
+            } else {
+                ConversationMessageEntity userMsgEntity = ConversationMessageEntity.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(session.getId())
+                        .senderRole("CUSTOMER")
+                        .content(custMsg)
+                        .externalMid(inboundExtMid)
+                        .createdAt(now)
+                        .build();
+                messageRepository.save(userMsgEntity);
+            }
 
             ConversationMessageEntity botMsgEntity = ConversationMessageEntity.builder()
                     .id(UUID.randomUUID())
@@ -205,30 +260,65 @@ public class ConversationInboxService {
         if (customerMessage == null || customerMessage.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tin nhắn không được để trống.");
         }
-        ConversationSessionEntity session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
+        ConversationSessionEntity session;
+        List<ConversationMessageEntity> existingMsgs;
+        try {
+            session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại."));
+            existingMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception dbEx) {
+            throw new InboundPersistenceUnavailableException(
+                    "Không thể truy cập phiên hội thoại do lỗi kết nối cơ sở dữ liệu: " + dbEx.getMessage(),
+                    dbEx
+            );
+        }
 
-        List<ConversationMessageEntity> existingMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
         for (ConversationMessageEntity m : existingMsgs) {
             String role = "CUSTOMER".equalsIgnoreCase(m.getSenderRole()) ? "user" : "assistant";
             history.add(new FanpageBotRequest.ConversationTurn(role, m.getContent()));
         }
 
+        String trimmedCustomerMessage = customerMessage.strip();
+        InboundEventIdResolver.ResolvedInboundEvent resolvedEvent =
+                InboundEventIdResolver.resolveForCurrentContext(null, trimmedCustomerMessage);
         Instant now = Instant.now();
-        ConversationMessageEntity custEntity = ConversationMessageEntity.builder()
-                .id(UUID.randomUUID())
-                .sessionId(sessionId)
-                .senderRole("CUSTOMER")
-                .content(customerMessage.strip())
-                .createdAt(now)
-                .build();
-        messageRepository.save(custEntity);
+
+        if (inboundSessionPersistenceService != null) {
+            boolean inserted = inboundSessionPersistenceService.persistCustomerMessageForExistingSession(
+                    sessionId,
+                    trimmedCustomerMessage,
+                    resolvedEvent.externalMid(),
+                    now
+            );
+            if (!inserted && resolvedEvent.stableCrossRequestId()) {
+                return toSessionDetailMap(session, existingMsgs);
+            }
+        } else {
+            try {
+                ConversationMessageEntity custEntity = ConversationMessageEntity.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionId)
+                        .senderRole("CUSTOMER")
+                        .content(trimmedCustomerMessage)
+                        .externalMid(resolvedEvent.externalMid())
+                        .createdAt(now)
+                        .build();
+                messageRepository.save(custEntity);
+            } catch (Exception dbEx) {
+                throw new InboundPersistenceUnavailableException(
+                        "Không thể lưu tin nhắn khách hàng do lỗi kết nối cơ sở dữ liệu: " + dbEx.getMessage(),
+                        dbEx
+                );
+            }
+        }
 
         // Nếu đang ở chế độ HUMAN_TAKEOVER (Sale đang trực tiếp tiếp quản và đã tắt AI):
         // Chỉ lưu tin nhắn của khách hàng để Sale trả lời, AI không nhảy vào cướp lời Sale!
         if ("HUMAN_TAKEOVER".equalsIgnoreCase(session.getControlMode())) {
-            session.setLastMessagePreview(customerMessage.strip());
+            session.setLastMessagePreview(trimmedCustomerMessage);
             session.setLastSenderRole("CUSTOMER");
             session.setLastMessageAt(now);
             session.setUpdatedAt(now);
@@ -241,7 +331,7 @@ public class ConversationInboxService {
                 session.getPageId() != null ? session.getPageId().toString() : null,
                 session.getCustomerPsid(),
                 session.getCustomerName(),
-                customerMessage.strip(),
+                trimmedCustomerMessage,
                 null,
                 history,
                 null,
@@ -252,7 +342,24 @@ public class ConversationInboxService {
                 null
         );
 
-        FanpageBotResponse botResp = fanpageBotService.handleCustomerMessage(botReq);
+        FanpageBotResponse botResp = InboundEventIdResolver.runWithPrePersistedEvent(
+                resolvedEvent,
+                () -> fanpageBotService.handleCustomerMessage(botReq)
+        );
+        if (isSilentSuppressedBotResponse(botResp)) {
+            session.setLastMessagePreview(trimmedCustomerMessage);
+            session.setLastSenderRole("CUSTOMER");
+            session.setLastMessageAt(now);
+            session.setUpdatedAt(now);
+            sessionRepository.save(session);
+            List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+            Map<String, Object> detail = toSessionDetailMap(session, updatedMsgs);
+            detail.put("latest_bot_message_id", null);
+            detail.put("reply_bubbles", List.of());
+            detail.put("bubble_delays_ms", List.of());
+            return detail;
+        }
+
         ConversationMessageEntity botEntity = ConversationMessageEntity.builder()
                 .id(UUID.randomUUID())
                 .sessionId(sessionId)
@@ -263,7 +370,7 @@ public class ConversationInboxService {
                 .build();
         messageRepository.save(botEntity);
 
-        applyBotResponseToSession(session, customerMessage.strip(), botResp);
+        applyBotResponseToSession(session, trimmedCustomerMessage, botResp);
         sessionRepository.save(session);
 
         List<ConversationMessageEntity> updatedMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);

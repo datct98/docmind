@@ -140,6 +140,7 @@ services:
     volumes:
       - ./.env:/app/.env:ro
       - ./config:/app/config:ro
+      - docmind-inbound-wal:/var/lib/docmind/inbound-wal
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -180,3 +181,4 @@ services:
 volumes:
   docmind-pgdata:
   docmind-braindata:
+  docmind-inbound-wal:

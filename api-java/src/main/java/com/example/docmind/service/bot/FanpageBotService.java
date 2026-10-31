@@ -316,6 +316,8 @@ public class FanpageBotService {
     private com.example.docmind.service.playbook.PlaybookUploadService playbookUploadService;
     @Autowired(required = false)
     private CleanAgentOrchestratorService cleanAgentOrchestratorService;
+    @Autowired(required = false)
+    private InboundSessionPersistenceService inboundSessionPersistenceService;
 
     @Autowired
     public FanpageBotService(RetrievalService retrievalService,
@@ -441,6 +443,14 @@ public class FanpageBotService {
         return cleanAgentOrchestratorService;
     }
 
+    public void setInboundSessionPersistenceService(InboundSessionPersistenceService inboundSessionPersistenceService) {
+        this.inboundSessionPersistenceService = inboundSessionPersistenceService;
+    }
+
+    public InboundSessionPersistenceService getInboundSessionPersistenceService() {
+        return inboundSessionPersistenceService;
+    }
+
     public FanpageBotService(RetrievalService retrievalService,
                              LlmClient llmClient,
                              ChatProperties chatProps,
@@ -531,9 +541,36 @@ public class FanpageBotService {
     /** Correlation id của lượt hiện tại (run_id/conversation_id/turn_id) để nối Router -> Validator -> Sender trong log audit. */
     private static final ThreadLocal<String> CURRENT_TURN_ID = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> PROVENANCE_V38_LOGGED = new ThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_INBOUND_EXTERNAL_MID = new ThreadLocal<>();
 
     static void markProvenanceV38Logged() {
         PROVENANCE_V38_LOGGED.set(true);
+    }
+
+    static FanpageBotResponse buildSilentSuppressedResponse(String hookCode, String inboundExternalMid) {
+        return new FanpageBotResponse(
+                "",
+                List.of(),
+                List.of(),
+                "SUPPRESSED",
+                1.0,
+                false,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                List.of(),
+                hookCode != null ? List.of(hookCode) : List.of(),
+                false,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                inboundExternalMid
+        );
     }
 
     public FanpageBotResponse handleCustomerMessage(FanpageBotRequest rawRequest) {
@@ -558,13 +595,19 @@ public class FanpageBotService {
         }
         CURRENT_TURN_ID.set(turnId);
         PROVENANCE_V38_LOGGED.set(false);
+        CURRENT_INBOUND_EXTERNAL_MID.remove();
         try {
             FanpageBotResponse resp = handleCustomerMessageInternal(request);
             if (!Boolean.TRUE.equals(PROVENANCE_V38_LOGGED.get()) && resp != null) {
                 resp = enforceFinalOutputGateAndLogProvenanceV38OnEarlyReturn(request, resp);
             }
+            String resolvedExtMid = CURRENT_INBOUND_EXTERNAL_MID.get();
+            if (resp != null && resolvedExtMid != null && resp.inboundExternalMid() == null) {
+                resp = resp.withInboundExternalMid(resolvedExtMid);
+            }
             return resp;
         } finally {
+            CURRENT_INBOUND_EXTERNAL_MID.remove();
             PROVENANCE_V38_LOGGED.remove();
             CURRENT_TURN_ID.remove();
         }
@@ -680,6 +723,50 @@ public class FanpageBotService {
                 }
             }
         }
+
+        // Unit P0.1: Entry State Guard (HUMAN_TAKEOVER + Fail-Closed + Atomic ON CONFLICT inbound persistence)
+        if (inboundSessionPersistenceService != null) {
+            if (isReengageAction) {
+                if (!inboundSessionPersistenceService.isProactiveReengageAllowed(pageId, request.senderId())) {
+                    return buildSilentSuppressedResponse("HUMAN_TAKEOVER_SILENT_HOLD", null);
+                }
+            } else if (!isGeneratePriceAnchorAction) {
+                FanpageBotRequest effectivePersistenceReq = (pageId != null && (request.pageId() == null || request.pageId().isBlank()))
+                        ? new FanpageBotRequest(
+                                pageId.toString(), request.senderId(), request.customerName(), request.message(),
+                                request.messages(), request.history(), request.documentIds(), request.topK(),
+                                request.previousTemperature(), request.replyDelaySeconds(), request.idleSeconds(),
+                                request.action(), request.splitPriceBubbles(), request.pendingTurnSequence(),
+                                request.priceBubbleSentAtNs(), request.conversationId(), request.resetSession(),
+                                request.replyToMid(), request.quotedMessageText()
+                        )
+                        : request;
+                String verbatimToStore = (rawMerged != null && !rawMerged.isBlank())
+                        ? rawMerged.strip()
+                        : mergedMessage;
+                InboundSessionPersistenceService.EntryEvaluation entryEval =
+                        inboundSessionPersistenceService.evaluateEntryAndPersistCustomer(
+                                effectivePersistenceReq,
+                                verbatimToStore
+                        );
+                String resolvedMid = (entryEval.resolvedEvent() != null)
+                        ? entryEval.resolvedEvent().externalMid()
+                        : null;
+                if (resolvedMid != null) {
+                    CURRENT_INBOUND_EXTERNAL_MID.set(resolvedMid);
+                }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_HUMAN_TAKEOVER) {
+                    return buildSilentSuppressedResponse("HUMAN_TAKEOVER_SILENT_HOLD", resolvedMid);
+                }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.SUPPRESS_DUPLICATE_INBOUND) {
+                    return buildSilentSuppressedResponse("DUPLICATE_INBOUND_EVENT_SUPPRESSED", resolvedMid);
+                }
+                if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_FAIL_CLOSED_WEBHOOK) {
+                    return buildSilentSuppressedResponse("STATE_GUARD_FAIL_CLOSED", resolvedMid);
+                }
+            }
+        }
+
         long currentTurnSequence = isGeneratePriceAnchorAction
                 ? (request.pendingTurnSequence() != null ? request.pendingTurnSequence() : 0L)
                 : ThinkingModePolicy.registerIncomingCustomerTurn(pageId, request.senderId());

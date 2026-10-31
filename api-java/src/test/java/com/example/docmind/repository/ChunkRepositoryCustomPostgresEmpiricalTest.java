@@ -1,6 +1,7 @@
 package com.example.docmind.repository;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,13 +34,35 @@ public class ChunkRepositoryCustomPostgresEmpiricalTest {
 
     @BeforeEach
     void setUp() {
+        String jdbcUrl = System.getProperty(
+                "spring.datasource.url",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_URL", "jdbc:postgresql://localhost:5433/docmind")
+        );
+        String jdbcUser = System.getProperty(
+                "spring.datasource.username",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_USERNAME", "docmind")
+        );
+        String jdbcPass = System.getProperty(
+                "spring.datasource.password",
+                System.getenv().getOrDefault("SPRING_DATASOURCE_PASSWORD", "docmind")
+        );
+
         DriverManagerDataSource ds = new DriverManagerDataSource();
         ds.setDriverClassName("org.postgresql.Driver");
-        ds.setUrl("jdbc:postgresql://localhost:5433/docmind");
-        ds.setUsername("docmind");
-        ds.setPassword("docmind");
+        ds.setUrl(jdbcUrl);
+        ds.setUsername(jdbcUser);
+        ds.setPassword(jdbcPass);
 
-        this.jdbc = new JdbcTemplate(ds);
+        JdbcTemplate candidateJdbc = new JdbcTemplate(ds);
+        if (Boolean.getBoolean("docmind.allowOfflineSkip")) {
+            try {
+                candidateJdbc.queryForObject("SELECT 1", Integer.class);
+            } catch (Exception ex) {
+                Assumptions.assumeTrue(false, "Offline skip enabled and PostgreSQL unreachable: " + ex.getMessage());
+            }
+        }
+
+        this.jdbc = candidateJdbc;
         this.repository = new ChunkRepositoryCustomImpl(jdbc, 384);
 
         // Always create a dedicated isolated document for empirical test run
@@ -51,12 +74,11 @@ public class ChunkRepositoryCustomPostgresEmpiricalTest {
 
     @AfterEach
     void tearDown() {
-        if (jdbc != null) {
+        if (jdbc != null && testDocId != null) {
             jdbc.update("DELETE FROM chunks WHERE id IN (?, ?, ?, ?, ?, ?)",
                     chunkQ1Heading, chunkQ1Body, chunkBichCau, chunkDeepNested, chunkNullHeading, chunkEmptyHeading);
-            if (testDocId != null) {
-                jdbc.update("DELETE FROM documents WHERE id = ?", testDocId);
-            }
+            jdbc.update("DELETE FROM documents WHERE id = ?", testDocId);
+            testDocId = null;
         }
     }
 
