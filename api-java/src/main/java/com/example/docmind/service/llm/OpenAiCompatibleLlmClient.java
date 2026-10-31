@@ -42,6 +42,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleLlmClient.class);
     private static final int FAST_REASONING_ATTEMPT_TIMEOUT_MS = 90_000;
+    private static final int MAX_UPSTREAM_NETWORK_RETRIES = 1;
+    private static final long UPSTREAM_RETRY_BACKOFF_MS = 350L;
 
     public record OpenAiCallTelemetry(
             String provider,
@@ -292,18 +294,36 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     }
 
     private String executePostWithRetry(Map<String, Object> body, ReasoningBudget budget) {
+        int timeoutSec = budget != null && budget.timeoutSeconds() > 0
+                ? budget.timeoutSeconds()
+                : props.getTimeoutSeconds();
         try {
             return executePost(body, budget);
         } catch (ResourceAccessException timeoutOrIo) {
-            log.warn("[LLM] Provider {} attempt 1 timed out or network stalled ({}), retrying once...",
-                    provider, timeoutOrIo.getMessage());
+            log.warn("[LLM] Provider {} attempt 1/{} timed out or network stalled (timeout={}s, backoff={}ms, err={}), retrying max {} time...",
+                    provider, MAX_UPSTREAM_NETWORK_RETRIES + 1, timeoutSec, UPSTREAM_RETRY_BACKOFF_MS,
+                    timeoutOrIo.getMessage(), MAX_UPSTREAM_NETWORK_RETRIES);
+            sleepBoundedBackoff(UPSTREAM_RETRY_BACKOFF_MS);
             return executePost(body, budget);
         } catch (HttpServerErrorException.BadGateway
                  | HttpServerErrorException.ServiceUnavailable
                  | HttpServerErrorException.GatewayTimeout gatewayErr) {
-            log.warn("[LLM] Provider {} attempt 1 returned upstream gateway error ({}), retrying once...",
-                    provider, gatewayErr.getStatusCode());
+            log.warn("[LLM] Provider {} attempt 1/{} returned upstream gateway error ({}, timeout={}s, backoff={}ms), retrying max {} time...",
+                    provider, MAX_UPSTREAM_NETWORK_RETRIES + 1, gatewayErr.getStatusCode(),
+                    timeoutSec, UPSTREAM_RETRY_BACKOFF_MS, MAX_UPSTREAM_NETWORK_RETRIES);
+            sleepBoundedBackoff(UPSTREAM_RETRY_BACKOFF_MS);
             return executePost(body, budget);
+        }
+    }
+
+    private static void sleepBoundedBackoff(long backoffMs) {
+        if (backoffMs <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(backoffMs);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 

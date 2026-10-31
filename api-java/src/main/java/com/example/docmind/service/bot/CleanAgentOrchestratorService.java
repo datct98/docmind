@@ -4454,21 +4454,30 @@ public class CleanAgentOrchestratorService {
         int llmRegenerationCount = 0;
         LlmTokenUsageSnapshot tokenUsage = LlmTokenUsageSnapshot.zero();
         long modelLatencyMs = 0L;
+        boolean initialUpstreamError = false;
         try {
             if (llmClient != null) {
                 long callStartNs = System.nanoTime();
                 rawReply = llmClient.complete(aciPrompt, aciBudget);
                 modelLatencyMs += Math.max(1L, (System.nanoTime() - callStartNs) / 1_000_000L);
                 tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
-                if (rawReply == null || rawReply.isBlank()) {
+                if (isUpstreamLlmClientErrorPayload(rawReply)) {
+                    initialUpstreamError = true;
+                    log.warn("[ACI-V2] Upstream LLM network/gateway error on initial call (msg='{}') — skipping redundant JSON retry",
+                            originalVerbatim);
+                } else if (rawReply == null || rawReply.isBlank()) {
                     llmRegenerationCount++;
                     long fallbackStartNs = System.nanoTime();
                     rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                    if (rawReply == null || rawReply.isBlank() || isUpstreamLlmClientErrorPayload(rawReply)) {
+                        initialUpstreamError = true;
+                    }
                 }
             }
         } catch (Exception e) {
+            initialUpstreamError = true;
             log.warn("[ACI-V2] Exception calling llmClient {}: {}", llmClient != null ? llmClient.name() : "null", e.getMessage());
         }
 
@@ -4487,7 +4496,8 @@ public class CleanAgentOrchestratorService {
                 sanitizedReply.isBlank()
                         ? null
                         : CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(sanitizedReply, 0);
-        if ((structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
+        if (!initialUpstreamError
+                && (structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
                 && llmRegenerationCount < 1) {
             try {
                 if (llmClient != null) {
@@ -4588,12 +4598,14 @@ public class CleanAgentOrchestratorService {
                         reflection,
                         fused != null ? fused : List.of(),
                         pagePersona != null ? pagePersona.name() : null,
-                        prevBotTurnText
+                        prevBotTurnText,
+                        safeHistory
                 )
         );
 
         boolean repairApplied = usedStructuredFallbackOnLlmFailure;
         boolean usedSafeHandoffFallback = false;
+        boolean repairUpstreamError = false;
         if (!refereeViolations.isEmpty() && !usedStructuredFallbackOnLlmFailure) {
             log.warn("[ACI-V2] Referee detected truth/authority/safety violations: {} (msg='{}')",
                     refereeViolations, originalVerbatim);
@@ -4603,7 +4615,7 @@ public class CleanAgentOrchestratorService {
                     : (quotedReplyResolution.quotedPackage() != null
                         ? quotedReplyResolution.quotedPackage()
                         : (!unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null));
-            if (llmClient != null && llmRegenerationCount < 1) {
+            if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError) {
                 String repairPrompt = CleanAgentOutputRefereeAndSanitizer.buildCleanRepairPrompt(
                         aciPrompt, refereeViolations, selfPronoun, safeHonorific, focusPkgForRepair);
                 try {
@@ -4612,7 +4624,10 @@ public class CleanAgentOrchestratorService {
                     String repairedRaw = llmClient.complete(repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - repairCallStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
-                    if (repairedRaw != null && !repairedRaw.isBlank() && !isUpstreamLlmClientErrorPayload(repairedRaw)) {
+                    if (repairedRaw == null || repairedRaw.isBlank() || isUpstreamLlmClientErrorPayload(repairedRaw)) {
+                        repairUpstreamError = true;
+                        log.warn("[ACI-V2] Referee targeted repair hit UPSTREAM_NETWORK_ERROR (msg='{}')", originalVerbatim);
+                    } else {
                         String repairedSanitized = PromptSecurityGuard.sanitizeModelOutput(repairedRaw);
                         CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput repairedStructured =
                                 CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(repairedSanitized, 0);
@@ -4658,7 +4673,8 @@ public class CleanAgentOrchestratorService {
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("[ACI-V2] Referee targeted repair exception: {}", e.getMessage());
+                    repairUpstreamError = true;
+                    log.warn("[ACI-V2] Referee targeted repair exception (UPSTREAM_NETWORK_ERROR): {}", e.getMessage());
                 }
                 if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
                         request != null ? request.pageId() : null,
@@ -4684,7 +4700,8 @@ public class CleanAgentOrchestratorService {
                     reflection,
                     fused != null ? fused : List.of(),
                     pagePersona != null ? pagePersona.name() : null,
-                    prevBotTurnText
+                    prevBotTurnText,
+                    safeHistory
             );
             if (!postRepairViolations.isEmpty()) {
                 boolean hasSecurityOrCrossTenantLeak = postRepairViolations.stream()
@@ -4703,8 +4720,33 @@ public class CleanAgentOrchestratorService {
                             originalVerbatim
                     );
                     repairApplied = true;
+                } else if (repairUpstreamError) {
+                    log.warn("[ACI-V2] Repair call hit UPSTREAM_NETWORK_ERROR while resolving ({}) -> activating Safe Structural Fallback (without conflating network failure as persistent content violation)",
+                            postRepairViolations);
+                    candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+                            quotedReplyResolution,
+                            authoritativeBookingState,
+                            "ACI_COGNITIVE_V2",
+                            focusPkgForRepair,
+                            unblindedEligibleCatalog,
+                            allCatalog,
+                            effectivePersonaConfig,
+                            originalVerbatim,
+                            selfPronoun,
+                            safeHonorific
+                    );
+                    usedStructuredFallbackOnLlmFailure = true;
+                    repairApplied = true;
                 } else if (hasUngroundedPrice) {
-                    log.warn("[ACI-V2] Post-repair still has UNGROUNDED_PRICE_MENTIONED ({}) -> triggering SAFE_HANDOFF", postRepairViolations);
+                    log.warn("[ACI-V2] Post-repair still has UNGROUNDED_PRICE_MENTIONED ({}) -> triggering SAFE_HANDOFF with synchronized handoffStatus",
+                            postRepairViolations);
+                    handoffDecision = AdaptiveConversationIntelligence.executeAuthoritativeSafeRefereeHandoff(
+                            pageId,
+                            senderId,
+                            "REFEREE_SAFE_HANDOFF_UNGROUNDED_PRICE",
+                            "Referee chặn mức giá dịch vụ không có căn cứ sau bước sửa lỗi: " + postRepairViolations,
+                            handoffEventDispatcher
+                    );
                     candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(FanpageBotService.SAFE_HANDOFF_BUBBLE_TEXT, 0));
                     usedSafeHandoffFallback = true;
                     repairApplied = true;
@@ -4957,6 +4999,10 @@ public class CleanAgentOrchestratorService {
         ThinkingModePolicy.recordAciTurnTelemetry(aciTelemetry);
 
         final String bubbleSourceTag = usedSafeHandoffFallback ? "SAFE_HANDOFF_FALLBACK" : "ACI_COGNITIVE_V2_LLM";
+        List<String> telemetryValidationErrors = new ArrayList<>(refereeViolations);
+        if (usedSafeHandoffFallback && !telemetryValidationErrors.contains("UNGROUNDED_CATALOG_PRICE")) {
+            telemetryValidationErrors.add("UNGROUNDED_CATALOG_PRICE");
+        }
         this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
                 v2StateSyncDecision.effectiveResponseAction(),
                 selectedThinkingMode,
@@ -4992,7 +5038,7 @@ public class CleanAgentOrchestratorService {
                 repairApplied,
                 llmRegenerationCount,
                 usedSafeHandoffFallback ? "BLOCKED" : (repairApplied ? "REPAIRED_PASS" : "PASS"),
-                refereeViolations,
+                List.copyOf(telemetryValidationErrors),
                 "aci_cognitive_v2",
                 llmClient != null ? llmClient.name() : "none",
                 "chat",

@@ -785,11 +785,241 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     public enum PriceMentionSemanticRole {
-        OFFERED_PRICE,
+        /** 1. Giá do khách nêu ra để so sánh đối thủ / bên ngoài (trong câu hiện tại hoặc lịch sử phiên T1..T_current), được bot nhắc lại với tư cách thông tin bên ngoài để đối chiếu. */
+        USER_PROVIDED_COMPARISON_PRICE,
+        /** 2. Mức giá / ngân sách khách trực tiếp hỏi xem Page có gói nào phù hợp không (trong câu hiện tại hoặc lịch sử phiên), được bot nhắc lại / phủ định trung thực. */
         USER_ASKED_PRICE,
+        /** 3. Giá dịch vụ đã được xác thực trong <VERIFIED_BUSINESS_CATALOG> / chunks của page_id hiện tại. */
+        BOT_CATALOG_PRICE,
+        /** 4. Giá do bot tự công bố làm giá dịch vụ của Page nhưng không có nguồn hợp lệ trong Catalog -> bắt buộc chặn bằng Referee. */
+        BOT_UNGROUNDED_PRICE,
+        // Hằng số tương thích ngược với các bài test/nhánh cũ:
+        OFFERED_PRICE,
         NEGATED_PRICE,
         COMPARATIVE_PRICE,
-        UNGROUNDED_PRICE
+        UNGROUNDED_PRICE;
+
+        public boolean isUngroundedViolation() {
+            return this == BOT_UNGROUNDED_PRICE || this == UNGROUNDED_PRICE;
+        }
+    }
+
+    /**
+     * Unit P2.1: Nguồn gốc ngữ nghĩa của các mức giá do chính khách hàng nêu ra xuyên suốt phiên {@code T1..T_current}
+     * (chỉ trích xuất từ các lượt của KHÁCH HÀNG, tuyệt đối không lấy từ lượt của Bot và không whitelist cứng số nào).
+     */
+    public record CustomerSessionPriceProvenance(
+            Set<Long> userProvidedComparisonPrices,
+            Set<Long> userAskedPrices
+    ) {
+        public CustomerSessionPriceProvenance {
+            userProvidedComparisonPrices = userProvidedComparisonPrices != null
+                    ? Set.copyOf(userProvidedComparisonPrices)
+                    : Set.of();
+            userAskedPrices = userAskedPrices != null
+                    ? Set.copyOf(userAskedPrices)
+                    : Set.of();
+        }
+
+        public static CustomerSessionPriceProvenance empty() {
+            return new CustomerSessionPriceProvenance(Set.of(), Set.of());
+        }
+
+        public boolean isCustomerProvidedPrice(long priceVnd) {
+            return userProvidedComparisonPrices.contains(priceVnd) || userAskedPrices.contains(priceVnd);
+        }
+    }
+
+    private static final Pattern CUSTOMER_EXTERNAL_COMPARISON_LOCUS_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:chỗ|nơi|bên|tiệm|quán|spa|phòng\\s+khám|nha\\s+khoa|trung\\s+tâm|shop|cửa\\s+hàng|hãng|quê|ngoài)\\s+(?:khác|kia|ngoài|đó|ấy|đối\\s+diện|cũ|quen|đầu\\s+ngõ)\\b"
+            + "|\\b(?:ở|ngoài)\\s+(?:ngoài|tiệm|quán|chợ|quê|phố)\\b"
+            + "|\\b(?:gần|quanh)\\s+nhà\\b"
+            + "|\\bđối\\s+thủ\\b|\\bthị\\s+trường\\b"
+            + "|\\bbình\\s+thường\\s+(?:em|chị|anh|mình|tôi)?\\s*(?:đi|làm|gội|cắt|mua)\\b"
+            + "|\\bso\\s+với\\s+(?:chỗ|bên|nơi|ngoài|tiệm)\\b)"
+    );
+
+    private static final Pattern BOT_CONTRAST_SUBCLAUSE_SPLIT_PATTERN = Pattern.compile(
+            "(?isU)(?:[;\\n]|,\\s*(?=\\b(?:nhưng|tuy\\s+nhiên|còn|trong\\s+khi|trái\\s+lại|ngược\\s+lại|thay\\s+vào\\s+đó|khác\\s+với|khác\\s+hẳn|hiện\\s+tại\\s+bên|bên\\s+em|bên\\s+mình|gói\\s+bên|mức\\s+tiết\\s+kiệm)\\b)|\\b(?:nhưng|tuy\\s+nhiên|trong\\s+khi\\s+đó|thay\\s+vào\\s+đó|thì\\s+(?=bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|gói\\s+))\\b)"
+    );
+
+    private static final Pattern BOT_NEGATION_IN_SUBCLAUSE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:chưa|không|ko|chẳng)\\s+(?:hề\\s+)?(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở|phục\\s+vụ|làm|bán|cung\\s+cấp|giảm)\\b"
+    );
+
+    private static final Pattern BOT_EXTERNAL_OR_CUSTOMER_ATTRIBUTION_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:chỗ|nơi|bên|tiệm|quán|spa|phòng\\s+khám|nha\\s+khoa|trung\\s+tâm|shop|cửa\\s+hàng|dịch\\s+vụ)\\s+(?:khác|kia|ngoài|phổ\\s+thông|thông\\s+thường)\\b"
+            + "|\\b(?:ở|ngoài)\\s+(?:ngoài|tiệm|quán|thị\\s+trường)\\b"
+            + "|\\b(?:mình|chị|anh|bạn|khách)\\s+(?:vừa\\s+|đang\\s+|đã\\s+)?(?:nói|nhắc|đề\\s+cập|so\\s+sánh|hỏi|tìm|chia\\s+sẻ|mong\\s+muốn|cân\\s+nhắc)\\b"
+            + "|\\b(?:ngân\\s+sách|tầm\\s+giá|tầm\\s+tài\\s+chính|khoảng\\s+giá|quanh\\s+(?:tầm|mức)|tầm\\s+khoảng|dưới\\s+mức|trong\\s+tầm)\\b"
+            + "|\\bso\\s+với\\s+(?:mức|chỗ|tiệm|dịch\\s+vụ|gói\\s+gội\\s+nhanh|gội\\s+nhanh)?\\b)"
+    );
+
+    private static final Pattern BOT_AFFIRMATIVE_OWN_OFFERING_BEFORE_PRICE_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình)|chúng\\s+em|nàng\\s+sen|nha\\s+khoa\\s+tỏa\\s+sáng|hiện\\s+tại\\s+em)\\b"
+            + "[^.!?;,\\n]{0,40}?\\b(?:cũng\\s+|đang\\s+|hiện\\s+|vẫn\\s+|sẵn\\s+)?(?:có|áp\\s+dụng|phục\\s+vụ|triển\\s+khai|cung\\s+cấp|bán|làm|mở|giới\\s+thiệu|gợi\\s+ý|là)\\s*(?:thêm\\s+|ngay\\s+)?(?:gói|liệu\\s+trình|dịch\\s+vụ|mẫu|khóa|mức(?:\\s+giá)?|suất|giá)?\\s*$"
+            + "|\\b(?:em|bên\\s+(?:em|mình)|shop|spa)\\s+(?:giảm|bớt|ưu\\s+đãi|để|lấy|tính)(?:\\s+giá)?(?:\\s+cho\\s+(?:mình|chị|anh|bạn))?\\s+(?:xuống\\s+)?(?:còn|chỉ(?:\\s+còn)?)\\s*$)"
+    );
+
+    private static final Pattern BOT_OWN_PACKAGE_AFTER_PRICE_PATTERN = Pattern.compile(
+            "(?isU)^(?:\\s*/\\s*[\\p{L}\\d²]+)?\\s*(?:của\\s+)?(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình)|nàng\\s+sen)\\b"
+    );
+
+    private static final Pattern BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:gói|liệu\\s+trình|khóa|mẫu)\\s+\\d[\\d.,]*\\s*(?:k|nghìn|ngàn|triệu|tr|đ|vnđ|vnd|đồng)\\b[^.!?;,\\n]{0,45}?"
+            + "\\b(?:kéo\\s+dài\\s+\\d{2,3}\\s*(?:phút|p)|có\\s+thời\\s+lượng\\s+\\d{2,3}\\s*(?:phút|p)|bao\\s+gồm|gồm\\s+có|tặng\\s+kèm|ăn\\s+nhẹ|bên\\s+em|của\\s+bên\\s+em)\\b"
+    );
+
+    public static CustomerSessionPriceProvenance extractCustomerSessionPriceProvenance(
+            String currentCustomerMessage,
+            List<FanpageBotRequest.ConversationTurn> conversationHistory
+    ) {
+        Set<Long> comparisonPrices = new LinkedHashSet<>();
+        Set<Long> askedPrices = new LinkedHashSet<>();
+        if (conversationHistory != null) {
+            for (FanpageBotRequest.ConversationTurn turn : conversationHistory) {
+                if (turn == null || turn.content() == null || turn.content().isBlank()) {
+                    continue;
+                }
+                String role = turn.role() != null ? turn.role().strip() : "user";
+                if ("assistant".equalsIgnoreCase(role) || "bot".equalsIgnoreCase(role) || "ai_bot".equalsIgnoreCase(role)) {
+                    continue;
+                }
+                classifyCustomerUtterancePricesIntoSets(turn.content(), comparisonPrices, askedPrices);
+            }
+        }
+        if (currentCustomerMessage != null && !currentCustomerMessage.isBlank()) {
+            classifyCustomerUtterancePricesIntoSets(currentCustomerMessage, comparisonPrices, askedPrices);
+        }
+        return new CustomerSessionPriceProvenance(comparisonPrices, askedPrices);
+    }
+
+    private static void classifyCustomerUtterancePricesIntoSets(
+            String utterance,
+            Set<Long> comparisonPricesOut,
+            Set<Long> askedPricesOut
+    ) {
+        if (utterance == null || utterance.isBlank()) {
+            return;
+        }
+        String norm = java.text.Normalizer.normalize(utterance, java.text.Normalizer.Form.NFC);
+        Matcher m = CLEAN_PRICE_MENTION_PATTERN.matcher(norm);
+        while (m.find()) {
+            Long vnd = parseCleanPriceMentionToVnd(m.group());
+            if (vnd == null || vnd <= 0L) {
+                continue;
+            }
+            if (isCustomerExternalComparisonPriceContext(norm, m.start(), m.end())) {
+                comparisonPricesOut.add(vnd);
+            } else {
+                askedPricesOut.add(vnd);
+            }
+        }
+    }
+
+    public static boolean isCustomerExternalComparisonPriceContext(String customerText, int matchStart, int matchEnd) {
+        if (customerText == null || customerText.isBlank()) {
+            return false;
+        }
+        int sentStart = 0;
+        for (int i = Math.max(0, matchStart - 1); i >= 0; i--) {
+            char c = customerText.charAt(i);
+            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+                sentStart = i + 1;
+                break;
+            }
+        }
+        int sentEnd = customerText.length();
+        for (int i = Math.min(customerText.length(), matchEnd); i < customerText.length(); i++) {
+            char c = customerText.charAt(i);
+            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+                sentEnd = i;
+                break;
+            }
+        }
+        String sentence = customerText.substring(sentStart, sentEnd);
+        return CUSTOMER_EXTERNAL_COMPARISON_LOCUS_PATTERN.matcher(sentence).find();
+    }
+
+    private static boolean isBotClaimingPriceAsOwnOffering(
+            String bubbleText,
+            int matchStart,
+            int matchEnd,
+            boolean isExternalComparisonProvenance
+    ) {
+        int sentStart = 0;
+        for (int i = Math.max(0, matchStart - 1); i >= 0; i--) {
+            char c = bubbleText.charAt(i);
+            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+                sentStart = i + 1;
+                break;
+            }
+        }
+        int sentEnd = bubbleText.length();
+        for (int i = Math.min(bubbleText.length(), matchEnd); i < bubbleText.length(); i++) {
+            char c = bubbleText.charAt(i);
+            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+                sentEnd = i;
+                break;
+            }
+        }
+        String sentence = bubbleText.substring(sentStart, sentEnd);
+        int relStart = matchStart - sentStart;
+        int relEnd = matchEnd - sentStart;
+
+        String localSubClause = sentence;
+        int subStartOffset = 0;
+        int lastSplitEnd = 0;
+        Matcher splitMatcher = BOT_CONTRAST_SUBCLAUSE_SPLIT_PATTERN.matcher(sentence);
+        List<int[]> spans = new ArrayList<>();
+        while (splitMatcher.find()) {
+            spans.add(new int[]{lastSplitEnd, splitMatcher.start()});
+            lastSplitEnd = splitMatcher.end();
+        }
+        spans.add(new int[]{lastSplitEnd, sentence.length()});
+        for (int[] sp : spans) {
+            if (relStart >= sp[0] && relEnd <= sp[1]) {
+                localSubClause = sentence.substring(sp[0], sp[1]);
+                subStartOffset = sp[0];
+                break;
+            }
+        }
+
+        int subRelStart = Math.max(0, Math.min(localSubClause.length(), relStart - subStartOffset));
+        int subRelEnd = Math.max(subRelStart, Math.min(localSubClause.length(), relEnd - subStartOffset));
+        String normSub = java.text.Normalizer.normalize(localSubClause, java.text.Normalizer.Form.NFC);
+        String prefixBeforePrice = java.text.Normalizer.normalize(
+                localSubClause.substring(0, subRelStart), java.text.Normalizer.Form.NFC);
+        String suffixAfterPrice = java.text.Normalizer.normalize(
+                localSubClause.substring(subRelEnd), java.text.Normalizer.Form.NFC);
+
+        if (BOT_NEGATION_IN_SUBCLAUSE_PATTERN.matcher(normSub).find()) {
+            return false;
+        }
+        if (BOT_AFFIRMATIVE_OWN_OFFERING_BEFORE_PRICE_PATTERN.matcher(prefixBeforePrice).find()) {
+            return true;
+        }
+        if (BOT_OWN_PACKAGE_AFTER_PRICE_PATTERN.matcher(suffixAfterPrice).find()) {
+            return true;
+        }
+        boolean hasExternalOrCustomerAttribution = BOT_EXTERNAL_OR_CUSTOMER_ATTRIBUTION_PATTERN.matcher(normSub).find();
+        if (hasExternalOrCustomerAttribution) {
+            return false;
+        }
+        if (BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN.matcher(normSub).find()) {
+            return true;
+        }
+        // Nếu là USER_ASKED_PRICE (ngân sách khách hỏi) mà bot không phủ định ("chưa có") và cũng không đặt trong ngữ cảnh
+        // ngân sách/so sánh ("tầm 250k của mình", "dưới 250k", "so với 250k"), tức là bot tự công bố giá đó như gói thật -> chặn!
+        if (!isExternalComparisonProvenance) {
+            String lowSub = normSub.toLowerCase(Locale.ROOT);
+            boolean hasBudgetOrComparativePreposition = lowSub.matches(
+                    "(?isU).*(?:\\b(?:tầm|khoảng|quanh|dưới|trên|mức|với)\\s+\\d|\\bso\\s+với\\b).*");
+            if (!hasBudgetOrComparativePreposition) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static final Pattern CLEAN_PRICE_MENTION_PATTERN = Pattern.compile(
@@ -842,6 +1072,55 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return prices;
     }
 
+    /**
+     * Unit P2.1: Phân tách rõ 4 vai trò ngữ nghĩa của dữ liệu giá (tuyệt đối không gộp chung vào USER_ASKED_PRICE
+     * và không whitelist cứng bất kỳ con số nào):
+     * <ol>
+     *   <li>{@link PriceMentionSemanticRole#USER_PROVIDED_COMPARISON_PRICE}: Giá do khách nêu ra để so sánh đối thủ / bên ngoài
+     *       (trong câu hiện tại hoặc lịch sử phiên {@code T1..T_current}) — được phép nhắc lại để đối chiếu nhưng cấm tự nhận làm gói của Page.</li>
+     *   <li>{@link PriceMentionSemanticRole#USER_ASKED_PRICE}: Mức giá / ngân sách khách trực tiếp hỏi xem Page có gói nào phù hợp không
+     *       (trong câu hiện tại hoặc lịch sử phiên) — được phép nhắc lại / phủ định trung thực nhưng cấm bịa thành gói thật của Page.</li>
+     *   <li>{@link PriceMentionSemanticRole#BOT_CATALOG_PRICE}: Giá dịch vụ đã được xác thực trong Catalog của {@code page_id} hiện tại.</li>
+     *   <li>{@link PriceMentionSemanticRole#BOT_UNGROUNDED_PRICE}: Giá do bot tự công bố làm giá dịch vụ của Page nhưng không có nguồn hợp lệ -> chặn.</li>
+     * </ol>
+     */
+    public static PriceMentionSemanticRole classifyPriceMentionSemanticRole(
+            String bubbleText,
+            int matchStart,
+            int matchEnd,
+            long priceVnd,
+            Set<Long> allowedPrices,
+            Set<Long> excludedPrices,
+            CustomerSessionPriceProvenance customerPriceProvenance
+    ) {
+        if (allowedPrices != null && allowedPrices.contains(priceVnd)) {
+            return PriceMentionSemanticRole.BOT_CATALOG_PRICE;
+        }
+        CustomerSessionPriceProvenance safeProvenance = customerPriceProvenance != null
+                ? customerPriceProvenance
+                : CustomerSessionPriceProvenance.empty();
+        boolean inComparison = safeProvenance.userProvidedComparisonPrices().contains(priceVnd);
+        boolean inAsked = safeProvenance.userAskedPrices().contains(priceVnd);
+
+        if (excludedPrices != null && excludedPrices.contains(priceVnd) && !inComparison && !inAsked) {
+            return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
+        }
+        if (!inComparison && !inAsked) {
+            return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
+        }
+        if (inComparison) {
+            if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, true)) {
+                return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
+            }
+            return PriceMentionSemanticRole.USER_PROVIDED_COMPARISON_PRICE;
+        }
+        // inAsked == true
+        if (isBotClaimingPriceAsOwnOffering(bubbleText, matchStart, matchEnd, false)) {
+            return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
+        }
+        return PriceMentionSemanticRole.USER_ASKED_PRICE;
+    }
+
     public static PriceMentionSemanticRole classifyPriceMentionSemanticRole(
             String bubbleText,
             int matchStart,
@@ -853,84 +1132,19 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             boolean hasCustomerMessageContext,
             boolean turnMentionsAllowedPrice
     ) {
-        if (allowedPrices != null && allowedPrices.contains(priceVnd)) {
-            String prefix = bubbleText.substring(Math.max(0, matchStart - 30), matchStart).toLowerCase(Locale.ROOT);
-            if (prefix.matches("(?isU).*(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+)?\\s*$")) {
-                return PriceMentionSemanticRole.COMPARATIVE_PRICE;
-            }
-            return PriceMentionSemanticRole.OFFERED_PRICE;
-        }
-
-        if (excludedPrices != null && excludedPrices.contains(priceVnd)
-                && (userAskedPrices == null || !userAskedPrices.contains(priceVnd))) {
-            return PriceMentionSemanticRole.UNGROUNDED_PRICE;
-        }
-
-        if (hasCustomerMessageContext && (userAskedPrices == null || !userAskedPrices.contains(priceVnd))) {
-            return PriceMentionSemanticRole.UNGROUNDED_PRICE;
-        }
-
-        if (!turnMentionsAllowedPrice) {
-            return PriceMentionSemanticRole.UNGROUNDED_PRICE;
-        }
-
-        int clauseStart = 0;
-        for (int i = matchStart - 1; i >= 0; i--) {
-            char c = bubbleText.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == ';' || c == '\n') {
-                clauseStart = i + 1;
-                break;
-            }
-        }
-        int clauseEnd = bubbleText.length();
-        for (int i = matchEnd; i < bubbleText.length(); i++) {
-            char c = bubbleText.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == ';' || c == '\n') {
-                clauseEnd = i;
-                break;
-            }
-        }
-
-        String beforeInClause = bubbleText.substring(clauseStart, matchStart).toLowerCase(Locale.ROOT);
-        String afterInClause = bubbleText.substring(matchEnd, clauseEnd).toLowerCase(Locale.ROOT);
-
-        Matcher contrastAfter = Pattern.compile(
-                "(?isU)\\b(?:nhưng|tuy\\s+nhiên|thay\\s+vào\\s+đó|hiện\\s+tại\\s+bên\\s+em\\s+có|bên\\s+em\\s+đang\\s+có|trong\\s+nhóm|mức\\s+tiết\\s+kiệm\\s+nhất|gói\\s+tiết\\s+kiệm\\s+nhất|lựa\\s+chọn\\s+tiết\\s+kiệm\\s+nhất|mình\\s+có\\s+thể\\s+tham\\s+khảo|em\\s+gợi\\s+ý)\\b"
-        ).matcher(afterInClause);
-        if (contrastAfter.find()) {
-            afterInClause = afterInClause.substring(0, contrastAfter.start());
-        }
-        int commaIdxAfter = afterInClause.indexOf(',');
-        String immediateAfterPrice = commaIdxAfter >= 0 ? afterInClause.substring(0, commaIdxAfter) : afterInClause;
-
-        String localSubClause = (beforeInClause + " " + bubbleText.substring(matchStart, matchEnd) + " " + immediateAfterPrice)
-                .toLowerCase(Locale.ROOT);
-
-        // Chặn bịa thời lượng hoặc quyền lợi gắn cho mức giá không có trong Catalog (VD: "Gói 100k có thời lượng 60 phút")
-        Pattern fabricatedAttributeForPricePat = Pattern.compile(
-                "(?isU)(?:\\b\\d{2,3}\\s*(?:phút|p)\\b|\\bthời\\s+lượng\\b|\\bkéo\\s+dài\\b|\\bbao\\s+gồm\\b|\\bgồm\\s+có\\b|\\btặng\\s+kèm\\b|\\băn\\s+nhẹ\\b)"
+        CustomerSessionPriceProvenance legacyProvenance = new CustomerSessionPriceProvenance(
+                Set.of(),
+                userAskedPrices != null ? userAskedPrices : Set.of()
         );
-        if (fabricatedAttributeForPricePat.matcher(localSubClause).find()) {
-            return PriceMentionSemanticRole.UNGROUNDED_PRICE;
-        }
-
-        boolean negatedBefore = Pattern.compile(
-                "(?isU)(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)\\b[^.!?;\\n]*$"
-        ).matcher(beforeInClause).find();
-
-        boolean negatedAfter = Pattern.compile(
-                "(?isU)^[^.!?;\\n]{0,55}?\\b(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)\\b"
-        ).matcher(immediateAfterPrice).find();
-
-        boolean affirmedExistence = Pattern.compile(
-                "(?isU)\\b(?:bên\\s+em\\s+có|hiện\\s+có|đang\\s+có|sẵn\\s+có)\\s+(?:gói|dịch\\s+vụ|liệu\\s+trình|mức\\s+giá|mức)\\s*$"
-        ).matcher(beforeInClause).find();
-
-        if (!affirmedExistence && (negatedBefore || negatedAfter)) {
-            return PriceMentionSemanticRole.NEGATED_PRICE;
-        }
-
-        return PriceMentionSemanticRole.UNGROUNDED_PRICE;
+        return classifyPriceMentionSemanticRole(
+                bubbleText,
+                matchStart,
+                matchEnd,
+                priceVnd,
+                allowedPrices,
+                excludedPrices,
+                legacyProvenance
+        );
     }
 
     public static List<String> checkCleanCatalogGrounding(
@@ -1028,6 +1242,48 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             ConversationState.StructuredBookingState structuredBookingState,
             com.example.docmind.dto.PagePersonaConfig personaConfig
     ) {
+        return checkCleanCatalogGrounding(
+                bubbles,
+                allCatalog,
+                scopeFilteredCatalog,
+                excludedCatalog,
+                priceObjectionCount,
+                explicitDownsellRequested,
+                activePackage,
+                heldPkgIsNull,
+                bookingStatus,
+                customerMessage,
+                currentTurnHasPriceObjection,
+                downsellAlreadyOfferedInHistory,
+                hasHigherPriorityIntent,
+                cleanStage,
+                presentedPackagesInHistory,
+                structuredBookingState,
+                personaConfig,
+                List.of()
+        );
+    }
+
+    public static List<String> checkCleanCatalogGrounding(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            int priceObjectionCount,
+            boolean explicitDownsellRequested,
+            PackageCatalogService.PackageSummary activePackage,
+            boolean heldPkgIsNull,
+            String bookingStatus,
+            String customerMessage,
+            boolean currentTurnHasPriceObjection,
+            boolean downsellAlreadyOfferedInHistory,
+            boolean hasHigherPriorityIntent,
+            String cleanStage,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            ConversationState.StructuredBookingState structuredBookingState,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            List<FanpageBotRequest.ConversationTurn> conversationHistory
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of();
         }
@@ -1037,7 +1293,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
         Set<Long> allowedPrices = new LinkedHashSet<>();
         Set<Long> excludedPrices = new LinkedHashSet<>();
-        Set<Integer> allowedDurations = new LinkedHashSet<>(List.of(5, 10, 15, 20, 30));
+        Set<Integer> allowedDurations = new LinkedHashSet<>(List.of(5, 10, 15, 20, 25, 30));
         Set<Integer> catalogHeadlineDurations = new LinkedHashSet<>();
         Set<String> allowedDimensionSpecs = new LinkedHashSet<>();
         Set<Integer> allowedSessionSpecs = new LinkedHashSet<>();
@@ -1074,21 +1330,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
 
-        boolean hasCustomerMessageContext = customerMessage != null && !customerMessage.isBlank();
-        Set<Long> userAskedPrices = extractPricesInVndFromText(customerMessage);
+        CustomerSessionPriceProvenance customerPriceProvenance = extractCustomerSessionPriceProvenance(
+                customerMessage, conversationHistory);
         Set<String> userAskedDims = extractNormalizedDimensionsFromText(customerMessage);
         Set<Integer> userAskedSessions = extractSessionCountsFromText(customerMessage);
-
-        StringBuilder preCombinedSb = new StringBuilder();
-        for (FanpageBotResponse.ReplyBubble b : bubbles) {
-            if (b != null && b.text() != null) {
-                if (!preCombinedSb.isEmpty()) preCombinedSb.append(' ');
-                preCombinedSb.append(b.text().strip());
-            }
-        }
-        Set<Long> allMentionedPricesInTurn = extractPricesInVndFromText(preCombinedSb.toString());
-        boolean turnMentionsAllowedPrice = !allowedPrices.isEmpty()
-                && allMentionedPricesInTurn.stream().anyMatch(allowedPrices::contains);
 
         String effBookingStatus = (structuredBookingState != null && structuredBookingState.status() != null)
                 ? structuredBookingState.status().name()
@@ -1129,11 +1374,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                 priceVnd,
                                 allowedPrices,
                                 excludedPrices,
-                                userAskedPrices,
-                                hasCustomerMessageContext,
-                                turnMentionsAllowedPrice
+                                customerPriceProvenance
                         );
-                        if (semanticRole == PriceMentionSemanticRole.UNGROUNDED_PRICE) {
+                        if (semanticRole.isUngroundedViolation()) {
                             violations.add("UNGROUNDED_OR_EXCLUDED_PRICE:" + pm.group().strip());
                         }
                     }
@@ -1141,7 +1384,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
 
             if (!catalogEmpty) {
-                List<String> entityMismatchFlags = detectPriceEntityMismatchesInBubble(text, allCatalog);
+                List<String> entityMismatchFlags = detectPriceEntityMismatchesInBubble(
+                        text, allCatalog, customerPriceProvenance);
                 for (String flag : entityMismatchFlags) {
                     if (!violations.contains(flag)) {
                         violations.add(flag);
@@ -1357,8 +1601,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
         // 6. Chặn nhắc sản phẩm / mức giá bóng ma chưa từng xuất hiện trong presentedPackagesInHistory khi khách tạm dừng (STAGE_6)
         if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)) {
+            Set<Long> allMentionedPricesInTurn = extractPricesInVndFromText(combinedTurnText);
+            Set<Long> allCustomerSessionPrices = new LinkedHashSet<>(customerPriceProvenance.userAskedPrices());
+            allCustomerSessionPrices.addAll(customerPriceProvenance.userProvidedComparisonPrices());
             for (String ghostFlag : detectUnpresentedGhostProductOnClosing(
-                    combinedTurnText, allMentionedPricesInTurn, userAskedPrices, presentedPackagesInHistory, allCatalog)) {
+                    combinedTurnText, allMentionedPricesInTurn, allCustomerSessionPrices, presentedPackagesInHistory, allCatalog)) {
                 addUniqueViolation(violations, ghostFlag);
             }
         }
@@ -2188,6 +2435,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String bubbleText,
             List<PackageCatalogService.PackageSummary> allCatalog
     ) {
+        return detectPriceEntityMismatchesInBubble(bubbleText, allCatalog, CustomerSessionPriceProvenance.empty());
+    }
+
+    public static List<String> detectPriceEntityMismatchesInBubble(
+            String bubbleText,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            CustomerSessionPriceProvenance customerPriceProvenance
+    ) {
         if (bubbleText == null || bubbleText.isBlank() || allCatalog == null || allCatalog.isEmpty()) {
             return List.of();
         }
@@ -2310,6 +2565,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                 && allClausePrices.contains(matchedPkg.priceAmountVnd());
                         boolean otherCatalogHasThisPrice = sortedCatalog.stream()
                                 .anyMatch(p -> p != null && p.priceAmountVnd() == priceVnd);
+                        CustomerSessionPriceProvenance safeProvenance = customerPriceProvenance != null
+                                ? customerPriceProvenance
+                                : CustomerSessionPriceProvenance.empty();
+                        boolean customerProvidedContrastPrice = safeProvenance.isCustomerProvidedPrice(priceVnd)
+                                && !isBotClaimingPriceAsOwnOffering(
+                                        clause,
+                                        pm.start(),
+                                        pm.end(),
+                                        safeProvenance.userProvidedComparisonPrices().contains(priceVnd)
+                                );
                         String clauseLower = clause.toLowerCase(Locale.ROOT);
                         int pkgPosInClause = clauseLower.indexOf(pkgNoPrefixLower);
                         boolean separatedByCommaFromPkgName = pkgPosInClause >= 0
@@ -2318,15 +2583,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         Set<Long> allSentencePrices = extractPricesInVndFromText(sentence);
                         String sentenceLower = sentence.toLowerCase(Locale.ROOT);
                         boolean isGroundedPriceRangeOrMultiCompare = clauseLower.matches(
-                                "(?isU).*(?:[-–—~]|\\b(?:đến|tới|còn|so\\s+với|khác|hay|hoặc)\\b).*");
+                                "(?isU).*(?:[-–—~]|\\b(?:đến|tới|còn|so\\s+với|khác|hay|hoặc|tầm|ngân\\s+sách)\\b).*");
                         boolean sentenceIsGroundedMultiRange = allSentencePrices.size() >= 2
                                 && allSentencePrices.stream().allMatch(sp ->
                                         sortedCatalog.stream().anyMatch(p -> p != null && p.priceAmountVnd() == sp))
                                 && sentenceLower.matches("(?isU).*(?:[-–—~]|\\b(?:đến|tới)\\b).*")
                                 && sentenceLower.matches("(?isU).*(?:\\b(?:các\\s+gói|khoảng\\s+giá|dao\\s+động|mức\\s+giá|bảng\\s+giá)\\b|\\btừ\\s+\\d).*");
                         if (sentenceIsGroundedMultiRange
-                                || (clauseAlsoHasMatchedPkgExactPrice && otherCatalogHasThisPrice
-                                    && (separatedByCommaFromPkgName || isGroundedPriceRangeOrMultiCompare))) {
+                                || (clauseAlsoHasMatchedPkgExactPrice
+                                    && (otherCatalogHasThisPrice || customerProvidedContrastPrice)
+                                    && (separatedByCommaFromPkgName || isGroundedPriceRangeOrMultiCompare || customerProvidedContrastPrice))) {
                             continue;
                         }
                         addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
@@ -2451,19 +2717,28 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 rebuilt.add(b);
                 continue;
             }
-            PackageCatalogService.PackageSummary authoritativePkg = targetPackage;
-            if (authoritativePkg == null && allCatalog != null) {
+            PackageCatalogService.PackageSummary authoritativePkg = null;
+            if (allCatalog != null) {
                 String low = b.text().toLowerCase(Locale.ROOT);
                 List<PackageCatalogService.PackageSummary> sorted = allCatalog.stream()
                         .filter(p -> p != null && !p.isAddon() && !p.canonicalName().isBlank())
                         .sorted((x, y) -> Integer.compare(y.canonicalName().length(), x.canonicalName().length()))
                         .toList();
-                for (PackageCatalogService.PackageSummary p : sorted) {
-                    if (low.contains(p.canonicalName().toLowerCase(Locale.ROOT))) {
-                        authoritativePkg = p;
-                        break;
+                List<PackageCatalogService.PackageSummary> clauseMatched =
+                        findMentionedCatalogPackagesInClause(b.text(), sorted);
+                if (clauseMatched.size() == 1) {
+                    authoritativePkg = clauseMatched.get(0);
+                } else {
+                    for (PackageCatalogService.PackageSummary p : sorted) {
+                        if (low.contains(p.canonicalName().toLowerCase(Locale.ROOT))) {
+                            authoritativePkg = p;
+                            break;
+                        }
                     }
                 }
+            }
+            if (authoritativePkg == null) {
+                authoritativePkg = targetPackage;
             }
             if (authoritativePkg == null) {
                 rebuilt.add(b);
@@ -2475,9 +2750,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String priceLabel = (disp != null && disp.priceLabel() != null && !disp.priceLabel().isBlank())
                     ? disp.priceLabel().strip().toLowerCase(Locale.ROOT)
                     : "mức giá niêm yết";
-            String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
-                    ? disp.formattedPriceWithUnit().strip()
-                    : (authoritativePkg.priceDisplay() != null ? authoritativePkg.priceDisplay().strip() : "");
+            String formattedPrice = resolveFormattedPricePreservingBillingUnit(authoritativePkg);
             String pkgIncludes = (authoritativePkg.includesSummary() != null && !authoritativePkg.includesSummary().isBlank())
                     ? authoritativePkg.includesSummary().strip()
                     : "";
@@ -2721,9 +2994,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String priceLabel = (disp != null && disp.priceLabel() != null && !disp.priceLabel().isBlank())
                 ? disp.priceLabel().strip().toLowerCase(Locale.ROOT)
                 : "mức giá niêm yết";
-        String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
-                ? disp.formattedPriceWithUnit().strip()
-                : (quotedPkg.priceDisplay() != null ? quotedPkg.priceDisplay().strip() : "");
+        String formattedPrice = resolveFormattedPricePreservingBillingUnit(quotedPkg);
         String includes = quotedPkg.includesSummary() != null ? quotedPkg.includesSummary().strip() : "";
         String formatNote = (disp != null && disp.customerFacingFormatNote() != null && !disp.customerFacingFormatNote().isBlank())
                 ? disp.customerFacingFormatNote().strip()
@@ -2844,11 +3115,51 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         String itemWithUnit = pkg.displayWithUnitNoun(uNoun);
         PackageCatalogService.CatalogDisplayData disp = pkg.display();
-        String formattedPrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
-                ? disp.formattedPriceWithUnit().strip()
-                : (pkg.priceDisplay() != null ? pkg.priceDisplay().strip() : "");
+        String formattedPrice = resolveFormattedPricePreservingBillingUnit(pkg);
         String pricePart = !formattedPrice.isEmpty() ? (" giá " + formattedPrice) : "";
         return itemWithUnit + pricePart;
+    }
+
+    /**
+     * Unit P2.1 (F-01): Bảo toàn tuyệt đối hậu tố đơn vị tính ({@code /m²}, {@code /khóa}, {@code /thùng}...)
+     * khi dựng câu fallback hoặc rebuild từ {@link PackageCatalogService.PackageSummary}, kể cả khi
+     * {@code display.formattedPriceWithUnit} hoặc {@code priceDisplay} bị truyền dạng rút gọn không kèm đơn vị.
+     */
+    public static String resolveFormattedPricePreservingBillingUnit(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null) {
+            return "";
+        }
+        PackageCatalogService.CatalogDisplayData disp = pkg.display();
+        String basePrice = (disp != null && disp.formattedPriceWithUnit() != null && !disp.formattedPriceWithUnit().isBlank())
+                ? disp.formattedPriceWithUnit().strip()
+                : (pkg.priceDisplay() != null && !pkg.priceDisplay().isBlank()
+                    ? pkg.priceDisplay().strip()
+                    : (pkg.priceAmountVnd() > 0L
+                        ? PackageCatalogService.formatPriceWithUnit(pkg.priceAmountVnd(), pkg.priceType(), pkg.billingUnit())
+                        : ""));
+        String rawBillingUnit = pkg.billingUnit();
+        if ((rawBillingUnit == null || rawBillingUnit.isBlank())
+                && pkg.source() != null && pkg.source().rawPriceText() != null && !pkg.source().rawPriceText().isBlank()) {
+            PackageCatalogService.ParsedPrice parsed = PackageCatalogService.parseStructuredPrice(pkg.source().rawPriceText());
+            if (parsed != null && parsed.billingUnit() != null) {
+                rawBillingUnit = parsed.billingUnit();
+            }
+        }
+        String normUnitToken = normalizeBillingUnitToken(rawBillingUnit);
+        if (basePrice.isEmpty() || normUnitToken.isEmpty()) {
+            return basePrice;
+        }
+        int slashIdx = basePrice.lastIndexOf('/');
+        if (slashIdx >= 0) {
+            String existingUnitToken = normalizeBillingUnitToken(basePrice.substring(slashIdx + 1));
+            if (normUnitToken.equals(existingUnitToken)) {
+                return basePrice;
+            }
+        }
+        String cleanSuffix = rawBillingUnit.strip().startsWith("/")
+                ? rawBillingUnit.strip()
+                : ("/" + normUnitToken);
+        return basePrice + cleanSuffix;
     }
 
     /**
@@ -4060,6 +4371,46 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String activeBrandName,
             String previousAssistantMessage
     ) {
+        return checkAciV2TruthAuthorityAndSafety(
+                bubbles,
+                allCatalog,
+                unblindedEligibleCatalog,
+                excludedCatalog,
+                quoteResolution,
+                authoritativeBookingState,
+                presentedPackagesInHistory,
+                personaConfig,
+                originalCustomerMessage,
+                hasAuthoritativePaymentVerification,
+                verifiedPageSlaPolicy,
+                handoffDecision,
+                reflection,
+                retrievedChunks,
+                activeBrandName,
+                previousAssistantMessage,
+                List.of()
+        );
+    }
+
+    public static List<String> checkAciV2TruthAuthorityAndSafety(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> unblindedEligibleCatalog,
+            List<PackageCatalogService.PackageSummary> excludedCatalog,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            String originalCustomerMessage,
+            boolean hasAuthoritativePaymentVerification,
+            String verifiedPageSlaPolicy,
+            AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            List<ReciprocalRankFusion.FusedChunk> retrievedChunks,
+            String activeBrandName,
+            String previousAssistantMessage,
+            List<FanpageBotRequest.ConversationTurn> conversationHistory
+    ) {
         if (bubbles == null || bubbles.isEmpty()) {
             return List.of("EMPTY_REPLY_BUBBLES");
         }
@@ -4104,7 +4455,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 isPoliteClosureTurn ? "STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE" : "ACI_COGNITIVE_V2",
                 presentedPackagesInHistory,
                 authoritativeBookingState,
-                personaConfig
+                personaConfig,
+                conversationHistory
         );
 
         StringBuilder combinedSb = new StringBuilder();

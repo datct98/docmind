@@ -2583,6 +2583,70 @@ public final class AdaptiveConversationIntelligence {
         }
     }
 
+    /**
+     * Unit P2.1: Thực thi Handoff có thẩm quyền từ Referee ({@code SAFE_HANDOFF} khi vi phạm giá dịch vụ không căn cứ
+     * vẫn tồn tại sau bước repair), đảm bảo đồng bộ nhất quán 100% giữa {@code needsHumanHandoff},
+     * {@code handoffCategory} và {@code handoffStatus} trên Telemetry, Session Memory và {@code FanpageBotResponse}.
+     */
+    public static ConditionalHandoffDecision executeAuthoritativeSafeRefereeHandoff(
+            UUID pageId,
+            String senderId,
+            String category,
+            String reason,
+            HandoffEventDispatcher dispatcher
+    ) {
+        String effectiveCategory = (category != null && !category.isBlank())
+                ? category.strip()
+                : "REFEREE_SAFE_HANDOFF_UNGROUNDED_PRICE";
+        String effectiveReason = (reason != null && !reason.isBlank())
+                ? reason.strip()
+                : "Referee chặn mức giá dịch vụ không có căn cứ sau bước sửa lỗi — chuyển nhân viên hỗ trợ trực tiếp.";
+        HandoffEventDispatcher safeDispatcher = dispatcher != null
+                ? dispatcher
+                : (p, s, cat, rsn) -> HandoffDispatchResult.success(
+                        "HO-REF-" + UUID.randomUUID().toString().substring(0, 8));
+        try {
+            HandoffDispatchResult result = safeDispatcher.dispatchHandoffEvent(
+                    pageId, senderId, effectiveCategory, effectiveReason);
+            if (result != null && result.created()) {
+                return new ConditionalHandoffDecision(
+                        false,
+                        true,
+                        HandoffLifecycleStatus.HANDOFF_CREATED,
+                        effectiveCategory,
+                        effectiveReason,
+                        result.ticketId(),
+                        null
+                );
+            }
+            String err = (result != null && result.errorReason() != null)
+                    ? result.errorReason()
+                    : "HANDOFF_DISPATCH_UNAVAILABLE";
+            log.warn("[ACI-SafeRefereeHandoff] Handoff creation failed (page={}, sender={}, category={}, err={})",
+                    pageId, senderId, effectiveCategory, err);
+            return new ConditionalHandoffDecision(
+                    false,
+                    true,
+                    HandoffLifecycleStatus.HANDOFF_FAILED,
+                    effectiveCategory,
+                    effectiveReason,
+                    null,
+                    err
+            );
+        } catch (Exception ex) {
+            log.warn("[ACI-SafeRefereeHandoff] Exception dispatching safe handoff event: {}", ex.getMessage());
+            return new ConditionalHandoffDecision(
+                    false,
+                    true,
+                    HandoffLifecycleStatus.HANDOFF_FAILED,
+                    effectiveCategory,
+                    effectiveReason,
+                    null,
+                    ex.getMessage()
+            );
+        }
+    }
+
     // =========================================================================
     // 6. AUTHORITATIVE BOOKING PATCH APPLICATION (MỤC 3.1, 3.4, A03, S08, S10B, A08)
     // =========================================================================

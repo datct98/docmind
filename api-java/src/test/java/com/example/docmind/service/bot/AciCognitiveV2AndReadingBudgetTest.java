@@ -1539,7 +1539,11 @@ class AciCognitiveV2AndReadingBudgetTest {
         assertThat(turn3Telemetry).isNotNull();
         // Unit P1.1: Ngừng dựng ngầm Prompt V1 (~22.400 ký tự) trên hot-path LLM_COGNITIVE_V2 -> legacyEquivalentPromptChars == 0
         assertThat(turn3Telemetry.legacyEquivalentPromptChars()).isZero();
-        assertThat(turn3Telemetry.promptChars()).isLessThan(12_000);
+        int activeTemplateLen = CleanAgentCatalogAndPromptBuilder.loadValidatedAciSystemPromptTemplate().length();
+        assertThat(turn3Telemetry.promptChars() - activeTemplateLen)
+                .as("Phần dữ liệu động (Catalog + Compact Directives + Memory + History) phải gọn < 8.000 ký tự, không nạp ~50 skill cứng")
+                .isLessThan(8_000);
+        assertThat(turn3Telemetry.promptChars()).isLessThan(20_000);
 
         // 2. Referee V2 đã chặn từ cấm "chốt đơn" ở lần nháp 1 và sửa sạch ở lần 2
         assertThat(llmAttempts.get()).isEqualTo(2);
@@ -4609,5 +4613,291 @@ class AciCognitiveV2AndReadingBudgetTest {
             var draft2F07 = sharedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, senderF07);
             assertThat(draft2F07.lastResponsePlan().nextAction()).isEqualTo("NO_ADDITIONAL_ACTION");
         }
+    }
+
+    // =========================================================================
+    // UNIT P2.1: 4 VAI TRÒ NGỮ NGHĨA CỦA GIÁ, LUỒNG RETRY / 502 / SAFE_HANDOFF & ĐƠN VỊ F-01
+    // =========================================================================
+
+    @Test
+    @DisplayName("Unit P2.1 (1): Phân tách rõ 4 vai trò ngữ nghĩa của dữ liệu giá (USER_PROVIDED_COMPARISON_PRICE, USER_ASKED_PRICE, BOT_CATALOG_PRICE, BOT_UNGROUNDED_PRICE) xuyên suốt lịch sử phiên T1..T_current, không whitelist cứng 50k")
+    void testP21_FourPriceSemanticRoles_SessionHistoryProvenance_AndBlockFakeOwn50k() {
+        List<FanpageBotRequest.ConversationTurn> sessionHistoryAtT9 = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "Nhưng sao đắt thế chỗ khác gội đầu có 50k"),
+                new FanpageBotRequest.ConversationTurn("assistant", "Dạ mức 50k ở bên ngoài thường là gội làm sạch nhanh, còn bên em gói dưỡng sinh cơ bản là 239k trong 60 phút ạ.")
+        );
+
+        // 1. Trích xuất nguồn gốc giá xuyên suốt phiên (chỉ lấy từ lượt khách, tách biệt comparison vs asked)
+        var provenanceT9 = CleanAgentOutputRefereeAndSanitizer.extractCustomerSessionPriceProvenance(
+                "Nhưng đắt nhỉ",
+                sessionHistoryAtT9
+        );
+        assertThat(provenanceT9.userProvidedComparisonPrices()).containsExactly(50_000L);
+        assertThat(provenanceT9.userAskedPrices()).isEmpty();
+
+        var provenanceAsked250k = CleanAgentOutputRefereeAndSanitizer.extractCustomerSessionPriceProvenance(
+                "Tầm 250k bên mình có gói nào phù hợp không em?",
+                List.of(new FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em xin tư vấn cho mình gói 199k nhé"))
+        );
+        assertThat(provenanceAsked250k.userAskedPrices()).containsExactly(250_000L);
+        assertThat(provenanceAsked250k.userProvidedComparisonPrices()).isEmpty();
+        assertThat(provenanceAsked250k.isCustomerProvidedPrice(199_000L))
+                .as("Tuyệt đối không lấy giá do Bot từng nói trong lịch sử để hợp thức hóa")
+                .isFalse();
+
+        java.util.Set<Long> allowedCatalogPrices = java.util.Set.of(239_000L, 339_000L, 399_000L, 580_000L);
+
+        // 2. Kiểm chứng phân loại 4 vai trò ngữ nghĩa tường minh
+        String legitComparisonReply = "Dạ mức 50k ở chỗ khác thường là gội làm sạch nhanh khoảng 15-20 phút, còn gói Dưỡng sinh cơ bản 239k bên em kéo dài 60 phút ấn huyệt đầu cổ vai ạ.";
+        int idx50 = legitComparisonReply.indexOf("50k");
+        int idx239 = legitComparisonReply.indexOf("239k");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                legitComparisonReply, idx50, idx50 + 3, 50_000L, allowedCatalogPrices, java.util.Set.of(), provenanceT9))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.USER_PROVIDED_COMPARISON_PRICE);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                legitComparisonReply, idx239, idx239 + 4, 239_000L, allowedCatalogPrices, java.util.Set.of(), provenanceT9))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.BOT_CATALOG_PRICE);
+
+        String legitAskedBudgetReply = "Dạ với ngân sách tầm 250k của mình thì bên em đang có gói Dưỡng sinh cơ bản 239k rất vừa vặn ạ.";
+        int idx250 = legitAskedBudgetReply.indexOf("250k");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                legitAskedBudgetReply, idx250, idx250 + 4, 250_000L, allowedCatalogPrices, java.util.Set.of(), provenanceAsked250k))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.USER_ASKED_PRICE);
+
+        // Nếu bot biến mức giá so sánh 50k của khách thành giá gói của Page -> BẮT BUỘC CHẶN là BOT_UNGROUNDED_PRICE!
+        String fakeOwn50kReply = "Dạ bên em cũng có gói 50k gội nhanh cho mình lựa chọn nhé ạ.";
+        int fakeIdx50 = fakeOwn50kReply.indexOf("50k");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                fakeOwn50kReply, fakeIdx50, fakeIdx50 + 3, 50_000L, allowedCatalogPrices, java.util.Set.of(), provenanceT9))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE);
+
+        // Và nếu khách KHÔNG HỀ nói 50k (chứng minh không whitelist cứng con số 50k!) -> BẮT BUỘC CHẶN là BOT_UNGROUNDED_PRICE!
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                legitComparisonReply, idx50, idx50 + 3, 50_000L, allowedCatalogPrices, java.util.Set.of(),
+                CleanAgentOutputRefereeAndSanitizer.CustomerSessionPriceProvenance.empty()))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE);
+
+        // 3. Kiểm chứng tích hợp trên Referee V2 ở cả T7 lẫn T9 (giá 50k nằm trong lịch sử T7, T9 chỉ nhắn "Nhưng đắt nhỉ")
+        List<String> t9LegitViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(legitComparisonReply, 0)),
+                catalogPackages,
+                catalogPackages,
+                List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                nangSenPersona.resolvedConfig(),
+                "Nhưng đắt nhỉ",
+                false,
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                catalogChunks,
+                "Nàng Sen Spa",
+                null,
+                sessionHistoryAtT9
+        );
+        assertThat(t9LegitViolations)
+                .as("Ở T9 ('Nhưng đắt nhỉ'), nhắc lại mốc 50k khách nêu ở T7 để đối chiếu với gói 239k không được bị phạt nhầm")
+                .isEmpty();
+
+        List<String> fakeOwn50kViolations = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(fakeOwn50kReply, 0)),
+                catalogPackages,
+                catalogPackages,
+                List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                nangSenPersona.resolvedConfig(),
+                "Nhưng sao đắt thế chỗ khác gội đầu có 50k",
+                false,
+                null,
+                null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                catalogChunks,
+                "Nàng Sen Spa",
+                null,
+                List.of()
+        );
+        assertThat(fakeOwn50kViolations)
+                .contains("UNGROUNDED_PRICE_MENTIONED:50k", "UNGROUNDED_OR_EXCLUDED_PRICE:50k");
+    }
+
+    @Test
+    @DisplayName("Unit P2.1 (2): Đồng bộ 100% SAFE_HANDOFF với handoffStatus=HANDOFF_CREATED & phân biệt rõ lỗi mạng 502 BAD_GATEWAY với lỗi nội dung bịa giá")
+    void testP21_SafeHandoffSynchronizesTelemetryHandoffStatus_AndSeparatesUpstream502FromContentViolation() {
+        AgentBrainService sharedBrain = new AgentBrainService((com.example.docmind.client.AgentBrainClient) null);
+
+        // Ca A: Bot cố tình bịa gói 199k cả lần 1 lẫn lần repair -> kích hoạt SAFE_HANDOFF và đồng bộ handoffStatus=HANDOFF_CREATED
+        AtomicInteger ungroundedCalls = new AtomicInteger(0);
+        FanpageBotService botPersistentUngrounded = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    ungroundedCalls.incrementAndGet();
+                    return """
+                            {
+                              "brain_reflection": {
+                                "customer_understanding": {"turn_intent": "PRICE_INQUIRY", "interaction_permission": "OPEN"},
+                                "priority": {"primary": "PRICE_INFORMATION", "secondary": []},
+                                "response_plan": {"objective": "Báo giá", "strategy": "Direct Answer", "cta_level": "SOFT_QUESTION", "adaptation": "CONTINUATION"}
+                              },
+                              "bubbles": ["Dạ bên em đang có gói gội dưỡng sinh ưu đãi chỉ 199k cho mình ạ."]
+                            }
+                            """;
+                }
+        );
+        FanpageBotResponse safeHandoffResp = botPersistentUngrounded.handleCustomerMessage(
+                buildBotRequest("sender-p21-handoff-sync", "Chị Mai", "Bên mình có gói nào rẻ không?", null, List.of())
+        );
+        assertThat(ungroundedCalls.get()).isEqualTo(2);
+        assertThat(safeHandoffResp.needsHumanHandoff()).isTrue();
+        assertThat(safeHandoffResp.handoffCategory()).isEqualTo("REFEREE_SAFE_HANDOFF_UNGROUNDED_PRICE");
+        assertThat(safeHandoffResp.replyBubbles()).hasSize(1);
+        assertThat(safeHandoffResp.replyText()).isEqualTo(FanpageBotService.SAFE_HANDOFF_BUBBLE_TEXT);
+        ThinkingModePolicy.AciTurnTelemetry lastAciTel = ThinkingModePolicy.getLastAciTurnTelemetry();
+        assertThat(lastAciTel).isNotNull();
+        assertThat(lastAciTel.handoffStatus())
+                .as("Khi kích hoạt SAFE_HANDOFF, telemetry handoffStatus bắt buộc là HANDOFF_CREATED, tuyệt đối không được là NONE")
+                .isEqualTo("HANDOFF_CREATED");
+
+        // Ca B: Lỗi mạng upstream 502 BAD_GATEWAY ngay từ lượt gọi đầu -> KHÔNG gọi thêm JSON retry dư thừa, trả Fallback cấu trúc (không vu oan SAFE_HANDOFF)
+        AtomicInteger upstream502Calls = new AtomicInteger(0);
+        FanpageBotService botInitial502 = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    upstream502Calls.incrementAndGet();
+                    return "[qwen-error] HTTP 502 BAD_GATEWAY: <!DOCTYPE html><html><title>502: Bad gateway</title></html>";
+                }
+        );
+        FanpageBotResponse initial502Resp = botInitial502.handleCustomerMessage(
+                buildBotRequest("sender-p21-502-initial", "Chị Mai", "Gội đầu mấy tiền ạ?", null, List.of())
+        );
+        assertThat(upstream502Calls.get())
+                .as("Khi client đã báo lỗi mạng upstream 502 sau bounded retry nội bộ, Orchestrator không được nhồi thêm JSON retry")
+                .isEqualTo(1);
+        assertThat(initial502Resp.needsHumanHandoff()).isFalse();
+        assertThat(initial502Resp.replyText()).doesNotContain("qwen-error").isNotBlank();
+
+        // Ca C: Lần 1 vi phạm giá nhưng lần gọi Repair gặp lỗi mạng 502 BAD_GATEWAY -> chặn tuyệt đối giá sai, chuyển sang Safe Structural Fallback thay vì quy chụp thành SAFE_HANDOFF
+        AtomicInteger repair502Calls = new AtomicInteger(0);
+        FanpageBotService botRepair502 = createIsolatedBotServiceWithBrain(
+                AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
+                sharedBrain,
+                (prompt, budget) -> {
+                    int callIdx = repair502Calls.incrementAndGet();
+                    if (callIdx == 1) {
+                        return """
+                                {
+                                  "brain_reflection": {
+                                    "customer_understanding": {"turn_intent": "PRICE_INQUIRY", "interaction_permission": "OPEN"},
+                                    "priority": {"primary": "PRICE_INFORMATION", "secondary": []},
+                                    "response_plan": {"objective": "Báo giá", "strategy": "Direct Answer", "cta_level": "SOFT_QUESTION", "adaptation": "CONTINUATION"}
+                                  },
+                                  "bubbles": ["Dạ bên em có gói 199k ạ."]
+                                }
+                                """;
+                    }
+                    return "[qwen-error] HTTP 502 BAD_GATEWAY: Cloudflare upstream timeout";
+                }
+        );
+        FanpageBotResponse repair502Resp = botRepair502.handleCustomerMessage(
+                buildBotRequest("sender-p21-502-repair", "Chị Mai", "Gội đầu mấy tiền ạ?", null, List.of())
+        );
+        assertThat(repair502Calls.get()).isEqualTo(2);
+        assertThat(repair502Resp.replyText()).doesNotContain("199k").doesNotContain("qwen-error");
+        assertThat(repair502Resp.needsHumanHandoff())
+                .as("Lỗi mạng 502 ở bước repair phải kích hoạt Safe Structural Fallback, không đánh đồng thành lỗi nội dung SAFE_HANDOFF")
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("Unit P2.1 (3 / F-01): rebuildBubblesFromStructuredCatalog & resolveFormattedPricePreservingBillingUnit bảo toàn tuyệt đối hậu tố /m² và /khóa")
+    void testP21_RebuildBubblesFromStructuredCatalog_PreservesBillingUnitsF01() {
+        PackageCatalogService.PackageSummary tilePkgCompact = new PackageCatalogService.PackageSummary(
+                "tile:GACH-8080",
+                "GACH-8080",
+                "ALL",
+                "Gạch Porcelain Vân Đá Marble 80x80cm",
+                "GACH",
+                List.of("phòng khách"),
+                null,
+                "80x80cm",
+                380_000L,
+                "380k",
+                "Giao tận công trình",
+                "Hộp 3 viên (1.92m²)",
+                "phòng khách",
+                "",
+                false,
+                new PackageCatalogService.CatalogSourceData("GACH-8080", "Gạch Porcelain Vân Đá Marble 80x80cm", "380.000đ/m²", "80x80cm", "Giao tận công trình", "", List.of()),
+                new PackageCatalogService.CatalogNormalizedData(
+                        "tile:GACH-8080", "Gạch Porcelain Vân Đá Marble 80x80cm",
+                        380_000L, PackageCatalogService.PriceType.PER_UNIT, "/m²",
+                        List.of(), PackageCatalogService.ParseStatus.VERIFIED, ""
+                ),
+                new PackageCatalogService.CatalogInferredData(
+                        PackageCatalogService.CommercialRole.PRIMARY, List.of("phòng khách"), PackageCatalogService.RegionScope.UNSPECIFIED, "ALL"
+                ),
+                new PackageCatalogService.CatalogDisplayData(
+                        "Gạch Porcelain Vân Đá Marble 80x80cm", "380k", "Đơn giá niêm yết", "80x80cm", "mẫu", "Giao tận công trình"
+                )
+        );
+        PackageCatalogService.PackageSummary eduPkgCompact = new PackageCatalogService.PackageSummary(
+                "edu:ENG-GT01",
+                "ENG-GT01",
+                "ALL",
+                "Khóa Tiếng Anh Giao Tiếp Cơ Bản",
+                "EDU",
+                List.of("mất gốc"),
+                null,
+                "24 buổi",
+                3_900_000L,
+                "3.900k",
+                "Lớp offline tối đa 10 học viên",
+                "Giáo trình bản quyền",
+                "mất gốc",
+                "",
+                false,
+                new PackageCatalogService.CatalogSourceData("ENG-GT01", "Khóa Tiếng Anh Giao Tiếp Cơ Bản", "3.900.000đ/khóa", "24 buổi", "Lớp offline", "", List.of()),
+                new PackageCatalogService.CatalogNormalizedData(
+                        "edu:ENG-GT01", "Khóa Tiếng Anh Giao Tiếp Cơ Bản",
+                        3_900_000L, PackageCatalogService.PriceType.PER_UNIT, "/khóa",
+                        List.of(), PackageCatalogService.ParseStatus.VERIFIED, ""
+                ),
+                new PackageCatalogService.CatalogInferredData(
+                        PackageCatalogService.CommercialRole.PRIMARY, List.of("mất gốc"), PackageCatalogService.RegionScope.UNSPECIFIED, "ALL"
+                ),
+                new PackageCatalogService.CatalogDisplayData(
+                        "Khóa Tiếng Anh Giao Tiếp Cơ Bản", "3.900k", "Học phí trọn khóa", "24 buổi", "khóa", "Lớp offline"
+                )
+        );
+
+        assertThat(CleanAgentOutputRefereeAndSanitizer.resolveFormattedPricePreservingBillingUnit(tilePkgCompact))
+                .isEqualTo("380k/m²");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.resolveFormattedPricePreservingBillingUnit(eduPkgCompact))
+                .isEqualTo("3.900k/khóa");
+
+        List<FanpageBotResponse.ReplyBubble> rebuiltTile = CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ mẫu Gạch Porcelain Vân Đá Marble 80x80cm bên mình đang có giá 265k/m² ạ?", 0)),
+                null,
+                List.of(tilePkgCompact),
+                "bên mình",
+                "Anh"
+        );
+        assertThat(rebuiltTile).hasSize(1);
+        assertThat(rebuiltTile.get(0).text()).contains("380k/m²").doesNotContain("265k");
+
+        List<FanpageBotResponse.ReplyBubble> rebuiltEdu = CleanAgentOutputRefereeAndSanitizer.rebuildBubblesFromStructuredCatalog(
+                List.of(new FanpageBotResponse.ReplyBubble("Dạ Khóa Tiếng Anh Giao Tiếp Cơ Bản trung tâm có học phí 2.500k/khóa ạ.", 0)),
+                null,
+                List.of(eduPkgCompact),
+                "trung tâm",
+                "Bạn"
+        );
+        assertThat(rebuiltEdu).hasSize(1);
+        assertThat(rebuiltEdu.get(0).text()).contains("3.900k/khóa").doesNotContain("2.500k");
     }
 }
