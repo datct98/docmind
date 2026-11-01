@@ -175,7 +175,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 && !isOfficialDashScopeEndpoint()
                 && (this.reasoningEffort == null || this.reasoningEffort.isBlank())
                 && budget != null
-                && budget.thinkingMode() == ThinkingMode.FAST_NO_THINK) {
+                && budget.thinkingMode() != null) {
             return "none";
         }
         if (budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank()) {
@@ -289,8 +289,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 body.put("reasoning_effort", effort);
             }
             ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
-            if ("qwen".equalsIgnoreCase(provider)
-                    || (isQwenModelOrProvider() && (thinkingMode == null || thinkingMode == ThinkingMode.FAST_NO_THINK))) {
+            if (isQwenModelOrProvider()) {
                 body.put("enable_thinking", false);
             }
             int maxToks = (budget != null && budget.maxTokens() > 0)

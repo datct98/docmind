@@ -84,6 +84,32 @@ class P36ConversationIntelligenceVerificationTest {
         assertThat(gwFastReply).contains("Dạ chào anh ạ.");
         assertThat(gwClient.getLastCallTelemetry().reasoningTokens()).isEqualTo(140);
         gwServer.verify();
+        gwServer.reset();
+
+        // OBJECTION_REFRAME_THINK on Qwen non-DashScope gateway also caps reasoning_effort='none'
+        ReasoningBudget objectionBudget = new ReasoningBudget(
+                QueryComplexity.DEEP_REASONING,
+                "low",
+                60,
+                500,
+                13000,
+                3200,
+                0.2,
+                0.9,
+                1.08,
+                ThinkingMode.OBJECTION_REFRAME_THINK
+        );
+        gwServer.expect(requestTo("https://api.x-apikey.com/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.enable_thinking").value(false))
+                .andExpect(jsonPath("$.reasoning_effort").value("none"))
+                .andExpect(jsonPath("$.max_tokens").value(3200))
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"bubbles\\\":[\\\"Dạ gói 399k làm trọn 60 phút toàn thân ạ.\\\"]}\"}}],\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":380,\"completion_tokens_details\":{\"reasoning_tokens\":260}}}",
+                        MediaType.APPLICATION_JSON
+                ));
+        assertThat(gwClient.complete("đắt nhỉ", objectionBudget)).contains("399k");
+        gwServer.verify();
 
         // Official DashScope endpoint continues omitting reasoning_effort
         LlmProperties dashScopeProps = new LlmProperties();
@@ -669,6 +695,83 @@ class P36ConversationIntelligenceVerificationTest {
         assertThat(falseVipViolations)
                 .anyMatch(v -> v.startsWith("UNGROUNDED_PRIVATE_ROOM:NS01")
                         || v.startsWith("CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:NS01"));
+    }
+
+    @Test
+    @DisplayName("P5 Truth Grounding: Referee chặn bịa 'giá đã gồm tip' hoặc 'không nhận tip' trái với 04_chính_sách ('Tiền tip chưa bao gồm trong giá dịch vụ và hoàn toàn tùy tâm')")
+    void refereeBlocksUngroundedTipInclusionOrNoTipClaimsWhileAllowingGroundedPolicyStatement() {
+        PackageCatalogService.PackageSummary ns01 = buildSampleNs01();
+        List<PackageCatalogService.PackageSummary> catalog = List.of(ns01);
+        com.example.docmind.service.retrieval.ReciprocalRankFusion.FusedChunk tipPolicyChunk =
+                new com.example.docmind.service.retrieval.ReciprocalRankFusion.FusedChunk(
+                        new com.example.docmind.repository.RetrievedChunk(
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                List.of("CHÍNH SÁCH"),
+                                List.of(),
+                                1,
+                                new double[]{0, 0, 10, 10},
+                                "| Quy định về tip | Tiền tip chưa bao gồm trong giá dịch vụ và hoàn toàn tùy tâm |",
+                                0.95
+                        ),
+                        0.95
+                );
+
+        // 1. Hallucinated "giá đã gồm tip" without tip chunk retrieved -> BLOCKED
+        List<String> hallucinatedIncludedNoChunk = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ gói Massage cơ bản 60 phút giá 399k đã gồm tip, không phát sinh phụ phí ạ.", 0)),
+                catalog, catalog, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(ns01), PagePersonaConfig.empty(),
+                "đắt nhỉ", false, null, null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                List.of(), "Nàng Sen", "", List.of()
+        );
+        assertThat(hallucinatedIncludedNoChunk).contains("UNGROUNDED_TIP_POLICY_CLAIM");
+
+        // 2. Hallucinated "giá đã gồm tip" even when 04_chính_sách chunk IS retrieved -> BLOCKED
+        List<String> hallucinatedIncludedWithChunk = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ gói Massage cơ bản 60 phút giá 399k đã bao gồm tiền tip rồi ạ.", 0)),
+                catalog, catalog, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(ns01), PagePersonaConfig.empty(),
+                "giá đã gồm tip chưa", false, null, null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                List.of(tipPolicyChunk), "Nàng Sen", "", List.of()
+        );
+        assertThat(hallucinatedIncludedWithChunk).contains("UNGROUNDED_TIP_POLICY_CLAIM");
+
+        // 3. Hallucinated "bên em không nhận tip" when 04_chính_sách says optional tip ("tùy tâm") -> BLOCKED
+        List<String> hallucinatedNoTip = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ tại Nàng Sen bên em không nhận tip dưới mọi hình thức ạ.", 0)),
+                catalog, catalog, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(ns01), PagePersonaConfig.empty(),
+                "có cần tip không", false, null, null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                List.of(tipPolicyChunk), "Nàng Sen", "", List.of()
+        );
+        assertThat(hallucinatedNoTip).contains("UNGROUNDED_TIP_POLICY_CLAIM");
+
+        // 4. Accurate grounded policy answer ("tiền tip chưa bao gồm trong giá dịch vụ và hoàn toàn tùy tâm") -> PASS 0 violations
+        List<String> accuratePolicyReply = CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ ở gói Massage cơ bản 60 phút giá 399k, tiền tip chưa bao gồm trong giá dịch vụ và hoàn toàn tùy tâm theo sự hài lòng của mình ạ.", 0)),
+                catalog, catalog, List.of(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(ns01), PagePersonaConfig.empty(),
+                "có cần tip không", false, null, null,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                List.of(tipPolicyChunk), "Nàng Sen", "", List.of()
+        );
+        assertThat(accuratePolicyReply).doesNotContain("UNGROUNDED_TIP_POLICY_CLAIM").isEmpty();
     }
 
     private static PackageCatalogService.PackageSummary buildSampleDs02() {

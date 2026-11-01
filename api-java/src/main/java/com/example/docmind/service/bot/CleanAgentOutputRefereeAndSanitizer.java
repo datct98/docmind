@@ -3960,6 +3960,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (violations.stream().anyMatch(v -> v.startsWith("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT"))) {
             sb.append("- LẶP LẠI VĂN MẪU XIN LỖI HÀNH CHÍNH (`REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT`): Lượt liền trước đã mở đầu bằng câu xin lỗi hành chính nên TUYỆT ĐỐI CẤM lặp lại cấu trúc 'Dạ ").append(selfPronoun).append(" xin lỗi...' / '").append(selfPronoun).append(" thành thật xin lỗi...'. Hãy tiếp thu thẳng thắn, tự nhiên bằng cách diễn đạt mới và điều chỉnh ngay cách trao đổi (`cta_level: \"NO_CTA\"`, không hỏi ép đặt lịch/chọn gói).\n");
         }
+        if (violations.stream().anyMatch(v -> v.startsWith("UNGROUNDED_TIP_POLICY_CLAIM"))) {
+            sb.append("- TỰ SUY ĐOÁN QUY ĐỊNH TIỀN TIP NGOÀI TÀI LIỆU NGUỒN (`UNGROUNDED_TIP_POLICY_CLAIM`): TUYỆT ĐỐI CẤM tự tuyên bố 'giá đã gồm tip', 'bao gồm tip' hay 'không nhận tip' khi `<DOCUMENT_CONTEXT>` không ghi nguyên văn như vậy (hoặc ghi tiền tip chưa bao gồm trong giá dịch vụ). Hãy bỏ hoàn toàn mệnh đề về tiền tip và chỉ nêu đúng quyền lợi có trong Catalog.\n");
+        }
         List<String> matchedForbiddenWords = violations.stream()
                 .filter(v -> v != null && v.startsWith("FORBIDDEN_PAGE_WORD_USED:"))
                 .map(v -> v.substring("FORBIDDEN_PAGE_WORD_USED:".length()))
@@ -4899,11 +4902,66 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             addUniqueViolation(violations, "FALSE_HUMAN_IDENTITY_CLAIM");
         }
 
+        // Unit P3.6: Chặn tự suy đoán quy định tiền tip ("giá đã gồm tip", "không nhận tip") trái với tài liệu nguồn
+        if (detectUngroundedTipPolicyClaim(combinedText, groundedChunksLower)) {
+            addUniqueViolation(violations, "UNGROUNDED_TIP_POLICY_CLAIM");
+        }
+
         if (isPoliteClosureTurn && BOOKING_TIME_QUESTION_PHRASE_PATTERN.matcher(combinedText).matches()) {
             addUniqueViolation(violations, "PUSHY_BOOKING_CTA_ON_POLITE_CLOSURE");
         }
 
         return violations;
+    }
+
+    private static final Pattern TIP_INCLUSION_MENTION_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:đã\\s+(?:bao\\s+)?gồm|bao\\s+gồm|gồm(?:\\s+cả)?|đã\\s+tính|trọn\\s+gói\\s+cả)\\s+(?:cả\\s+)?(?:tiền\\s+|phí\\s+)?tip\\b"
+    );
+
+    private static final Pattern TIP_NEGATION_PREFIX_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:chưa|không|ko|chẳng)\\s*(?:đã\\s+|có\\s+)?$"
+    );
+
+    private static final Pattern NO_TIP_POLICY_CLAIM_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:không\\s+nhận\\s+(?:tiền\\s+)?tip|miễn\\s+(?:tiền\\s+)?tip|0\\s*tip|không\\s+thu\\s+(?:tiền\\s+)?tip)\\b"
+    );
+
+    private static final Pattern GROUNDED_NO_TIP_SOURCE_SUPPORT_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:không\\s+nhận\\s+(?:tiền\\s+)?tip|không\\s+bắt\\s+buộc\\s+(?:tiền\\s+)?tip|miễn\\s+(?:tiền\\s+)?tip|0\\s*tip|không\\s+thu\\s+(?:tiền\\s+)?tip)\\b"
+    );
+
+    private static boolean hasUnnegatedTipInclusionClaim(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFC);
+        Matcher m = TIP_INCLUSION_MENTION_PATTERN.matcher(norm);
+        while (m.find()) {
+            String prefix = norm.substring(Math.max(0, m.start() - 24), m.start());
+            if (!TIP_NEGATION_PREFIX_PATTERN.matcher(prefix).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean detectUngroundedTipPolicyClaim(String combinedText, String groundedChunksLower) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        String normReply = java.text.Normalizer.normalize(combinedText.strip(), java.text.Normalizer.Form.NFC);
+        String normSource = groundedChunksLower == null
+                ? ""
+                : java.text.Normalizer.normalize(groundedChunksLower, java.text.Normalizer.Form.NFC);
+
+        if (hasUnnegatedTipInclusionClaim(normReply) && !hasUnnegatedTipInclusionClaim(normSource)) {
+            return true;
+        }
+        if (NO_TIP_POLICY_CLAIM_PATTERN.matcher(normReply).find()
+                && !GROUNDED_NO_TIP_SOURCE_SUPPORT_PATTERN.matcher(normSource).find()) {
+            return true;
+        }
+        return false;
     }
 
     private static final Pattern EXPLICIT_CONVERSATION_CLOSING_DEFERRAL_PATTERN = Pattern.compile(
