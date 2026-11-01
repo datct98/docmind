@@ -3928,6 +3928,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (violations.stream().anyMatch(v -> v.startsWith("CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT"))) {
             sb.append("- KHÁCH ĐANG PHÀN NÀN CÁCH GIAO TIẾP (`CTA_CONTEXT_MISMATCH_ON_STYLE_COMPLAINT`): BẮT BUỘC đặt `cta_level: \"NO_CTA\"`, `next_action: \"NO_ADDITIONAL_ACTION\"`. Chỉ tiếp thu tự nhiên, chân thành lời góp ý của khách trong 1 bong bóng ngắn gọn; TUYỆT ĐỐI CẤM gài câu hỏi mời đặt lịch, hỏi khung giờ/cơ sở hoặc hỏi chọn gói dịch vụ ở cuối câu.\n");
         }
+        if (violations.stream().anyMatch(v -> v.startsWith("FALSE_HUMAN_IDENTITY_CLAIM"))) {
+            String lowerSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip().toLowerCase(Locale.ROOT) : "em";
+            sb.append("- TRUNG THỰC VỀ DANH TÍNH AI (`FALSE_HUMAN_IDENTITY_CLAIM`): TUYỆT ĐỐI CẤM tự nhận sai sự thật là người thật hay nhân viên thật (\"")
+              .append(lowerSelf)
+              .append(" là người thật\", \"người thật đang chat\", \"không phải bot/AI\"). Bắt buộc thừa nhận trung thực, tự nhiên mình là trợ lý AI hỗ trợ tư vấn trên Fanpage, cầu thị ghi nhận góp ý của khách, không phòng thủ và đặt `cta_level: \"NO_CTA\"`, `next_action: \"NO_ADDITIONAL_ACTION\"`.\n");
+        }
         if (violations.stream().anyMatch(v -> v.startsWith("REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT"))) {
             sb.append("- LẶP LẠI VĂN MẪU XIN LỖI HÀNH CHÍNH (`REPEATED_BOILERPLATE_APOLOGY_ON_STYLE_COMPLAINT`): Lượt liền trước đã mở đầu bằng câu xin lỗi hành chính nên TUYỆT ĐỐI CẤM lặp lại cấu trúc 'Dạ ").append(selfPronoun).append(" xin lỗi...' / '").append(selfPronoun).append(" thành thật xin lỗi...'. Hãy tiếp thu thẳng thắn, tự nhiên bằng cách diễn đạt mới và điều chỉnh ngay cách trao đổi (`cta_level: \"NO_CTA\"`, không hỏi ép đặt lịch/chọn gói).\n");
         }
@@ -4657,9 +4663,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String effBookingStatus = (authoritativeBookingState != null && authoritativeBookingState.status() != null)
                 ? authoritativeBookingState.status().name()
                 : "NONE";
-        boolean isPoliteClosureTurn = reflection != null
+        boolean isRawPoliteClosureTurn = reflection != null
                 && ("POLITE_CLOSURE".equalsIgnoreCase(reflection.priority().primary())
                     || reflection.strategy().adaptation() == AdaptiveConversationIntelligence.StrategyAdaptationMode.STOP);
+        boolean isPriceHesitationWithoutExplicitClosing = !isExplicitConversationClosingDeferral(originalCustomerMessage)
+                && !isCommunicationStyleComplaintMessage(originalCustomerMessage)
+                && (CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(originalCustomerMessage, true)
+                    || (reflection != null
+                        && (Boolean.TRUE.equals(reflection.customerUnderstanding().costConcernExpressed())
+                            || "PRICE_OBJECTION".equalsIgnoreCase(reflection.customerUnderstanding().detectedIntent())
+                            || "BUDGET_FIT".equalsIgnoreCase(reflection.priority().primary()))));
+        boolean isPoliteClosureTurn = isRawPoliteClosureTurn && !isPriceHesitationWithoutExplicitClosing;
 
         // Chạy kiểm định grounding cốt lõi nhưng truyền priceObjectionCount=0 & explicitDownsellRequested=false
         // để TẮT hoàn toàn PREMATURE_DOWNSELL_ON_FIRST_OBJECTION và MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL!
@@ -4857,11 +4871,46 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
 
+        // Unit P3.5: Trung thực tuyệt đối về danh tính AI — cấm tự nhận sai sự thật là người thật / nhân viên thật
+        if (detectFalseHumanIdentityClaim(combinedText)) {
+            addUniqueViolation(violations, "FALSE_HUMAN_IDENTITY_CLAIM");
+        }
+
         if (isPoliteClosureTurn && BOOKING_TIME_QUESTION_PHRASE_PATTERN.matcher(combinedText).matches()) {
             addUniqueViolation(violations, "PUSHY_BOOKING_CTA_ON_POLITE_CLOSURE");
         }
 
         return violations;
+    }
+
+    private static final Pattern EXPLICIT_CONVERSATION_CLOSING_DEFERRAL_PATTERN = Pattern.compile(
+            "(?isU).*(?:\\bđể\\s+(?:mình|chị|anh|tôi|cô|chú|bác|em)?\\s*(?:suy\\s+nghĩ|cân\\s+nhắc|xem|bàn|hỏi)(?:\\s+thêm|\\s+lại|\\s+đã)?\\b|"
+            + "\\bthôi\\s+(?:không|ko|k|khỏi|để)\\s*(?:làm|cần|đặt|đi|nhé|ạ|lúc\\s+khác|hôm\\s+khác|dịp\\s+khác)\\b|"
+            + "\\b(?:hẹn|để)\\s+(?:dịp|lúc|hôm|lần)\\s+khác\\b|"
+            + "\\btạm\\s+biệt\\b|\\btạm\\s+thời\\s+chưa\\b|\\bchưa\\s+có\\s+nhu\\s+cầu(?:\\s+nữa)?\\b).*"
+    );
+
+    private static final Pattern FALSE_HUMAN_IDENTITY_CLAIM_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:em|mình|tôi)\\s+(?:đang\\s+)?là\\s+(?:người\\s+thật|nhân\\s+viên\\s+thật|con\\s+người\\s+thật|chuyên\\s+viên\\s+thật|người\\s+bằng\\s+xương\\s+bằng\\s+thịt)\\b|"
+            + "\\bngười\\s+thật\\s+đang\\s+(?:chat|nhắn|trực|trò\\s+chuyện|tư\\s+vấn|hỗ\\s+trợ)\\b|"
+            + "\\b(?:em|mình|tôi)\\s+không\\s+phải\\s+(?:là\\s+)?(?:bot|chatbot|ai|trợ\\s+lý\\s+(?:ảo|ai)|máy|hệ\\s+thống\\s+tự\\s+động)\\b|"
+            + "\\bkhông\\s+phải\\s+(?:bot|chatbot|ai|máy)\\s+(?:đâu|nhắn|trả\\s+lời)\\b)"
+    );
+
+    public static boolean isExplicitConversationClosingDeferral(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        return EXPLICIT_CONVERSATION_CLOSING_DEFERRAL_PATTERN.matcher(norm).matches();
+    }
+
+    public static boolean detectFalseHumanIdentityClaim(String combinedText) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(combinedText.strip(), java.text.Normalizer.Form.NFC);
+        return FALSE_HUMAN_IDENTITY_CLAIM_PATTERN.matcher(norm).find();
     }
 
     private static final Pattern FORBIDDEN_THAO_MAI_CLICHE_PATTERN = Pattern.compile(

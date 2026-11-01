@@ -8,6 +8,9 @@
           <h3 class="fb-sim-title">
             Giả lập Bot Trực Tin Nhắn Fanpage FB
             <span class="api-pill">ACI V2 · POST /api/bot/fanpage/message</span>
+            <span class="api-pill" :title="`Định danh phiên Simulator độc lập: ${simulatorSenderId}`">
+              ID: {{ simulatorSenderId }}
+            </span>
           </h3>
         </div>
         <div class="fb-sim-header-actions">
@@ -97,7 +100,7 @@
               <button class="btn-skill-sim" @click="isSkillModalOpen = true" title="Quản lý Kho Kỹ năng Tâm lý, Chốt Sale & Giao tiếp">
                 🎯 Kỹ năng
               </button>
-              <button class="btn-reset-sim" @click="resetSimulation" title="Làm mới phiên chat của khách">
+              <button class="btn-reset-sim" @click="resetSimulation" title="Mở cuộc hội thoại mới độc lập (NEW_CONVERSATION - bắt đầu tại T1)">
                 🔄 Làm mới
               </button>
             </div>
@@ -110,7 +113,11 @@
               <span class="handoff-cat-badge">{{ lastHandoffCategory }}</span>
             </div>
             <p class="handoff-reason-text">{{ lastHandoffReason }}</p>
-            <button class="btn-resume-bot" @click="isHandedOffToHuman = false">
+            <button
+              v-if="lastHandoffCategory !== 'HUMAN_TAKEOVER'"
+              class="btn-resume-bot"
+              @click="isHandedOffToHuman = false"
+            >
               Cho phép Bot AI tiếp tục trực lại
             </button>
           </div>
@@ -462,7 +469,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, onBeforeUnmount } from 'vue'
+import { ref, reactive, watch, nextTick, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 import TeachAiModal from './TeachAiModal.vue'
 import AgentSkillModal from './AgentSkillModal.vue'
@@ -496,9 +503,51 @@ const customerInput = ref('')
 const mobileSimTab = ref('chat') // 'chat' | 'telemetry'
 const chatItems = ref([])
 const conversationHistory = ref([])
+const SAFE_SIM_SENDER_REGEX = /^fb-customer-demo-[A-Za-z0-9_-]{3,}$/
+const createSimSessionSuffix = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const createSimSenderId = () => `fb-customer-demo-${createSimSessionSuffix()}`
 const createSimConversationId = () => `sim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+const getSimStorageKey = (pageId) => `docmind_sim_session_v35:${pageId || 'global'}`
+const simulatorSenderId = ref(createSimSenderId())
 const conversationId = ref(createSimConversationId())
 const pendingResetSession = ref(false)
+let activeSessionPageKey = null
+
+const persistSimulatorSessionBinding = (pageId, senderIdVal, convIdVal) => {
+  if (typeof window === 'undefined' || !window.sessionStorage) return
+  try {
+    window.sessionStorage.setItem(
+      getSimStorageKey(pageId),
+      JSON.stringify({
+        senderId: senderIdVal,
+        conversationId: convIdVal,
+        updatedAt: Date.now()
+      })
+    )
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+const readSavedSimulatorSessionBinding = (pageId) => {
+  if (typeof window === 'undefined' || !window.sessionStorage) return null
+  try {
+    const raw = window.sessionStorage.getItem(getSimStorageKey(pageId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.senderId === 'string' && SAFE_SIM_SENDER_REGEX.test(parsed.senderId)) {
+      return {
+        senderId: parsed.senderId,
+        conversationId: typeof parsed.conversationId === 'string' && parsed.conversationId
+          ? parsed.conversationId
+          : createSimConversationId()
+      }
+    }
+  } catch {
+    // ignore malformed storage
+  }
+  return null
+}
 const isTyping = ref(false)
 const isDeliveringBubbles = ref(false)
 const isSending = ref(false)
@@ -881,7 +930,7 @@ const flushBurst = async () => {
 
     const response = await api.sendFanpageBotMessage({
       pageId: props.activePage?.id || null,
-      senderId: 'fb-customer-demo',
+      senderId: simulatorSenderId.value,
       conversationId: conversationId.value,
       resetSession: shouldResetSession,
       customerName: null,
@@ -914,7 +963,21 @@ const flushBurst = async () => {
       capturedLead.value = response.extracted_lead
     }
 
-    if (response.needs_human_handoff) {
+    const hooks = Array.isArray(response.triggered_hooks) ? response.triggered_hooks : []
+    if (hooks.includes('HUMAN_TAKEOVER_SILENT_HOLD')) {
+      isHandedOffToHuman.value = true
+      lastHandoffCategory.value = 'HUMAN_TAKEOVER'
+      lastHandoffReason.value = 'Phiên này đang do Nhân viên tiếp quản (HUMAN_TAKEOVER) trên Live Inbox nên Bot giữ im lặng. Nhân viên cần bật lại AI trên đúng phiên đó tại Live Inbox, hoặc bấm "🔄 Làm mới" để mở cuộc hội thoại mới.'
+      chatItems.value.push({
+        role: 'timeline',
+        text: '🔒 [HUMAN_TAKEOVER] Phiên này đang do Nhân viên trực tiếp xử lý trên Live Inbox — Bot không tự động trả lời. Bấm "🔄 Làm mới" để mở phiên khách mới.'
+      })
+    } else if (hooks.includes('OPT_OUT_SILENT_HOLD')) {
+      chatItems.value.push({
+        role: 'timeline',
+        text: '🔕 [OPT_OUT] Phiên này đang tạm dừng nhận tin theo yêu cầu trước đó của khách. Nhắn hỏi cụ thể về dịch vụ/giá/đặt lịch để khôi phục tư vấn, hoặc bấm "🔄 Làm mới" để mở phiên mới.'
+      })
+    } else if (response.needs_human_handoff) {
       isHandedOffToHuman.value = true
       lastHandoffCategory.value = response.handoff_category || 'HUMAN_HANDOFF'
       lastHandoffReason.value = response.handoff_reason || 'Tình huống cần chuyên viên trực tiếp xử lý.'
@@ -932,7 +995,7 @@ const flushBurst = async () => {
 
       const anchorResponse = await api.sendFanpageBotMessage({
         pageId: props.activePage?.id || null,
-        senderId: 'fb-customer-demo',
+        senderId: simulatorSenderId.value,
         conversationId: conversationId.value,
         customerName: null,
         message: singleMessage,
@@ -994,7 +1057,7 @@ const simulateIdle = async (seconds) => {
 
     const response = await api.sendFanpageBotMessage({
       pageId: props.activePage?.id || null,
-      senderId: 'fb-customer-demo',
+      senderId: simulatorSenderId.value,
       conversationId: conversationId.value,
       customerName: null,
       message: '',
@@ -1153,24 +1216,21 @@ const handleTeachSubmitted = ({ messageIndex, learnedRule, regeneratedAnswer, ap
   teachingTarget.value = null
 }
 
-const resetSimulation = () => {
+const clearLocalSimulatorUiState = () => {
   if (burstDebounceTimer) {
     clearTimeout(burstDebounceTimer)
     burstDebounceTimer = null
   }
-  if (harnessToastTimer) {
-    clearTimeout(harnessToastTimer)
-    harnessToastTimer = null
-  }
+  bubbleDeliveryGeneration++
   pendingBurstBuffer.value = []
   isDebouncingBurst.value = false
   isDeliveringBubbles.value = false
   isSending.value = false
   isTyping.value = false
+  thinkingRemainingSec.value = 0
   chatItems.value = []
   conversationHistory.value = []
-  conversationId.value = createSimConversationId()
-  pendingResetSession.value = true
+  pendingResetSession.value = false
   currentStage.value = 'DISCOVERY'
   lastConfidence.value = 0.9
   isHandedOffToHuman.value = false
@@ -1182,6 +1242,126 @@ const resetSimulation = () => {
   teachingTarget.value = null
   Object.keys(expandedSimTurnDetails).forEach(k => delete expandedSimTurnDetails[k])
 }
+
+/**
+ * RESUME_SESSION: Khôi phục giao diện & lịch sử của phiên Simulator đang hoạt động từ PostgreSQL
+ * khi người dùng reload trang, mở lại modal, hoặc sau khi docker restart docmind-api.
+ */
+const hydrateExistingSimulatorSession = async (pageId, targetSenderId) => {
+  if (!targetSenderId) return
+  try {
+    const detail = await api.getConversationBySender({ pageId, senderId: targetSenderId })
+    if (!detail || !detail.found || simulatorSenderId.value !== targetSenderId) {
+      return
+    }
+    const restoredItems = []
+    const msgs = Array.isArray(detail.messages) ? detail.messages : []
+    for (const m of msgs) {
+      const roleRaw = String(m?.sender_role || '').toUpperCase()
+      if (roleRaw === 'CUSTOMER') {
+        if (m.content) {
+          restoredItems.push({ role: 'user', text: String(m.content) })
+        }
+      } else if (roleRaw === 'AI_BOT' || roleRaw === 'HUMAN_SALE') {
+        const metaBubbles = Array.isArray(m?.reply_bubbles) ? m.reply_bubbles : []
+        if (metaBubbles.length > 0) {
+          metaBubbles.forEach((b, idx) => {
+            const txt = String(b && typeof b === 'object' ? (b.text || '') : (b || '')).trim()
+            if (txt) {
+              restoredItems.push({
+                role: 'assistant',
+                text: txt,
+                typingDelayMs: Number(b?.typing_delay_ms ?? 0),
+                isHandoff: false,
+                appliedRules: [],
+                activeSkills: idx === metaBubbles.length - 1 && Array.isArray(m?.activated_skills) ? m.activated_skills : [],
+                triggeredHooks: idx === metaBubbles.length - 1 && Array.isArray(m?.triggered_hooks) ? m.triggered_hooks : [],
+                turnProfiling: idx === metaBubbles.length - 1 ? (m?.turn_profiling || null) : null
+              })
+            }
+          })
+        } else if (m?.content) {
+          restoredItems.push({
+            role: 'assistant',
+            text: String(m.content),
+            typingDelayMs: 0,
+            isHandoff: false,
+            appliedRules: [],
+            activeSkills: Array.isArray(m?.activated_skills) ? m.activated_skills : [],
+            triggeredHooks: Array.isArray(m?.triggered_hooks) ? m.triggered_hooks : [],
+            turnProfiling: m?.turn_profiling || null
+          })
+        }
+      }
+    }
+    if (chatItems.value.length === 0 && restoredItems.length > 0) {
+      chatItems.value = restoredItems
+      conversationHistory.value = buildTurnHistoryFromChatItems(restoredItems)
+      scrollToBottom()
+    }
+    if (detail.sales_stage) {
+      currentStage.value = detail.sales_stage
+    }
+    if (detail.customer_insight) {
+      currentInsight.value = detail.customer_insight
+    }
+    if (detail.bot_paused_by_human_takeover) {
+      isHandedOffToHuman.value = true
+      lastHandoffCategory.value = 'HUMAN_TAKEOVER'
+      lastHandoffReason.value = 'Phiên này đang ở chế độ Nhân viên tiếp quản (HUMAN_TAKEOVER) trên Live Inbox.'
+    }
+  } catch {
+    // Non-blocking: Backend Lazy Hydration (V35) vẫn tự động khôi phục từ PostgreSQL khi gửi lượt tiếp theo
+  }
+}
+
+const ensureSimulatorSessionForPage = async (pageId) => {
+  const pageKey = pageId || 'global'
+  const pageChanged = activeSessionPageKey !== null && activeSessionPageKey !== pageKey
+  activeSessionPageKey = pageKey
+  if (pageChanged) {
+    clearLocalSimulatorUiState()
+  }
+  const saved = readSavedSimulatorSessionBinding(pageId)
+  if (saved) {
+    simulatorSenderId.value = saved.senderId
+    conversationId.value = saved.conversationId
+    pendingResetSession.value = false
+    if (chatItems.value.length === 0) {
+      await hydrateExistingSimulatorSession(pageId, saved.senderId)
+    }
+  } else {
+    simulatorSenderId.value = createSimSenderId()
+    conversationId.value = createSimConversationId()
+    pendingResetSession.value = false
+    persistSimulatorSessionBinding(pageId, simulatorSenderId.value, conversationId.value)
+  }
+}
+
+/**
+ * NEW_CONVERSATION (Nút "🔄 Làm mới"):
+ * - Cấp định danh phiên Simulator hoàn toàn mới (fb-customer-demo-<sessionId>).
+ * - Bắt đầu sạch tại turn=T1, không hydrate lịch sử hay aci_memory_state của phiên cũ.
+ * - Tuyệt đối KHÔNG xóa audit log hay chạm vào bất kỳ phiên HUMAN_TAKEOVER / OPT_OUT nào trên Live Inbox.
+ */
+const resetSimulation = () => {
+  clearLocalSimulatorUiState()
+  const pageId = props.activePage?.id || null
+  simulatorSenderId.value = createSimSenderId()
+  conversationId.value = createSimConversationId()
+  pendingResetSession.value = false
+  persistSimulatorSessionBinding(pageId, simulatorSenderId.value, conversationId.value)
+}
+
+watch(
+  () => [props.isOpen, props.activePage?.id || null],
+  ([open, pageId]) => {
+    if (open) {
+      ensureSimulatorSessionForPage(pageId)
+    }
+  },
+  { immediate: true }
+)
 
 const formatHookLabel = (hookCode) => {
   const map = {

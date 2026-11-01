@@ -951,6 +951,47 @@ export const api = {
     return await res.json()
   },
 
+  async getConversationBySender({ pageId = null, senderId }) {
+    const searchParams = new URLSearchParams()
+    if (pageId) searchParams.set('page_id', pageId)
+    if (senderId) searchParams.set('sender_id', senderId)
+    const res = await fetch(`${API_BASE}/conversations/by-sender?${searchParams.toString()}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) {
+      throw new Error(`Không thể tra cứu phiên theo sender_id (HTTP ${res.status})`)
+    }
+    return await res.json()
+  },
+
+  async hardResetSimulatorSession({ pageId = null, senderId, confirmHardReset = true, allowOptOutCleanup = false }) {
+    const res = await fetch(`${API_BASE}/conversations/simulator-hard-reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        page_id: pageId,
+        sender_id: senderId,
+        confirm_hard_reset: confirmHardReset,
+        allow_opt_out_cleanup: allowOptOutCleanup
+      })
+    })
+    if (!res.ok) {
+      let errorMsg = `Lỗi HARD_RESET phiên Simulator (HTTP ${res.status})`
+      try {
+        const errJson = await res.json()
+        if (errJson.message) errorMsg = errJson.message
+      } catch {
+        // ignore
+      }
+      throw new Error(errorMsg)
+    }
+    return await res.json()
+  },
+
   async createNewConversation({ pageId = null, customerName = '', message = '' }) {
     const res = await fetch(`${API_BASE}/conversations/new`, {
       method: 'POST',

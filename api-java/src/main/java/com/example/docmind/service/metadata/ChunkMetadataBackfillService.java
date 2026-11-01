@@ -149,12 +149,22 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
             List<String> hp = entity.getHeadingPath() != null ? Arrays.asList(entity.getHeadingPath()) : List.of();
             String text = entity.getText() != null ? entity.getText() : "";
 
-            // Trích xuất metadata động
+            // Trích xuất metadata động (bảo toàn các khóa provenance/audit có sẵn trong chunk_metadata như provenance_normalized)
             ChunkMetadata meta = ChunkMetadataExtractor.extract(hp, text);
             String json;
             try {
-                json = objectMapper.writeValueAsString(meta);
-            } catch (JsonProcessingException e) {
+                String existingRaw = entity.getChunkMetadataJson();
+                if (existingRaw != null && !existingRaw.isBlank() && existingRaw.contains("provenance_normalized")) {
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> merged = objectMapper.readValue(existingRaw, java.util.LinkedHashMap.class);
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> extractedMap = objectMapper.convertValue(meta, java.util.LinkedHashMap.class);
+                    merged.putAll(extractedMap);
+                    json = objectMapper.writeValueAsString(merged);
+                } else {
+                    json = objectMapper.writeValueAsString(meta);
+                }
+            } catch (Exception e) {
                 log.error("stage=backfill-json-error chunk_id={} error={}", entity.getId(), e.getMessage());
                 json = "{}";
             }

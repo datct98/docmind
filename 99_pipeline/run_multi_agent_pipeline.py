@@ -146,7 +146,7 @@ def format_transcript_md(title: str, turns: list[dict]) -> str:
 def main():
     print("[Pipeline] Waiting for docmind-api (8090) and docmind-agent-brain (8095)...")
     ok_brain = wait_for_service(f"{BRAIN_BASE}/healthz", timeout_sec=15) or wait_for_service(f"{BRAIN_BASE}/v1/brain/health", timeout_sec=10)
-    ok_api = wait_for_service(f"{API_BASE}/actuator/health", timeout_sec=90) or wait_for_service(f"{API_BASE}/api/pages", timeout_sec=30)
+    ok_api = wait_for_service(f"{API_BASE}/api/health", timeout_sec=90) or wait_for_service(f"{API_BASE}/api/pages", timeout_sec=30)
     print(f"[Pipeline] Service health: api={ok_api}, agent-brain={ok_brain}")
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

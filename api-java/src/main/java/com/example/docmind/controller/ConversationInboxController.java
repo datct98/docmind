@@ -42,6 +42,32 @@ public class ConversationInboxController {
         return ResponseEntity.ok(List.of());
     }
 
+    @GetMapping("/by-sender")
+    public ResponseEntity<Map<String, Object>> findSessionBySender(
+            @RequestParam(name = "page_id", required = false) String pageId,
+            @RequestParam(name = "sender_id") String senderId) {
+        return ResponseEntity.ok(conversationInboxService.findExistingSessionDetailBySender(
+                parseUuidOrNull(pageId),
+                senderId
+        ));
+    }
+
+    @PostMapping("/simulator-hard-reset")
+    public ResponseEntity<Map<String, Object>> hardResetSimulatorSession(@RequestBody Map<String, Object> body) {
+        String pageId = body.get("page_id") != null ? String.valueOf(body.get("page_id")) : null;
+        String senderId = body.get("sender_id") != null ? String.valueOf(body.get("sender_id")) : null;
+        boolean confirmHardReset = Boolean.TRUE.equals(body.get("confirm_hard_reset"))
+                || "true".equalsIgnoreCase(String.valueOf(body.get("confirm_hard_reset")));
+        boolean allowOptOutCleanup = Boolean.TRUE.equals(body.get("allow_opt_out_cleanup"))
+                || "true".equalsIgnoreCase(String.valueOf(body.get("allow_opt_out_cleanup")));
+        return ResponseEntity.ok(conversationInboxService.hardResetSimulatorSession(
+                parseUuidOrNull(pageId),
+                senderId,
+                confirmHardReset,
+                allowOptOutCleanup
+        ));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getSessionDetail(@PathVariable("id") UUID id) {
         return ResponseEntity.ok(conversationInboxService.getSessionDetail(id));

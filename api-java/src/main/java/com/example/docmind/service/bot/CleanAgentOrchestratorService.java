@@ -421,6 +421,7 @@ public class CleanAgentOrchestratorService {
                 : 10_000;
 
         if (safePrior.optedOut() || safePrior.humanTakeover()) {
+            FanpageBotService.recordCurrentTurnGuard("BLOCK", "BOT_MUTED");
             FanpageBotService.markProvenanceV38Logged();
             return new FanpageBotResponse(
                     "",
@@ -1224,6 +1225,7 @@ public class CleanAgentOrchestratorService {
         long llmStartNs = System.nanoTime();
         try {
             if (llmClient != null) {
+                FanpageBotService.markCurrentTurnLlmStarted();
                 rawReply = llmClient.complete(prompt, cleanBudget);
                 if (rawReply == null || rawReply.isBlank()) {
                     rawReply = llmClient.complete(prompt);
@@ -2004,6 +2006,7 @@ public class CleanAgentOrchestratorService {
             FanpageBotResponse.ExtractedLead extractedLead,
             CustomerInsightDto customerInsight
     ) {
+        FanpageBotService.recordCurrentTurnGuard("SUPPRESS", "EPOCH_SUPERSEDED");
         return new FanpageBotResponse(
                 "",
                 List.of(),
@@ -4106,7 +4109,7 @@ public class CleanAgentOrchestratorService {
         com.example.docmind.dto.PagePersonaConfig effectivePersonaConfig = (pagePersona != null && pagePersona.resolvedConfig() != null)
                 ? pagePersona.resolvedConfig()
                 : com.example.docmind.dto.PagePersonaConfig.empty();
-        if (request != null && Boolean.TRUE.equals(request.resetSession()) && agentBrainService != null) {
+        if (request != null && Boolean.TRUE.equals(request.resetSession()) && agentBrainService != null && !FanpageBotService.isCurrentTurnAlreadyReset()) {
             agentBrainService.clearCustomerMemory(pageId, request.senderId());
         }
         String senderIdForPronoun = request != null ? request.senderId() : null;
@@ -4127,6 +4130,7 @@ public class CleanAgentOrchestratorService {
 
         // System Gate 1: Phiên đã tắt bot (HUMAN_TAKEOVER hoặc lệnh hệ thống OPT_OUT thực sự trước đó)
         if (safePrior.optedOut() || safePrior.humanTakeover()) {
+            FanpageBotService.recordCurrentTurnGuard("BLOCK", "BOT_MUTED");
             FanpageBotService.markProvenanceV38Logged();
             return new FanpageBotResponse(
                     "",
@@ -4184,6 +4188,7 @@ public class CleanAgentOrchestratorService {
         // System Gate 2: Lệnh Opt-out hệ thống tường minh (STOP, UNSUBSCRIBE, HỦY ĐĂNG KÝ, ĐỪNG NHẮN NỮA).
         // Câu từ chối hội thoại lịch sự như "Thôi, không cần nữa" (S06) KHÔNG đi vào nhánh này và mặc định opted_out = false!
         if (PrimaryActionRouter.isStrictSystemOptOutMessage(originalVerbatim)) {
+            FanpageBotService.recordCurrentTurnGuard("ALLOW", "EXPLICIT_OPT_OUT");
             String stopText = "Dạ " + selfPronoun + " xin phép dừng nhắn tin để tránh làm phiền " + safeHonorific
                     + " ạ. Khi nào cần hỗ trợ, " + safeHonorific + " cứ nhắn lại cho " + selfPronoun + " bất cứ lúc nào nhé.";
             List<FanpageBotResponse.ReplyBubble> optOutBubbles = List.of(
@@ -4472,6 +4477,7 @@ public class CleanAgentOrchestratorService {
         boolean initialUpstreamError = false;
         try {
             if (llmClient != null) {
+                FanpageBotService.markCurrentTurnLlmStarted();
                 long callStartNs = System.nanoTime();
                 rawReply = llmClient.complete(aciPrompt, aciBudget);
                 if (rawReply == null) {

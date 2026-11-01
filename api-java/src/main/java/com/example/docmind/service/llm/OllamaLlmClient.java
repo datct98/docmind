@@ -255,13 +255,16 @@ public class OllamaLlmClient implements LlmClient {
         int configuredPredict = props.getNumPredict() > 0 ? props.getNumPredict() : 550;
         int numPredict;
         boolean isCleanAgentPrompt = prompt != null && prompt.contains("<CLEAN_AGENT_SYSTEM_PROMPT>");
+        boolean isAciV2SinglePassPrompt = prompt != null && prompt.contains("<SINGLE_PASS_COGNITIVE_CONTRACT>");
         boolean forceFullThinkingPredict = Boolean.TRUE.equals(thinkFlag)
                 && !isCleanAgentPrompt
                 && (configuredPredict >= 2048
                     || (prompt != null && (prompt.contains("<AUTHENTIC_EMOTIONAL_COMPASS>")
                         || prompt.contains("<QWEN3_SELECTIVE_THINKING_PROTOCOL>"))));
         boolean isTargetedRepairCall = prompt != null && prompt.contains("FAST_TARGETED_REPAIR_HINT");
-        if (isCleanAgentPrompt) {
+        if (isAciV2SinglePassPrompt) {
+            numPredict = (Boolean.TRUE.equals(thinkFlag) && !isTargetedRepairCall) ? 1200 : 750;
+        } else if (isCleanAgentPrompt) {
             // Giới hạn ngân sách suy luận hợp lý (960 tokens khi think=true, 450 khi think=false)
             // giúp đủ không gian cho <think> ngắn gọn + JSON 2 bong bóng mà không kéo dài evalMs tới 70-80s.
             numPredict = (Boolean.TRUE.equals(thinkFlag) && !isTargetedRepairCall) ? 960 : 450;
@@ -296,6 +299,9 @@ public class OllamaLlmClient implements LlmClient {
                 ? budget.repeatPenalty()
                 : (props.getRepeatPenalty() > 0 ? props.getRepeatPenalty() : 1.08);
         int effectiveNumCtx = props.getNumCtx() > 0 ? props.getNumCtx() : 3072;
+        if (isAciV2SinglePassPrompt && effectiveNumCtx < 12288) {
+            effectiveNumCtx = 12288;
+        }
 
         boolean compassInjected = prompt != null && prompt.contains("<AUTHENTIC_EMOTIONAL_COMPASS>");
         log.info("[CompassAudit] thinkingMode={}, thinkFlag={}, numPredict={}, compassInjected={}",

@@ -481,6 +481,68 @@ public class FanpageBotService {
     private static final ThreadLocal<Boolean> PROVENANCE_V38_LOGGED = new ThreadLocal<>();
     private static final ThreadLocal<String> CURRENT_INBOUND_EXTERNAL_MID = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CURRENT_EFFECTIVE_PAGE_ID = new ThreadLocal<>();
+    private static final ThreadLocal<TurnLifecycleState> CURRENT_TURN_LIFECYCLE = new ThreadLocal<>();
+
+    public record TurnSummaryRecord(
+            UUID pageId,
+            String senderId,
+            String turnId,
+            boolean requestReceived,
+            String guardDecision,
+            String guardReason,
+            boolean retrievalStarted,
+            boolean llmStarted,
+            int responseBubbleCount,
+            String responseStatus
+    ) {
+    }
+
+    private static final class TurnLifecycleState {
+        boolean requestReceived;
+        String guardDecision = "ALLOW";
+        String guardReason = "BOT_ACTIVE";
+        boolean retrievalStarted = false;
+        boolean llmStarted = false;
+        boolean resetAlreadyApplied = false;
+
+        TurnLifecycleState(boolean requestReceived) {
+            this.requestReceived = requestReceived;
+        }
+
+        void recordGuard(String decision, String reason) {
+            if (decision != null && !decision.isBlank()) {
+                this.guardDecision = decision;
+            }
+            if (reason != null && !reason.isBlank()) {
+                this.guardReason = reason;
+            }
+        }
+    }
+
+    private volatile TurnSummaryRecord lastTurnSummary = null;
+
+    public TurnSummaryRecord getLastTurnSummary() {
+        return this.lastTurnSummary;
+    }
+
+    static void recordCurrentTurnGuard(String decision, String reason) {
+        TurnLifecycleState st = CURRENT_TURN_LIFECYCLE.get();
+        if (st != null) {
+            st.recordGuard(decision, reason);
+        }
+    }
+
+    static void markCurrentTurnLlmStarted() {
+        TurnLifecycleState st = CURRENT_TURN_LIFECYCLE.get();
+        if (st != null) {
+            st.llmStarted = true;
+        }
+    }
+
+    static boolean isCurrentTurnAlreadyReset() {
+        TurnLifecycleState st = CURRENT_TURN_LIFECYCLE.get();
+        return st != null && st.resetAlreadyApplied;
+    }
 
     static void markProvenanceV38Logged() {
         PROVENANCE_V38_LOGGED.set(true);
@@ -523,27 +585,14 @@ public class FanpageBotService {
     public FanpageBotResponse handleCustomerMessage(FanpageBotRequest rawRequest) {
         FanpageBotRequest request = rawRequest;
         String turnId = java.util.UUID.randomUUID().toString();
-        if (rawRequest != null && rawRequest.senderId() != null) {
-            String ledgerKey = SentBubbleLedger.key(rawRequest.pageId(), rawRequest.senderId(), rawRequest.conversationId());
-            if (Boolean.TRUE.equals(rawRequest.resetSession())) {
-                SentBubbleLedger.reset(ledgerKey);
-            }
-            // Backend ledger là nguồn chuẩn cho <CONVERSATION_HISTORY>: vá bong bóng bị thiếu/cắt cụt trong payload client.
-            List<FanpageBotRequest.ConversationTurn> reconciled = SentBubbleLedger.reconcile(ledgerKey, rawRequest.history());
-            if (reconciled != rawRequest.history()) {
-                request = new FanpageBotRequest(
-                        rawRequest.pageId(), rawRequest.senderId(), rawRequest.customerName(), rawRequest.message(),
-                        rawRequest.messages(), reconciled, rawRequest.documentIds(), rawRequest.topK(),
-                        rawRequest.previousTemperature(), rawRequest.replyDelaySeconds(), rawRequest.idleSeconds(),
-                        rawRequest.action(), rawRequest.splitPriceBubbles(), rawRequest.pendingTurnSequence(),
-                        rawRequest.priceBubbleSentAtNs(), rawRequest.conversationId(), rawRequest.resetSession(),
-                        rawRequest.replyToMid(), rawRequest.quotedMessageText());
-            }
-        }
+        TurnLifecycleState lifecycle = new TurnLifecycleState(rawRequest != null);
         CURRENT_TURN_ID.set(turnId);
         PROVENANCE_V38_LOGGED.set(false);
         CURRENT_INBOUND_EXTERNAL_MID.remove();
         CURRENT_EFFECTIVE_PAGE_ID.remove();
+        CURRENT_TURN_LIFECYCLE.set(lifecycle);
+        FanpageBotResponse finalResp = null;
+        Throwable uncaughtError = null;
         try {
             FanpageBotResponse resp = handleCustomerMessageInternal(request);
             // Unit P0.4 Layer-2 Outbound Fencing (exit gate covering all V1/V2 paths & uninterruptibleSafety early returns):
@@ -559,6 +608,7 @@ public class FanpageBotService {
                 if (!inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(effPageId, effSenderId)) {
                     log.warn("[EXIT-LAYER2-FENCE] Stale turn or safety handoff suppressed by fresh DB state lock (page_id={} sender_id={})",
                             effPageId, effSenderId);
+                    lifecycle.recordGuard("EXIT_FENCE_SUPPRESS", "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
                     markProvenanceV38Logged();
                     resp = buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", CURRENT_INBOUND_EXTERNAL_MID.get());
                 }
@@ -570,8 +620,60 @@ public class FanpageBotService {
             if (resp != null && resolvedExtMid != null && resp.inboundExternalMid() == null) {
                 resp = resp.withInboundExternalMid(resolvedExtMid);
             }
+            finalResp = resp;
             return resp;
+        } catch (Throwable t) {
+            uncaughtError = t;
+            throw t;
         } finally {
+            UUID summaryPageId = CURRENT_EFFECTIVE_PAGE_ID.get();
+            if (summaryPageId == null && request != null) {
+                summaryPageId = parsePageId(request.pageId());
+            }
+            String summarySenderId = (request != null && request.senderId() != null)
+                    ? request.senderId().strip()
+                    : null;
+            int bubbleCount = (finalResp != null && finalResp.replyBubbles() != null)
+                    ? finalResp.replyBubbles().size()
+                    : 0;
+            String responseStatus;
+            if (uncaughtError != null) {
+                responseStatus = "ERROR";
+            } else if (finalResp == null
+                    || "SUPPRESSED".equalsIgnoreCase(finalResp.salesStage())
+                    || "SUPERSEDED_ABORTED".equalsIgnoreCase(finalResp.salesStage())
+                    || ConversationInboxService.isSilentSuppressedBotResponse(finalResp)) {
+                responseStatus = "SUPPRESSED";
+            } else if (finalResp.needsHumanHandoff()) {
+                responseStatus = "HANDOFF";
+            } else {
+                responseStatus = "DELIVERED";
+            }
+            TurnSummaryRecord summary = new TurnSummaryRecord(
+                    summaryPageId,
+                    summarySenderId,
+                    turnId,
+                    lifecycle.requestReceived,
+                    lifecycle.guardDecision,
+                    lifecycle.guardReason,
+                    lifecycle.retrievalStarted,
+                    lifecycle.llmStarted,
+                    bubbleCount,
+                    responseStatus
+            );
+            this.lastTurnSummary = summary;
+            log.info("[BOT-TURN-SUMMARY] page_id={} sender_id={} turn_id={} requestReceived={} guardDecision={} guardReason={} retrievalStarted={} llmStarted={} responseBubbleCount={} responseStatus={}",
+                    summary.pageId(),
+                    summary.senderId(),
+                    summary.turnId(),
+                    summary.requestReceived(),
+                    summary.guardDecision(),
+                    summary.guardReason(),
+                    summary.retrievalStarted(),
+                    summary.llmStarted(),
+                    summary.responseBubbleCount(),
+                    summary.responseStatus());
+            CURRENT_TURN_LIFECYCLE.remove();
             CURRENT_EFFECTIVE_PAGE_ID.remove();
             CURRENT_INBOUND_EXTERNAL_MID.remove();
             PROVENANCE_V38_LOGGED.remove();
@@ -643,6 +745,7 @@ public class FanpageBotService {
                 mergedMessage = "Khách hàng tạm im lặng, bot chủ động gửi tin nhắn re-engage kéo lại tương tác.";
                 verbatimOriginalMessage = mergedMessage;
             } else {
+                recordCurrentTurnGuard("BLOCK", "EMPTY_CUSTOMER_MESSAGE");
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tin nhắn của khách hàng không được để trống.");
             }
         }
@@ -670,6 +773,7 @@ public class FanpageBotService {
         if (inboundSessionPersistenceService != null) {
             if (isReengageAction) {
                 if (!inboundSessionPersistenceService.isProactiveReengageAllowed(pageId, request.senderId())) {
+                    recordCurrentTurnGuard("BLOCK", "PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD");
                     markProvenanceV38Logged();
                     return buildSilentSuppressedResponse(
                             List.of("PROACTIVE_REENGAGE_BLOCKED_BY_STATE_GUARD", "OPT_OUT_SILENT_HOLD"),
@@ -702,10 +806,12 @@ public class FanpageBotService {
                     CURRENT_INBOUND_EXTERNAL_MID.set(resolvedMid);
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_HUMAN_TAKEOVER) {
+                    recordCurrentTurnGuard("BLOCK", "HUMAN_TAKEOVER_SILENT_HOLD");
                     markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("HUMAN_TAKEOVER_SILENT_HOLD", resolvedMid);
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_HUMAN_TAKEOVER_AND_OPT_OUT_RECORDED) {
+                    recordCurrentTurnGuard("BLOCK", "OPT_OUT_RECORDED_UNDER_HUMAN_TAKEOVER");
                     ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), true);
                     if (agentBrainService != null) {
                         agentBrainService.syncOptedOutState(pageId, request.senderId(), true);
@@ -717,6 +823,7 @@ public class FanpageBotService {
                     );
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_OPTED_OUT) {
+                    recordCurrentTurnGuard("BLOCK", "OPT_OUT_SILENT_HOLD");
                     ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), true);
                     if (agentBrainService != null) {
                         agentBrainService.syncOptedOutState(pageId, request.senderId(), true);
@@ -728,16 +835,19 @@ public class FanpageBotService {
                     );
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.RECONSENTED_PROCEED_TO_BOT) {
+                    recordCurrentTurnGuard("RECONSENT_ALLOW", "RECONSENTED_PROCEED_TO_BOT");
                     ConversationState.syncOptedOutInSession(pageId, request.senderId(), request.conversationId(), false);
                     if (agentBrainService != null) {
                         agentBrainService.syncOptedOutState(pageId, request.senderId(), false);
                     }
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.SUPPRESS_DUPLICATE_INBOUND) {
+                    recordCurrentTurnGuard("SUPPRESS", "DUPLICATE_INBOUND_EVENT_SUPPRESSED");
                     markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("DUPLICATE_INBOUND_EVENT_SUPPRESSED", resolvedMid);
                 }
                 if (entryEval.action() == InboundSessionPersistenceService.EntryAction.BLOCK_FAIL_CLOSED_WEBHOOK) {
+                    recordCurrentTurnGuard("BLOCK", "STATE_GUARD_FAIL_CLOSED");
                     markProvenanceV38Logged();
                     return buildSilentSuppressedResponse("STATE_GUARD_FAIL_CLOSED", resolvedMid);
                 }
@@ -748,6 +858,7 @@ public class FanpageBotService {
             ThinkingModePolicy.registerIncomingCustomerTurn(pageId, request.senderId());
         } else if (request.pendingTurnSequence() != null
                 && ThinkingModePolicy.isPendingSecondBubbleSuperseded(pageId, request.senderId(), request.pendingTurnSequence())) {
+            recordCurrentTurnGuard("SUPPRESS", "CANCELLED_BY_NEWER_CUSTOMER_TURN");
             long totalCancelledMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
             this.lastTurnTelemetry = new ThinkingModePolicy.TurnTelemetry(
                     PrimaryActionRouter.PrimaryAction.ANSWER_PRICE_ONCE,
@@ -796,9 +907,21 @@ public class FanpageBotService {
             );
         }
 
-        if (request.isResetSessionRequested() && agentBrainService != null) {
-            agentBrainService.clearCustomerMemory(pageId, request.senderId());
-        } else if (!request.isResetSessionRequested()) {
+        String ledgerKeyAfterGuard = (request != null && request.senderId() != null)
+                ? SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId())
+                : null;
+        if (request != null && request.isResetSessionRequested()) {
+            if (ledgerKeyAfterGuard != null) {
+                SentBubbleLedger.reset(ledgerKeyAfterGuard);
+            }
+            if (agentBrainService != null) {
+                agentBrainService.clearCustomerMemory(pageId, request.senderId());
+            }
+            TurnLifecycleState st = CURRENT_TURN_LIFECYCLE.get();
+            if (st != null) {
+                st.resetAlreadyApplied = true;
+            }
+        } else if (request != null && !request.isResetSessionRequested()) {
             if (agentBrainService != null) {
                 agentBrainService.refreshTurnBaseFromDb(pageId, request.senderId());
             }
@@ -815,6 +938,20 @@ public class FanpageBotService {
                     request = new FanpageBotRequest(
                             request.pageId(), request.senderId(), request.customerName(), request.message(),
                             request.messages(), hydratedHistory, request.documentIds(), request.topK(),
+                            request.previousTemperature(), request.replyDelaySeconds(), request.idleSeconds(),
+                            request.action(), request.splitPriceBubbles(), request.pendingTurnSequence(),
+                            request.priceBubbleSentAtNs(), request.conversationId(), request.resetSession(),
+                            request.replyToMid(), request.quotedMessageText()
+                    );
+                }
+            }
+            if (ledgerKeyAfterGuard != null) {
+                // Backend ledger là nguồn chuẩn cho <CONVERSATION_HISTORY>: vá bong bóng bị thiếu/cắt cụt trong payload client.
+                List<FanpageBotRequest.ConversationTurn> reconciled = SentBubbleLedger.reconcile(ledgerKeyAfterGuard, request.history());
+                if (reconciled != request.history()) {
+                    request = new FanpageBotRequest(
+                            request.pageId(), request.senderId(), request.customerName(), request.message(),
+                            request.messages(), reconciled, request.documentIds(), request.topK(),
                             request.previousTemperature(), request.replyDelaySeconds(), request.idleSeconds(),
                             request.action(), request.splitPriceBubbles(), request.pendingTurnSequence(),
                             request.priceBubbleSentAtNs(), request.conversationId(), request.resetSession(),
@@ -844,6 +981,7 @@ public class FanpageBotService {
         // 1. KIỂM TRA BẢO MẬT CHỐNG PROMPT INJECTION & META-PROBE TRÊN 100% CỬA SỔ ĐƯA VÀO PROMPT (<= 25.000 KÝ TỰ)
         String promptBoundSecurityTarget = verbatimOriginalMessage != null ? verbatimOriginalMessage : mergedMessage;
         if (PromptSecurityGuard.isDirectJailbreakAttempt(promptBoundSecurityTarget)) {
+            recordCurrentTurnGuard("BLOCK", "SECURITY_PROMPT_INJECTION_REFUSAL");
             log.warn("stage=fanpage-bot-security blocked=direct_jailbreak_or_meta_probe page_id={} len={} msg={}",
                     pageId,
                     promptBoundSecurityTarget != null ? promptBoundSecurityTarget.length() : 0,
@@ -878,6 +1016,7 @@ public class FanpageBotService {
 
         // 2. XỬ LÝ TỪ KHÓA OPT-OUT HỆ THỐNG NGHIÊM NGẶT (STRICT SYSTEM OPT-OUT)
         if (PrimaryActionRouter.isStrictSystemOptOutMessage(verbatimOriginalMessage)) {
+            recordCurrentTurnGuard("ALLOW", "EXPLICIT_OPT_OUT");
             if (agentBrainService != null) {
                 agentBrainService.applyAciTurnMemoryUpdates(
                         pageId,
@@ -1020,6 +1159,7 @@ public class FanpageBotService {
         }
 
         if (documentIds == null || documentIds.isEmpty()) {
+            recordCurrentTurnGuard("ALLOW", "NO_READY_DOCUMENTS");
             log.info("stage=fanpage-bot-handoff trigger=NO_READY_DOCUMENTS page_id={}", pageId);
             String noDocReply = "Dạ em chào " + honorific + " ạ! Hiện tại em xin phép kết nối ngay với Chuyên viên tư vấn của Page để kiểm tra thông tin chi tiết và báo lại cho " + honorific + " chuẩn xác nhất ngay bây giờ nhé ạ!";
             return buildHandoffResponse(
@@ -1043,6 +1183,10 @@ public class FanpageBotService {
                 request.isResetSessionRequested()
         );
 
+        TurnLifecycleState retrievalTrace = CURRENT_TURN_LIFECYCLE.get();
+        if (retrievalTrace != null) {
+            retrievalTrace.retrievalStarted = retrievalService != null;
+        }
         long retrievalStartNs = System.nanoTime();
         int topK = request.topK() != null
                 ? request.topK()
@@ -1100,6 +1244,7 @@ public class FanpageBotService {
         }
 
         if (llmClient == null) {
+            recordCurrentTurnGuard("ALLOW", "LLM_UNAVAILABLE");
             return buildHandoffResponse(
                     SAFE_HANDOFF_BUBBLE_TEXT,
                     "LLM_UNAVAILABLE",

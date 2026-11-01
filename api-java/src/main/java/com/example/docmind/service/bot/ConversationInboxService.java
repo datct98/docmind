@@ -35,11 +35,20 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class ConversationInboxService {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationInboxService.class);
+
+    /**
+     * Tiền tố an toàn bắt buộc cho HARD_RESET trong phạm vi Simulator/Test:
+     * từ chối tuyệt đối cả 'fb-customer-demo' không hậu tố lẫn mọi PSID khách thật trên Live Inbox.
+     */
+    private static final Pattern SAFE_SIMULATOR_OR_TEST_SENDER_PATTERN = Pattern.compile(
+            "^(?:fb-customer-demo-[A-Za-z0-9_-]{3,}|sim[_-][A-Za-z0-9_-]{2,}|test[_-][A-Za-z0-9_-]{2,}|relgate_[A-Za-z0-9_-]{2,}|p35[_-][A-Za-z0-9_-]{2,})$"
+    );
 
     private final ConversationSessionRepository sessionRepository;
     private final ConversationMessageRepository messageRepository;
@@ -52,6 +61,8 @@ public class ConversationInboxService {
     private InboundSessionPersistenceService inboundSessionPersistenceService;
     @Autowired(required = false)
     private ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator;
+    @Autowired(required = false)
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     @Value("${docmind.security.atomic-state-guard.enabled:true}")
     private volatile boolean atomicStateGuardEnabled = true;
     @Value("${docmind.fanpage.default-page-id:}")
@@ -164,6 +175,141 @@ public class ConversationInboxService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phiên hội thoại: " + sessionId));
         List<ConversationMessageEntity> msgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         return toSessionDetailMap(session, msgs);
+    }
+
+    /**
+     * RESUME_SESSION (Read-Only): Tra cứu phiên hiện có theo (pageId, senderId) mà KHÔNG tạo bản ghi mới nếu chưa tồn tại.
+     */
+    public Map<String, Object> findExistingSessionDetailBySender(UUID pageId, String senderId) {
+        if (senderId == null || senderId.isBlank()) {
+            return Map.of("found", false);
+        }
+        String psid = senderId.strip();
+        Optional<ConversationSessionEntity> existing = pageId != null
+                ? sessionRepository.findFirstByPageIdAndCustomerPsidOrderByUpdatedAtDesc(pageId, psid)
+                : sessionRepository.findFirstByCustomerPsidOrderByUpdatedAtDesc(psid);
+        if (existing.isEmpty()) {
+            Map<String, Object> notFound = new LinkedHashMap<>();
+            notFound.put("found", false);
+            notFound.put("page_id", pageId);
+            notFound.put("sender_id", psid);
+            return notFound;
+        }
+        ConversationSessionEntity session = existing.get().copySnapshot();
+        syncFreshGuardFieldsFromDb(session);
+        List<ConversationMessageEntity> allMsgs = messageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
+        Instant resetBoundary = extractMemoryResetBoundary(session.getAciMemoryStateJson());
+        List<ConversationMessageEntity> activeMsgs = (resetBoundary == null)
+                ? allMsgs
+                : allMsgs.stream()
+                        .filter(m -> m.getCreatedAt() != null && !m.getCreatedAt().isBefore(resetBoundary))
+                        .toList();
+        Map<String, Object> detail = toSessionDetailMap(session, activeMsgs);
+        detail.put("found", true);
+        return detail;
+    }
+
+    private Instant extractMemoryResetBoundary(String aciMemoryStateJson) {
+        if (aciMemoryStateJson == null || aciMemoryStateJson.isBlank()) {
+            return null;
+        }
+        try {
+            var root = objectMapper.readTree(aciMemoryStateJson);
+            var node = root != null ? root.get("memory_reset_at") : null;
+            if (node != null && !node.isNull() && !node.asText().isBlank()) {
+                return Instant.parse(node.asText().strip());
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    public static boolean isSafeSimulatorOrTestSenderId(String senderId) {
+        if (senderId == null || senderId.isBlank()) {
+            return false;
+        }
+        return SAFE_SIMULATOR_OR_TEST_SENDER_PATTERN.matcher(senderId.strip()).matches();
+    }
+
+    @Transactional
+    public Map<String, Object> hardResetSimulatorSession(UUID pageId, String senderId, boolean confirmHardReset) {
+        return hardResetSimulatorSession(pageId, senderId, confirmHardReset, false);
+    }
+
+    /**
+     * HARD_RESET có kiểm tra tiền tố an toàn:
+     * - Chỉ cho phép khi confirmHardReset == true và senderId khớp tiền tố test/simulator độc lập.
+     * - Từ chối 403 đối với 'fb-customer-demo' không hậu tố và mọi PSID khách thật trên Live Inbox.
+     * - Từ chối 409 đối với bất kỳ phiên nào đang ở trạng thái HUMAN_TAKEOVER hoặc OPT_OUT (trừ khi test cleanup tường minh).
+     */
+    @Transactional
+    public Map<String, Object> hardResetSimulatorSession(
+            UUID pageId,
+            String senderId,
+            boolean confirmHardReset,
+            boolean allowOptOutTestCleanup
+    ) {
+        if (!confirmHardReset) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HARD_RESET yêu cầu xác nhận tường minh confirm_hard_reset=true.");
+        }
+        String psid = senderId != null ? senderId.strip() : "";
+        if (!isSafeSimulatorOrTestSenderId(psid)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Từ chối HARD_RESET: sender_id không thuộc tiền tố phiên test/simulator an toàn: " + psid
+            );
+        }
+
+        List<ConversationSessionEntity> matching = pageId != null
+                ? sessionRepository.findByPageIdAndCustomerPsid(pageId, psid)
+                : sessionRepository.findByCustomerPsid(psid);
+
+        for (ConversationSessionEntity s : matching) {
+            ConversationSessionEntity fresh = s.copySnapshot();
+            syncFreshGuardFieldsFromDb(fresh);
+            if ("HUMAN_TAKEOVER".equalsIgnoreCase(fresh.getControlMode())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Từ chối HARD_RESET: phiên đang ở trạng thái HUMAN_TAKEOVER (" + fresh.getId() + ")."
+                );
+            }
+            if (!allowOptOutTestCleanup && (fresh.isOptedOut() || fresh.getReOptInAt() != null)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Từ chối HARD_RESET: không được xóa trạng thái opted_out / re-consent của phiên (" + fresh.getId() + ")."
+                );
+            }
+        }
+
+        int deletedSessions = 0;
+        for (ConversationSessionEntity s : matching) {
+            UUID effPageId = s.getPageId() != null ? s.getPageId() : pageId;
+            ConversationState.resetSessionState(effPageId, psid, null);
+            SentBubbleLedger.reset(SentBubbleLedger.key(effPageId != null ? effPageId.toString() : null, psid, null));
+            if (fanpageBotService != null && fanpageBotService.getAgentBrainService() != null) {
+                fanpageBotService.getAgentBrainService().evictInMemoryCacheOnly(effPageId, psid);
+            }
+            messageRepository.deleteBySessionId(s.getId());
+            sessionRepository.deleteById(s.getId());
+            deletedSessions++;
+        }
+
+        ConversationState.resetSessionState(pageId, psid, null);
+        SentBubbleLedger.reset(SentBubbleLedger.key(pageId != null ? pageId.toString() : null, psid, null));
+        if (fanpageBotService != null && fanpageBotService.getAgentBrainService() != null) {
+            fanpageBotService.getAgentBrainService().evictInMemoryCacheOnly(pageId, psid);
+        }
+        if (jdbcTemplate != null) {
+            jdbcTemplate.update("DELETE FROM sent_bubble_ledger WHERE ledger_key LIKE ?", "%" + psid + "%");
+        }
+
+        log.info("[SIMULATOR-HARD-RESET] page_id={} sender_id={} deleted_sessions={}", pageId, psid, deletedSessions);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("status", "HARD_RESET_COMPLETED");
+        out.put("page_id", pageId);
+        out.put("sender_id", psid);
+        out.put("deleted_sessions", deletedSessions);
+        return out;
     }
 
     public static boolean isSilentSuppressedBotResponse(FanpageBotResponse botResponse) {

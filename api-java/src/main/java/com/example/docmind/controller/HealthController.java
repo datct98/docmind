@@ -1,18 +1,21 @@
 package com.example.docmind.controller;
 
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** Health check đơn giản (liveness). */
+/** Health check liveness (/api/health & alias /actuator/health cho reverse proxy / probe). */
 @RestController
-@RequestMapping("/api/health")
 public class HealthController {
 
-    @GetMapping
+    @GetMapping("/api/health")
     public Map<String, String> health() {
         return Map.of("status", "ok", "service", "docmind-api");
+    }
+
+    @GetMapping("/actuator/health")
+    public Map<String, String> actuatorHealthAlias() {
+        return Map.of("status", "UP", "service", "docmind-api");
     }
 }

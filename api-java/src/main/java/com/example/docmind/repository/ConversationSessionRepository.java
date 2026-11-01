@@ -16,4 +16,8 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     Optional<ConversationSessionEntity> findFirstByPageIdAndCustomerPsidOrderByUpdatedAtDesc(UUID pageId, String customerPsid);
 
     Optional<ConversationSessionEntity> findFirstByCustomerPsidOrderByUpdatedAtDesc(String customerPsid);
+
+    List<ConversationSessionEntity> findByPageIdAndCustomerPsid(UUID pageId, String customerPsid);
+
+    List<ConversationSessionEntity> findByCustomerPsid(String customerPsid);
 }
