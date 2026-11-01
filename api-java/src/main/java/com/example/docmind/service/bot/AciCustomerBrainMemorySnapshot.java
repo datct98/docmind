@@ -70,8 +70,70 @@ public record AciCustomerBrainMemorySnapshot(
         @JsonProperty("care_notes") List<String> careNotes,
         @JsonProperty("working_hypothesis") String workingHypothesis,
         @JsonProperty("last_actual_sent_speech_act") String lastActualSentSpeechAct,
-        @JsonProperty("memory_reset_at") String memoryResetAt
+        @JsonProperty("memory_reset_at") String memoryResetAt,
+        @JsonProperty("secondary_intents") List<String> secondaryIntents,
+        @JsonProperty("conversation_state") String conversationState
 ) {
+
+    public AciCustomerBrainMemorySnapshot(
+            int schemaVersion,
+            String lastUpdatedTurnId,
+            int lastUpdatedTurnSeq,
+            String lastUpdatedAt,
+            String currentTopic,
+            List<String> topicHistory,
+            List<PersistedUnresolvedRequest> unresolvedRequests,
+            List<String> pendingReferences,
+            String lastBotAction,
+            String lastTurnIntent,
+            String conversationGoal,
+            List<PersistedVersionedFact> confirmedFacts,
+            List<PersistedVersionedFact> selfReportedSymptoms,
+            PersistedBarrierHypothesis barrierHypothesis,
+            PersistedEmotion emotion,
+            String communicationStylePreference,
+            String effectiveTurnDepth,
+            String interactionPermission,
+            String interestedPackageId,
+            PersistedResponsePlan lastResponsePlan,
+            int priceObjectionCount,
+            boolean inPriceObjectionContext,
+            boolean hasPresentedDownsell,
+            PersistedBookingState structuredBookingState,
+            String inferredCustomerPronoun,
+            double inferredPronounConfidence,
+            String inferredPronounEvidenceTurnId,
+            String verifiedSymptomDuration,
+            List<PersistedCustomerStatement> customerStatements,
+            PersistedWorkingHypothesis aciWorkingHypothesis,
+            List<PersistedBusinessFact> authoritativeBusinessFacts,
+            PersistedOperationalState operationalState,
+            PersistedPreviousStrategy previousStrategyRecord,
+            List<PersistedCommitment> sessionCommitments,
+            List<String> verifiedFacts,
+            List<String> supersededOrRetractedFacts,
+            List<String> uncertainExplorations,
+            List<String> careNotes,
+            String workingHypothesis,
+            String lastActualSentSpeechAct,
+            String memoryResetAt
+    ) {
+        this(
+                schemaVersion, lastUpdatedTurnId, lastUpdatedTurnSeq, lastUpdatedAt,
+                currentTopic, topicHistory, unresolvedRequests, pendingReferences, lastBotAction,
+                lastTurnIntent, conversationGoal, confirmedFacts, selfReportedSymptoms,
+                barrierHypothesis, emotion, communicationStylePreference, effectiveTurnDepth,
+                interactionPermission, interestedPackageId, lastResponsePlan,
+                priceObjectionCount, inPriceObjectionContext, hasPresentedDownsell,
+                structuredBookingState, inferredCustomerPronoun, inferredPronounConfidence,
+                inferredPronounEvidenceTurnId, verifiedSymptomDuration,
+                customerStatements, aciWorkingHypothesis, authoritativeBusinessFacts,
+                operationalState, previousStrategyRecord, sessionCommitments,
+                verifiedFacts, supersededOrRetractedFacts, uncertainExplorations, careNotes,
+                workingHypothesis, lastActualSentSpeechAct, memoryResetAt,
+                null, null
+        );
+    }
 
     public static final int CURRENT_SCHEMA_VERSION = 1;
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -731,7 +793,10 @@ public record AciCustomerBrainMemorySnapshot(
                 unionStringsBounded(freshDb.careNotes(), candidate.careNotes(), 16),
                 nonBlankOrDefault(primary.workingHypothesis(), secondary.workingHypothesis()),
                 nonBlankOrDefault(primary.lastActualSentSpeechAct(), secondary.lastActualSentSpeechAct()),
-                maxResetTs != null ? maxResetTs.toString() : null
+                maxResetTs != null ? maxResetTs.toString() : null,
+                primary.secondaryIntents() != null ? List.copyOf(primary.secondaryIntents())
+                        : (secondary.secondaryIntents() != null ? List.copyOf(secondary.secondaryIntents()) : List.of()),
+                nonBlankOrDefault(primary.conversationState(), secondary.conversationState())
         );
     }
 
@@ -763,7 +828,8 @@ public record AciCustomerBrainMemorySnapshot(
                 customerStatements, aciWorkingHypothesis, authoritativeBusinessFacts,
                 updatedOp, previousStrategyRecord, sessionCommitments,
                 verifiedFacts, supersededOrRetractedFacts, uncertainExplorations, careNotes,
-                workingHypothesis, lastActualSentSpeechAct, memoryResetAt
+                workingHypothesis, lastActualSentSpeechAct, memoryResetAt,
+                secondaryIntents, conversationState
         );
     }
 
@@ -788,7 +854,8 @@ public record AciCustomerBrainMemorySnapshot(
                 customerStatements, aciWorkingHypothesis, authoritativeBusinessFacts,
                 operationalState, previousStrategyRecord, sessionCommitments,
                 verifiedFacts, supersededOrRetractedFacts, uncertainExplorations, careNotes,
-                workingHypothesis, lastActualSentSpeechAct, merged.toString()
+                workingHypothesis, lastActualSentSpeechAct, merged.toString(),
+                secondaryIntents, conversationState
         );
     }
 
@@ -1182,7 +1249,18 @@ public record AciCustomerBrainMemorySnapshot(
 
     private static String canonicalFactKey(String key, String value) {
         String norm = AdaptiveConversationIntelligence.normalizeFactCategoryKey(key, value);
-        return norm != null ? norm.strip().toLowerCase(Locale.ROOT) : "";
+        String baseKey = norm != null ? norm.strip().toLowerCase(Locale.ROOT) : "";
+        if ("self_reported_symptom".equals(baseKey)) {
+            String symCanon = AdaptiveConversationIntelligence.canonicalSymptomKey(value);
+            return symCanon.isBlank() ? baseKey : (baseKey + "::" + symCanon);
+        }
+        if ("constraint".equals(baseKey) && value != null && !value.isBlank()) {
+            String valCanon = java.text.Normalizer.normalize(value.strip(), java.text.Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT)
+                    .replaceAll("\\s+", " ");
+            return baseKey + "::" + valCanon;
+        }
+        return baseKey;
     }
 
     private static List<String> unionStringsBounded(List<String> first, List<String> second, int maxItems) {

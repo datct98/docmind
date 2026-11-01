@@ -2214,12 +2214,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         ? targetPkg.code()
                         : targetPkg.productId();
 
+                boolean targetAllowsPrivateOrVip = packageConfirmedAllowsPrivateOrVipRoom(targetPkg);
+
                 for (PackageCatalogService.PackageSummary otherPkg : nonAddonCatalog) {
                     if (Objects.equals(otherPkg.productId(), targetPkg.productId())) {
                         continue;
                     }
                     for (String exclusiveAttr : extractDistinctiveCatalogAttributePhrases(otherPkg)) {
                         if (targetCorpus.contains(exclusiveAttr) || hasHighAttributeWordContainment(targetCorpus, exclusiveAttr)) {
+                            continue;
+                        }
+                        if (targetAllowsPrivateOrVip && isPureVipOrPrivateRoomSpacePhrase(exclusiveAttr)) {
                             continue;
                         }
                         if (clauseLow.contains(exclusiveAttr) && !isAttributeNegatedBeforeMatch(clauseLow, exclusiveAttr)) {
@@ -2361,6 +2366,29 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
         return true;
+    }
+
+    private static boolean isPureVipOrPrivateRoomSpacePhrase(String phrase) {
+        if (phrase == null || phrase.isBlank()) {
+            return false;
+        }
+        Set<String> roomSpaceTokens = Set.of(
+                "phòng", "không", "gian", "vip", "riêng", "tư", "biệt", "khép", "kín", "yên", "tĩnh", "hoàn", "toàn"
+        );
+        String[] tokens = phrase.strip().toLowerCase(Locale.ROOT).split("\\s+");
+        if (tokens.length == 0) {
+            return false;
+        }
+        boolean hasVipOrPrivateToken = false;
+        for (String tok : tokens) {
+            if (!roomSpaceTokens.contains(tok)) {
+                return false;
+            }
+            if ("vip".equals(tok) || "riêng".equals(tok)) {
+                hasVipOrPrivateToken = true;
+            }
+        }
+        return hasVipOrPrivateToken;
     }
 
     private static boolean hasHighAttributeWordContainment(String targetCorpus, String attrPhrase) {
@@ -3212,9 +3240,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String formatNote = (disp != null && disp.customerFacingFormatNote() != null && !disp.customerFacingFormatNote().isBlank())
                 ? disp.customerFacingFormatNote().strip()
                 : quotedPkg.customerFacingSpaceNote();
-        List<String> scopes = quotedPkg.inferred() != null && quotedPkg.inferred().scopeTags() != null
-                ? quotedPkg.inferred().scopeTags()
-                : quotedPkg.scopeTags();
         boolean isPromoQuestion = CleanAgentOrchestratorService.isPromoOrDiscountInquiryMessage(customerMessage);
 
         String shopRef = formatShopReference(sp);
@@ -3227,11 +3252,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     0
             ));
         } else {
-            String scopeClause = (scopes != null && !scopes.isEmpty())
-                    ? (", phù hợp cho nhu cầu " + String.join(", ", scopes) + " của " + cp)
-                    : (" dành cho nhu cầu của " + cp);
             out.add(new FanpageBotResponse.ReplyBubble(
-                    "Dạ với " + itemWithUnit + " (" + priceLabel + ": " + formattedPrice + ")" + scopeClause + " ạ.",
+                    "Dạ hiện tại " + itemWithUnit + " của " + shopRef
+                            + " đang có " + priceLabel + " là " + formattedPrice + " ạ.",
                     0
             ));
         }
@@ -4927,7 +4950,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\bvăn\\s+mẫu\\s+(?:thế|quá|vậy)\\b|\\bvăn\\s+vở\\s+(?:thế|quá)\\b|\\bnói\\s+nghe\\s+sến\\b|"
             + "\\btư\\s+vấn\\s+chán\\s+(?:thế|quá|vậy)\\b|\\b(?:chẳng|chả|không)\\s+hiểu\\s+ý\\s+khách\\b|"
             + "\\btụt\\s+(?:hứng|mood|cảm\\s+xúc)\\s+quá\\b|"
-            + "\\bđược\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train|bày|chỉ)\\s+(?:phải\\s+|để\\s+|cách\\s+)?(?:reply|trả\\s+lời|nói|nhắn|tư\\s+vấn|đáp)\\b|"
+            + "\\b(?:được|đc)\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train|bày|chỉ)\\s+(?:phải\\s+|để\\s+|cách\\s+)?(?:reply|trả\\s+lời|nói|nhắn|tư\\s+vấn|đáp)\\b|"
             + "\\b(?:trả\\s+lời|reply|nói\\s+chuyện|tư\\s+vấn)\\s+theo\\s+(?:kịch\\s+bản|bài|mẫu|công\\s+thức|script)\\b|"
             + "\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản|lòng)\\b|"
             + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\s*(?:à|hả|vậy|đấy\\s+à|phải\\s+không)\\b|"
@@ -5253,6 +5276,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return false;
         }
         String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        if (norm.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đặt\\s+lịch|đăng\\s+ký(?:\\s+đặt)?\\s+lịch|giữ\\s+chỗ|giữ\\s+lịch)\\b.*")) {
+            return false;
+        }
         return COMMUNICATION_STYLE_COMPLAINT_PATTERN.matcher(norm).find();
     }
 
@@ -5508,7 +5534,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             "(?iU)(?:\\b(?:brain_reflection|response_plan|working_hypothesis|confirmed_facts_delta|proposed_booking_patch|"
             + "learned_rules|agent_skills|activated_skill_codes|commitment_delta|clean_agent_system_prompt|"
             + "verified_business_catalog|session_memory_5_tier|compact_skill_cards|learned_experience_rules|"
-            + "single_pass_cognitive_contract|aci_v2_system_prompt|aci-v2\\.7-expert-sales|promptsecurityguard|"
+            + "single_pass_cognitive_contract|aci_v2_system_prompt|aci-v2\\.\\d+-[A-Za-z0-9._-]+|promptsecurityguard|"
             + "cleanagentoutputrefereeandsanitizer)\\b|<DOCUMENT_CONTEXT>|<CONVERSATION_HISTORY>|\\bPB-SPA-\\w+|"
             + "\\b4-Tier\\s+Claim\\s+Taxonomy\\b)"
     );

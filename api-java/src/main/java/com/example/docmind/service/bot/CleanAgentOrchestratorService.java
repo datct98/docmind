@@ -133,6 +133,23 @@ public class CleanAgentOrchestratorService {
             + ")\\b.*"
     );
 
+    private static final Pattern COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "(?:ở\\s+ngoài|ngoài\\s+kia|chỗ\\s+khác|tiệm\\s+khác|bên\\s+khác|quán\\s+khác|nơi\\s+khác).*\\b(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|rẻ\\s+hơn|chứ\\s+mấy)\\b|"
+            + "\\b\\d{2,4}\\s*(?:k|nghìn|ngàn)\\b.*\\bchứ\\s+mấy\\b"
+            + ").*"
+    );
+
+    private static final Pattern EXPLICIT_CONVERSATION_REFUSAL_STOP_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "đừng\\s+tư\\s+vấn(?:\\s+thêm)?(?:\\s+nữa)?|"
+            + "khỏi\\s+(?:cần\\s+)?tư\\s+vấn(?:\\s+thêm)?|"
+            + "dừng\\s+tư\\s+vấn|"
+            + "(?:thôi\\s+)?(?:anh\\s+|chị\\s+|mình\\s+|tôi\\s+|em\\s+)?(?:không|ko)\\s+(?:làm|đặt|đi|dùng|cần)(?:\\s+dịch\\s+vụ|\\s+nữa)?\\s+(?:đâu|nữa)|"
+            + "thôi\\s+(?:anh\\s+|chị\\s+|mình\\s+|tôi\\s+|em\\s+)?(?:không|ko)\\s+(?:làm|cần|đặt)(?:\\s*$|[.,!?;])"
+            + ").*"
+    );
+
     private static final Pattern POSITIVE_TRIAL_INTEREST_CLEAN_PATTERN = Pattern.compile(
             "(?isU).*\\b(nghe\\s+(?:cũng\\s+)?ổn|ổn\\s+(?:hơn\\s+)?(?:đó|đấy|nhỉ|phết|ạ)|nghe\\s+hợp\\s+lý|nghe\\s+được\\s+(?:đó|đấy)|thử\\s+xem|đi\\s+thử\\s+1\\s+buổi|thử\\s+1\\s+buổi)\\b.*"
     );
@@ -2088,6 +2105,18 @@ public class CleanAgentOrchestratorService {
         return PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN.matcher(message.strip()).matches();
     }
 
+    public static boolean isExplicitConversationRefusalStopMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches()
+                && !trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đừng\\s+tư\\s+vấn|khỏi\\s+(?:cần\\s+)?tư\\s+vấn|dừng\\s+tư\\s+vấn)\\b.*")) {
+            return false;
+        }
+        return EXPLICIT_CONVERSATION_REFUSAL_STOP_PATTERN.matcher(trimmed).matches();
+    }
+
     public static boolean isNormalPriceOrDetailInquiryMessage(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -2095,7 +2124,8 @@ public class CleanAgentOrchestratorService {
         String trimmed = message.strip();
         if ((CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
                 || EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()
-                || METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches())
+                || METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches()
+                || COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(trimmed).matches())
                 && !NON_PRICE_CAO_EXCLUSION_PATTERN.matcher(trimmed).matches()) {
             return false;
         }
@@ -2107,28 +2137,44 @@ public class CleanAgentOrchestratorService {
         return isConfirmedCustomerPriceObjection(message, true);
     }
 
+    static boolean hasCompetitorOrExternalPriceComparisonCue(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)
+                || isExplicitConversationRefusalStopMessage(trimmed)) {
+            return false;
+        }
+        return COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(trimmed).matches();
+    }
+
     public static boolean isConfirmedCustomerPriceObjection(String message, boolean priceAlreadyDiscussedOrQuoted) {
         if (message == null || message.isBlank()) {
             return false;
         }
         String trimmed = message.strip();
-        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)) {
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)
+                || isExplicitConversationRefusalStopMessage(trimmed)) {
             return false;
         }
         if (NON_PRICE_CAO_EXCLUSION_PATTERN.matcher(trimmed).matches()
                 && !trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(giá|chi\\s+phí|tiền|gói|đắt|mắc|chát)\\b.*")) {
             return false;
         }
+        boolean matchedCompetitorComparison = COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(trimmed).matches();
         if ((NORMAL_PRICE_OR_DETAIL_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches()
                 || PROMO_OR_DISCOUNT_INQUIRY_CLEAN_PATTERN.matcher(trimmed).matches())
                 && !CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
                 && !METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches()
-                && !EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()) {
+                && !EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()
+                && !matchedCompetitorComparison) {
             return false;
         }
         boolean matchedWageComparison = METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches();
         boolean matchedObjectionPattern = CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
                 || matchedWageComparison
+                || matchedCompetitorComparison
                 || EXPLICIT_DOWNSELL_OR_LOW_BUDGET_CLEAN_PATTERN.matcher(trimmed).matches()
                 || PrimaryActionRouter.isPriceObjectionMessage(trimmed);
         if (!matchedObjectionPattern) {
@@ -4184,6 +4230,14 @@ public class CleanAgentOrchestratorService {
         String originalVerbatim = !threeStreamInput.originalMessage().isBlank()
                 ? threeStreamInput.originalMessage()
                 : (legacyNormalizedMessage != null ? legacyNormalizedMessage : "");
+        if (priorInferredCustomerPronoun == null || priorInferredCustomerPronoun.isBlank()) {
+            String sameTurnSelfPronoun = AdaptiveConversationIntelligence
+                    .inferExplicitCustomerSelfPronounFromUtterance(originalVerbatim);
+            if (sameTurnSelfPronoun != null && !sameTurnSelfPronoun.isBlank()) {
+                priorInferredCustomerPronoun = sameTurnSelfPronoun;
+                safeHonorific = sameTurnSelfPronoun;
+            }
+        }
 
         // System Gate 2: Lệnh Opt-out hệ thống tường minh (STOP, UNSUBSCRIBE, HỦY ĐĂNG KÝ, ĐỪNG NHẮN NỮA).
         // Câu từ chối hội thoại lịch sự như "Thôi, không cần nữa" (S06) KHÔNG đi vào nhánh này và mặc định opted_out = false!
@@ -4576,9 +4630,10 @@ public class CleanAgentOrchestratorService {
         }
 
         AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection =
-                (structured != null && structured.aciReflection() != null)
+                ((structured != null && structured.aciReflection() != null)
                         ? structured.aciReflection()
-                        : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
+                        : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty())
+                        .reconcileWithCurrentUtterance(originalVerbatim);
         if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
             safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
         }
@@ -4726,7 +4781,7 @@ public class CleanAgentOrchestratorService {
                             structured = repairedStructured;
                             if (repairedStructured != null && repairedStructured.aciReflection() != null
                                     && repairedStructured.aciReflection().parsedFromV2Schema()) {
-                                reflection = repairedStructured.aciReflection();
+                                reflection = repairedStructured.aciReflection().reconcileWithCurrentUtterance(originalVerbatim);
                                 if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
                                     safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
                                 }
@@ -5215,7 +5270,7 @@ public class CleanAgentOrchestratorService {
                         : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
         List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
 
-        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptTokens={} completionTokens={} reflectionTokens={} llmMs={} retrievalMs={} retryCount={} retryTriggerReason={} totalTurnMs={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
+        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptTokens={} completionTokens={} reasoningTokens={} reflectionTokens={} llmMs={} retrievalMs={} retryCount={} retryTriggerReason={} totalTurnMs={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
@@ -5224,6 +5279,7 @@ public class CleanAgentOrchestratorService {
                 legacyEquivalentPromptChars,
                 tokenUsage.promptTokens(),
                 tokenUsage.completionTokens(),
+                tokenUsage.reasoningTokens(),
                 reflectionTokens,
                 llmElapsedMs,
                 retrievalMs,
@@ -5240,12 +5296,13 @@ public class CleanAgentOrchestratorService {
                 activatedSkills.stream().map(AgentSkillDto::code).toList(),
                 refereeViolations
         );
-        log.info("[ACI-V2-PROFILING] page_id={} sender_id={} turn={} inputTokens={} outputTokens={} reflectionTokens={} modelLatencyMs={} retrievalLatencyMs={} retryCount={} retryTriggerReason={} totalTurnMs={} availableSkills={} selectedSkills={} activatedSkills={}",
+        log.info("[ACI-V2-PROFILING] page_id={} sender_id={} turn={} inputTokens={} outputTokens={} reasoningTokens={} reflectionTokens={} modelLatencyMs={} retrievalLatencyMs={} retryCount={} retryTriggerReason={} totalTurnMs={} availableSkills={} selectedSkills={} activatedSkills={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
                 tokenUsage.promptTokens(),
                 tokenUsage.completionTokens(),
+                tokenUsage.reasoningTokens(),
                 reflectionTokens,
                 llmElapsedMs,
                 retrievalMs,
@@ -5256,7 +5313,7 @@ public class CleanAgentOrchestratorService {
                 selectedSkills.stream().map(AgentSkillDto::code).toList(),
                 activatedSkills.stream().map(AgentSkillDto::code).toList()
         );
-        log.info("[ACI-V2-DRAFT2] page_id={} sender_id={} turn={} promptVersion={} promptSource={} thinkingMode={} modelLatencyMs={} layer1_context={{current_topic=\"{}\", topic_history={}, unresolved_requests={}, pending_references={}, last_bot_action=\"{}\"}} layer2_profile={{turn_intent=\"{}\", conversation_goal=\"{}\", need_revision={}, confirmed_facts={}, self_reported_symptoms={}, barrier_hypothesis={{type=\"{}\", confidence=\"{}\", summary=\"{}\"}}, emotion=\"{}\", communication_preference=\"{}\", effective_turn_depth=\"{}\"}} layer3_commitment={{interested_package={}, selected_package={}, booking_status=\"{}\", booking_readiness=\"{}\"}} response_plan={{objective=\"{}\", strategy=\"{}\", tone=\"{}\", depth=\"{}\", next_action=\"{}\"}}",
+        log.info("[ACI-V2-DRAFT2] page_id={} sender_id={} turn={} promptVersion={} promptSource={} thinkingMode={} modelLatencyMs={} layer1_context={{current_topic=\"{}\", topic_history={}, unresolved_requests={}, pending_references={}, last_bot_action=\"{}\"}} layer2_profile={{turn_intent=\"{}\", secondary_intents={}, conversation_state=\"{}\", conversation_goal=\"{}\", need_revision={}, confirmed_facts={}, self_reported_symptoms={}, barrier_hypothesis={{type=\"{}\", confidence=\"{}\", summary=\"{}\"}}, emotion=\"{}\", communication_preference=\"{}\", effective_turn_depth=\"{}\"}} layer3_commitment={{interested_package={}, selected_package={}, booking_status=\"{}\", booking_readiness=\"{}\"}} response_plan={{objective=\"{}\", strategy=\"{}\", tone=\"{}\", depth=\"{}\", next_action=\"{}\"}}",
                 pageId,
                 senderId,
                 sequentialTurnId,
@@ -5270,6 +5327,8 @@ public class CleanAgentOrchestratorService {
                 draft2After.conversationalContext().pendingReferences(),
                 draft2After.conversationalContext().lastBotAction(),
                 draft2After.consultativeProfile().turnIntent(),
+                draft2After.consultativeProfile().secondaryIntents(),
+                draft2After.consultativeProfile().conversationState(),
                 draft2After.consultativeProfile().conversationGoal(),
                 reflection.needRevisionDetected(),
                 draft2After.consultativeProfile().confirmedFacts(),
@@ -5475,12 +5534,15 @@ public class CleanAgentOrchestratorService {
         }
         String normLower = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         boolean bookingActive = priorBookingState != null && priorBookingState.status().isActiveOrConfirmed();
-        boolean explicitBookingCue = bookingActive || normLower.matches(
-                "(?isU).*\\b(đặt\\s+lịch|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+lịch|còn\\s+giường|còn\\s+phòng|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay|\\d{1,2}\\s*h\\d{0,2}|mấy\\s+giờ\\s+còn)\\b.*"
-        );
-        boolean deferOrBareClose = isHesitationOrDeferralMessage(msg)
-                || (!bookingActive && isBareAcknowledgmentMessage(msg));
-        boolean priceObjection = isConfirmedCustomerPriceObjection(msg, true);
+        boolean explicitStopRefusal = isExplicitConversationRefusalStopMessage(msg);
+        boolean competitorPriceComparison = COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(msg).matches();
+        boolean explicitBookingCue = !explicitStopRefusal && (bookingActive || normLower.matches(
+                "(?isU).*\\b(đặt\\s+lịch|đăng\\s+ký(?:\\s+đặt)?(?:\\s+lịch|\\s+gói)?|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+lịch|còn\\s+giường|còn\\s+phòng|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay|\\d{1,2}\\s*h\\d{0,2}|mấy\\s+giờ\\s+còn)\\b.*"
+        ));
+        boolean deferOrBareClose = explicitStopRefusal
+                || (!competitorPriceComparison && (isHesitationOrDeferralMessage(msg)
+                    || (!bookingActive && isBareAcknowledgmentMessage(msg))));
+        boolean priceObjection = !explicitStopRefusal && isConfirmedCustomerPriceObjection(msg, true);
         boolean priceOrPackageQuery = normLower.matches(
                 "(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|gói|liệu\\s+trình|khác\\s+gì|so\\s+sánh|\\d{2,4}\\s*k)\\b.*"
         );
@@ -5507,7 +5569,7 @@ public class CleanAgentOrchestratorService {
             if (deferOrBareClose) {
                 keep = isPauseSkill;
             } else if (explicitBookingCue) {
-                keep = isBookingSkill || (priceOrPackageQuery && isCompareOrPriceSkill);
+                keep = isBookingSkill || isDiscoverySkill || (priceOrPackageQuery && isCompareOrPriceSkill);
             } else if (priceObjection) {
                 keep = isObjectionSkill || isCompareOrPriceSkill;
             } else if (priceOrPackageQuery) {
@@ -5555,7 +5617,8 @@ public class CleanAgentOrchestratorService {
                 .anyMatch(c -> c != null && c.commitmentStatus() == AdaptiveConversationIntelligence.CommitmentStatus.pending);
         if (!multiBubbleBurst
                 && !hasPendingCommitments
-                && CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)) {
+                && (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                    || isExplicitConversationRefusalStopMessage(msg))) {
             return ThinkingMode.FAST_NO_THINK;
         }
         if (multiBubbleBurst
@@ -5607,9 +5670,11 @@ public class CleanAgentOrchestratorService {
         com.example.docmind.service.reasoning.QueryComplexity complexity = deep
                 ? com.example.docmind.service.reasoning.QueryComplexity.DEEP_REASONING
                 : com.example.docmind.service.reasoning.QueryComplexity.SIMPLE;
-        // Bảo đảm đủ ngân sách token (gồm cả reasoning_tokens nội tâm + ~700 token JSON) để không bao giờ bị cắt cụt giữa chừng
-        int maxTokens = deep ? 3600 : 2800;
-        String effort = deep ? "medium" : "low";
+        // Unit P3.6 (P0): Đã kiểm nghiệm thực nghiệm A/B với qwen3.8-flash:
+        // reasoning_effort="none" trên FAST_NO_THINK giảm ~64% reasoningTokens (~1200 tokens + ~650 tokens JSON < 2500 maxTokens)
+        // và reasoning_effort="low" trên DEEP_THINK (~2050 tokens + ~650 tokens JSON < 3200 maxTokens)
+        int maxTokens = deep ? 3200 : 2500;
+        String effort = deep ? "low" : "none";
         int timeoutSec = deep ? 60 : 45;
         return new ReasoningBudget(
                 complexity,

@@ -427,6 +427,8 @@ public class AgentBrainService {
         private final List<String> draft2PendingReferences = new ArrayList<>();
         private String draft2LastBotAction = "NONE";
         private String draft2LastTurnIntent = "";
+        private final List<String> draft2SecondaryIntents = new ArrayList<>();
+        private String draft2ConversationState = "ACTIVE_CONSULTATION";
         private String draft2ConversationGoal = "EXPLORE_SERVICES";
         private final List<AdaptiveConversationIntelligence.VersionedCustomerFact> draft2ConfirmedFacts = new ArrayList<>();
         private final List<AdaptiveConversationIntelligence.VersionedCustomerFact> draft2SelfReportedSymptoms = new ArrayList<>();
@@ -540,7 +542,9 @@ public class AgentBrainService {
                     List.copyOf(careNotes),
                     workingHypothesis,
                     lastActualSentSpeechAct,
-                    null
+                    null,
+                    List.copyOf(draft2SecondaryIntents),
+                    draft2ConversationState
             );
         }
 
@@ -624,6 +628,23 @@ public class AgentBrainService {
             this.draft2InteractionPermission = AdaptiveConversationIntelligence.InteractionPermission
                     .fromStringOrDefault(snap.interactionPermission(),
                             AdaptiveConversationIntelligence.InteractionPermission.OPEN);
+            this.draft2SecondaryIntents.clear();
+            if (snap.secondaryIntents() != null) {
+                for (String sec : snap.secondaryIntents()) {
+                    if (sec != null && !sec.isBlank()) {
+                        this.draft2SecondaryIntents.add(sec.strip());
+                    }
+                }
+            }
+            this.draft2ConversationState = AdaptiveConversationIntelligence.normalizeConversationStateLabel(
+                    snap.conversationState(),
+                    this.draft2LastTurnIntent,
+                    this.draft2SecondaryIntents,
+                    this.draft2BarrierHypothesis != null ? this.draft2BarrierHypothesis.barrierType() : null,
+                    null,
+                    AdaptiveConversationIntelligence.BuyingSignal.NONE,
+                    this.draft2InteractionPermission
+            );
             this.draft2InterestedPackageId = snap.interestedPackageId();
             this.draft2LastResponsePlan = snap.lastResponsePlan() != null
                     ? snap.lastResponsePlan().toDomain()
@@ -828,6 +849,8 @@ public class AgentBrainService {
             AdaptiveConversationIntelligence.ConsultativeProfileLayer layer2 =
                     new AdaptiveConversationIntelligence.ConsultativeProfileLayer(
                             draft2LastTurnIntent,
+                            List.copyOf(draft2SecondaryIntents),
+                            draft2ConversationState != null ? draft2ConversationState : "ACTIVE_CONSULTATION",
                             draft2ConversationGoal,
                             List.copyOf(draft2ConfirmedFacts),
                             List.copyOf(draft2SelfReportedSymptoms),
@@ -1450,6 +1473,14 @@ public class AgentBrainService {
                     mem.inferredCustomerPronoun = cu.inferredCustomerPronoun();
                     mem.inferredPronounConfidence = cu.pronounConfidence();
                     mem.inferredPronounEvidenceTurnId = safeTurnId;
+                } else if (mem.inferredCustomerPronoun == null) {
+                    String explicitUtterancePronoun =
+                            AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance(originalCustomerMessage);
+                    if (explicitUtterancePronoun != null) {
+                        mem.inferredCustomerPronoun = explicitUtterancePronoun;
+                        mem.inferredPronounConfidence = 0.92;
+                        mem.inferredPronounEvidenceTurnId = safeTurnId;
+                    }
                 }
                 if (cu.verifiedSymptomDuration() != null && !cu.verifiedSymptomDuration().isBlank()) {
                     mem.verifiedSymptomDuration = cu.verifiedSymptomDuration().strip();
@@ -1642,6 +1673,7 @@ public class AgentBrainService {
             applyDraft2CustomerUnderstandingUpdatesLocked(
                     mem,
                     safeTurnId,
+                    originalCustomerMessage,
                     reflection,
                     authoritativeBookingState,
                     actualSentSpeechAct
@@ -1650,9 +1682,45 @@ public class AgentBrainService {
         persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
     }
 
+    private static boolean isGenericOpeningPlaceholderRequest(String item) {
+        if (item == null || item.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(item.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ");
+        return norm.equals("tư vấn")
+                || norm.equals("tư vấn chung")
+                || norm.equals("tư vấn dịch vụ")
+                || norm.equals("cần tư vấn")
+                || norm.equals("hỏi giá")
+                || norm.equals("hỏi giá chung")
+                || norm.equals("hỏi bảng giá");
+    }
+
+    private static boolean containsPastOrNegatedSymptomQualifier(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return norm.matches("(?isU).*\\b(từng\\s+bị|trước\\s+đây|hồi\\s+trước|đã\\s+khỏi|khỏi\\s+rồi|hết\\s+bị|hết\\s+rồi|không\\s+bị|không\\s+còn)\\b.*");
+    }
+
+    private static boolean looksLikeConcretePainOrSymptomClause(String clause) {
+        if (clause == null || clause.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(clause.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        String[] words = norm.split("\\s+");
+        if (words.length < 2 || words.length > 9) {
+            return false;
+        }
+        return norm.matches("(?isU).*\\b(đau|mỏi|nhức|buốt|tê|căng|cứng|nặng|khó\\s+ngủ|mất\\s+ngủ|chóng\\s+mặt|hoa\\s+mắt)\\b.*");
+    }
+
     private static void applyDraft2CustomerUnderstandingUpdatesLocked(
             CustomerBrainMemory mem,
             String safeTurnId,
+            String originalCustomerMessage,
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
             ConversationState.StructuredBookingState authoritativeBookingState,
             String actualSentSpeechAct
@@ -1666,6 +1734,11 @@ public class AgentBrainService {
         // 1. Tầng 1 — Conversational Context (không lưu lặp current_user_message vào Profile dài hạn)
         String turnIntent = !cu.detectedIntent().isBlank() ? cu.detectedIntent() : "GENERAL_INQUIRY";
         mem.draft2LastTurnIntent = turnIntent;
+        mem.draft2SecondaryIntents.clear();
+        if (cu.secondaryIntents() != null) {
+            mem.draft2SecondaryIntents.addAll(cu.secondaryIntents());
+        }
+        mem.draft2ConversationState = cu.conversationState();
         String nextTopic = reflection.currentTopic() != null && !reflection.currentTopic().isBlank()
                 ? reflection.currentTopic()
                 : turnIntent;
@@ -1692,13 +1765,39 @@ public class AgentBrainService {
                 }
             }
         }
+        if (mem.highestObservedTurnSeq > 1 && !"GENERAL_INQUIRY".equalsIgnoreCase(turnIntent)) {
+            for (int i = 0; i < mem.draft2UnresolvedRequests.size(); i++) {
+                AdaptiveConversationIntelligence.UnresolvedRequestItem oldReq = mem.draft2UnresolvedRequests.get(i);
+                if (oldReq != null
+                        && oldReq.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                        && !safeTurnId.equalsIgnoreCase(oldReq.sourceTurnId())
+                        && isGenericOpeningPlaceholderRequest(oldReq.item())) {
+                    mem.draft2UnresolvedRequests.set(i, new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                            oldReq.item(),
+                            AdaptiveConversationIntelligence.UnresolvedRequestStatus.ANSWERED,
+                            oldReq.sourceTurnId(),
+                            safeTurnId
+                    ));
+                }
+            }
+        }
         if (!reflection.unresolvedRequestsDelta().isEmpty()) {
             for (AdaptiveConversationIntelligence.UnresolvedRequestItem deltaReq : reflection.unresolvedRequestsDelta()) {
                 if (deltaReq == null || deltaReq.item().isBlank()) continue;
                 int matchIdx = -1;
+                String normDeltaItem = Normalizer.normalize(deltaReq.item().strip(), Normalizer.Form.NFC)
+                        .toLowerCase(Locale.ROOT);
                 for (int i = 0; i < mem.draft2UnresolvedRequests.size(); i++) {
                     AdaptiveConversationIntelligence.UnresolvedRequestItem existing = mem.draft2UnresolvedRequests.get(i);
-                    if (existing != null && existing.item().equalsIgnoreCase(deltaReq.item())) {
+                    if (existing == null) continue;
+                    String normExisting = Normalizer.normalize(existing.item().strip(), Normalizer.Form.NFC)
+                            .toLowerCase(Locale.ROOT);
+                    boolean semanticCloseMatch = deltaReq.status() != AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                            && existing.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                            && ((normExisting.contains(normDeltaItem) || normDeltaItem.contains(normExisting))
+                                || (isGenericOpeningPlaceholderRequest(normExisting)
+                                    && isGenericOpeningPlaceholderRequest(normDeltaItem)));
+                    if (normExisting.equals(normDeltaItem) || semanticCloseMatch) {
                         matchIdx = i;
                         break;
                     }
@@ -1903,6 +2002,48 @@ public class AgentBrainService {
                         AdaptiveConversationIntelligence.FactValidity.CURRENT,
                         delta.confidence()
                 ));
+            }
+        }
+
+        // P3.6 (P2 — Context Continuity): Nếu khách chia sẻ câu đa triệu chứng hiện hành (VD: "Tôi bị đau mỏi chân tay và buốt vai")
+        // mà LLM chỉ xuất 1 vế vào confirmed_facts_delta (do rút gọn 6 từ), tự động bảo toàn đầy đủ các vế triệu chứng đồng đẳng còn thiếu.
+        boolean addedCurrentSymptomThisTurn = reflection.confirmedFactsDelta().stream()
+                .anyMatch(d -> d != null && "self_reported_symptom".equals(d.key())
+                        && d.effectiveValidity() == AdaptiveConversationIntelligence.FactValidity.CURRENT);
+        boolean hasNonCurrentSymptomThisTurn = reflection.confirmedFactsDelta().stream()
+                .anyMatch(d -> d != null && "self_reported_symptom".equals(d.key())
+                        && d.effectiveValidity() != AdaptiveConversationIntelligence.FactValidity.CURRENT);
+        if (addedCurrentSymptomThisTurn
+                && !hasNonCurrentSymptomThisTurn
+                && originalCustomerMessage != null
+                && !originalCustomerMessage.isBlank()
+                && !containsPastOrNegatedSymptomQualifier(originalCustomerMessage)) {
+            List<String> verbatimClauses = AdaptiveConversationIntelligence.splitAtomicHealthExpressions(originalCustomerMessage);
+            if (verbatimClauses.size() >= 2) {
+                for (String clause : verbatimClauses) {
+                    if (!looksLikeConcretePainOrSymptomClause(clause)) {
+                        continue;
+                    }
+                    String canon = AdaptiveConversationIntelligence.canonicalSymptomKey(clause);
+                    if (canon.isBlank()) continue;
+                    boolean alreadyTracked = mem.draft2SelfReportedSymptoms.stream()
+                            .anyMatch(f -> f != null && AdaptiveConversationIntelligence.canonicalSymptomKey(f.value()).equals(canon));
+                    if (!alreadyTracked) {
+                        if (mem.draft2SelfReportedSymptoms.size() >= 18) {
+                            mem.draft2SelfReportedSymptoms.remove(0);
+                        }
+                        mem.draft2SelfReportedSymptoms.add(new AdaptiveConversationIntelligence.VersionedCustomerFact(
+                                "self_reported_symptom",
+                                clause,
+                                "CONFIRMED",
+                                "CUSTOMER_MESSAGE",
+                                safeTurnId,
+                                nowIso,
+                                AdaptiveConversationIntelligence.FactValidity.CURRENT,
+                                "HIGH"
+                        ));
+                    }
+                }
             }
         }
 

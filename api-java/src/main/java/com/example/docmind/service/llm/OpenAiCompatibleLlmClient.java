@@ -20,6 +20,7 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -44,6 +45,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private static final int FAST_REASONING_ATTEMPT_TIMEOUT_MS = 90_000;
     private static final int MAX_UPSTREAM_NETWORK_RETRIES = 1;
     private static final long UPSTREAM_RETRY_BACKOFF_MS = 350L;
+    private static final long READ_TIMEOUT_STALL_FAIL_FAST_THRESHOLD_MS = 25_000L;
 
     public record OpenAiCallTelemetry(
             String provider,
@@ -149,15 +151,45 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         return complete(prompt, null);
     }
 
+    private boolean isOfficialDashScopeEndpoint() {
+        if (endpoint == null) {
+            return false;
+        }
+        String lower = endpoint.toLowerCase(Locale.ROOT);
+        return lower.contains("dashscope") || lower.contains("aliyuncs.com");
+    }
+
+    private boolean isQwenModelOrProvider() {
+        return "qwen".equalsIgnoreCase(provider)
+                || (model != null && model.toLowerCase(Locale.ROOT).contains("qwen"));
+    }
+
+    private String resolveEffectiveReasoningEffort(ReasoningBudget budget) {
+        boolean suppressBudgetReasoningEffortForQwenDashScope = isQwenModelOrProvider()
+                && isOfficialDashScopeEndpoint()
+                && (this.reasoningEffort == null || this.reasoningEffort.isBlank());
+        if (suppressBudgetReasoningEffortForQwenDashScope) {
+            return null;
+        }
+        if (isQwenModelOrProvider()
+                && !isOfficialDashScopeEndpoint()
+                && (this.reasoningEffort == null || this.reasoningEffort.isBlank())
+                && budget != null
+                && budget.thinkingMode() == ThinkingMode.FAST_NO_THINK) {
+            return "none";
+        }
+        if (budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank()) {
+            return budget.reasoningEffort();
+        }
+        return this.reasoningEffort;
+    }
+
     @Override
     public String complete(String prompt, ReasoningBudget budget) {
         long startNs = System.nanoTime();
         String safePrompt = prompt != null ? prompt : "";
-        boolean suppressBudgetReasoningEffortForQwen = "qwen".equalsIgnoreCase(provider)
-                && (reasoningEffort == null || reasoningEffort.isBlank());
-        String effort = (!suppressBudgetReasoningEffortForQwen && budget != null && budget.reasoningEffort() != null)
-                ? budget.reasoningEffort()
-                : (reasoningEffort != null ? reasoningEffort : "default");
+        String resolvedEffort = resolveEffectiveReasoningEffort(budget);
+        String effort = (resolvedEffort != null && !resolvedEffort.isBlank()) ? resolvedEffort : "default";
         ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
         int targetTokens = (budget != null && budget.maxTokens() > 0)
                 ? budget.maxTokens()
@@ -252,18 +284,13 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         body.put("temperature", temp);
         body.put("stream", false);
         if (includeOptionalTuning) {
-            boolean suppressBudgetReasoningEffortForQwen = "qwen".equalsIgnoreCase(provider)
-                    && (this.reasoningEffort == null || this.reasoningEffort.isBlank());
-            String effort = suppressBudgetReasoningEffortForQwen
-                    ? null
-                    : ((budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank())
-                        ? budget.reasoningEffort()
-                        : this.reasoningEffort);
+            String effort = resolveEffectiveReasoningEffort(budget);
             if (effort != null && !effort.isBlank()) {
                 body.put("reasoning_effort", effort);
             }
             ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
-            if ("qwen".equalsIgnoreCase(provider)) {
+            if ("qwen".equalsIgnoreCase(provider)
+                    || (isQwenModelOrProvider() && (thinkingMode == null || thinkingMode == ThinkingMode.FAST_NO_THINK))) {
                 body.put("enable_thinking", false);
             }
             int maxToks = (budget != null && budget.maxTokens() > 0)
@@ -297,11 +324,30 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         int timeoutSec = budget != null && budget.timeoutSeconds() > 0
                 ? budget.timeoutSeconds()
                 : props.getTimeoutSeconds();
+        long attempt1StartNs = System.nanoTime();
         try {
             return executePost(body, budget);
         } catch (ResourceAccessException timeoutOrIo) {
-            log.warn("[LLM] Provider {} attempt 1/{} timed out or network stalled (timeout={}s, backoff={}ms, err={}), retrying max {} time...",
-                    provider, MAX_UPSTREAM_NETWORK_RETRIES + 1, timeoutSec, UPSTREAM_RETRY_BACKOFF_MS,
+            long attempt1ElapsedMs = (System.nanoTime() - attempt1StartNs) / 1_000_000L;
+            Object currentEffortObj = body != null ? body.get("reasoning_effort") : null;
+            String currentEffort = currentEffortObj != null ? String.valueOf(currentEffortObj) : "";
+            if (attempt1ElapsedMs >= READ_TIMEOUT_STALL_FAIL_FAST_THRESHOLD_MS) {
+                boolean alreadyMinEffort = currentEffort.isBlank() || "none".equalsIgnoreCase(currentEffort);
+                if (alreadyMinEffort || attempt1ElapsedMs >= 35_000L) {
+                    log.warn("[LLM] Provider {} attempt 1 hit long read-timeout stall ({}ms >= {}ms, timeout={}s, effort={}, err={}); skipping redundant retry to prevent 2x latency stall",
+                            provider, attempt1ElapsedMs, READ_TIMEOUT_STALL_FAIL_FAST_THRESHOLD_MS, timeoutSec,
+                            currentEffort.isBlank() ? "default" : currentEffort, timeoutOrIo.getMessage());
+                    throw timeoutOrIo;
+                }
+                Map<String, Object> downgradedBody = new LinkedHashMap<>(body);
+                downgradedBody.put("reasoning_effort", "none");
+                log.warn("[LLM] Provider {} attempt 1 stalled at {}ms with effort={}; retrying once with downgraded reasoning_effort=none...",
+                        provider, attempt1ElapsedMs, currentEffort);
+                sleepBoundedBackoff(UPSTREAM_RETRY_BACKOFF_MS);
+                return executePost(downgradedBody, budget);
+            }
+            log.warn("[LLM] Provider {} attempt 1/{} transient I/O failure after {}ms (timeout={}s, backoff={}ms, err={}), retrying max {} time...",
+                    provider, MAX_UPSTREAM_NETWORK_RETRIES + 1, attempt1ElapsedMs, timeoutSec, UPSTREAM_RETRY_BACKOFF_MS,
                     timeoutOrIo.getMessage(), MAX_UPSTREAM_NETWORK_RETRIES);
             sleepBoundedBackoff(UPSTREAM_RETRY_BACKOFF_MS);
             return executePost(body, budget);

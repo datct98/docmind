@@ -2,6 +2,7 @@ package com.example.docmind.service.bot;
 
 import com.example.docmind.dto.PagePersonaConfig;
 import com.example.docmind.dto.bot.FanpageBotRequest;
+import com.example.docmind.service.security.PromptSecurityGuard;
 import com.example.docmind.service.text.VietnameseQueryNormalizer;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
@@ -461,6 +462,57 @@ public final class AdaptiveConversationIntelligence {
 
     public static final double INFERRED_PRONOUN_HIGH_CONFIDENCE_THRESHOLD = 0.85;
 
+    private static final Pattern THIRD_PERSON_FAMILY_OR_ROLE_EXCLUSION_PATTERN = Pattern.compile(
+            "(?iu)\\b(anh\\s+(?:trai|xã|chồng|họ|rể|ruột|ấy|đó|kia)|"
+            + "chị\\s+(?:gái|dâu|họ|ruột|ấy|đó|kia)|"
+            + "cô\\s+(?:giáo|gái|ấy|đó|kia|nàng)|"
+            + "chú\\s+(?:ý|thích|trọng|rể|ấy|đó|kia)|"
+            + "bác\\s+(?:sĩ|sỹ|học|ấy|đó|kia))\\b"
+    );
+
+    private static final Pattern FIRST_PERSON_ANH_SELF_REF_PATTERN = Pattern.compile(
+            "(?iu)(?:^|[\\s,;.!?])(?:"
+            + "nếu\\s+(?:anh|a)\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy)\\s+cho\\s+(?:anh|a)\\b|"
+            + "cho\\s+(?:anh|a)\\s+(?:hỏi|xin|đặt|đăng\\s+ký|chốt|xem|biết|thử|làm)|"
+            + "rồi\\s+(?:anh|a)\\s+(?:đăng\\s+ký|đặt|qua|ghé|chốt|làm)|"
+            + "(?:thôi\\s+|vậy\\s+|thế\\s+)?anh\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|thấy|ngại|đăng\\s+ký|đặt)\\b|"
+            + "để\\s+anh\\s+(?:xem|nghĩ|suy\\s+nghĩ|tính|hỏi|cân\\s+nhắc|qua|đặt)\\b|"
+            + "(?:của|với|giúp)\\s+anh\\b"
+            + ")"
+    );
+
+    private static final Pattern FIRST_PERSON_CHI_SELF_REF_PATTERN = Pattern.compile(
+            "(?iu)(?:^|[\\s,;.!?])(?:"
+            + "nếu\\s+chị\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy)\\s+cho\\s+chị\\b|"
+            + "cho\\s+chị\\s+(?:hỏi|xin|đặt|đăng\\s+ký|chốt|xem|biết|thử|làm)|"
+            + "rồi\\s+chị\\s+(?:đăng\\s+ký|đặt|qua|ghé|chốt|làm)|"
+            + "(?:thôi\\s+|vậy\\s+|thế\\s+)?chị\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|thấy|ngại|đăng\\s+ký|đặt)\\b|"
+            + "để\\s+chị\\s+(?:xem|nghĩ|suy\\s+nghĩ|tính|hỏi|cân\\s+nhắc|qua|đặt)\\b|"
+            + "(?:của|với|giúp)\\s+chị\\b"
+            + ")"
+    );
+
+    /**
+     * Phát hiện đại từ khách tự xưng rõ ràng ngay trong lượt hiện tại ("nếu anh...", "kể cho a...", "thôi anh không...")
+     * khi phiên chưa có {@code priorInferredCustomerPronoun}, giúp Single-Pass LLM xưng hô đúng ngay trong cùng lượt.
+     */
+    public static String inferExplicitCustomerSelfPronounFromUtterance(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return null;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        String scrubbed = THIRD_PERSON_FAMILY_OR_ROLE_EXCLUSION_PATTERN.matcher(norm).replaceAll(" ");
+        boolean hasAnh = FIRST_PERSON_ANH_SELF_REF_PATTERN.matcher(scrubbed).find();
+        boolean hasChi = FIRST_PERSON_CHI_SELF_REF_PATTERN.matcher(scrubbed).find();
+        if (hasAnh && !hasChi) {
+            return "Anh";
+        }
+        if (hasChi && !hasAnh) {
+            return "Chị";
+        }
+        return null;
+    }
+
     public static String normalizeInferredSpeakerPronoun(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -918,9 +970,11 @@ public final class AdaptiveConversationIntelligence {
         }
     }
 
-    /** Tầng 2 — Consultative Profile (Hồ sơ hiểu khách hàng xuyên suốt + Interaction Permission). */
+    /** Tầng 2 — Consultative Profile (Hồ sơ hiểu khách hàng xuyên suốt + Multi-Intent + Conversation State + Interaction Permission). */
     public record ConsultativeProfileLayer(
             String turnIntent,
+            List<String> secondaryIntents,
+            String conversationState,
             String conversationGoal,
             List<VersionedCustomerFact> confirmedFacts,
             List<VersionedCustomerFact> selfReportedSymptoms,
@@ -932,6 +986,12 @@ public final class AdaptiveConversationIntelligence {
     ) {
         public ConsultativeProfileLayer {
             turnIntent = turnIntent != null ? turnIntent.strip() : "";
+            secondaryIntents = secondaryIntents != null
+                    ? secondaryIntents.stream().filter(s -> s != null && !s.isBlank()).map(String::strip).toList()
+                    : List.of();
+            conversationState = (conversationState != null && !conversationState.isBlank())
+                    ? conversationState.strip().toUpperCase(Locale.ROOT)
+                    : "ACTIVE_CONSULTATION";
             conversationGoal = (conversationGoal != null && !conversationGoal.isBlank()) ? conversationGoal.strip() : "EXPLORE_SERVICES";
             confirmedFacts = confirmedFacts != null ? List.copyOf(confirmedFacts) : List.of();
             selfReportedSymptoms = selfReportedSymptoms != null ? List.copyOf(selfReportedSymptoms) : List.of();
@@ -958,10 +1018,38 @@ public final class AdaptiveConversationIntelligence {
                 BarrierHypothesis barrierAndHypothesis,
                 EmotionalState emotion,
                 String defaultCommunicationPreference,
+                String effectiveTurnDepth,
+                InteractionPermission interactionPermission
+        ) {
+            this(
+                    turnIntent,
+                    List.of(),
+                    interactionPermission == InteractionPermission.PAUSED ? "PAUSED_BY_CUSTOMER" : "ACTIVE_CONSULTATION",
+                    conversationGoal,
+                    confirmedFacts,
+                    selfReportedSymptoms,
+                    barrierAndHypothesis,
+                    emotion,
+                    defaultCommunicationPreference,
+                    effectiveTurnDepth,
+                    interactionPermission
+            );
+        }
+
+        public ConsultativeProfileLayer(
+                String turnIntent,
+                String conversationGoal,
+                List<VersionedCustomerFact> confirmedFacts,
+                List<VersionedCustomerFact> selfReportedSymptoms,
+                BarrierHypothesis barrierAndHypothesis,
+                EmotionalState emotion,
+                String defaultCommunicationPreference,
                 String effectiveTurnDepth
         ) {
             this(
                     turnIntent,
+                    List.of(),
+                    "ACTIVE_CONSULTATION",
                     conversationGoal,
                     confirmedFacts,
                     selfReportedSymptoms,
@@ -977,9 +1065,13 @@ public final class AdaptiveConversationIntelligence {
 
         public static ConsultativeProfileLayer initial() {
             return new ConsultativeProfileLayer(
-                    "", "EXPLORE_SERVICES", List.of(), List.of(),
+                    "", List.of(), "ACTIVE_CONSULTATION", "EXPLORE_SERVICES", List.of(), List.of(),
                     BarrierHypothesis.initialNone(), EmotionalState.empty(),
                     "STANDARD", "STANDARD", InteractionPermission.OPEN);
+        }
+
+        public String primaryIntent() {
+            return turnIntent;
         }
 
         public BarrierHypothesis barrierHypothesis() {
@@ -1076,11 +1168,11 @@ public final class AdaptiveConversationIntelligence {
     }
 
     private static final Pattern ATOMIC_SYMPTOM_SPLIT_PATTERN = Pattern.compile(
-            "(?iu)\\s*(?:[,;/+]|\\b(?:và|kèm(?:\\s+theo)?|cùng(?:\\s+với)?|với\\s+cả|lẫn)\\b)\\s*"
+            "(?iU)\\s*(?:[,;/+]|\\b(?:và|kèm(?:\\s+theo)?|cùng(?:\\s+với)?|với\\s+cả|lẫn)\\b)\\s*"
     );
 
     private static final Pattern SYMPTOM_LEADING_FILLER_PATTERN = Pattern.compile(
-            "(?iu)^(?:(?:tôi|mình|em|anh|chị|khách)\\s+)?"
+            "(?iU)^(?:(?:tôi|mình|em|anh|chị|khách)\\s+)?"
                     + "(?:(?:trước\\s+đây|hồi\\s+trước|hôm\\s+nay|dạo\\s+này|bây\\s+giờ)\\s+)?"
                     + "(?:(?:cũng|vẫn|đã)\\s+)?"
                     + "(?:từng\\s+bị|hay\\s+bị|đang\\s+bị|hơi\\s+bị|còn\\s+bị|hết\\s+bị|không\\s+còn\\s+bị|không\\s+bị"
@@ -1088,7 +1180,7 @@ public final class AdaptiveConversationIntelligence {
     );
 
     private static final Pattern SYMPTOM_TRAILING_CLAUSE_PATTERN = Pattern.compile(
-            "(?iu)(?:\\s+nhưng\\s+(?:đã\\s+|cũng\\s+)?(?:khỏi|hết|đỡ)\\b.*$|\\s+(?:lâu\\s+rồi|rồi|nữa|ạ)$)"
+            "(?iU)(?:\\s+nhưng\\s+(?:đã\\s+|cũng\\s+)?(?:khỏi|hết|đỡ)\\b.*$|\\s+(?:lâu\\s+rồi|rồi|nữa|ạ)$)"
     );
 
     /**
@@ -1251,6 +1343,88 @@ public final class AdaptiveConversationIntelligence {
         return raw.strip();
     }
 
+    public static boolean isExplicitStopOrRefusalIntentLabel(String rawIntent) {
+        if (rawIntent == null || rawIntent.isBlank()) {
+            return false;
+        }
+        String u = rawIntent.strip().toUpperCase(Locale.ROOT);
+        return u.contains("EXPLICIT_REFUSAL")
+                || u.contains("STOP_CONSULT")
+                || u.contains("DECLINE_SERVICE")
+                || u.contains("DECLINE_ALL")
+                || u.equals("OPT_OUT")
+                || u.equals("POLITE_CLOSURE");
+    }
+
+    public static boolean isBookingSignalIntentLabel(String rawIntent) {
+        if (rawIntent == null || rawIntent.isBlank()) {
+            return false;
+        }
+        String u = rawIntent.strip().toUpperCase(Locale.ROOT);
+        return u.contains("BOOKING")
+                || u.contains("SCHEDULE")
+                || u.contains("REGISTER")
+                || u.contains("APPOINTMENT");
+    }
+
+    public static boolean isPriceOrCompetitorObjectionIntentLabel(String rawIntent) {
+        if (rawIntent == null || rawIntent.isBlank()) {
+            return false;
+        }
+        String u = rawIntent.strip().toUpperCase(Locale.ROOT);
+        return u.contains("COMPETITOR")
+                || u.contains("PRICE_OBJECTION")
+                || u.contains("PRICE_COMPARISON")
+                || u.contains("VALUE_OBJECTION")
+                || u.contains("COST_OBJECTION")
+                || u.contains("PRIVACY_OBJECTION")
+                || u.contains("PRIVACY_CONCERN");
+    }
+
+    public static String normalizeConversationStateLabel(
+            String rawState,
+            String primaryIntent,
+            List<String> secondaryIntents,
+            String effectiveBarrierType,
+            BookingReadiness bookingReadiness,
+            BuyingSignal buyingSignal,
+            InteractionPermission interactionPermission
+    ) {
+        List<String> sec = secondaryIntents != null ? secondaryIntents : List.of();
+        boolean secHasBooking = sec.stream().anyMatch(AdaptiveConversationIntelligence::isBookingSignalIntentLabel);
+        boolean secHasObjection = sec.stream().anyMatch(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel);
+        if (isExplicitStopOrRefusalIntentLabel(primaryIntent)) {
+            return "PAUSED_BY_CUSTOMER";
+        }
+        if (secHasBooking || isBookingSignalIntentLabel(primaryIntent)
+                || bookingReadiness == BookingReadiness.READY_TO_BOOK
+                || buyingSignal == BuyingSignal.STRONG
+                || buyingSignal == BuyingSignal.ACTION) {
+            return "BOOKING_READY";
+        }
+        if ("COMPETITOR_COMPARISON".equalsIgnoreCase(effectiveBarrierType)
+                || secHasObjection
+                || isPriceOrCompetitorObjectionIntentLabel(primaryIntent)) {
+            return "OBJECTION_NEGOTIATION";
+        }
+        if (rawState != null && !rawState.isBlank()) {
+            String u = rawState.strip().toUpperCase(Locale.ROOT);
+            if (u.contains("PAUSE") || u.contains("STOP") || u.contains("CLOS")) return "PAUSED_BY_CUSTOMER";
+            if (u.contains("BOOK")) return "BOOKING_READY";
+            if (u.contains("OBJECT") || u.contains("NEGOT")) return "OBJECTION_NEGOTIATION";
+            if (u.contains("META") || u.contains("PLAYFUL") || u.contains("BANTER")) return "META_PLAYFUL";
+            if (u.contains("ACTIVE") || u.contains("CONSULT") || u.contains("DISCOVER")) return "ACTIVE_CONSULTATION";
+        }
+        if (interactionPermission == InteractionPermission.PAUSED) {
+            return "PAUSED_BY_CUSTOMER";
+        }
+        String pUpper = primaryIntent != null ? primaryIntent.strip().toUpperCase(Locale.ROOT) : "";
+        if (pUpper.contains("META") || pUpper.contains("PLAYFUL") || pUpper.contains("BANTER") || pUpper.contains("HYPOTHETICAL")) {
+            return "META_PLAYFUL";
+        }
+        return "ACTIVE_CONSULTATION";
+    }
+
     public record CustomerUnderstanding(
             String detectedIntent,
             EmotionalState emotionalState,
@@ -1261,7 +1435,9 @@ public final class AdaptiveConversationIntelligence {
             BookingReadiness bookingReadiness,
             String communicationStylePreference,
             InteractionPermission interactionPermission,
-            BuyingSignal buyingSignal
+            BuyingSignal buyingSignal,
+            List<String> secondaryIntents,
+            String conversationState
     ) {
         public CustomerUnderstanding {
             detectedIntent = detectedIntent != null ? detectedIntent.strip() : "";
@@ -1271,6 +1447,31 @@ public final class AdaptiveConversationIntelligence {
             verifiedSymptomDuration = cleanNullable(verifiedSymptomDuration);
             communicationStylePreference = normalizeCommunicationStylePreference(communicationStylePreference);
             buyingSignal = buyingSignal != null ? buyingSignal : BuyingSignal.NONE;
+            secondaryIntents = secondaryIntents != null
+                    ? secondaryIntents.stream().filter(s -> s != null && !s.isBlank()).map(String::strip).toList()
+                    : List.of();
+            conversationState = (conversationState != null && !conversationState.isBlank())
+                    ? conversationState.strip().toUpperCase(Locale.ROOT)
+                    : "ACTIVE_CONSULTATION";
+        }
+
+        public CustomerUnderstanding(
+                String detectedIntent,
+                EmotionalState emotionalState,
+                String inferredCustomerPronoun,
+                double pronounConfidence,
+                Boolean costConcernExpressed,
+                String verifiedSymptomDuration,
+                BookingReadiness bookingReadiness,
+                String communicationStylePreference,
+                InteractionPermission interactionPermission,
+                BuyingSignal buyingSignal
+        ) {
+            this(detectedIntent, emotionalState, inferredCustomerPronoun, pronounConfidence,
+                    costConcernExpressed, verifiedSymptomDuration, bookingReadiness, communicationStylePreference,
+                    interactionPermission, buyingSignal, List.of(),
+                    normalizeConversationStateLabel(null, detectedIntent, List.of(), null,
+                            bookingReadiness, buyingSignal, interactionPermission));
         }
 
         public CustomerUnderstanding(
@@ -1285,7 +1486,7 @@ public final class AdaptiveConversationIntelligence {
         ) {
             this(detectedIntent, emotionalState, inferredCustomerPronoun, pronounConfidence,
                     costConcernExpressed, verifiedSymptomDuration, bookingReadiness, communicationStylePreference,
-                    null, BuyingSignal.NONE);
+                    null, BuyingSignal.NONE, List.of(), "ACTIVE_CONSULTATION");
         }
 
         public CustomerUnderstanding(
@@ -1297,11 +1498,17 @@ public final class AdaptiveConversationIntelligence {
                 String verifiedSymptomDuration
         ) {
             this(detectedIntent, emotionalState, inferredCustomerPronoun, pronounConfidence,
-                    costConcernExpressed, verifiedSymptomDuration, null, null, null, BuyingSignal.NONE);
+                    costConcernExpressed, verifiedSymptomDuration, null, null, null, BuyingSignal.NONE,
+                    List.of(), "ACTIVE_CONSULTATION");
         }
 
         public CustomerUnderstanding(String detectedIntent, EmotionalState emotionalState) {
-            this(detectedIntent, emotionalState, null, 0.0, null, null, null, null, null, BuyingSignal.NONE);
+            this(detectedIntent, emotionalState, null, 0.0, null, null, null, null, null, BuyingSignal.NONE,
+                    List.of(), "ACTIVE_CONSULTATION");
+        }
+
+        public String primaryIntent() {
+            return detectedIntent;
         }
 
         public boolean hasHighConfidenceInferredPronoun() {
@@ -1311,7 +1518,8 @@ public final class AdaptiveConversationIntelligence {
 
         public static CustomerUnderstanding empty() {
             return new CustomerUnderstanding(
-                    "", EmotionalState.empty(), null, 0.0, null, null, null, null, null, BuyingSignal.NONE);
+                    "", EmotionalState.empty(), null, 0.0, null, null, null, null, null, BuyingSignal.NONE,
+                    List.of(), "ACTIVE_CONSULTATION");
         }
     }
 
@@ -1530,6 +1738,188 @@ public final class AdaptiveConversationIntelligence {
             );
         }
 
+        /**
+         * P3.6 Multi-Intent &amp; Conversation State Reconciliation với phát ngôn hiện tại của khách:
+         * đảm bảo không bị mất tín hiệu phụ (đặt lịch trong câu phức hợp, so sánh giá bên ngoài 50k/100k)
+         * và tôn trọng tuyệt đối lời từ chối dừng tư vấn rõ ràng của khách.
+         */
+        public AdaptiveCognitiveReflection reconcileWithCurrentUtterance(String rawUserMessage) {
+            if (rawUserMessage == null || rawUserMessage.isBlank()
+                    || PromptSecurityGuard.isDirectJailbreakAttempt(rawUserMessage)) {
+                return this;
+            }
+            String normLower = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            boolean explicitStop = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(rawUserMessage);
+            boolean competitorComparison = !explicitStop
+                    && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawUserMessage);
+            boolean negatedBooking = normLower.matches(
+                    "(?isU).*\\b(?:không|ko|chưa|khỏi|đừng|chẳng)\\s+(?:muốn\\s+|cần\\s+|vội\\s+|định\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
+            );
+            boolean affirmativeBookingCue = !explicitStop && !negatedBooking && normLower.matches(
+                    "(?isU).*\\b(đăng\\s+ký\\s+đặt\\s+lịch|(?:rồi\\s+)?(?:anh|chị|mình|tôi|em|a)\\s+(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch|đặt\\s+lịch\\s+(?:nhé|nha|giúp|cho)|chốt\\s+lịch\\s+(?:nhé|nha|luôn))\\b.*"
+            );
+            if (!explicitStop && !competitorComparison && !affirmativeBookingCue) {
+                return this;
+            }
+
+            CustomerUnderstanding cu = customerUnderstanding;
+            String detIntent = cu.detectedIntent();
+            List<String> secIntents = new ArrayList<>(cu.secondaryIntents());
+            String convState = cu.conversationState();
+            Boolean costConcern = cu.costConcernExpressed();
+            BookingReadiness readiness = cu.bookingReadiness();
+            InteractionPermission perm = cu.interactionPermission();
+            BuyingSignal buySig = cu.buyingSignal();
+            PriorityFocus prio = priority;
+            String effBarrier = barrierType;
+            AdaptiveResponsePlan plan = responsePlan;
+            StrategyReflection strat = strategy;
+
+            if (explicitStop) {
+                detIntent = "EXPLICIT_REFUSAL";
+                convState = "PAUSED_BY_CUSTOMER";
+                perm = InteractionPermission.PAUSED;
+                prio = new PriorityFocus("POLITE_CLOSURE", prio.secondary());
+                plan = new AdaptiveResponsePlan(
+                        plan.objective(),
+                        "Respectful Pause",
+                        plan.tone(),
+                        plan.depth(),
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.STOP,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Respectful Pause",
+                        StrategyAdaptationMode.STOP,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (competitorComparison) {
+                if (secIntents.stream().noneMatch(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel)) {
+                    secIntents.add("COMPETITOR_COMPARISON");
+                }
+                if ("POLITE_DEFERRAL".equalsIgnoreCase(detIntent)
+                        || "HESITATION".equalsIgnoreCase(detIntent)
+                        || isExplicitStopOrRefusalIntentLabel(detIntent)) {
+                    if (secIntents.stream().noneMatch(s -> s.toUpperCase(Locale.ROOT).contains("EXASPERATION"))) {
+                        secIntents.add("EXASPERATION_REMARK");
+                    }
+                    detIntent = "COMPETITOR_PRICE_OBJECTION";
+                }
+                costConcern = Boolean.TRUE;
+                convState = "OBJECTION_NEGOTIATION";
+                effBarrier = "COMPETITOR_COMPARISON";
+                if (perm == InteractionPermission.PAUSED) {
+                    perm = InteractionPermission.OPEN;
+                }
+                if ("POLITE_CLOSURE".equalsIgnoreCase(prio.primary())) {
+                    prio = new PriorityFocus("VALUE_ALIGNMENT", prio.secondary());
+                }
+                String reconciledStrat = ("Respectful Pause".equalsIgnoreCase(plan.strategy()) || plan.strategy().isBlank())
+                        ? "Explain Value"
+                        : plan.strategy();
+                StrategyAdaptationMode reconciledAdapt = plan.adaptation() == StrategyAdaptationMode.STOP
+                        ? StrategyAdaptationMode.REFINEMENT
+                        : plan.adaptation();
+                CtaLevel reconciledCta = plan.ctaLevel() == CtaLevel.NO_CTA ? CtaLevel.SOFT_CTA : plan.ctaLevel();
+                String reconciledNext = "NO_ADDITIONAL_ACTION".equalsIgnoreCase(plan.nextAction())
+                        ? "ASK_ONE_CLARIFYING_QUESTION"
+                        : plan.nextAction();
+                plan = new AdaptiveResponsePlan(
+                        plan.objective(),
+                        reconciledStrat,
+                        plan.tone(),
+                        plan.depth(),
+                        reconciledNext,
+                        reconciledCta,
+                        reconciledAdapt,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        reconciledStrat,
+                        reconciledAdapt,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (affirmativeBookingCue) {
+                if (!isBookingSignalIntentLabel(detIntent)
+                        && secIntents.stream().noneMatch(AdaptiveConversationIntelligence::isBookingSignalIntentLabel)) {
+                    secIntents.add("BOOKING_SIGNAL");
+                }
+                convState = "BOOKING_READY";
+                readiness = BookingReadiness.READY_TO_BOOK;
+                if (perm == InteractionPermission.PAUSED || perm == InteractionPermission.BOUNDED_INFO_ONLY) {
+                    perm = InteractionPermission.OPEN;
+                }
+                if (buySig == BuyingSignal.NONE || buySig == BuyingSignal.WEAK) {
+                    buySig = BuyingSignal.MODERATE;
+                }
+                String reconciledStrat = "Respectful Pause".equalsIgnoreCase(plan.strategy())
+                        ? "Direct Answer"
+                        : plan.strategy();
+                StrategyAdaptationMode reconciledAdapt = plan.adaptation() == StrategyAdaptationMode.STOP
+                        ? StrategyAdaptationMode.CONTINUATION
+                        : plan.adaptation();
+                CtaLevel reconciledCta = plan.ctaLevel() == CtaLevel.NO_CTA ? CtaLevel.SOFT_CTA : plan.ctaLevel();
+                String reconciledNext = "NO_ADDITIONAL_ACTION".equalsIgnoreCase(plan.nextAction())
+                        ? "GENTLE_SCHEDULE_CHECK"
+                        : plan.nextAction();
+                plan = new AdaptiveResponsePlan(
+                        plan.objective(),
+                        reconciledStrat,
+                        plan.tone(),
+                        plan.depth(),
+                        reconciledNext,
+                        reconciledCta,
+                        reconciledAdapt,
+                        plan.previousOutcome()
+                );
+            }
+
+            CustomerUnderstanding reconciledCu = new CustomerUnderstanding(
+                    detIntent,
+                    cu.emotionalState(),
+                    cu.inferredCustomerPronoun(),
+                    cu.pronounConfidence(),
+                    costConcern,
+                    cu.verifiedSymptomDuration(),
+                    readiness,
+                    cu.communicationStylePreference(),
+                    perm,
+                    buySig,
+                    secIntents,
+                    convState
+            );
+            return new AdaptiveCognitiveReflection(
+                    reconciledCu,
+                    prio,
+                    workingHypothesis,
+                    strat,
+                    uncertainties,
+                    customerStatements,
+                    commitmentDelta,
+                    handoffRequest,
+                    proposedBookingPatch,
+                    blockedUnauthorizedCompletionCount,
+                    parsedFromV2Schema,
+                    activatedSkillCodes,
+                    explicitActivatedSkillCodes,
+                    currentTopic,
+                    unresolvedRequestsDelta,
+                    pendingReferences,
+                    conversationGoal,
+                    needRevisionDetected,
+                    confirmedFactsDelta,
+                    effBarrier,
+                    hypothesisConfidenceLevel,
+                    interestedPackageId,
+                    plan
+            );
+        }
+
         public AdaptiveCognitiveReflection(
                 CustomerUnderstanding customerUnderstanding,
                 PriorityFocus priority,
@@ -1637,6 +2027,11 @@ public final class AdaptiveConversationIntelligence {
      * Null-safe &amp; Default-tolerant parser cho {@code brain_reflection} theo Schema Chuẩn Hóa Duy Nhất
      * (hỗ trợ đồng thời schema V2 tiêu chuẩn + {@code Customer Understanding Model (Draft 2)} &amp; {@code Adaptive Response Planner}).
      */
+    public static AdaptiveCognitiveReflection parseAndReconcileAdaptiveCognitiveReflection(JsonNode brainNode, String rawUserMessage) {
+        return parseAdaptiveCognitiveReflection(brainNode, null)
+                .reconcileWithCurrentUtterance(rawUserMessage);
+    }
+
     public static AdaptiveCognitiveReflection parseAdaptiveCognitiveReflection(JsonNode brainNode, JsonNode rootNode) {
         if ((brainNode == null || !brainNode.isObject()) && (rootNode == null || !rootNode.isObject())) {
             return AdaptiveCognitiveReflection.empty();
@@ -1684,9 +2079,11 @@ public final class AdaptiveConversationIntelligence {
             currentTopic = cleanNullable(readTextOrDefault(b, "current_topic", null));
         }
 
-        // 1. Tầng 2: customer_understanding / consultative_profile
+        // 1. Tầng 2: customer_understanding / consultative_profile (hỗ trợ primary_intent, secondary_intents, conversation_state)
         JsonNode cuNode = b.has("customer_understanding") ? b.get("customer_understanding") : b.get("consultative_profile");
         String detectedIntent = "";
+        List<String> secondaryIntents = new ArrayList<>();
+        String rawConversationState = null;
         String conversationGoal = null;
         boolean needRevisionDetected = false;
         List<FactDeltaProposal> confirmedFactsDelta = new ArrayList<>();
@@ -1701,8 +2098,18 @@ public final class AdaptiveConversationIntelligence {
         InteractionPermission interactionPermission = null;
         BuyingSignal buyingSignal = BuyingSignal.NONE;
         if (cuNode != null && cuNode.isObject()) {
-            detectedIntent = readTextOrDefault(cuNode, "turn_intent",
-                    readTextOrDefault(cuNode, "detected_intent", ""));
+            detectedIntent = readTextOrDefault(cuNode, "primary_intent",
+                    readTextOrDefault(cuNode, "turn_intent",
+                            readTextOrDefault(cuNode, "detected_intent", "")));
+            if (detectedIntent.isBlank()) {
+                detectedIntent = readTextOrDefault(cuNode, "turn_intent",
+                        readTextOrDefault(cuNode, "detected_intent", ""));
+            }
+            secondaryIntents.addAll(readStringList(cuNode.has("secondary_intents")
+                    ? cuNode.get("secondary_intents")
+                    : b.get("secondary_intents")));
+            rawConversationState = cleanNullable(readTextOrDefault(cuNode, "conversation_state",
+                    readTextOrDefault(b, "conversation_state", null)));
             conversationGoal = cleanGoalField(readTextOrDefault(cuNode, "conversation_goal", null));
             if (cuNode.has("need_revision") && !cuNode.get("need_revision").isNull()) {
                 needRevisionDetected = cuNode.get("need_revision").asBoolean(false);
@@ -1752,7 +2159,10 @@ public final class AdaptiveConversationIntelligence {
                     readTextOrDefault(cuNode, "buying_signal",
                             readTextOrDefault(b, "buying_signal", null)));
         } else {
-            detectedIntent = readTextOrDefault(b, "turn_intent", readTextOrDefault(b, "detected_customer_intent", ""));
+            detectedIntent = readTextOrDefault(b, "primary_intent",
+                    readTextOrDefault(b, "turn_intent", readTextOrDefault(b, "detected_customer_intent", "")));
+            secondaryIntents.addAll(readStringList(b.get("secondary_intents")));
+            rawConversationState = cleanNullable(readTextOrDefault(b, "conversation_state", null));
             bookingReadiness = BookingReadiness.fromString(readTextOrDefault(b, "booking_readiness", null));
             communicationStylePreference = normalizeCommunicationStylePreference(
                     readTextOrDefault(b, "communication_style_preference", null));
@@ -1766,18 +2176,6 @@ public final class AdaptiveConversationIntelligence {
         if (conversationGoal == null) {
             conversationGoal = cleanGoalField(readTextOrDefault(b, "conversation_goal", null));
         }
-        CustomerUnderstanding understanding = new CustomerUnderstanding(
-                detectedIntent,
-                emotionalState,
-                inferredPronoun,
-                pronounConfidence,
-                costConcernExpressed,
-                verifiedSymptomDuration,
-                bookingReadiness,
-                communicationStylePreference,
-                interactionPermission,
-                buyingSignal
-        );
 
         // 2. priority
         JsonNode prioNode = b.get("priority");
@@ -1935,6 +2333,96 @@ public final class AdaptiveConversationIntelligence {
             handoffReq = new HandoffRequestReflection(true, cleanNullable(readTextOrDefault(rootNode, "handoff_reason", null)));
         }
 
+        // Multi-Intent & Conversation State Reconciliation (P3.6 — P1):
+        // Kiểm tra mối quan hệ giữa primary_intent, secondary_intents, barrier_hypothesis, confirmed_facts_delta và conversation_state:
+        // - Case 3 (Từ chối dừng tư vấn rõ ràng): EXPLICIT_REFUSAL / STOP_CONSULTATION / POLITE_CLOSURE -> PAUSED_BY_CUSTOMER + Respectful Pause + NO_CTA + STOP.
+        // - Case 2 (So sánh giá bên ngoài / phản đối giá trị khi chưa từ chối dừng tư vấn): COMPETITOR_COMPARISON + cost_concern / price_reaction
+        //   -> không chọn nhầm POLITE_DEFERRAL / Respectful Pause / STOP; chuyển sang OBJECTION_NEGOTIATION + Explain Value.
+        // - Case 1 (Câu phức hợp vừa hỏi nguyên tắc/trêu đùa vừa có tín hiệu đặt lịch ở secondary_intents):
+        //   -> không khóa vào BOUNDED_INFO_ONLY / STOP mà giữ OPEN + đón tín hiệu đặt lịch (BOOKING_READY).
+        String effectiveBarrierType = normalizeBarrierType(barrierType, workingHyp.hypothesis());
+        boolean secondaryHasBooking = secondaryIntents.stream()
+                .anyMatch(AdaptiveConversationIntelligence::isBookingSignalIntentLabel);
+        boolean secondaryHasPriceOrCompetitor = secondaryIntents.stream()
+                .anyMatch(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel);
+        boolean hasCurrentTurnPriceComparisonDelta = confirmedFactsDelta.stream()
+                .anyMatch(d -> d != null && "price_reaction".equals(d.key())
+                        && d.effectiveValidity() == FactValidity.CURRENT);
+        boolean isExplicitStopRefusal = isExplicitStopOrRefusalIntentLabel(detectedIntent);
+        boolean isSecurityRefusalIntent = detectedIntent.toUpperCase(Locale.ROOT).contains("PROMPT_INJECTION")
+                || detectedIntent.toUpperCase(Locale.ROOT).contains("JAILBREAK");
+        boolean currentTurnRaisesCompetitorOrPriceObjection = !isExplicitStopRefusal && (
+                isPriceOrCompetitorObjectionIntentLabel(detectedIntent)
+                || secondaryHasPriceOrCompetitor
+                || ("COMPETITOR_COMPARISON".equalsIgnoreCase(effectiveBarrierType)
+                    && (Boolean.TRUE.equals(costConcernExpressed) || hasCurrentTurnPriceComparisonDelta))
+        );
+
+        if (isExplicitStopRefusal) {
+            interactionPermission = InteractionPermission.PAUSED;
+            normalizedStrategy = "Respectful Pause";
+            planAdaptation = StrategyAdaptationMode.STOP;
+            planCtaLevel = CtaLevel.NO_CTA;
+            planNextAction = "NO_ADDITIONAL_ACTION";
+            rawConversationState = "PAUSED_BY_CUSTOMER";
+        } else if (currentTurnRaisesCompetitorOrPriceObjection) {
+            if ("POLITE_DEFERRAL".equalsIgnoreCase(detectedIntent)
+                    || "HESITATION".equalsIgnoreCase(detectedIntent)) {
+                if (secondaryIntents.stream().noneMatch(s -> s.toUpperCase(Locale.ROOT).contains("EXASPERATION")
+                        || s.toUpperCase(Locale.ROOT).contains("HESITATION"))) {
+                    secondaryIntents.add("EXASPERATION_REMARK");
+                }
+                detectedIntent = "COMPETITOR_COMPARISON".equalsIgnoreCase(effectiveBarrierType)
+                        ? "COMPETITOR_PRICE_OBJECTION"
+                        : "PRICE_OBJECTION";
+            }
+            if (interactionPermission == InteractionPermission.PAUSED) {
+                interactionPermission = InteractionPermission.OPEN;
+            }
+            if ("Respectful Pause".equalsIgnoreCase(normalizedStrategy)) {
+                normalizedStrategy = "Explain Value";
+            }
+            if (planAdaptation == StrategyAdaptationMode.STOP) {
+                planAdaptation = StrategyAdaptationMode.REFINEMENT;
+            }
+            rawConversationState = "OBJECTION_NEGOTIATION";
+        } else if (!isSecurityRefusalIntent
+                && (secondaryHasBooking || isBookingSignalIntentLabel(detectedIntent)
+                    || bookingReadiness == BookingReadiness.READY_TO_BOOK)) {
+            if (interactionPermission == InteractionPermission.BOUNDED_INFO_ONLY
+                    || interactionPermission == InteractionPermission.PAUSED) {
+                interactionPermission = InteractionPermission.OPEN;
+            }
+            if ("Respectful Pause".equalsIgnoreCase(normalizedStrategy)) {
+                normalizedStrategy = "Direct Answer";
+            }
+            if (planAdaptation == StrategyAdaptationMode.STOP) {
+                planAdaptation = StrategyAdaptationMode.CONTINUATION;
+            }
+            if (buyingSignal == BuyingSignal.NONE) {
+                buyingSignal = BuyingSignal.MODERATE;
+            }
+            if (planCtaLevel == CtaLevel.NO_CTA) {
+                planCtaLevel = (buyingSignal == BuyingSignal.STRONG || buyingSignal == BuyingSignal.ACTION)
+                        ? CtaLevel.DIRECT_CTA
+                        : CtaLevel.SOFT_CTA;
+            }
+            if ("NO_ADDITIONAL_ACTION".equalsIgnoreCase(planNextAction)) {
+                planNextAction = "GENTLE_SCHEDULE_CHECK";
+            }
+            rawConversationState = "BOOKING_READY";
+        }
+
+        String normalizedConversationState = normalizeConversationStateLabel(
+                rawConversationState,
+                detectedIntent,
+                secondaryIntents,
+                effectiveBarrierType,
+                bookingReadiness,
+                buyingSignal,
+                interactionPermission
+        );
+
         // Deterministic Plan Consistency Guard (Chốt chặn nhất quán quyết định trong Java):
         // (a) Nếu interaction_permission == BOUNDED_INFO_ONLY / PAUSED hoặc strategy == Respectful Pause hoặc adaptation == STOP
         //     -> khóa cta_level = NO_CTA và next_action = NO_ADDITIONAL_ACTION.
@@ -1961,7 +2449,23 @@ public final class AdaptiveConversationIntelligence {
             }
         }
 
+        CustomerUnderstanding understanding = new CustomerUnderstanding(
+                detectedIntent,
+                emotionalState,
+                inferredPronoun,
+                pronounConfidence,
+                costConcernExpressed,
+                verifiedSymptomDuration,
+                bookingReadiness,
+                communicationStylePreference,
+                interactionPermission,
+                buyingSignal,
+                secondaryIntents,
+                normalizedConversationState
+        );
+
         AdaptiveResponsePlan responsePlan = (hasResponsePlan || hasSeparateStrategy || !rawPlanStrategy.isBlank() || mustLockNoCta
+                || currentTurnRaisesCompetitorOrPriceObjection || secondaryHasBooking
                 || buyingSignal == BuyingSignal.STRONG || buyingSignal == BuyingSignal.ACTION)
                 ? new AdaptiveResponsePlan(
                         planObjective,
@@ -1974,7 +2478,7 @@ public final class AdaptiveConversationIntelligence {
                         planPrevOutcome
                 )
                 : AdaptiveResponsePlan.empty();
-        String chosenForStrategyRecord = hasResponsePlan
+        String chosenForStrategyRecord = hasResponsePlan || currentTurnRaisesCompetitorOrPriceObjection || isExplicitStopRefusal
                 ? normalizedStrategy
                 : (!rawPlanStrategy.isBlank() ? rawPlanStrategy : "");
         StrategyReflection strategy = chosenForStrategyRecord.isBlank()
