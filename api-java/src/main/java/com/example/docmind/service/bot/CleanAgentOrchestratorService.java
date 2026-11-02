@@ -135,7 +135,7 @@ public class CleanAgentOrchestratorService {
 
     private static final Pattern COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN = Pattern.compile(
             "(?isU).*\\b("
-            + "(?:ở\\s+ngoài|ngoài\\s+kia|chỗ\\s+khác|tiệm\\s+khác|bên\\s+khác|quán\\s+khác|nơi\\s+khác).*\\b(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|rẻ\\s+hơn|chứ\\s+mấy)\\b|"
+            + "(?:bên\\s+ngoài|tiệm\\s+ngoài|ở\\s+ngoài|ngoài\\s+kia|chỗ\\s+khác|tiệm\\s+khác|bên\\s+khác|quán\\s+khác|nơi\\s+khác).*\\b(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|rẻ\\s+hơn|chứ\\s+mấy)\\b|"
             + "\\b\\d{2,4}\\s*(?:k|nghìn|ngàn)\\b.*\\bchứ\\s+mấy\\b"
             + ").*"
     );
@@ -2123,8 +2123,12 @@ public class CleanAgentOrchestratorService {
             return false;
         }
         String trimmed = message.strip();
+        String lower = java.text.Normalizer.normalize(trimmed, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (lower.matches("(?isU).*\\b(cho\\s+(?:tôi|mình|anh|chị|em|xin)\\s+bảng\\s+giá|gửi\\s+bảng\\s+giá|xem\\s+bảng\\s+giá|bảng\\s+giá\\s+đầy\\s+đủ|đừng\\s+tư\\s+vấn\\s+dài)\\b.*")) {
+            return false;
+        }
         if (PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN.matcher(trimmed).matches()
-                && !trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đừng\\s+tư\\s+vấn|khỏi\\s+(?:cần\\s+)?tư\\s+vấn|dừng\\s+tư\\s+vấn)\\b.*")) {
+                && !lower.matches("(?isU).*\\b(đừng\\s+tư\\s+vấn|khỏi\\s+(?:cần\\s+)?tư\\s+vấn|dừng\\s+tư\\s+vấn)\\b.*")) {
             return false;
         }
         return EXPLICIT_CONVERSATION_REFUSAL_STOP_PATTERN.matcher(trimmed).matches();
@@ -4723,6 +4727,11 @@ public class CleanAgentOrchestratorService {
             }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
                     candidateBubbles, allCatalog);
+            if (originalVerbatim == null
+                    || !originalVerbatim.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(tip|tiền\\s+bo)\\b.*")) {
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripUngroundedTipPolicyClaimsInPlace(
+                        candidateBubbles);
+            }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
                     candidateBubbles, originalVerbatim, safeHistory.isEmpty());
         }
@@ -5041,10 +5050,14 @@ public class CleanAgentOrchestratorService {
                     candidateBubbles,
                     allCatalog
             );
+            boolean isFirstSubstantiveTurn = safeHistory.isEmpty()
+                    || safeHistory.stream()
+                            .filter(t -> t != null && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role()))
+                            .allMatch(t -> CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(t.content()));
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
                     candidateBubbles,
                     originalVerbatim,
-                    safeHistory.isEmpty()
+                    isFirstSubstantiveTurn
             );
         }
         long validationMs = Math.max(0L, (System.nanoTime() - validationStartNs) / 1_000_000L);
@@ -5060,6 +5073,18 @@ public class CleanAgentOrchestratorService {
                 txt = BubbleTextSanitizer.capitalizeFirstLetter(txt);
             }
             formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0));
+        }
+        if (!usedSafeHandoffFallback && !usedStructuredFallbackOnLlmFailure) {
+            formattedBubbles = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                    formattedBubbles,
+                    originalVerbatim,
+                    safeHistory,
+                    authoritativeBookingState,
+                    unblindedEligibleCatalog,
+                    selfPronoun,
+                    safeHonorific,
+                    effectivePersonaConfig != null ? effectivePersonaConfig.resolvedCareActor() : "kỹ thuật viên"
+            );
         }
 
         // Price Quote Reading Budget (10s) (Mục 6):
@@ -5661,11 +5686,19 @@ public class CleanAgentOrchestratorService {
         ));
         boolean deferOrBareClose = explicitStopRefusal
                 || (!competitorPriceComparison && (isHesitationOrDeferralMessage(msg)
-                    || (!bookingActive && isBareAcknowledgmentMessage(msg))));
+                    || (!bookingActive && (isBareAcknowledgmentMessage(msg)
+                        || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(msg)))));
         boolean priceObjection = !explicitStopRefusal && isConfirmedCustomerPriceObjection(msg, true);
         boolean priceOrPackageQuery = normLower.matches(
                 "(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|gói|liệu\\s+trình|khác\\s+gì|so\\s+sánh|\\d{2,4}\\s*k)\\b.*"
         );
+        boolean hasPriorCustomerNeedInHistory = history != null && history.stream().anyMatch(t ->
+                t != null && t.content() != null && !t.content().isBlank()
+                        && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())
+                        && !CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(t.content())
+                        && t.content().strip().split("\\s+").length >= 3);
+        boolean isScopeSelectionAfterNeedDiscovery = hasPriorCustomerNeedInHistory
+                && normLower.matches("(?isU)^\\s*(?:dạ\\s+)?(?:cả\\s*(?:2|hai)|làm\\s+cả\\s*(?:2|hai)|cả\\s+hai\\s+luôn|gói\\s+(?:cơ\\s+bản|chuyên\\s+sâu|đó|này))\\s*[.!]*\\s*$");
 
         List<AgentSkillDto> matched = new ArrayList<>();
         List<AgentSkillDto> customFallback = new ArrayList<>();
@@ -5690,13 +5723,15 @@ public class CleanAgentOrchestratorService {
             if (deferOrBareClose) {
                 keep = isPauseSkill;
             } else if (explicitBookingCue) {
-                keep = isBookingSkill || isDiscoverySkill || (priceOrPackageQuery && isCompareOrPriceSkill);
+                keep = isBookingSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill) || (priceOrPackageQuery && isCompareOrPriceSkill);
             } else if (priceObjection) {
                 keep = isObjectionSkill || isCompareOrPriceSkill;
+            } else if (isScopeSelectionAfterNeedDiscovery) {
+                keep = isCompareOrPriceSkill;
             } else if (priceOrPackageQuery) {
-                keep = isCompareOrPriceSkill || isDiscoverySkill;
+                keep = isCompareOrPriceSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill);
             } else {
-                keep = isDiscoverySkill || (history != null && !history.isEmpty() && isCompareOrPriceSkill);
+                keep = isDiscoverySkill || (hasPriorCustomerNeedInHistory && isCompareOrPriceSkill);
             }
             if (keep && matched.size() < 3) {
                 matched.add(s);

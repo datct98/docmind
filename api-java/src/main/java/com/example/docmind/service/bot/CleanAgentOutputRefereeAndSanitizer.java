@@ -2926,7 +2926,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         if (sentenceIsGroundedMultiRange
                                 || (clauseAlsoHasMatchedPkgExactPrice
                                     && (otherCatalogHasThisPrice || customerProvidedContrastPrice)
-                                    && (separatedByCommaFromPkgName || isGroundedPriceRangeOrMultiCompare || customerProvidedContrastPrice))) {
+                                    && (separatedByCommaFromPkgName || clause.contains(",") || isGroundedPriceRangeOrMultiCompare || customerProvidedContrastPrice))) {
                             continue;
                         }
                         addUniqueViolation(flags, "PRICE_ENTITY_MISMATCH");
@@ -5371,7 +5371,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String cleaned = b.text()
-                    .replaceAll("(?iU)[,\\s]*(?:trọn\\s+gói\\s+)?(?:không\\s+nhận\\s+(?:tiền\\s+)?tip|miễn\\s+(?:tiền\\s+)?tip|0\\s*tip|không\\s+thu\\s+(?:tiền\\s+)?tip|(?:đã\\s+(?:bao\\s+)?gồm|bao\\s+gồm(?:\\s+cả)?)\\s+(?:cả\\s+)?(?:tiền\\s+|phí\\s+)?tip)\\b", "")
+                    .replaceAll("(?iU)[,\\s]*(?:với\\s+mức\\s+giá\\s+trọn\\s+gói\\s+|giá\\s+trọn\\s+gói\\s+|trọn\\s+gói\\s+|cam\\s+kết\\s+)?(?:không\\s+nhận\\s+(?:tiền\\s+)?tip|miễn\\s+(?:tiền\\s+)?tip|0\\s*tip|không\\s+thu\\s+(?:tiền\\s+)?tip|(?:đã\\s+(?:bao\\s+)?gồm|bao\\s+gồm(?:\\s+cả)?|gồm(?:\\s+cả)?|đã\\s+tính|trọn\\s+gói\\s+cả)\\s+(?:cả\\s+)?(?:tiền\\s+|phí\\s+)?tip)(?:\\s+(?:hay|và)\\s+phụ\\s+phí)?\\b", "")
                     .replaceAll("\\s+([,.!?])", "$1")
                     .replaceAll("\\s{2,}", " ")
                     .strip();
@@ -5758,8 +5758,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         } else if (isOpeningTurn
                 && (CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(customerMessage)
                     || isLevel1TurnOnePureSymptomSharingWithoutServiceQuestion(customerMessage))) {
-            // P3.7-B.1: Khi khách chỉ nhắn "Tư vấn", chào hỏi ngắn, hoặc mới tâm sự mệt mỏi/khó ngủ/mỏi vai ở lượt 1 (Level 1 — chưa hỏi gói/giá),
-            // lược bỏ mọi câu tự ý báo giá/liệt kê gói để chỉ giữ lời đồng cảm + 1 câu hỏi mở khám phá nhu cầu.
+            // P3.7-B.1 & P3.7-B.2: Khi khách chỉ nhắn "Tư vấn", chào hỏi ngắn, hoặc mới tâm sự mệt mỏi/khó ngủ/mỏi cổ vai gáy lần đầu (chưa hỏi gói/giá),
+            // lược bỏ mọi câu tự ý báo giá/liệt kê gói cụ thể để chỉ giữ lời đồng cảm + định hướng chăm sóc chung + 1 câu hỏi mở khám phá nhu cầu.
+            boolean isPureSymptomTurn = isLevel1TurnOnePureSymptomSharingWithoutServiceQuestion(customerMessage);
             List<FanpageBotResponse.ReplyBubble> cleanedConsult = new ArrayList<>(mergedColon.size());
             boolean strippedPriceSentence = false;
             for (FanpageBotResponse.ReplyBubble b : mergedColon) {
@@ -5770,7 +5771,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     String st = s.strip();
                     if (st.isEmpty()) continue;
                     if (hasQuotedPriceInText(st)
-                            || st.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(muốn\\s+em\\s+gợi\\s+ý\\s+thêm\\s+hướng|hay\\s+giữ\\s+gói\\s+này)\\b.*")) {
+                            || st.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(muốn\\s+em\\s+gợi\\s+ý\\s+thêm\\s+hướng|hay\\s+giữ\\s+gói\\s+này|gói\\s+cơ\\s+bản.*gói\\s+chuyên\\s+sâu)\\b.*")) {
                         strippedPriceSentence = true;
                         continue;
                     }
@@ -5784,9 +5785,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (!cleanedConsult.isEmpty()) {
                 if (strippedPriceSentence) {
                     String combinedCleaned = cleanedConsult.stream().map(FanpageBotResponse.ReplyBubble::text).reduce("", (a, b2) -> a + " " + b2);
+                    if (isPureSymptomTurn && !combinedCleaned.toLowerCase(Locale.ROOT).contains("liệu trình")) {
+                        String b0Text = cleanedConsult.get(0).text().strip();
+                        if (!b0Text.endsWith(".") && !b0Text.endsWith("!")) {
+                            b0Text = b0Text + ".";
+                        }
+                        b0Text = b0Text + " Với tình trạng này, bên em có định hướng liệu trình dưỡng sinh kết hợp gội đầu thảo dược và chăm sóc thư giãn vùng mỏi rất dịu nhẹ ạ.";
+                        cleanedConsult.set(0, new FanpageBotResponse.ReplyBubble(b0Text, cleanedConsult.get(0).typingDelayMs()));
+                    }
                     if (countQuestionMarks(combinedCleaned) == 0) {
                         cleanedConsult.add(new FanpageBotResponse.ReplyBubble(
-                                "Để em tư vấn đúng hướng nhất, hiện vùng vai của mình đang mỏi căng nhiều hơn hay mình muốn ưu tiên thư giãn để dễ vào giấc ngủ hơn ạ?",
+                                "Mình muốn trải nghiệm một buổi vừa đủ để thư giãn nhẹ nhàng hay dành thêm thời gian chăm sóc kỹ hơn cho vùng đang mỏi ạ?",
                                 2000
                         ));
                     }
@@ -5807,7 +5816,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 || low.matches("(?isU).*\\b(gói|giá|bao\\s+nhiêu|mấy\\s+tiền|dịch\\s+vụ|liệu\\s+trình|bên\\s+em|bên\\s+mình|nhận\\s+chăm\\s+sóc|làm\\s+được\\s+không|hợp\\s+không|nào\\s+hợp|phù\\s+hợp)\\b.*")) {
             return false;
         }
-        return low.matches("(?isU).*\\b(căng\\s+thẳng|khó\\s+ngủ|mất\\s+ngủ|mỏi\\s+vai|mỏi\\s+cổ|mệt\\s+mỏi|đau\\s+mỏi)\\b.*");
+        return low.matches("(?isU).*\\b(căng\\s+thẳng|khó\\s+ngủ|mất\\s+ngủ|nhức\\s+đầu|đau\\s+đầu|cổ\\s+vai\\s+gáy|vai\\s+gáy|mỏi\\s+vai|mỏi\\s+cổ|mệt\\s+mỏi|đau\\s+mỏi)\\b.*");
     }
 
     /**
@@ -6344,14 +6353,23 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             FanpageBotResponse.ReplyBubble b = empathyCleaned.get(idx);
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
-            // Gỡ bỏ con số chênh lệch giá tự cộng trừ (VD: "cao hơn mức 200k của mình 39k", "linh hoạt thêm 39k")
+            // Gỡ bỏ con số chênh lệch giá tự cộng trừ & chuẩn hóa 100% Zero-Hardcode đa ngành
+            txt = txt.replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu");
             txt = txt.replaceAll(
-                    "(?iU)cao\\s+hơn\\s+(mức\\s+\\d{3,4}\\s*k(?:\\s+của\\s+(?:mình|chị|anh|bạn))?)\\s+(?:khoảng\\s+|tầm\\s+|chỉ\\s+)?\\d{1,2}\\s*k\\b",
+                    "(?iU)[,\\s]*(?:nên\\s+)?(?:mình|em)\\s+thấy\\s+(?:rất\\s+)?hợp\\s+với\\s+tình\\s+trạng\\s+hiện\\s+tại(?:\\s+của\\s+(?:mình|chị|anh|bạn))?",
+                    ""
+            );
+            txt = txt.replaceAll(
+                    "(?iU)[,\\s]+và\\s+hỏi\\s+(?:xem\\s+)?(anh|chị|mình|bạn)\\s+có\\s+muốn\\s+",
+                    ". $1 có muốn "
+            );
+            txt = txt.replaceAll(
+                    "(?iU)cao\\s+hơn\\s+(mức\\s+\\d{2,4}\\s*k(?:\\s+của\\s+(?:mình|chị|anh|bạn))?)\\s+(?:khoảng\\s+|tầm\\s+|chỉ\\s+)?\\d{1,3}\\s*k\\b",
                     "nhỉnh hơn $1 một chút"
             );
             txt = txt.replaceAll(
-                    "(?iU)(?:mình|chị|anh|bạn)\\s+có\\s+thể\\s+(?:linh\\s+hoạt\\s+|cân\\s+nhắc\\s+|bù\\s+)?thêm\\s+(?:khoảng\\s+|tầm\\s+|chỉ\\s+)?\\d{1,2}\\s*k\\s+[^.!?？]*[?？]",
-                    "Dạ " + safeCust + " thấy gói dưỡng sinh cơ bản 239k (60 phút) này có phù hợp với nhu cầu thư giãn của " + safeCust + " không ạ?"
+                    "(?iU)(?:mình|chị|anh|bạn)\\s+có\\s+thể\\s+(?:linh\\s+hoạt\\s+|cân\\s+nhắc\\s+|bù\\s+)?thêm\\s+(?:khoảng\\s+|tầm\\s+|chỉ\\s+)?\\d{1,3}\\s*k\\s+[^.!?？]*[?？]",
+                    "Dạ " + safeCust + " thấy phương án cơ bản này có phù hợp với nhu cầu thư giãn của " + safeCust + " không ạ?"
             );
             txt = txt.replaceAll(
                     "(?iU)\\b(?:chênh|nhỉnh|hơn|thêm|bù)\\s+(?:khoảng\\s+|tầm\\s+|chỉ\\s+)?\\d{1,2}\\s*k\\b",
@@ -6359,19 +6377,18 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             );
             txt = txt.replaceAll(
                     "(?iU)(?:mình|chị|anh|bạn)\\s+tiện\\s+nhấn\\s+nhỉnh\\s+hơn\\s+một\\s+chút\\s+để\\s+[^.!?？]*[?？]",
-                    "Dạ " + safeCust + " thấy gói dưỡng sinh cơ bản 239k (60 phút) này có phù hợp với nhu cầu chăm sóc vùng vai và đầu của " + safeCust + " không ạ?"
+                    "Dạ " + safeCust + " thấy liệu trình cơ bản này có phù hợp với nhu cầu chăm sóc hiện tại của " + safeCust + " không ạ?"
             );
-            // Làm sạch câu nịnh sáo rỗng, câu so sánh khoảng giá sai ("239k vẫn nằm trong khoảng 250k-300k") & câu nhắc nhắn tin khi đang lái xe
             txt = txt.replaceAll(
                     "(?iU)^\\s*(?:dạ[,\\s]+)?(?:mình|chị|anh|bạn)\\s+thấy\\s+chênh\\s+lệch\\s+nên\\s+hỏi\\s+thông\\s+minh\\s+lắm\\s+ạ[.!]?\\s*",
-                    "Dạ " + safeCust + " băn khoăn mức chênh lệch giữa gói dưỡng sinh 239k và gội đầu thường 90k là rất hợp lý ạ. "
+                    "Dạ " + safeCust + " băn khoăn về mức chênh lệch chi phí giữa các hình thức dịch vụ là rất hợp lý ạ. "
             );
             txt = txt.replaceAll(
-                    "(?iU)vẫn\\s+nằm\\s+trong\\s+khoảng\\s+(250\\s*k\\s*[-–~]\\s*300\\s*k)\\s+(Anh|Chị|Mình|Bạn)\\b",
+                    "(?iU)vẫn\\s+nằm\\s+trong\\s+khoảng\\s+(\\d{2,4}\\s*k\\s*[-–~]\\s*\\d{2,4}\\s*k)\\s+(Anh|Chị|Mình|Bạn)\\b",
                     "còn tiết kiệm hơn cả mức $1 của $2 ạ. $2"
             );
             txt = txt.replaceAll(
-                    "(?iU)vẫn\\s+nằm\\s+trong\\s+khoảng\\s+(250\\s*k\\s*[-–~]\\s*300\\s*k)",
+                    "(?iU)vẫn\\s+nằm\\s+trong\\s+khoảng\\s+(\\d{2,4}\\s*k\\s*[-–~]\\s*\\d{2,4}\\s*k)",
                     "còn tiết kiệm hơn cả mức $1"
             );
             if (customerMessage != null
@@ -6406,34 +6423,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     "(?iU)(?:Mình|Chị|Anh|Bạn)\\s+muốn\\s+(?:tìm\\s+gói\\s+nào\\s+phù\\s+hợp|nghe\\s+thêm\\s+về\\s+nhu\\s+cầu)[^?？]*[?？]",
                     safeCust + " đang cảm thấy mỏi hay muốn thư giãn vùng nào để " + safeSelf + " tư vấn sát hơn ạ?"
             );
-            // Khi mô tả Gói dưỡng sinh cơ bản 239k (nhất là khi so sánh với gội thường 90k), tránh nói quá "chuyên sâu", tránh viết "trọn 60 phút gội" hoặc hạ thấp tiệm ngoài
-            if (txt.toLowerCase(Locale.ROOT).contains("239k") && !txt.toLowerCase(Locale.ROOT).contains("339k")) {
-                txt = txt.replaceAll("(?iU)trọn\\s+60\\s+phút\\s+gội\\s+thảo\\s+dược", "liệu trình 60 phút gồm gội đầu thảo dược");
-                txt = txt.replaceAll("(?iU)massage\\s+cổ\\s+vai\\s+gáy\\s+chuyên\\s+sâu", "massage cổ vai gáy thư giãn");
-                txt = txt.replaceAll("(?iU)[,\\s]*chứ\\s+không\\s+chỉ\\s+gội\\s+(?:tóc|đầu)\\s+nhanh\\b", "");
-            }
-            // Khi khách nêu triệu chứng vùng đầu/cổ vai gáy/mất ngủ/hoa mắt chóng mặt mà chưa hỏi massage toàn thân hay ngâm bồn:
-            // gỡ câu chào chéo sang massage toàn thân 399k/530k và tránh gợi ý ngâm bồn thảo dược làm ấm khi khách hay hoa mắt chóng mặt.
+            txt = txt.replaceAll("(?iU)trọn\\s+(\\d+\\s+phút)\\s+gội\\s+thảo\\s+dược", "liệu trình $1 gồm gội đầu thảo dược");
+            txt = txt.replaceAll("(?iU)[,\\s]*chứ\\s+không\\s+chỉ\\s+gội\\s+(?:tóc|đầu)\\s+nhanh\\b", "");
             if (customerMessage != null) {
                 String custLowSym = customerMessage.toLowerCase(Locale.ROOT);
                 boolean isHeadNeckDizzinessTurn = custLowSym.matches("(?isU).*\\b(đau\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|vai\\s+gáy|mất\\s+ngủ|thiếu\\s+ngủ)\\b.*")
                         && !custLowSym.matches("(?isU).*\\b(toàn\\s+thân|body|ngâm\\s+bồn|lưng|chân)\\b.*");
                 if (isHeadNeckDizzinessTurn) {
                     txt = txt.replaceAll(
-                            "(?iU)(?:Mình|Chị|Anh|Bạn)\\s+có\\s+muốn\\s+" + Pattern.quote(safeSelf) + "\\s+gợi\\s+ý\\s+thêm\\s+gói\\s+massage\\s+toàn\\s+thân[^?？]*[?？]",
-                            safeCust + " muốn ưu tiên gói 60 phút vừa vặn hay 80 phút để thư giãn sâu hơn vùng đầu và cổ vai gáy ạ?"
+                            "(?iU)(?:Mình|Chị|Anh|Bạn)\\s+có\\s+muốn\\s+" + Pattern.quote(safeSelf) + "\\s+gợi\\s+ý\\s+thêm\\s+gói\\s+[^?？]*toàn\\s+thân[^?？]*[?？]",
+                            safeCust + " muốn trải nghiệm buổi vừa vặn hay dành thêm thời gian để thư giãn sâu hơn vùng đầu và cổ vai gáy ạ?"
                     );
-                    if (custLowSym.matches("(?isU).*\\b(hoa\\s+mắt|chóng\\s+mặt)\\b.*")
-                            && txt.toLowerCase(Locale.ROOT).contains("ngâm bồn")) {
-                        txt = txt.replaceAll(
-                                "(?iU)gói\\s+Massage\\s+cơ\\s+bản\\s+nâng\\s+cao\\s+80\\s+phút\\s*\\(530k\\)\\s+gồm\\s+ngâm\\s+bồn\\s+thảo\\s+dược[^;,.]*[,;]?\\s*(?:rất\\s+hợp\\s+khi\\s+[^;,.]*;\\s*hoặc\\s*)?",
-                                "Gói dưỡng sinh cơ bản 60 phút (239k) gồm gội đầu thảo dược kết hợp massage cổ vai gáy êm dịu, hoặc "
-                        );
-                        txt = txt.replaceAll(
-                                "(?iU)nghiêng\\s+về\\s+massage\\s+toàn\\s+thân\\s+hay\\s+dưỡng\\s+sinh\\s+cổ\\s+vai\\s+gáy\\s+hơn\\s+ạ[.!]?",
-                                "ưu tiên gói 60 phút vừa vặn hay gói 80 phút chăm sóc sâu hơn vùng cổ vai gáy ạ?"
-                        );
-                    }
                 }
             }
 
@@ -6483,6 +6483,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     if (isMissedDiscovery && trimLow.matches("(?isU).*(?:không\\s+(?:tự\\s+ý\\s+)?gợi\\s+ý\\s+nữa|chỉ\\s+tư\\s+vấn\\s+đúng\\s+điều\\s+(?:mình|chị|anh|bạn)\\s+cần|dừng\\s+lại\\s+để\\s+tôn\\s+trọng).*")) {
                         continue;
                     }
+                    if (trimLow.startsWith("thực ra ") || trimLow.startsWith("dạ thực ra ")) {
+                        continue;
+                    }
+                    if (trimLow.matches("(?isU).*\\bxin\\s+lỗi\\s+(?:" + Pattern.quote(safeCust) + "\\s+)?nếu\\b.*")) {
+                        trimmed = isMissedDiscovery
+                                ? ("Dạ " + safeSelf + " xin lỗi " + safeCust + " vì chưa lắng nghe kỹ nhu cầu của " + safeCust + " trước khi tư vấn ạ.")
+                                : ("Dạ " + safeSelf + " xin lỗi " + safeCust + " vì cách trò chuyện vừa rồi còn hơi dài và chưa thật sự tự nhiên ạ.");
+                        trimLow = trimmed.toLowerCase(Locale.ROOT);
+                    }
                     if (isMissedDiscovery && prevTurnActuallyHadPrices
                             && trimLow.matches("(?isU).*(?:em\\s+hỏi\\s+sớm\\s+quá).*")) {
                         trimmed = "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì đã vội đưa bảng giá khi chưa hỏi kỹ tình trạng đau mỏi của " + safeCust + " ạ.";
@@ -6490,8 +6499,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     }
                     if (isMissedDiscovery && !prevTurnActuallyHadPrices
                             && trimLow.matches("(?isU).*(?:phải\\s+xem\\s+nhiều\\s+thông\\s+tin|đưa\\s+nhiều\\s+thông\\s+tin|xả\\s+thông\\s+tin|liệt\\s+kê\\s+bảng\\s+giá|tương\\s+cả\\s+đống\\s+giá).*")) {
-                        trimmed = "Dạ ở tin nhắn đầu " + safeSelf + " mới gửi lời chào và rất mong được lắng nghe nhu cầu của "
-                                + safeCust + " trước khi giới thiệu chi tiết ạ.";
+                        trimmed = "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì chưa lắng nghe kỹ nhu cầu của "
+                                + safeCust + " trước khi chia sẻ thông tin ạ.";
                         trimLow = trimmed.toLowerCase(Locale.ROOT);
                     }
                     boolean isQuestion = trimmed.endsWith("?") || trimmed.endsWith("？");
@@ -6887,5 +6896,253 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             idx = combinedTextLower.indexOf(token, idx + token.length());
         }
         return false;
+    }
+
+    /**
+     * P3.7-B.2: Kỷ luật Điều phối Lượt ({@code Next Action Planner}) &amp; Định dạng Bong bóng theo Đơn vị Ý ({@code Idea-Based Bubbles}).
+     * <p>Đảm bảo 100% Zero-Hardcode đa Tenant cho:
+     * <ul>
+     *   <li>{@code CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT} ("K", "Ok", "Ừ"): 1 bong bóng ngắn ấm áp giữ thiện cảm mở, 0 câu hỏi {@code ?}, không chào tạm biệt đóng cửa.</li>
+     *   <li>{@code RESPECTFUL_DEESCALATION} (phản đối giá lặp lại liên tiếp): gỡ bỏ mọi câu chào mua gói nhiều buổi/combo giảm giá, gỡ câu hỏi đuôi ({@code ?} = 0), giữ kết mở tôn trọng ngân sách.</li>
+     *   <li>{@code VALUE_EXPLANATION} (so sánh giá bên ngoài): gỡ bỏ mọi mệnh đề suy diễn/hạ thấp dịch vụ bên ngoài ("bên ngoài chỉ gội nhanh", "mỹ phẩm công nghiệp"...).</li>
+     *   <li>{@code SERVICE_RECOMMENDATION} (xác nhận phạm vi "Cả 2"): nếu câu hỏi cuối quay lại hỏi thời điểm/tần suất triệu chứng thì đổi sang câu hỏi hướng về thời lượng/trải nghiệm gói.</li>
+     *   <li>Cấp 3 (Hậu phẫu/tiểu phẫu/thai kỳ): gỡ bỏ mọi câu tự hứa hẹn cách thao tác/nằm nghiêng/tránh vùng mổ trước khi chuyên viên đánh giá trực tiếp.</li>
+     *   <li>Chống lặp tiện ích phụ đã nêu ở lượt trước và tách bong bóng quá dài (&gt; 45 từ) theo đơn vị ý tự nhiên.</li>
+     * </ul>
+     */
+    public static List<FanpageBotResponse.ReplyBubble> enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            ConversationState.StructuredBookingState bookingState,
+            List<PackageCatalogService.PackageSummary> eligibleCatalog,
+            String selfPronoun,
+            String customerPronoun,
+            String careActor
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        String safeActor = (careActor != null && !careActor.isBlank()) ? careActor.strip() : "chuyên viên";
+        String msg = customerMessage != null ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC) : "";
+        String msgLow = msg.toLowerCase(Locale.ROOT);
+
+        boolean botAlreadyMentionedCurtainOrSpace = false;
+        boolean botAlreadyMentionedSnack = false;
+        if (history != null) {
+            for (FanpageBotRequest.ConversationTurn t : history) {
+                if (t == null || t.content() == null || t.content().isBlank()) continue;
+                if ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role())) {
+                    String bLow = java.text.Normalizer.normalize(t.content(), java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+                    if (bLow.contains("rèm") || bLow.contains("vách ngăn")) {
+                        botAlreadyMentionedCurtainOrSpace = true;
+                    }
+                    if (bLow.contains("ăn nhẹ") || bLow.contains("trái cây")) {
+                        botAlreadyMentionedSnack = true;
+                    }
+                }
+            }
+        }
+
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan lwPlan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        msg, history != null ? history : List.of(), null, bookingState);
+        AdaptiveConversationIntelligence.TurnAction action = lwPlan.recommendedAction();
+
+        // 1. CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT ("K", "Ok", "Ừ" khi chưa có trạng thái đặt lịch):
+        // Trả lời đúng 1 bong bóng ngắn ấm áp giữ thiện cảm mở, 0 câu hỏi, không chào tạm biệt đóng cửa.
+        if (action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ vâng ạ, " + safeCust + " cứ tham khảo thoải mái nhé. Khi nào cần hỗ trợ thêm thông tin gì "
+                            + safeSelf + " vẫn ở đây đồng hành cùng " + safeCust + " ạ.",
+                    0
+            ));
+        }
+
+        // 2. Cấp 3 nhạy cảm (hậu phẫu / tiểu phẫu / vết mổ / thai kỳ) khi chưa phải cấp cứu Cấp 4:
+        // Không tự hứa hẹn cách thao tác/nằm nghiêng/tránh vùng mổ trước khi chuyên viên kiểm tra trực tiếp.
+        boolean isLevel3SensitiveTurn = CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(msgLow)
+                && !FanpageBotService.isUniversalAcuteMedicalEmergency(msg);
+        if (isLevel3SensitiveTurn) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + safeCust + " mới có can thiệp nhạy cảm nên bên " + safeSelf + " luôn đặt sự an toàn và thoải mái của "
+                            + safeCust + " lên hàng đầu ạ. Trước khi tư vấn bất kỳ thao tác hay liệu trình nào, "
+                            + safeSelf + " xin phép kết nối trực tiếp với " + safeActor
+                            + "/quản lý chuyên môn của cơ sở để kiểm tra tình trạng thực tế và tư vấn phương án an toàn nhất cho " + safeCust + " nhé ạ.",
+                    0
+            ));
+        }
+
+        boolean userAsksSpaceOrPrivacy = msgLow.matches("(?isU).*\\b(rèm|phòng|riêng\\s+tư|không\\s+gian|giường\\s+chung|ồn\\s+ào)\\b.*");
+        boolean userAsksSnackOrFood = msgLow.matches("(?isU).*\\b(ăn\\s+nhẹ|trái\\s+cây|trà|buffet|thực\\s+dưỡng)\\b.*");
+        boolean isScopeConfirmationTurn = action == AdaptiveConversationIntelligence.TurnAction.SERVICE_RECOMMENDATION
+                && msgLow.matches("(?isU)^\\s*(?:dạ\\s+)?(?:cả\\s*(?:2|hai)|làm\\s+cả\\s*(?:2|hai)|cả\\s+hai\\s+luôn)\\s*[.!]*\\s*$");
+        boolean isSecondConsecutivePriceObjection = action == AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION;
+        boolean isExternalPriceComparison = action == AdaptiveConversationIntelligence.TurnAction.VALUE_EXPLANATION;
+
+        List<FanpageBotResponse.ReplyBubble> processed = new ArrayList<>();
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            txt = txt.replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu");
+            txt = txt.replaceAll(
+                    "(?iU)^\\s*(?:dạ\\s+)?(?:em|mình)\\s+(?:rất\\s+|hoàn\\s+toàn\\s+)?hiểu(?:\\s+cảm\\s+giác\\s+của\\s+(?:mình|chị|anh|bạn)|\\s+băn\\s+khoăn\\s+của\\s+(?:mình|chị|anh|bạn))?(?:\\s+ạ)?\\s*[,;]\\s*",
+                    "Dạ "
+            );
+            txt = txt.replaceAll(
+                    "(?iU)[,\\s]*(?:nên\\s+)?(?:mình|em)\\s+thấy\\s+(?:rất\\s+)?hợp\\s+với\\s+tình\\s+trạng\\s+hiện\\s+tại(?:\\s+của\\s+(?:mình|chị|anh|bạn))?",
+                    ""
+            );
+
+            txt = txt.replaceAll(
+                    "(?iU)[,;\\s]*chứ\\s+không\\s+(?:chỉ\\s+|làm\\s+|gội\\s+)?(?:gội\\s+nhanh|làm\\s+sạch\\s+nhanh|qua\\s+loa|cho\\s+xong|làm\\s+nhanh)[^.!?？]*",
+                    ""
+            );
+
+            // Chống suy diễn / hạ thấp dịch vụ bên ngoài ở lượt so sánh giá
+            if (isExternalPriceComparison) {
+                txt = txt.replaceAll(
+                        "(?iU)^\\s*(?:dạ[,\\s]+)?mức\\s+\\d+\\s*(?:k|nghìn|ngàn|\\.000\\s*đ?)\\s+(?:ở\\s+)?(?:bên\\s+ngoài|ngoài\\s+kia|tiệm\\s+ngoài)[^,;.!?？]*[,;]\\s*(?:còn|trong\\s+khi)\\s+",
+                        "Dạ sự chênh lệch chi phí đến từ thời lượng và cấu trúc các bước chăm sóc trong liệu trình ạ. Cụ thể, "
+                );
+                txt = txt.replaceAll(
+                        "(?iU)[,;\\s]*(?:vì\\s+|trong\\s+khi\\s+|khác\\s+với\\s+|chứ\\s+không\\s+như\\s+)?(?:bên\\s+ngoài|ngoài\\s+kia|tiệm\\s+ngoài|chỗ\\s+khác|dịch\\s+vụ\\s+gội\\s+nhanh)[^.!?？]*\\b(?:chủ\\s+yếu\\s+là|chỉ\\s+gội|gội\\s+nhanh|làm\\s+sạch\\s+nhanh|thư\\s+giãn\\s+nhanh|mỹ\\s+phẩm\\s+công\\s+nghiệp|ồn\\s+ào|qua\\s+loa|đại\\s+trà)[^.!?？]*",
+                        ""
+                );
+            }
+
+            // Chống lặp lại tiện ích phụ (rèm che riêng / ăn nhẹ trái cây) khi lượt trước đã nói
+            if (botAlreadyMentionedCurtainOrSpace && !userAsksSpaceOrPrivacy) {
+                txt = txt.replaceAll(
+                        "(?iU)[,\\s]*(?:trong\\s+không\\s+gian\\s+(?:yên\\s+tĩnh[,\\s]*)?(?:mỗi\\s+giường\\s+đều\\s+)?có\\s+rèm\\s+che\\s+riêng(?:\\s+từng\\s+giường)?(?:\\s+kín\\s+đáo)?|với\\s+rèm\\s+che\\s+riêng\\s+từng\\s+giường(?:\\s+kín\\s+đáo)?)",
+                        ""
+                );
+            }
+            if (botAlreadyMentionedSnack && !userAsksSnackOrFood) {
+                txt = txt.replaceAll(
+                        "(?iU)[,\\s]*(?:và\\s+|kèm\\s+|cùng\\s+)?(?:dùng\\s+bữa\\s+)?ăn\\s+nhẹ\\s*(?:&|và|với)?\\s*trái\\s+cây(?:\\s+theo\\s+mùa)?(?:\\s+sau\\s+(?:buổi|khi\\s+làm|liệu\\s+trình))?",
+                        ""
+                );
+            }
+
+            String[] sents = txt.split("(?<=[.!?？])\\s+");
+            List<String> keptSents = new ArrayList<>();
+            for (String s : sents) {
+                String st = s.strip();
+                if (st.isEmpty()) continue;
+                String stLow = st.toLowerCase(Locale.ROOT);
+
+                // Ở lượt phản đối giá liên tiếp (RESPECTFUL_DEESCALATION): cấm chào mua combo 5 buổi giảm 10% & cấm đặt câu hỏi
+                if (isSecondConsecutivePriceObjection) {
+                    if (stLow.matches("(?isU).*\\b(mua\\s+(?:gói\\s+)?từ\\s+\\d+\\s+buổi|\\d+\\s+buổi\\s+trở\\s+lên|giảm\\s+\\d+\\s*%).*")) {
+                        continue;
+                    }
+                    if (st.endsWith("?") || st.endsWith("？") || isQuestionSentence(st)) {
+                        continue;
+                    }
+                }
+
+                // Ở lượt xác nhận phạm vi ("Cả 2"): nếu câu hỏi cuối quay lại hỏi thời điểm/tần suất triệu chứng -> đổi sang câu hỏi hướng về thời lượng/trải nghiệm gói
+                if (isScopeConfirmationTurn
+                        && (st.endsWith("?") || st.endsWith("？") || stLow.contains("buổi nào"))
+                        && stLow.matches("(?isU).*(?:xuất\\s+hiện\\s+vào\\s+buổi\\s+nào|kéo\\s+dài\\s+cả\\s+ngày|bị\\s+bao\\s+lâu\\s+rồi|tình\\s+trạng\\s+này\\s+thường).*")) {
+                    st = "Dạ " + safeCust + " muốn trải nghiệm gói cơ bản vừa vặn trước hay dành thêm thời gian với gói chuyên sâu để thư giãn kỹ hơn ạ?";
+                }
+
+                keptSents.add(st);
+            }
+
+            String cleanedBubble = String.join(" ", keptSents)
+                    .replaceAll("\\s+([,.!?？])", "$1")
+                    .replaceAll("[ \\t]{2,}", " ")
+                    .strip();
+            if (!cleanedBubble.isEmpty()) {
+                processed.add(new FanpageBotResponse.ReplyBubble(cleanedBubble, b.typingDelayMs()));
+            }
+        }
+
+        // Level 2 (Moderate / Postural): bổ sung lưu ý nhẹ nhàng (ngồi dậy từ từ) nếu câu trả lời chưa nhắc
+        boolean isLevel2PosturalTurn = !isLevel3SensitiveTurn
+                && !FanpageBotService.isUniversalAcuteMedicalEmergency(msg)
+                && msgLow.matches("(?isU).*\\b(hoa\\s+mắt|choáng\\s+nhẹ|chóng\\s+mặt\\s+nhẹ|đứng\\s+dậy\\s+(?:hơi\\s+)?(?:hoa\\s+mắt|chóng\\s+mặt|choáng))\\b.*");
+        if (isLevel2PosturalTurn && !processed.isEmpty()) {
+            String allLower = String.join(" ", processed.stream().map(FanpageBotResponse.ReplyBubble::text).toList()).toLowerCase(Locale.ROOT);
+            if (!allLower.contains("từ từ") && !allLower.contains("đột ngột")) {
+                FanpageBotResponse.ReplyBubble first = processed.get(0);
+                String updatedFirst = first.text().strip()
+                        + " Khi thay đổi tư thế hoặc đứng dậy sau lúc ngồi lâu, " + safeCust
+                        + " lưu ý ngồi dậy từ từ để cơ thể thích nghi nhẹ nhàng hơn nhé ạ.";
+                processed.set(0, new FanpageBotResponse.ReplyBubble(updatedFirst, first.typingDelayMs()));
+            } else if (!allLower.contains("từ từ")) {
+                FanpageBotResponse.ReplyBubble first = processed.get(0);
+                String updatedFirst = first.text().strip()
+                        + " Khi đứng dậy hoặc sau lúc nằm thư giãn, " + safeCust
+                        + " lưu ý ngồi dậy từ từ để tránh choáng nhẹ nhé ạ.";
+                processed.set(0, new FanpageBotResponse.ReplyBubble(updatedFirst, first.typingDelayMs()));
+            }
+        }
+
+        if (isSecondConsecutivePriceObjection) {
+            if (processed.isEmpty()) {
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + safeSelf + " hoàn toàn tôn trọng cân nhắc về chi phí của " + safeCust + " ạ. "
+                                + safeCust + " cứ thong thả tham khảo thêm nhé, khi nào cần hỗ trợ thông tin gì "
+                                + safeSelf + " luôn sẵn sàng đồng hành cùng " + safeCust + " ạ.",
+                        0
+                ));
+            }
+            String combined = String.join(" ", processed.stream().map(FanpageBotResponse.ReplyBubble::text).toList()).toLowerCase(Locale.ROOT);
+            if (!combined.contains("tham khảo") && !combined.contains("cân nhắc") && !combined.contains("thong thả")) {
+                processed.add(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + safeCust + " cứ thong thả cân nhắc thêm theo ngân sách của mình nhé, khi nào cần hỗ trợ thêm " + safeSelf + " luôn sẵn sàng ạ.",
+                        2000
+                ));
+            }
+            return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
+        }
+
+        // Tách bong bóng theo đơn vị ý (Idea-Based Bubble Split) nếu chỉ có 1 bong bóng quá dài (> 45 từ và >= 2 câu)
+        if (processed.size() == 1) {
+            String singleTxt = processed.get(0).text().strip();
+            int words = singleTxt.split("\\s+").length;
+            String[] sents = singleTxt.split("(?<=[.!?？])\\s+");
+            if (words > 45 && sents.length >= 2) {
+                String lastSent = sents[sents.length - 1].strip();
+                String firstPart = String.join(" ", java.util.Arrays.copyOfRange(sents, 0, sents.length - 1)).strip();
+                if (!firstPart.isEmpty() && !lastSent.isEmpty() && firstPart.split("\\s+").length >= 10) {
+                    processed = new ArrayList<>(List.of(
+                            new FanpageBotResponse.ReplyBubble(firstPart, 0),
+                            new FanpageBotResponse.ReplyBubble(lastSent, 2000)
+                    ));
+                }
+            }
+        }
+
+        // Khôi phục dấu ? ở câu nghi vấn cuối cùng của bubble cuối nếu bị chuẩn hóa nhầm thành dấu chấm '.'
+        boolean allowsTrailingQuestion = action != AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION
+                && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT
+                && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT
+                && !isOverIntrusionFeedbackCue(customerMessage);
+        if (allowsTrailingQuestion && !processed.isEmpty()) {
+            int totalQ = processed.stream().mapToInt(b -> countQuestionMarks(b.text())).sum();
+            if (totalQ == 0) {
+                int lastIdx = processed.size() - 1;
+                FanpageBotResponse.ReplyBubble lastBubble = processed.get(lastIdx);
+                String lastTxt = lastBubble.text().strip();
+                String[] lastSents = lastTxt.split("(?<=[.!?？])\\s+");
+                if (lastSents.length > 0) {
+                    String tailSent = lastSents[lastSents.length - 1].strip();
+                    if (tailSent.endsWith(".")
+                            && tailSent.matches("(?isU).*(?:\\bhay\\s+(?:muốn|cần|thích|nghiêng|chọn|dành|là|để|ưu\\s+tiên|sau\\s+khi|vào|tìm|làm)\\b|\\b(?:không|chưa|nhỉ|sao|nào)\\s+ạ|\\b(?:vùng|gói|buổi|khung\\s+giờ|chi\\s+nhánh|cơ\\s+sở|hướng)\\s+nào\\b|\\b(?:thế\\s+nào|ra\\s+sao)\\b)[^.!?？]*\\.$")) {
+                        lastSents[lastSents.length - 1] = tailSent.substring(0, tailSent.length() - 1) + "?";
+                        processed.set(lastIdx, new FanpageBotResponse.ReplyBubble(String.join(" ", lastSents), lastBubble.typingDelayMs()));
+                    }
+                }
+            }
+        }
+
+        return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
     }
 }

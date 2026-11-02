@@ -93,7 +93,7 @@ public class FanpageBotService {
     /** Mẫu phát hiện chống chỉ định thể chất đặc thù ngành Spa / Y tế / Thẩm mỹ (thai kỳ, tai đau/ù, hậu phẫu...). */
     private static final Pattern HIGH_RISK_SAFETY_CONTRAINDICATION_PATTERN = Pattern.compile(
             "(?iU)(?:\\b(mang\\s+thai|đang\\s+bầu|có\\s+bầu|bầu\\s+\\d+\\s*(?:tháng|tuần)?|thai\\s+kỳ|mới\\s+sinh|"
-            + "mới\\s+phẫu\\s+thuật|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|nhiễm\\s+trùng\\s+da|sốt\\s+cao|"
+            + "mới\\s+phẫu\\s+thuật|phẫu\\s+thuật|tiểu\\s+phẫu|hậu\\s+phẫu|mới\\s+mổ|vết\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|nhiễm\\s+trùng\\s+da|sốt\\s+cao|"
             + "huyết\\s+áp\\s+cao|cao\\s+huyết\\s+áp|tim\\s+mạch(?:\\s+nặng)?|giãn\\s+tĩnh\\s+mạch(?:\\s+nặng)?|"
             + "thoát\\s+vị(?:\\s+đĩa\\s+đệm)?(?:\\s+cấp)?|chèn\\s+ép\\s+(?:rễ\\s+|dây\\s+)?thần\\s+kinh|gãy\\s+xương|trật\\s+khớp|"
             + "tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|teo\\s+cơ|tê\\s+lan\\s+xuống\\s+tay|"

@@ -1303,7 +1303,8 @@ public final class AdaptiveConversationIntelligence {
         }
         String h = hypothesisText != null ? Normalizer.normalize(hypothesisText, Normalizer.Form.NFC).toLowerCase(Locale.ROOT) : "";
         if (h.contains("so sánh") || h.contains("nơi khác")) return "COMPETITOR_COMPARISON";
-        if (h.contains("chưa rõ giá trị") || h.contains("trọn gói") || h.contains("239k") || h.contains("399k") && h.contains("giá")) {
+        if (h.contains("chưa rõ giá trị") || h.contains("trọn gói")
+                || (h.contains("giá") && (h.contains("gói") || h.matches(".*\\b\\d{2,4}\\s*k\\b.*")))) {
             return "UNCLEAR_VALUE";
         }
         return "NONE";
@@ -1813,14 +1814,19 @@ public final class AdaptiveConversationIntelligence {
             }
             String normLower = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
                     .toLowerCase(Locale.ROOT);
-            boolean explicitStop = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(rawUserMessage);
+            boolean explicitFullPriceListRequest = classifyPriceIntentSubMode(rawUserMessage)
+                    == PriceIntentSubMode.EXPLICIT_FULL_PRICE_LIST_REQUEST;
+            boolean explicitStop = !explicitFullPriceListRequest
+                    && CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(rawUserMessage);
             boolean politeThankYouClosingAck = !explicitStop
+                    && !explicitFullPriceListRequest
                     && CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(rawUserMessage);
             boolean directBotIdentityQuestion = CleanAgentOutputRefereeAndSanitizer
                     .isDirectBotIdentityOrTrainingQuestion(rawUserMessage);
             boolean processFeedbackComplaint = !explicitStop
                     && !politeThankYouClosingAck
                     && !directBotIdentityQuestion
+                    && !explicitFullPriceListRequest
                     && (CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
                         || (customerUnderstanding.secondaryIntents() != null
                             && customerUnderstanding.secondaryIntents().stream().anyMatch(s ->
@@ -1830,11 +1836,13 @@ public final class AdaptiveConversationIntelligence {
             boolean pureBudgetBoundedInquiry = !explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
+                    && !explicitFullPriceListRequest
                     && CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(rawUserMessage);
             boolean competitorComparison = !explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
                     && !pureBudgetBoundedInquiry
+                    && !explicitFullPriceListRequest
                     && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawUserMessage);
             boolean negatedBooking = normLower.matches(
                     "(?isU).*\\b(?:không|ko|chưa|khỏi|đừng|chẳng)\\s+(?:muốn\\s+|cần\\s+|vội\\s+|định\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
@@ -1842,12 +1850,24 @@ public final class AdaptiveConversationIntelligence {
             boolean affirmativeBookingCue = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint && !negatedBooking && normLower.matches(
                     "(?isU).*\\b(đăng\\s+ký\\s+đặt\\s+lịch|(?:rồi\\s+)?(?:anh|chị|mình|tôi|em|a)\\s+(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch|đặt\\s+lịch\\s+(?:nhé|nha|giúp|cho)|chốt\\s+lịch\\s+(?:nhé|nha|luôn))\\b.*"
             );
+            boolean barePauseOrAck = !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !affirmativeBookingCue
+                    && !explicitFullPriceListRequest
+                    && isBarePauseOrAcknowledgementMessage(rawUserMessage)
+                    && (proposedBookingPatch == null
+                        || (proposedBookingPatch.proposedDate() == null
+                            && proposedBookingPatch.proposedTime() == null
+                            && proposedBookingPatch.selectedProductId() == null));
             if (!explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
                     && !pureBudgetBoundedInquiry
                     && !competitorComparison
-                    && !affirmativeBookingCue) {
+                    && !affirmativeBookingCue
+                    && !barePauseOrAck
+                    && !explicitFullPriceListRequest) {
                 return this;
             }
 
@@ -1885,6 +1905,29 @@ public final class AdaptiveConversationIntelligence {
                 );
                 strat = new StrategyReflection(
                         "Respectful Pause",
+                        StrategyAdaptationMode.STOP,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (barePauseOrAck) {
+                detIntent = "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT";
+                convState = "PAUSED_BY_CUSTOMER";
+                perm = InteractionPermission.CONCISE_PREFERRED;
+                buySig = BuyingSignal.NONE;
+                prio = new PriorityFocus("RESPECTFUL_PAUSE", List.of());
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+                plan = new AdaptiveResponsePlan(
+                        "Warmly acknowledge pause without assuming permanent exit or asking trailing questions",
+                        "Warm Acknowledgment",
+                        plan.tone(),
+                        "CONCISE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.STOP,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Warm Acknowledgment",
                         StrategyAdaptationMode.STOP,
                         strat.previousOutcome(),
                         strat.evidence()
@@ -2098,6 +2141,28 @@ public final class AdaptiveConversationIntelligence {
                         reconciledCta,
                         reconciledAdapt,
                         plan.previousOutcome()
+                );
+            } else if (explicitFullPriceListRequest) {
+                detIntent = "ASK_PRICE";
+                convState = "ACTIVE_CONSULTATION";
+                costConcern = Boolean.FALSE;
+                perm = InteractionPermission.CONCISE_PREFERRED;
+                prio = new PriorityFocus("PRICE_INFORMATION", List.of());
+                plan = new AdaptiveResponsePlan(
+                        "Provide complete grounded catalog price list concisely as requested",
+                        "Direct Answer",
+                        plan.tone(),
+                        "CONCISE",
+                        "ASK_ONE_CLARIFYING_QUESTION",
+                        CtaLevel.SOFT_CTA,
+                        StrategyAdaptationMode.CONTINUATION,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Direct Answer",
+                        StrategyAdaptationMode.CONTINUATION,
+                        strat.previousOutcome(),
+                        strat.evidence()
                 );
             }
 
@@ -3786,5 +3851,414 @@ public final class AdaptiveConversationIntelligence {
             }
         }
         return Collections.unmodifiableList(out);
+    }
+
+    // =========================================================================
+    // P3.7-B.2: LIGHTWEIGHT CUSTOMER UNDERSTANDING & NEXT ACTION PLANNER
+    // =========================================================================
+
+    /**
+     * P3.7-B.2: 12 hành động tư vấn chính tắc của {@code Next Action Planner} ({@code Turn Action Selection}).
+     * Mỗi lượt chọn đúng 1 hành động tư vấn chính phù hợp với trạng thái hội thoại.
+     */
+    public enum TurnAction {
+        GREETING_AND_DISCOVERY,
+        NEED_DISCOVERY,
+        SERVICE_RECOMMENDATION,
+        SPECIFIC_PRICE_ANSWER,
+        PRICE_OBJECTION_HANDLING,
+        VALUE_EXPLANATION,
+        ALTERNATIVE_OFFER,
+        RESPECTFUL_DEESCALATION,
+        CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT,
+        CUSTOMER_EXIT,
+        FEEDBACK_RECOVERY,
+        BOOKING_DISCUSSION
+    }
+
+    /**
+     * P3.7-B.2: 4 phân loại {@code Price Intent} đa ngành (nạp động từ Catalog của Tenant).
+     */
+    public enum PriceIntentSubMode {
+        NONE,
+        GENERAL_PRICE_INQUIRY,
+        SPECIFIC_PRICE_INQUIRY,
+        BUDGET_OR_LOWEST_PRICE_INQUIRY,
+        EXPLICIT_FULL_PRICE_LIST_REQUEST
+    }
+
+    public record LightweightCustomerState(
+            List<String> needs,
+            List<String> emotions,
+            List<String> concerns,
+            List<String> buyingSignals,
+            List<String> frictionHistory,
+            List<String> communicationSignals
+    ) {
+        public LightweightCustomerState {
+            needs = needs != null ? List.copyOf(needs) : List.of();
+            emotions = emotions != null ? List.copyOf(emotions) : List.of();
+            concerns = concerns != null ? List.copyOf(concerns) : List.of();
+            buyingSignals = buyingSignals != null ? List.copyOf(buyingSignals) : List.of();
+            frictionHistory = frictionHistory != null ? List.copyOf(frictionHistory) : List.of();
+            communicationSignals = communicationSignals != null ? List.copyOf(communicationSignals) : List.of();
+        }
+    }
+
+    public record LightweightInferenceItem(
+            String hypothesis,
+            double confidence,
+            List<String> evidence
+    ) {
+        public LightweightInferenceItem {
+            hypothesis = hypothesis != null ? hypothesis.strip() : "NONE";
+            confidence = Math.max(0.0, Math.min(1.0, confidence));
+            evidence = evidence != null ? List.copyOf(evidence) : List.of();
+        }
+    }
+
+    public record LightweightCustomerUnderstandingPlan(
+            LightweightCustomerState customerState,
+            List<LightweightInferenceItem> inferences,
+            List<String> unknowns,
+            TurnAction recommendedAction,
+            PriceIntentSubMode priceIntentSubMode,
+            String actionExecutionDirective,
+            int consecutivePriceObjectionCount
+    ) {
+        public LightweightCustomerUnderstandingPlan {
+            customerState = customerState != null
+                    ? customerState
+                    : new LightweightCustomerState(List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+            inferences = inferences != null ? List.copyOf(inferences) : List.of();
+            unknowns = unknowns != null ? List.copyOf(unknowns) : List.of();
+            recommendedAction = recommendedAction != null ? recommendedAction : TurnAction.NEED_DISCOVERY;
+            priceIntentSubMode = priceIntentSubMode != null ? priceIntentSubMode : PriceIntentSubMode.NONE;
+            actionExecutionDirective = actionExecutionDirective != null ? actionExecutionDirective : "";
+        }
+    }
+
+    private static final Pattern BARE_PAUSE_OR_ACK_MESSAGE_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:dạ\\s+|vâng\\s+)?(?:k|kk|ok|oke|oki|okie|okay|ừ|ừm|ờ|uh|uhm|vâng|dạ|rồi|"
+                    + "ok\\s+em|ok\\s+shop|ok\\s+bạn|ok\\s+nhé|ok\\s+nha|ok\\s+ạ|vâng\\s+ạ|dạ\\s+vâng|"
+                    + "để\\s+(?:mình|chị|anh|tôi|em)\\s+(?:xem|tham\\s+khảo|nghĩ|tính|cân\\s+nhắc)(?:\\s+thêm|\\s+đã|\\s+nhé|\\s+ạ)*|"
+                    + "có\\s+gì\\s+(?:mình|chị|anh|tôi|em)\\s+(?:báo|nhắn)(?:\\s+lại|\\s+sau)?(?:\\s+nhé|\\s+ạ)*)\\s*[.!~]*\\s*$"
+    );
+
+    private static final Pattern EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN = Pattern.compile(
+            "(?iU).*(?:bảng\\s+giá(?:\\s+đầy\\s+đủ|\\s+chi\\s+tiết)?|danh\\s+sách\\s+(?:giá|gói|dịch\\s+vụ)|"
+                    + "tất\\s+cả\\s+các\\s+gói|đừng\\s+tư\\s+vấn\\s+dài[^.!?\\n]{0,30}giá|cho\\s+(?:tôi|mình|chị|anh)\\s+bảng\\s+giá).*"
+    );
+
+    private static final Pattern GENERAL_BARE_PRICE_INQUIRY_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:dạ\\s+|shop\\s+ơi\\s+|em\\s+ơi\\s+|bạn\\s+ơi\\s+)?(?:giá(?:\\s+sao|\\s+thế\\s+nào|\\s+như\\s+nào|\\s+bao\\s+nhiêu|\\s+cả\\s+sao)?|"
+                    + "rổ\\s+giá(?:\\s+sao|\\s+thế\\s+nào)?|báo\\s+giá|xin\\s+giá)(?:\\s+(?:dịch\\s+vụ|bên\\s+mình|bên\\s+em|shop|ạ|nhé|với))*\\s*[.?]*\\s*$"
+    );
+
+    private static final Pattern BUDGET_OR_LOWEST_PRICE_INQUIRY_PATTERN = Pattern.compile(
+            "(?iU).*(?:rẻ\\s+nhất|thấp\\s+nhất|tiết\\s+kiệm\\s+nhất|dưới\\s+\\d+|tầm\\s+\\d+[^.!?\\n]{0,20}(?:đổ\\s+lại|trở\\s+xuống)|"
+                    + "có\\s+gói\\s+nào\\s+(?:dưới|tầm|khoảng|chỉ)?\\s*\\d+\\s*(?:k|nghìn|ngàn|tr|triệu)|"
+                    + "ngân\\s+sách\\s+(?:dưới|tầm|khoảng)?\\s*\\d+).*"
+    );
+
+    private static final Pattern SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:dạ\\s+)?(?:cả\\s*(?:2|hai)|làm\\s+cả\\s*(?:2|hai)|cả\\s+hai\\s+luôn|"
+                    + "gói\\s+(?:cơ\\s+bản|chuyên\\s+sâu|đó|này|đầu|thứ\\s+hai)|"
+                    + "(?:ưu\\s+tiên|tập\\s+trung|chọn|làm|thử)\\s+[^?]{1,45}|"
+                    + "(?:buổi\\s+vừa\\s+đủ|chăm\\s+sóc\\s+kỹ\\s+hơn|nhanh\\s+gọn|chuyên\\s+sâu\\s+hơn))\\s*[.!]*\\s*$"
+    );
+
+    public static boolean isBarePauseOrAcknowledgementMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        return BARE_PAUSE_OR_ACK_MESSAGE_PATTERN.matcher(norm).matches();
+    }
+
+    public static PriceIntentSubMode classifyPriceIntentSubMode(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return PriceIntentSubMode.NONE;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(rawMessage)
+                || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawMessage)) {
+            return PriceIntentSubMode.NONE;
+        }
+        if (EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN.matcher(norm).matches()) {
+            return PriceIntentSubMode.EXPLICIT_FULL_PRICE_LIST_REQUEST;
+        }
+        if (CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(rawMessage)
+                || BUDGET_OR_LOWEST_PRICE_INQUIRY_PATTERN.matcher(norm).matches()) {
+            return PriceIntentSubMode.BUDGET_OR_LOWEST_PRICE_INQUIRY;
+        }
+        if (GENERAL_BARE_PRICE_INQUIRY_PATTERN.matcher(norm).matches()) {
+            return PriceIntentSubMode.GENERAL_PRICE_INQUIRY;
+        }
+        boolean hasPriceCue = norm.matches("(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|báo\\s+giá|hết\\s+bao\\s+nhiêu)\\b.*");
+        if (hasPriceCue && !CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(rawMessage, true)) {
+            return PriceIntentSubMode.SPECIFIC_PRICE_INQUIRY;
+        }
+        return PriceIntentSubMode.NONE;
+    }
+
+    public static int countPriorCustomerPriceObjections(List<FanpageBotRequest.ConversationTurn> history) {
+        if (history == null || history.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (FanpageBotRequest.ConversationTurn h : history) {
+            if (h == null || h.content() == null || h.content().isBlank()) continue;
+            String role = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
+            if ("user".equals(role) || "customer".equals(role)) {
+                if (CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(h.content(), true)
+                        || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(h.content())) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    public static boolean hasCustomerSharedNeedsOrSymptomsInHistory(
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot
+    ) {
+        if (draft2Snapshot != null && draft2Snapshot.consultativeProfile() != null) {
+            if (!draft2Snapshot.consultativeProfile().confirmedFacts().isEmpty()
+                    || !draft2Snapshot.consultativeProfile().selfReportedSymptoms().isEmpty()) {
+                return true;
+            }
+        }
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (FanpageBotRequest.ConversationTurn h : history) {
+            if (h == null || h.content() == null || h.content().isBlank()) continue;
+            String role = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
+            if (!"user".equals(role) && !"customer".equals(role)) continue;
+            String txt = h.content().strip();
+            if (!CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(txt)
+                    && classifyPriceIntentSubMode(txt) != PriceIntentSubMode.GENERAL_PRICE_INQUIRY
+                    && txt.split("\\s+").length >= 3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * P3.7-B.2: Xây dựng {@code LightweightCustomerUnderstandingPlan} (tách bạch rõ {@code Fact} / {@code Inference} / {@code Unknown}
+     * và chọn đúng 1 {@link TurnAction} chính cho lượt hiện tại mà không suy diễn quá mức).
+     */
+    public static LightweightCustomerUnderstandingPlan buildLightweightCustomerUnderstandingPlan(
+            String rawUserMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        String msg = rawUserMessage != null ? Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC) : "";
+        String msgLow = msg.toLowerCase(Locale.ROOT);
+        int wordCount = msg.isBlank() ? 0 : msg.split("\\s+").length;
+        boolean hasCustomerHistory = history != null && history.stream().anyMatch(h ->
+                h != null && h.role() != null
+                        && ("user".equalsIgnoreCase(h.role()) || "customer".equalsIgnoreCase(h.role()))
+                        && h.content() != null && !h.content().isBlank());
+        boolean priorNeedsEstablished = hasCustomerSharedNeedsOrSymptomsInHistory(history, draft2Snapshot);
+        int priorPriceObjections = countPriorCustomerPriceObjections(history);
+
+        List<String> needs = new ArrayList<>();
+        List<String> emotions = new ArrayList<>();
+        List<String> concerns = new ArrayList<>();
+        List<String> buyingSignals = new ArrayList<>();
+        List<String> frictionHistory = new ArrayList<>();
+        List<String> communicationSignals = new ArrayList<>();
+        List<LightweightInferenceItem> inferences = new ArrayList<>();
+        List<String> unknowns = new ArrayList<>();
+
+        if (draft2Snapshot != null && draft2Snapshot.consultativeProfile() != null) {
+            for (VersionedCustomerFact f : draft2Snapshot.consultativeProfile().confirmedFacts()) {
+                if (f != null && f.validity() == FactValidity.CURRENT && f.value() != null && !f.value().isBlank()) {
+                    if ("self_reported_symptom".equalsIgnoreCase(f.key()) || "need_scope".equalsIgnoreCase(f.key())) {
+                        needs.add(f.value());
+                    } else if ("price_reaction".equalsIgnoreCase(f.key())) {
+                        concerns.add(f.value());
+                    }
+                }
+            }
+            for (VersionedCustomerFact sf : draft2Snapshot.consultativeProfile().selfReportedSymptoms()) {
+                if (sf != null && sf.validity() == FactValidity.CURRENT && sf.value() != null && !sf.value().isBlank() && !needs.contains(sf.value())) {
+                    needs.add(sf.value());
+                }
+            }
+        }
+        if (history != null) {
+            for (FanpageBotRequest.ConversationTurn h : history) {
+                if (h == null || h.content() == null || h.content().isBlank()) continue;
+                String r = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
+                if (("user".equals(r) || "customer".equals(r))
+                        && !CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(h.content())
+                        && !CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(h.content(), true)
+                        && !CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(h.content())
+                        && !isBarePauseOrAcknowledgementMessage(h.content())
+                        && h.content().strip().split("\\s+").length >= 3) {
+                    String hNorm = Normalizer.normalize(h.content().strip(), Normalizer.Form.NFC);
+                    if (!needs.contains(hNorm) && needs.size() < 3) {
+                        needs.add(hNorm);
+                    }
+                }
+            }
+        }
+
+        // Short message signal (1-3 words): only adjusts response length, NEVER infers coldness/disinterest
+        if (wordCount >= 1 && wordCount <= 3) {
+            communicationSignals.add("SHORT_UTTERANCE_1_TO_3_WORDS_ADJUST_LENGTH_ONLY");
+            inferences.add(new LightweightInferenceItem(
+                    "SHORT_MESSAGE_IS_CONCISE_PACING_SIGNAL_NOT_DISINTEREST",
+                    0.60,
+                    List.of(msg)
+            ));
+        }
+
+        boolean isStyleOrProcessFeedback = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg);
+        boolean isExplicitRefusal = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(msg);
+        boolean isPoliteClosing = !isExplicitRefusal && CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(msg);
+        boolean isBarePauseAck = !isExplicitRefusal && !isPoliteClosing && isBarePauseOrAcknowledgementMessage(msg);
+        boolean isExternalComparison = !isStyleOrProcessFeedback
+                && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(msg);
+        boolean isPriceObjection = !isStyleOrProcessFeedback
+                && !isExternalComparison
+                && CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true)
+                && !CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(msg);
+        PriceIntentSubMode priceSubMode = classifyPriceIntentSubMode(msg);
+        boolean hasBookingCue = (bookingState != null && bookingState.status() != ConversationState.BookingStatus.NONE)
+                || msgLow.matches("(?isU).*\\b(đặt\\s+lịch|book\\s+lịch|giữ\\s+lịch|khung\\s+giờ|mấy\\s+giờ|chiều\\s+nay|tối\\s+nay|ngày\\s+mai)\\b.*");
+        boolean isScopeConfirmation = priorNeedsEstablished
+                && SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(msg).matches();
+
+        TurnAction recommendedAction;
+        String directive;
+        int totalPriceObjections = priorPriceObjections + ((isPriceObjection || isExternalComparison) ? 1 : 0);
+
+        if (isStyleOrProcessFeedback) {
+            emotions.add("FRUSTRATED_BY_CONSULTATION_STYLE");
+            frictionHistory.add("PROCESS_OR_COMMUNICATION_FEEDBACK");
+            recommendedAction = TurnAction.FEEDBACK_RECOVERY;
+            boolean allowDiscoveryQ = CleanAgentOutputRefereeAndSanitizer.isDiscoveryQuestionAllowedOnProcessFeedback(msg);
+            directive = allowDiscoveryQ
+                    ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
+                    : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá).";
+        } else if (isExplicitRefusal || isPoliteClosing) {
+            communicationSignals.add("EXPLICIT_CONVERSATION_CLOSURE");
+            recommendedAction = TurnAction.CUSTOMER_EXIT;
+            directive = "CUSTOMER_EXIT: Tôn trọng quyết định dừng/tạm nghỉ của khách bằng 1 bong bóng ngắn gọn ấm áp, 0 câu hỏi '?', 0 chèo kéo.";
+        } else if (isBarePauseAck && (bookingState == null || bookingState.status() == ConversationState.BookingStatus.NONE)) {
+            communicationSignals.add("BARE_PAUSE_OR_ACKNOWLEDGEMENT");
+            inferences.add(new LightweightInferenceItem(
+                    "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT_NOT_PERMANENT_EXIT",
+                    0.75,
+                    List.of(msg)
+            ));
+            recommendedAction = TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT;
+            directive = "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT: Khách phản hồi cực ngắn ('" + msg + "') để ghi nhận/tạm dừng nhịp — KHÔNG mặc định khách thoát hẳn (CUSTOMER_EXIT). Trả lời đúng 1 bong bóng ngắn ấm áp (1-2 câu, ví dụ: 'Dạ vâng ạ, mình cứ tham khảo thoải mái nhé. Khi nào cần hỗ trợ thêm em vẫn ở đây ạ.'), 0 câu hỏi '?', 0 chào tạm biệt đóng cửa, 0 nhắc lại gói/giá.";
+        } else if (hasBookingCue) {
+            buyingSignals.add("BOOKING_OR_SCHEDULE_DISCUSSION");
+            recommendedAction = TurnAction.BOOKING_DISCUSSION;
+            directive = "BOOKING_DISCUSSION: Hỗ trợ thông tin khung giờ/cơ sở hoặc giữ lịch chờ xác nhận (AWAITING_AVAILABILITY_CHECK); không tự tuyên bố đã chốt lịch thành công.";
+        } else if (isExternalComparison) {
+            concerns.add("EXTERNAL_PRICE_COMPARISON");
+            frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
+            inferences.add(new LightweightInferenceItem(
+                    "CUSTOMER_COMPARING_WITH_EXTERNAL_SERVICE_NEEDS_GROUNDED_INTRINSIC_DIFFERENTIATION",
+                    0.75,
+                    List.of(msg)
+            ));
+            recommendedAction = TurnAction.VALUE_EXPLANATION;
+            directive = "VALUE_EXPLANATION (EXTERNAL_COMPARISON): Tôn trọng mức giá tham chiếu khách nêu; chỉ giải thích giá trị nội tại đã xác minh của cơ sở mình (thời lượng, quy trình kỹ thuật cốt lõi). CẤM TUYỆT ĐỐI suy diễn, phán xét hoặc hạ thấp dịch vụ bên ngoài ('bên ngoài chỉ gội nhanh', 'mỹ phẩm công nghiệp', 'ồn ào'). Không lặp lại các tiện ích phụ đã nêu ở các lượt trước; không ép mua.";
+        } else if (isPriceObjection) {
+            concerns.add("PRICE_CONCERN_EXPRESSED");
+            frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
+            if (priorPriceObjections >= 1) {
+                emotions.add("HESITANT_UNDER_REPEATED_PRICE_FRICTION");
+                inferences.add(new LightweightInferenceItem(
+                        "CUSTOMER_MAY_HAVE_PRICE_CONCERN",
+                        0.70,
+                        List.of(msg)
+                ));
+                recommendedAction = TurnAction.RESPECTFUL_DEESCALATION;
+                directive = "RESPECTFUL_DEESCALATION (LƯỢT PHẢN ĐỐI GIÁ LIÊN TIẾP THỨ " + totalPriceObjections + "): Hạ nhiệt tôn trọng cảm nhận ngân sách của khách, tuyệt đối KHÔNG ép chốt, KHÔNG chào mua gói nhiều buổi/combo giảm giá (cấm nhắc mua 5 buổi giảm 10%), KHÔNG lặp lại rèm che/ăn nhẹ đã nói, và kết thúc mở nhẹ nhàng KHÔNG đặt câu hỏi ('?' = 0).";
+            } else {
+                inferences.add(new LightweightInferenceItem(
+                        "CUSTOMER_MAY_HAVE_PRICE_CONCERN_SINGLE_TURN_DO_NOT_OVERGENERALIZE",
+                        0.55,
+                        List.of(msg)
+                ));
+                recommendedAction = TurnAction.ALTERNATIVE_OFFER;
+                directive = "ALTERNATIVE_OFFER / PRICE_OBJECTION_HANDLING (LƯỢT PHẢN ĐỐI GIÁ ĐẦU TIÊN): Đồng cảm ngắn gọn, làm rõ giá trị cốt lõi của gói và chủ động lùi xuống gợi ý phương án tiết kiệm/nhẹ nhàng nhất phù hợp nhu cầu trong Catalog (không upsell lên gói đắt hơn, không chào combo nhiều buổi).";
+            }
+        } else if (priceSubMode != PriceIntentSubMode.NONE) {
+            switch (priceSubMode) {
+                case GENERAL_PRICE_INQUIRY -> {
+                    unknowns.add("specific_service_or_symptom_need");
+                    recommendedAction = !hasCustomerHistory ? TurnAction.GREETING_AND_DISCOVERY : TurnAction.SPECIFIC_PRICE_ANSWER;
+                    directive = "PRICE_INTENT_A (GENERAL_PRICE_INQUIRY): Trả lời ngắn gọn bằng khoảng giá tổng quan từ Catalog (từ gói cơ bản đến gói chuyên sâu), sau đó hỏi đúng 1 câu khám phá nhu cầu ngắn gọn. Cấm xả bảng giá dài nhiều gói kèm thời lượng chi tiết.";
+                }
+                case SPECIFIC_PRICE_INQUIRY -> {
+                    buyingSignals.add("SPECIFIC_SERVICE_PRICE_INTEREST");
+                    recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+                    directive = "PRICE_INTENT_B (SPECIFIC_PRICE_INQUIRY): Trả lời trực tiếp, chính xác mức giá và thời lượng của đúng dịch vụ khách hỏi từ <VERIFIED_BUSINESS_CATALOG>, không né tránh bằng câu hỏi khám phá vòng vo.";
+                }
+                case BUDGET_OR_LOWEST_PRICE_INQUIRY -> {
+                    concerns.add("BUDGET_BOUNDED_SEARCH");
+                    recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+                    directive = "PRICE_INTENT_C (BUDGET_OR_LOWEST_PRICE_INQUIRY): Lọc trung thực từ <VERIFIED_BUSINESS_CATALOG> theo ngưỡng ngân sách khách hỏi; nếu không có gói ở mức đó thì trả lời trung thực rồi nêu gói thấp nhất hiện có và hỏi nhu cầu.";
+                }
+                case EXPLICIT_FULL_PRICE_LIST_REQUEST -> {
+                    communicationSignals.add("EXPLICIT_FULL_PRICE_LIST_REQUESTED");
+                    recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+                    directive = "PRICE_INTENT_D (EXPLICIT_FULL_PRICE_LIST_REQUEST): Tôn trọng yêu cầu xem bảng giá đầy đủ của khách — trình bày gọn gàng, rõ ràng các gói chính và mức giá từ <VERIFIED_BUSINESS_CATALOG> mà không hỏi vặn lại vòng vo.";
+                }
+                default -> {
+                    recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+                    directive = "SPECIFIC_PRICE_ANSWER: Báo giá chính xác từ Catalog.";
+                }
+            }
+        } else if (CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(msg) && !priorNeedsEstablished) {
+            unknowns.add("customer_need_or_discomfort_area");
+            recommendedAction = TurnAction.GREETING_AND_DISCOVERY;
+            directive = "GREETING_AND_DISCOVERY: Chào tự nhiên, ấm áp và đặt đúng 1 câu hỏi ngắn gọn để khám phá nhu cầu/tình trạng khách đang muốn chăm sóc (0 báo giá, 0 liệt kê gói).";
+        } else if (isScopeConfirmation) {
+            buyingSignals.add("CONFIRMED_DESIRED_CARE_SCOPE");
+            if (!needs.contains(msg)) {
+                needs.add(msg);
+            }
+            unknowns.add("preferred_session_duration_or_experience_depth");
+            recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
+            directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH XÁC NHẬN PHẠM VI '" + msg + "'): Đề xuất trực tiếp gói phù hợp từ <VERIFIED_BUSINESS_CATALOG> (nêu tự nhiên giá + thời lượng + hạng mục chính, dùng từ 'chăm sóc chuyên sâu' thay vì 'massage điều trị', tuyệt đối cấm cụm 'mình thấy hợp với tình trạng hiện tại'). Câu hỏi cuối ở Bubble 2 BẮT BUỘC hỏi về thời lượng/trải nghiệm gói (ví dụ muốn trải nghiệm gói cơ bản vừa đủ hay gói chuyên sâu dài hơn), CẤM quay lại hỏi thời điểm/tần suất xuất hiện triệu chứng.";
+        } else if (!priorNeedsEstablished
+                && CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(msg, List.of())) {
+            needs.add(msg);
+            emotions.add("PHYSICAL_FATIGUE_OR_DISCOMFORT");
+            unknowns.add("preferred_focus_area_or_session_intensity");
+            recommendedAction = TurnAction.NEED_DISCOVERY;
+            directive = "NEED_DISCOVERY (CHIA SẺ TRIỆU CHỨNG LẦN ĐẦU CHƯA HỎI GÓI/GIÁ): Đồng cảm tự nhiên (1 câu gọn) và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn phù hợp, sau đó hỏi xem khách muốn ưu tiên vùng nào hoặc muốn trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn. CẤM đưa ngay tên/giá 2 gói cụ thể kèm rèm che/ăn nhẹ khi khách chưa hỏi gói/giá; CẤM dùng cụm 'massage điều trị' hay cam kết cải thiện mất ngủ/nhức đầu.";
+        } else {
+            if (!msg.isBlank() && !needs.contains(msg)) {
+                needs.add(msg);
+            }
+            recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
+            directive = "SERVICE_RECOMMENDATION: Tư vấn gói dịch vụ sát nhu cầu đã xác nhận từ <VERIFIED_BUSINESS_CATALOG>, tách ý tự nhiên 1-2 bong bóng (~20-40 từ/bong bóng), kết thúc bằng tối đa 1 câu hỏi hướng về trải nghiệm/thời lượng.";
+        }
+
+        return new LightweightCustomerUnderstandingPlan(
+                new LightweightCustomerState(needs, emotions, concerns, buyingSignals, frictionHistory, communicationSignals),
+                inferences,
+                unknowns,
+                recommendedAction,
+                priceSubMode,
+                directive,
+                totalPriceObjections
+        );
     }
 }
