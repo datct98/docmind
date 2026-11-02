@@ -118,7 +118,7 @@ public class CleanAgentOrchestratorService {
             "(?isU).*\\b("
             + "(?:gần|bằng|hơn|mất|tốn|đi\\s+đứt)\\s+(?:cả\\s+)?(?:một|1|nửa|hai|2|mấy|\\d+)\\s*(?:ngày\\s+công|ngày\\s+lương|tháng\\s+lương|buổi\\s+lương|tuần\\s+lương)|"
             + "(?:gần|bằng|hơn|mất|tốn|đi\\s+đứt)\\s+cả\\s+(?:ngày\\s+công|ngày\\s+lương|tháng\\s+lương|tuần\\s+lương)|"
-            + "(?:một|1|nửa|cả|\\d+)\\s*(?:ngày\\s+công|ngày\\s+lương|tháng\\s+lương)\\s+của\\s+(?:t|tôi|mình|em|chị|anh)"
+            + "(?:một|1|nửa|cả|\\d+)\\s*(?:ngày\\s+công|ngày\\s+lương|tháng\\s+lương)(?:\\s+(?:của\\s+(?:t|tôi|mình|em|chị|anh)|rồi|r\\b|đấy|luôn|ạ))?"
             + ")\\b.*"
     );
 
@@ -2137,6 +2137,34 @@ public class CleanAgentOrchestratorService {
         return isConfirmedCustomerPriceObjection(message, true);
     }
 
+    private static final Pattern PURE_BUDGET_BOUNDED_SERVICE_INQUIRY_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+            + "(?:có|tìm|xin|tư\\s+vấn)\\s+(?:gói|dịch\\s+vụ|liệu\\s+trình)\\s+(?:nào\\s+)?(?:ở\\s+mức\\s+|tầm\\s+|khoảng\\s+|dưới\\s+|giá\\s+)?(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|\\d{2,4}[.,]000\\s*(?:đ|đồng|vnđ|vnd)?)|"
+            + "(?:tầm|khoảng|dưới|mức|với)\\s*(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|\\d{2,4}[.,]000\\s*(?:đ|đồng|vnđ|vnd)?)\\s+.*\\b(?:có\\s+)?(?:gói|dịch\\s+vụ|liệu\\s+trình)|"
+            + "(?:\\d{2,4}\\s*(?:k|nghìn|ngàn)|\\d{2,4}[.,]000\\s*(?:đ|đồng|vnđ|vnd)?)\\s+có\\s+(?:gói|dịch\\s+vụ|liệu\\s+trình)\\s+nào"
+            + ")\\b.*"
+    );
+
+    public static boolean isPureBudgetBoundedServiceInquiry(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = message.strip();
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)
+                || isExplicitConversationRefusalStopMessage(trimmed)
+                || CLEAN_PRICE_OBJECTION_EXTRA_PATTERN.matcher(trimmed).matches()
+                || METAPHORICAL_WAGE_COMPARISON_PRICE_OBJECTION_PATTERN.matcher(trimmed).matches()
+                || COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(trimmed).matches()) {
+            return false;
+        }
+        String lower = java.text.Normalizer.normalize(trimmed, java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        if (lower.matches("(?isU).*\\b(rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+tiền\\s+hơn|nhẹ\\s+chi\\s+phí\\s+hơn|nhẹ\\s+hơn|thấp\\s+hơn|tiết\\s+kiệm\\s+hơn|vượt\\s+ngân\\s+sách|chưa\\s+đủ\\s+tiền|không\\s+đủ\\s+tiền)\\b.*")) {
+            return false;
+        }
+        return PURE_BUDGET_BOUNDED_SERVICE_INQUIRY_PATTERN.matcher(trimmed).matches();
+    }
+
     static boolean hasCompetitorOrExternalPriceComparisonCue(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -2155,7 +2183,8 @@ public class CleanAgentOrchestratorService {
         }
         String trimmed = message.strip();
         if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(trimmed)
-                || isExplicitConversationRefusalStopMessage(trimmed)) {
+                || isExplicitConversationRefusalStopMessage(trimmed)
+                || isPureBudgetBoundedServiceInquiry(trimmed)) {
             return false;
         }
         if (NON_PRICE_CAO_EXCLUSION_PATTERN.matcher(trimmed).matches()
@@ -4305,13 +4334,16 @@ public class CleanAgentOrchestratorService {
                 : List.of();
 
         // Shadow Scope Candidates (chỉ dùng để xếp thứ tự gợi ý PRIMARY vs ECONOMICAL_OPTION, KHÔNG ẩn gói hợp lệ!)
+        // P3.7-A Requirement II.1.2: Không lấy từ khóa trích từ câu phàn nàn về lời bot làm bằng chứng khách có nhu cầu dịch vụ.
         List<String> shadowScopeCandidates = new ArrayList<>();
         if (safePrior.knownBodyAreas() != null) {
             shadowScopeCandidates.addAll(safePrior.knownBodyAreas());
         }
-        for (AdaptiveConversationIntelligence.UnverifiedParserCandidate cand : threeStreamInput.unverifiedParserCandidates()) {
-            if ("SCOPE_OR_AREA_CANDIDATE".equals(cand.candidateType()) && !shadowScopeCandidates.contains(cand.rawValue())) {
-                shadowScopeCandidates.add(cand.rawValue());
+        if (!CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim)) {
+            for (AdaptiveConversationIntelligence.UnverifiedParserCandidate cand : threeStreamInput.unverifiedParserCandidates()) {
+                if ("SCOPE_OR_AREA_CANDIDATE".equals(cand.candidateType()) && !shadowScopeCandidates.contains(cand.rawValue())) {
+                    shadowScopeCandidates.add(cand.rawValue());
+                }
             }
         }
         CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
@@ -4642,10 +4674,11 @@ public class CleanAgentOrchestratorService {
                 (isUpstreamLlmClientErrorPayload(sanitizedReply) || isLeakedReasoningWithoutJsonContract(structured, sanitizedReply))
                         ? List.of()
                         : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, 0);
+        boolean llmOutputUnavailable = candidateBubbles.isEmpty();
         boolean usedStructuredFallbackOnLlmFailure = false;
         if (candidateBubbles.isEmpty()) {
-            log.warn("[ACI-V2] Empty/unreachable LLM output (msg='{}') -> activating Safe Structural Fallback", originalVerbatim);
-            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildSafeMultiIndustryTurnFallbackBubbles(
+            log.warn("[ACI-V2] Empty/unreachable LLM output (msg='{}') -> activating Context-Safe Fallback (LLM_OUTPUT_UNAVAILABLE)", originalVerbatim);
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
                     quotedReplyResolution,
                     priorBookingState,
                     "ACI_COGNITIVE_V2",
@@ -4655,7 +4688,9 @@ public class CleanAgentOrchestratorService {
                     effectivePersonaConfig,
                     originalVerbatim,
                     selfPronoun,
-                    safeHonorific
+                    safeHonorific,
+                    draft2Before,
+                    fused != null ? fused : List.of()
             );
             usedStructuredFallbackOnLlmFailure = true;
         } else {
@@ -4710,27 +4745,29 @@ public class CleanAgentOrchestratorService {
 
         // Kiểm định Referee V2 (CHỈ giữ Sự thật, Quyền hạn & An toàn — TẮT ép chiến thuật bán hàng thay LLM)
         long validationStartNs = System.nanoTime();
-        List<String> refereeViolations = new ArrayList<>(
-                CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
-                        candidateBubbles,
-                        allCatalog,
-                        unblindedEligibleCatalog,
-                        excludedAddonsOnly,
-                        quotedReplyResolution,
-                        authoritativeBookingState,
-                        presentedPackagesInHistory,
-                        effectivePersonaConfig,
-                        originalVerbatim,
-                        hasAuthoritativePaymentVerification,
-                        verifiedPageSlaPolicy,
-                        handoffDecision,
-                        reflection,
-                        fused != null ? fused : List.of(),
-                        pagePersona != null ? pagePersona.name() : null,
-                        prevBotTurnText,
-                        safeHistory
-                )
-        );
+        List<String> refereeViolations = usedStructuredFallbackOnLlmFailure
+                ? new ArrayList<>()
+                : new ArrayList<>(
+                        CleanAgentOutputRefereeAndSanitizer.checkAciV2TruthAuthorityAndSafety(
+                                candidateBubbles,
+                                allCatalog,
+                                unblindedEligibleCatalog,
+                                excludedAddonsOnly,
+                                quotedReplyResolution,
+                                authoritativeBookingState,
+                                presentedPackagesInHistory,
+                                effectivePersonaConfig,
+                                originalVerbatim,
+                                hasAuthoritativePaymentVerification,
+                                verifiedPageSlaPolicy,
+                                handoffDecision,
+                                reflection,
+                                fused != null ? fused : List.of(),
+                                pagePersona != null ? pagePersona.name() : null,
+                                prevBotTurnText,
+                                safeHistory
+                        )
+                );
 
         boolean repairApplied = usedStructuredFallbackOnLlmFailure;
         boolean usedSafeHandoffFallback = false;
@@ -4952,13 +4989,15 @@ public class CleanAgentOrchestratorService {
             if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim)) {
                 reflection = reflection.withForcedNoCta();
             }
-            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
-                    candidateBubbles,
-                    originalVerbatim,
-                    prevBotTurnText,
-                    selfPronoun,
-                    safeHonorific
-            );
+            if (!usedStructuredFallbackOnLlmFailure) {
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                        candidateBubbles,
+                        originalVerbatim,
+                        prevBotTurnText,
+                        selfPronoun,
+                        safeHonorific
+                );
+            }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
                     candidateBubbles,
                     allCatalog
@@ -5023,11 +5062,40 @@ public class CleanAgentOrchestratorService {
         boolean shouldHandoff = usedSafeHandoffFallback || handoffDecision.isHandoffCreated();
         String combinedReplyText = String.join("\n\n", finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
         boolean replyHasPrice = CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(combinedReplyText);
-        String actualSentSpeechAct = CleanAgentOutputRefereeAndSanitizer.resolveActualSentSpeechActV2(
-                reflection,
-                authoritativeBookingState.status().name(),
-                structured != null && structured.brainReflection() != null ? structured.brainReflection().intendedSpeechAct() : ""
-        );
+        String selectedSpeechAct = llmOutputUnavailable
+                ? "LLM_OUTPUT_UNAVAILABLE"
+                : (!reflection.responsePlan().strategy().isBlank()
+                    ? reflection.responsePlan().strategy()
+                    : (!reflection.strategy().chosen().isBlank() ? reflection.strategy().chosen() : "Direct Answer"));
+        String generatedSpeechAct = llmOutputUnavailable
+                ? "LLM_OUTPUT_UNAVAILABLE"
+                : CleanAgentOutputRefereeAndSanitizer.resolveActualSentSpeechActV2(
+                        reflection,
+                        authoritativeBookingState.status().name(),
+                        structured != null && structured.brainReflection() != null ? structured.brainReflection().intendedSpeechAct() : ""
+                );
+        String refereeDecision = llmOutputUnavailable
+                ? "SKIPPED_LLM_UNAVAILABLE"
+                : (usedSafeHandoffFallback
+                    ? "FALLBACK_SAFE_HANDOFF"
+                    : (repairApplied
+                        ? "REPAIRED_OR_FALLBACK"
+                        : (refereeViolations.isEmpty() ? "PASS" : "REPAIRED_ON_RETRY")));
+        String fallbackReason = llmOutputUnavailable
+                ? "LLM_OUTPUT_UNAVAILABLE"
+                : (usedSafeHandoffFallback
+                    ? "REFEREE_SAFE_HANDOFF"
+                    : (usedStructuredFallbackOnLlmFailure ? "REFEREE_POST_REPAIR_FALLBACK" : "NONE"));
+        String actualSentSpeechAct = usedSafeHandoffFallback
+                ? CleanAgentOutputRefereeAndSanitizer.SPEECH_ACT_RESPECTED_PAUSE
+                : (usedStructuredFallbackOnLlmFailure
+                    ? CleanAgentOutputRefereeAndSanitizer.resolveFallbackActualSentSpeechAct(
+                            originalVerbatim,
+                            authoritativeBookingState,
+                            quotedReplyResolution,
+                            draft2Before
+                    )
+                    : generatedSpeechAct);
         String sequentialTurnId = CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(safeHistory);
 
         // Ghi nhận nguyên tử 5 tầng bộ nhớ, vòng đời Working Hypothesis, chiến thuật lượt trước & Session Commitments (Mục 4)
@@ -5270,25 +5338,32 @@ public class CleanAgentOrchestratorService {
                         : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
         List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
 
-        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptTokens={} completionTokens={} reasoningTokens={} reflectionTokens={} llmMs={} retrievalMs={} retryCount={} retryTriggerReason={} totalTurnMs={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
+        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptBuildMs={} promptTokens={} completionTokens={} reasoningTokens={} reflectionTokens={} llmMs={} retrievalMs={} validationMs={} retryCount={} retryTriggerReason={} totalTurnMs={} selectedSpeechAct={} generatedSpeechAct={} refereeDecision={} fallbackReason={} actualSentSpeechAct={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
                 selectedThinkingMode,
                 aciPrompt.length(),
                 legacyEquivalentPromptChars,
+                promptBuildMs,
                 tokenUsage.promptTokens(),
                 tokenUsage.completionTokens(),
                 tokenUsage.reasoningTokens(),
                 reflectionTokens,
                 llmElapsedMs,
                 retrievalMs,
+                validationMs,
                 llmRegenerationCount,
                 retryTriggerReason,
                 totalTurnMs,
-                reflection.priority().primary(),
-                reflection.strategy().adaptation(),
-                reflection.workingHypothesis().lifecycleOp(),
+                selectedSpeechAct,
+                generatedSpeechAct,
+                refereeDecision,
+                fallbackReason,
+                actualSentSpeechAct,
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.priority().primary(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.strategy().adaptation(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.workingHypothesis().lifecycleOp(),
                 authoritativeBookingState.status(),
                 handoffDecision.resultingStatus(),
                 quoteBubbleIndex,
@@ -5296,16 +5371,18 @@ public class CleanAgentOrchestratorService {
                 activatedSkills.stream().map(AgentSkillDto::code).toList(),
                 refereeViolations
         );
-        log.info("[ACI-V2-PROFILING] page_id={} sender_id={} turn={} inputTokens={} outputTokens={} reasoningTokens={} reflectionTokens={} modelLatencyMs={} retrievalLatencyMs={} retryCount={} retryTriggerReason={} totalTurnMs={} availableSkills={} selectedSkills={} activatedSkills={}",
+        log.info("[ACI-V2-PROFILING] page_id={} sender_id={} turn={} promptBuildMs={} inputTokens={} outputTokens={} reasoningTokens={} reflectionTokens={} modelLatencyMs={} retrievalLatencyMs={} validationMs={} retryCount={} retryTriggerReason={} totalTurnMs={} availableSkills={} selectedSkills={} activatedSkills={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
+                promptBuildMs,
                 tokenUsage.promptTokens(),
                 tokenUsage.completionTokens(),
                 tokenUsage.reasoningTokens(),
                 reflectionTokens,
                 llmElapsedMs,
                 retrievalMs,
+                validationMs,
                 llmRegenerationCount,
                 retryTriggerReason,
                 totalTurnMs,
@@ -5349,12 +5426,16 @@ public class CleanAgentOrchestratorService {
                 draft2After.lastResponsePlan().depth(),
                 draft2After.lastResponsePlan().nextAction()
         );
-        log.info("[ACI-V2-BRAIN-TRACE] page_id={} sender_id={} turn={} rawVerbatimMessage=\"{}\" previousBotSpeechAct={} actualSentSpeechAct={} defaultCustomerPronoun=\"{}\" inferredCustomerPronounBefore={} inferredCustomerPronounAfter={} pronounConfidence={} effectiveCustomerPronoun=\"{}\" unverifiedParserCandidates={} symptomDurationBefore={} symptomDurationAfter={} workingHypothesisBefore={{content=\"{}\", op={}, conf={}, evidence={}}} workingHypothesisAfter={{content=\"{}\", lifecycle_op={}, confidence={}, evidence_turn_ids={}}} priority={{primary={}, secondary={}}} strategy={{chosen=\"{}\", adaptation={}, previous_outcome={}, evidence_turn_ids={}}} priceObjectionCountBefore={} priceObjectionCountAfter={} bubbleCount={} typingDelaysMs={} llmMs={} totalTurnMs={}",
+        log.info("[ACI-V2-BRAIN-TRACE] page_id={} sender_id={} turn={} rawVerbatimMessage=\"{}\" previousBotSpeechAct={} selectedSpeechAct={} generatedSpeechAct={} refereeDecision={} fallbackReason={} actualSentSpeechAct={} defaultCustomerPronoun=\"{}\" inferredCustomerPronounBefore={} inferredCustomerPronounAfter={} pronounConfidence={} effectiveCustomerPronoun=\"{}\" unverifiedParserCandidates={} symptomDurationBefore={} symptomDurationAfter={} workingHypothesisBefore={{content=\"{}\", op={}, conf={}, evidence={}}} workingHypothesisAfter={{content=\"{}\", lifecycle_op={}, confidence={}, evidence_turn_ids={}}} priority={{primary={}, secondary={}}} strategy={{chosen=\"{}\", adaptation={}, previous_outcome={}, evidence_turn_ids={}}} priceObjectionCountBefore={} priceObjectionCountAfter={} bubbleCount={} typingDelaysMs={} llmMs={} totalTurnMs={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
                 originalVerbatim,
                 previousBotSpeechAct,
+                selectedSpeechAct,
+                generatedSpeechAct,
+                refereeDecision,
+                fallbackReason,
                 actualSentSpeechAct,
                 defaultCustomerPronoun,
                 priorInferredCustomerPronoun,
@@ -5372,11 +5453,11 @@ public class CleanAgentOrchestratorService {
                 workingHypothesisAfter.lastLifecycleOp(),
                 String.format(Locale.ROOT, "%.2f", workingHypothesisAfter.confidence()),
                 workingHypothesisAfter.evidenceTurnIds(),
-                reflection.priority().primary(),
-                reflection.priority().secondary(),
-                reflection.strategy().chosen(),
-                reflection.strategy().adaptation(),
-                reflection.strategy().previousOutcome(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.priority().primary(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.priority().secondary(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.strategy().chosen(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.strategy().adaptation(),
+                llmOutputUnavailable ? "LLM_OUTPUT_UNAVAILABLE" : reflection.strategy().previousOutcome(),
                 reflection.strategy().evidenceTurnIds(),
                 priceObjectionCountBefore,
                 priceObjectionCountAfter,
@@ -5558,7 +5639,8 @@ public class CleanAgentOrchestratorService {
             }
             boolean isPauseSkill = code.contains("pause") || code.contains("graceful") || code.contains("close");
             boolean isObjectionSkill = code.contains("objection") || code.contains("sensory_value");
-            boolean isCompareOrPriceSkill = code.contains("economical") || code.contains("compare") || code.contains("price");
+            boolean isCompareOrPriceSkill = !isObjectionSkill
+                    && (code.contains("economical") || code.contains("compare") || code.contains("price"));
             boolean isDiscoverySkill = code.contains("discovery") || code.contains("empathy") || code.contains("scope");
             boolean hasStandardTag = isBookingSkill || isPauseSkill || isObjectionSkill || isCompareOrPriceSkill || isDiscoverySkill;
             if (!hasStandardTag) {

@@ -2246,7 +2246,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         String inCodeBody = CleanAgentCatalogAndPromptBuilder.getInCodeAciPromptTemplate().strip();
 
         assertThat(extVersion)
-                .isEqualTo("aci-v2.8-p36-natural-consultative")
+                .isEqualTo("aci-v2.9-p37a-decision-integrity")
                 .isEqualTo(CleanAgentCatalogAndPromptBuilder.IN_CODE_ACI_V2_PROMPT_VERSION);
         assertThat(extBody).isEqualTo(inCodeBody);
         assertThat(extBody)

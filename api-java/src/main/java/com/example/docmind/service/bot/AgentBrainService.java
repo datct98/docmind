@@ -1418,9 +1418,20 @@ public class AgentBrainService {
                 );
             }
 
-            // Tier 5: Operational State (Java Core nắm quyền tuyệt đối)
+            boolean isTimeoutFallbackTurn = reflection != null
+                    && !reflection.parsedFromV2Schema()
+                    && reflection.customerUnderstanding().detectedIntent().isBlank()
+                    && reflection.strategy().chosen().isBlank();
+
+            // Tier 5: Operational State (Java Core nắm quyền tuyệt đối; khi LLM timeout không hạ cấp bookingState đang active về NONE)
             if (authoritativeBookingState != null) {
-                mem.structuredBookingState = authoritativeBookingState;
+                boolean wouldClobberActiveBookingOnTimeout = isTimeoutFallbackTurn
+                        && authoritativeBookingState.status() == ConversationState.BookingStatus.NONE
+                        && mem.structuredBookingState != null
+                        && mem.structuredBookingState.status() != ConversationState.BookingStatus.NONE;
+                if (!wouldClobberActiveBookingOnTimeout) {
+                    mem.structuredBookingState = authoritativeBookingState;
+                }
             }
             String bookingStatusStr = mem.structuredBookingState != null
                     ? mem.structuredBookingState.status().name()
@@ -1498,21 +1509,35 @@ public class AgentBrainService {
                     mem.inPriceObjectionContext = false;
                 }
 
-                String prio = reflection.priority().primary();
-                String chosenStrat = !reflection.strategy().chosen().isBlank()
-                        ? reflection.strategy().chosen()
-                        : (actualSentSpeechAct != null ? actualSentSpeechAct : "");
-                String evidenceStr = !reflection.strategy().evidenceTurnIds().isEmpty()
-                        ? String.join(",", reflection.strategy().evidenceTurnIds())
-                        : safeTurnId;
-                mem.previousStrategyRecord = new AdaptiveConversationIntelligence.PreviousStrategyRecord(
-                        prio,
-                        chosenStrat,
-                        reflection.strategy().previousOutcome(),
-                        evidenceStr,
-                        safeTurnId,
-                        Instant.now()
-                );
+                boolean llmOutputUnavailable = !reflection.parsedFromV2Schema()
+                        && cu.detectedIntent().isBlank()
+                        && reflection.strategy().chosen().isBlank();
+                if (!llmOutputUnavailable) {
+                    String prio = reflection.priority().primary();
+                    String chosenStrat = !reflection.strategy().chosen().isBlank()
+                            ? reflection.strategy().chosen()
+                            : (actualSentSpeechAct != null ? actualSentSpeechAct : "");
+                    String evidenceStr = !reflection.strategy().evidenceTurnIds().isEmpty()
+                            ? String.join(",", reflection.strategy().evidenceTurnIds())
+                            : safeTurnId;
+                    mem.previousStrategyRecord = new AdaptiveConversationIntelligence.PreviousStrategyRecord(
+                            prio,
+                            chosenStrat,
+                            reflection.strategy().previousOutcome(),
+                            evidenceStr,
+                            safeTurnId,
+                            Instant.now()
+                    );
+                } else if (mem.previousStrategyRecord == null) {
+                    mem.previousStrategyRecord = new AdaptiveConversationIntelligence.PreviousStrategyRecord(
+                            "NONE",
+                            "LLM_OUTPUT_UNAVAILABLE",
+                            AdaptiveConversationIntelligence.StrategyOutcome.NOT_APPLICABLE,
+                            safeTurnId,
+                            safeTurnId,
+                            Instant.now()
+                    );
+                }
             }
             if (actualSentSpeechAct != null && !actualSentSpeechAct.isBlank()) {
                 mem.lastActualSentSpeechAct = actualSentSpeechAct.strip();
@@ -1730,6 +1755,17 @@ public class AgentBrainService {
         }
         String nowIso = Instant.now().toString();
         AdaptiveConversationIntelligence.CustomerUnderstanding cu = reflection.customerUnderstanding();
+        boolean llmOutputUnavailable = !reflection.parsedFromV2Schema()
+                && cu.detectedIntent().isBlank()
+                && reflection.strategy().chosen().isBlank();
+        if (llmOutputUnavailable) {
+            // P3.7-A Requirement II.1.3 & II.1.4: Khi LLM timeout (LLM_OUTPUT_UNAVAILABLE),
+            // tuyệt đối KHÔNG để fallback ghi đè trạng thái đặt lịch, lựa chọn gói, ý định hay chiến lược trước đó.
+            mem.draft2LastBotAction = (actualSentSpeechAct != null && !actualSentSpeechAct.isBlank())
+                    ? actualSentSpeechAct.strip()
+                    : "LLM_OUTPUT_UNAVAILABLE";
+            return;
+        }
 
         // 1. Tầng 1 — Conversational Context (không lưu lặp current_user_message vào Profile dài hạn)
         String turnIntent = !cu.detectedIntent().isBlank() ? cu.detectedIntent() : "GENERAL_INQUIRY";

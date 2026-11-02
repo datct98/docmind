@@ -243,9 +243,12 @@ public class RetrievalService {
             boolean isCoolingMsg = isCoolingOrHesitationQuery(rawQuestionLower);
             boolean isPriceObjOrDownsellMsg = isPriceObjectionOrDownsellQuery(rawQuestionLower);
             boolean isTrialOrCorrectionMsg = isTrialOrCorrectionQuery(rawQuestionLower);
+            boolean isStyleOrProcessComplaintMsg = com.example.docmind.service.bot.CleanAgentOutputRefereeAndSanitizer
+                    .isCommunicationStyleComplaintMessage(question);
+            boolean hasSafetyCue = !isStyleOrProcessComplaintMsg && hasSafetyContraindicationQueryCue(rawQuestionLower);
 
             // Vector search trên learned_rules (nếu có pageId thì chỉ lấy rule của page đó + global rules)
-            if (queryEmbedding != null) {
+            if (queryEmbedding != null && !isStyleOrProcessComplaintMsg) {
                 List<LearnedRuleEntity> similarRules = pageId != null
                         ? learnedRuleRepository.searchSimilarActiveRules(queryEmbedding, 0.60, 5, pageId)
                         : learnedRuleRepository.searchSimilarActiveRules(queryEmbedding, 0.60, 5);
@@ -253,6 +256,9 @@ public class RetrievalService {
                 for (LearnedRuleEntity r : similarRules) {
                     rankIdx++;
                     if (r == null || !r.isActive() || !isRuleConfidenceEligible(r)) {
+                        continue;
+                    }
+                    if (isSafetyContraindicationRule(r) && !hasSafetyCue) {
                         continue;
                     }
                     if (isPhoneLeadSpecificRule(r) && !mentionsPhoneTopicWithoutPrice) {
@@ -280,11 +286,16 @@ public class RetrievalService {
             // Keyword match trên active rules (scoped theo pageId nếu có)
             String lowerQuestion = rawQuestionLower
                     + ((hasPhoneNumber && !asksExplicitPrice) ? " số điện thoại sđt liên hệ tư vấn" : "");
-            List<LearnedRuleEntity> activeRules = pageId != null
-                    ? learnedRuleRepository.findActiveForPage(pageId)
-                    : learnedRuleRepository.findByActiveTrue();
+            List<LearnedRuleEntity> activeRules = isStyleOrProcessComplaintMsg
+                    ? List.of()
+                    : (pageId != null
+                        ? learnedRuleRepository.findActiveForPage(pageId)
+                        : learnedRuleRepository.findByActiveTrue());
             for (LearnedRuleEntity r : activeRules) {
                 if (r == null || !r.isActive() || !isRuleConfidenceEligible(r)) {
+                    continue;
+                }
+                if (isSafetyContraindicationRule(r) && !hasSafetyCue) {
                     continue;
                 }
                 if (isPhoneLeadSpecificRule(r) && !mentionsPhoneTopicWithoutPrice) {
@@ -456,7 +467,9 @@ public class RetrievalService {
             List<LearnedRuleDto> appliedRules,
             Map<String, List<String>> pageQuerySynonyms
     ) {
-        if (question == null || question.isBlank()) {
+        if (question == null || question.isBlank()
+                || com.example.docmind.service.bot.CleanAgentOutputRefereeAndSanitizer
+                        .isCommunicationStyleComplaintMessage(question)) {
             return List.of();
         }
         Set<String> keywordsToExpand = new LinkedHashSet<>(extractExpandedPriceTokens(question));
@@ -968,6 +981,24 @@ public class RetrievalService {
                 || lowerQuestion.contains("reengage");
     }
 
+    private static boolean isSafetyContraindicationRule(LearnedRuleEntity r) {
+        if (r == null) {
+            return false;
+        }
+        String code = r.getRuleCode() != null ? r.getRuleCode().toUpperCase(java.util.Locale.ROOT) : "";
+        String cat = r.getCategory() != null ? r.getCategory().toUpperCase(java.util.Locale.ROOT) : "";
+        return code.startsWith("SAFE-") || cat.equals("SAFETY") || cat.contains("CONTRAINDICATION");
+    }
+
+    private static boolean hasSafetyContraindicationQueryCue(String lowerQuestion) {
+        if (lowerQuestion == null || lowerQuestion.isBlank()) {
+            return false;
+        }
+        return lowerQuestion.matches(
+                "(?isU).*\\b(đau\\s+tai|chảy\\s+dịch|viêm\\s+tai|thủng\\s+màng\\s+nhĩ|hoa\\s+mắt|chóng\\s+mặt|nôn\\s+mửa|buồn\\s+nôn|sốt\\s+cao|huyết\\s+áp|tim\\s+mạch|bầu|mang\\s+thai|thai\\s+kỳ|dị\\s+ứng|vết\\s+thương\\s+hở|chống\\s+chỉ\\s+định|an\\s+toàn\\s+không)\\b.*"
+        );
+    }
+
     private static boolean isGenericNoiseKeyword(String normKw) {
         if (normKw == null || normKw.length() <= 2) {
             return true;
@@ -980,7 +1011,8 @@ public class RetrievalService {
                  "tìm", "quyền", "cân", "nhắc", "hoàn", "toàn", "tuyệt", "đối", "chốt", "bán", "lực", "phản",
                  "hồi", "dấu", "hiệu", "giai", "đoạn", "discovery", "temperature_delta", "harness", "chuẩn",
                  "mực", "đồng", "duy", "trì", "tối", "bong", "bóng", "kết", "thúc", "xưng", "gọn", "chẩn",
-                 "đoán", "rào", "cản" -> true;
+                 "đoán", "rào", "cản", "chưa", "tự", "nhiên", "lại", "rồi", "thông", "tin", "nói", "chuyện",
+                 "hiểu", "xem", "thử", "nào", "mấy", "vậy", "thế", "sao", "tai" -> true;
             default -> false;
         };
     }

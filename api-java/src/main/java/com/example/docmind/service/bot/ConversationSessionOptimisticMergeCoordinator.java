@@ -526,6 +526,13 @@ public class ConversationSessionOptimisticMergeCoordinator {
         return false;
     }
 
+    public void deleteSimulatorSessionById(UUID sessionId) {
+        if (sessionId == null || sessionRepository == null) {
+            return;
+        }
+        sessionRepository.deleteById(sessionId);
+    }
+
     private static String nonBlankOrKeep(String candidate, String existing) {
         if (candidate != null && !candidate.isBlank()) {
             return candidate.strip();

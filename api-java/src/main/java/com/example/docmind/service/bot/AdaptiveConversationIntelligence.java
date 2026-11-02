@@ -279,36 +279,60 @@ public final class AdaptiveConversationIntelligence {
         }
 
         // 3. Duration token candidates (ví dụ "1 ngày" trong "1 ngày công r" hay "14 tiếng" — GẮN NHÃN UNVERIFIED!)
-        Matcher durMatcher = SHADOW_DURATION_TOKEN_PATTERN.matcher(originalMessage);
-        while (durMatcher.find()) {
-            String rawDur = durMatcher.group(1).strip();
-            out.add(UnverifiedParserCandidate.of(
-                    "DURATION_TOKEN_CANDIDATE",
-                    rawDur,
-                    rawDur.toLowerCase(Locale.ROOT),
-                    "PROBLEM_DURATION_TOKEN_PATTERN_SHADOW"
-            ));
-        }
-
-        // 4. Scope / Body-area parser candidates
-        List<String> candidateScopes = ScopeMatcher.mergeScopes(
-                originalMessage,
-                List.of(),
-                catalog != null ? catalog : List.of(),
-                personaConfig
-        );
-        for (String sc : candidateScopes) {
-            if (sc != null && !sc.isBlank()) {
+        boolean isStyleOrProcessComplaint =
+                CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalMessage);
+        if (!isStyleOrProcessComplaint) {
+            Matcher durMatcher = SHADOW_DURATION_TOKEN_PATTERN.matcher(originalMessage);
+            while (durMatcher.find()) {
+                String rawDur = durMatcher.group(1).strip();
                 out.add(UnverifiedParserCandidate.of(
-                        "SCOPE_OR_AREA_CANDIDATE",
-                        sc,
-                        sc.strip().toLowerCase(Locale.ROOT),
-                        "ScopeMatcher.extractScopeCandidateShadow"
+                        "DURATION_TOKEN_CANDIDATE",
+                        rawDur,
+                        rawDur.toLowerCase(Locale.ROOT),
+                        "PROBLEM_DURATION_TOKEN_PATTERN_SHADOW"
                 ));
+            }
+
+            // 4. Scope / Body-area parser candidates (chặn trích xuất từ mệnh đề khách nhắc lại lời tư vấn của bot)
+            String messageForScopeShadow = scrubBotCitationClausesBeforeScopeShadow(originalMessage);
+            if (!messageForScopeShadow.isBlank()) {
+                List<String> candidateScopes = ScopeMatcher.mergeScopes(
+                        messageForScopeShadow,
+                        List.of(),
+                        catalog != null ? catalog : List.of(),
+                        personaConfig
+                );
+                for (String sc : candidateScopes) {
+                    if (sc != null && !sc.isBlank()) {
+                        out.add(UnverifiedParserCandidate.of(
+                                "SCOPE_OR_AREA_CANDIDATE",
+                                sc,
+                                sc.strip().toLowerCase(Locale.ROOT),
+                                "ScopeMatcher.extractScopeCandidateShadow"
+                        ));
+                    }
+                }
             }
         }
 
         return List.copyOf(out);
+    }
+
+    private static final Pattern BOT_RECOMMENDATION_CITATION_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:rồi\\s+lại\\s+|tự\\s+nhiên\\s+|chưa\\s+gì\\s+đã\\s+|lại\\s+đi\\s+|sao\\s+lại\\s+)?"
+            + "(?:tư\\s+vấn|gợi\\s+ý|chào\\s+mời|đề\\s+xuất|báo)\\s+(?:gói\\s+|dịch\\s+vụ\\s+|làm\\s+)?"
+            + "(?:lấy\\s+ráy\\s+tai|ráy\\s+tai|gội\\s+đầu|massage)[^.,;!?\\n]*"
+    );
+
+    private static String scrubBotCitationClausesBeforeScopeShadow(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return "";
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        if (!norm.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(rồi\\s+lại\\s+tư\\s+vấn|tự\\s+nhiên.*tư\\s+vấn|sao\\s+lại\\s+tư\\s+vấn|chưa\\s+tìm\\s+hiểu).*")) {
+            return norm;
+        }
+        return BOT_RECOMMENDATION_CITATION_CLAUSE_PATTERN.matcher(norm).replaceAll(" ").strip();
     }
 
     // =========================================================================
@@ -1751,20 +1775,40 @@ public final class AdaptiveConversationIntelligence {
             String normLower = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
                     .toLowerCase(Locale.ROOT);
             boolean explicitStop = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(rawUserMessage);
+            boolean directBotIdentityQuestion = CleanAgentOutputRefereeAndSanitizer
+                    .isDirectBotIdentityOrTrainingQuestion(rawUserMessage);
+            boolean processFeedbackComplaint = !explicitStop
+                    && !directBotIdentityQuestion
+                    && (CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
+                        || (customerUnderstanding.secondaryIntents() != null
+                            && customerUnderstanding.secondaryIntents().stream().anyMatch(s ->
+                                s != null && (s.toUpperCase(Locale.ROOT).contains("PROCESS_FEEDBACK")
+                                        || s.toUpperCase(Locale.ROOT).contains("CONSULTATION_FEEDBACK")
+                                        || s.toUpperCase(Locale.ROOT).contains("STYLE_COMPLAINT")))));
+            boolean pureBudgetBoundedInquiry = !explicitStop
+                    && !processFeedbackComplaint
+                    && CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(rawUserMessage);
             boolean competitorComparison = !explicitStop
+                    && !processFeedbackComplaint
+                    && !pureBudgetBoundedInquiry
                     && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawUserMessage);
             boolean negatedBooking = normLower.matches(
                     "(?isU).*\\b(?:không|ko|chưa|khỏi|đừng|chẳng)\\s+(?:muốn\\s+|cần\\s+|vội\\s+|định\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
             );
-            boolean affirmativeBookingCue = !explicitStop && !negatedBooking && normLower.matches(
+            boolean affirmativeBookingCue = !explicitStop && !processFeedbackComplaint && !negatedBooking && normLower.matches(
                     "(?isU).*\\b(đăng\\s+ký\\s+đặt\\s+lịch|(?:rồi\\s+)?(?:anh|chị|mình|tôi|em|a)\\s+(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch|đặt\\s+lịch\\s+(?:nhé|nha|giúp|cho)|chốt\\s+lịch\\s+(?:nhé|nha|luôn))\\b.*"
             );
-            if (!explicitStop && !competitorComparison && !affirmativeBookingCue) {
+            if (!explicitStop
+                    && !processFeedbackComplaint
+                    && !pureBudgetBoundedInquiry
+                    && !competitorComparison
+                    && !affirmativeBookingCue) {
                 return this;
             }
 
             CustomerUnderstanding cu = customerUnderstanding;
             String detIntent = cu.detectedIntent();
+            EmotionalState emoState = cu.emotionalState();
             List<String> secIntents = new ArrayList<>(cu.secondaryIntents());
             String convState = cu.conversationState();
             Boolean costConcern = cu.costConcernExpressed();
@@ -1775,6 +1819,9 @@ public final class AdaptiveConversationIntelligence {
             String effBarrier = barrierType;
             AdaptiveResponsePlan plan = responsePlan;
             StrategyReflection strat = strategy;
+            List<String> reconciledSkills = new ArrayList<>(activatedSkillCodes);
+            List<FactDeltaProposal> reconciledFactsDelta = new ArrayList<>(confirmedFactsDelta);
+            ProposedBookingPatch reconciledBookingPatch = proposedBookingPatch;
 
             if (explicitStop) {
                 detIntent = "EXPLICIT_REFUSAL";
@@ -1794,6 +1841,102 @@ public final class AdaptiveConversationIntelligence {
                 strat = new StrategyReflection(
                         "Respectful Pause",
                         StrategyAdaptationMode.STOP,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (processFeedbackComplaint) {
+                String priorIntent = detIntent;
+                if (!"PROCESS_FEEDBACK".equalsIgnoreCase(detIntent)) {
+                    if (priorIntent != null && !priorIntent.isBlank()
+                            && !"VERIFY_BOT_IDENTITY".equalsIgnoreCase(priorIntent)
+                            && secIntents.stream().noneMatch(s -> s.equalsIgnoreCase(priorIntent))) {
+                        secIntents.add(priorIntent);
+                    }
+                    detIntent = "PROCESS_FEEDBACK";
+                }
+                secIntents.removeIf(s -> s != null
+                        && ("PROCESS_FEEDBACK".equalsIgnoreCase(s)
+                            || "VERIFY_BOT_IDENTITY".equalsIgnoreCase(s)));
+                String primaryEmo = emoState != null ? emoState.primary() : "";
+                if (primaryEmo == null || primaryEmo.isBlank()
+                        || "UNKNOWN".equalsIgnoreCase(primaryEmo)
+                        || "NEUTRAL".equalsIgnoreCase(primaryEmo)
+                        || "CURIOUS".equalsIgnoreCase(primaryEmo)) {
+                    emoState = new EmotionalState(
+                            "FRUSTRATED",
+                            emoState != null ? emoState.secondary() : List.of(),
+                            0.95
+                    );
+                }
+                convState = "FRICTION_RECOVERY";
+                costConcern = Boolean.FALSE;
+                readiness = BookingReadiness.EXPLORING;
+                buySig = BuyingSignal.NONE;
+                if (perm != InteractionPermission.PAUSED) {
+                    perm = InteractionPermission.CONCISE_PREFERRED;
+                }
+                prio = new PriorityFocus("SERVICE_RECOVERY", List.of("TRUST_BUILDING"));
+                effBarrier = "COMMUNICATION_FRICTION";
+                plan = new AdaptiveResponsePlan(
+                        "Acknowledge consultation process feedback and adjust communication pace without defending AI identity",
+                        "Active Listening",
+                        "Sincere & Attentive",
+                        "CONCISE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.PIVOT,
+                        StrategyOutcome.REJECTED
+                );
+                strat = new StrategyReflection(
+                        "Active Listening",
+                        StrategyAdaptationMode.PIVOT,
+                        StrategyOutcome.REJECTED,
+                        strat.evidence()
+                );
+                reconciledSkills.removeIf(code -> code != null
+                        && code.toLowerCase(Locale.ROOT).contains("bot_identity"));
+                reconciledFactsDelta.removeIf(d -> d != null
+                        && d.effectiveValidity() == FactValidity.CURRENT
+                        && ("need_scope".equalsIgnoreCase(d.key())
+                            || "self_reported_symptom".equalsIgnoreCase(d.key())));
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+            } else if (pureBudgetBoundedInquiry) {
+                if (!"ASK_PRICE".equalsIgnoreCase(detIntent)) {
+                    detIntent = "ASK_PRICE";
+                }
+                secIntents.removeIf(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel);
+                if (secIntents.stream().noneMatch(s -> "BUDGET_FIT".equalsIgnoreCase(s))) {
+                    secIntents.add("BUDGET_FIT");
+                }
+                costConcern = Boolean.FALSE;
+                convState = "ACTIVE_CONSULTATION";
+                effBarrier = "BUDGET_CONSTRAINT";
+                if (perm == InteractionPermission.PAUSED) {
+                    perm = InteractionPermission.OPEN;
+                }
+                prio = new PriorityFocus("BUDGET_FIT", List.of("DISCOVERY"));
+                String reconciledStrat = ("Explain Value".equalsIgnoreCase(plan.strategy())
+                        || "Respectful Pause".equalsIgnoreCase(plan.strategy())
+                        || plan.strategy().isBlank())
+                        ? "Direct Answer"
+                        : plan.strategy();
+                plan = new AdaptiveResponsePlan(
+                        plan.objective(),
+                        reconciledStrat,
+                        plan.tone(),
+                        plan.depth(),
+                        plan.nextAction(),
+                        plan.ctaLevel(),
+                        plan.adaptation() == StrategyAdaptationMode.STOP
+                                ? StrategyAdaptationMode.CONTINUATION
+                                : plan.adaptation(),
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        reconciledStrat,
+                        strat.adaptation() == StrategyAdaptationMode.STOP
+                                ? StrategyAdaptationMode.CONTINUATION
+                                : strat.adaptation(),
                         strat.previousOutcome(),
                         strat.evidence()
                 );
@@ -1881,7 +2024,7 @@ public final class AdaptiveConversationIntelligence {
 
             CustomerUnderstanding reconciledCu = new CustomerUnderstanding(
                     detIntent,
-                    cu.emotionalState(),
+                    emoState,
                     cu.inferredCustomerPronoun(),
                     cu.pronounConfidence(),
                     costConcern,
@@ -1902,17 +2045,17 @@ public final class AdaptiveConversationIntelligence {
                     customerStatements,
                     commitmentDelta,
                     handoffRequest,
-                    proposedBookingPatch,
+                    reconciledBookingPatch,
                     blockedUnauthorizedCompletionCount,
                     parsedFromV2Schema,
-                    activatedSkillCodes,
+                    reconciledSkills,
                     explicitActivatedSkillCodes,
                     currentTopic,
                     unresolvedRequestsDelta,
                     pendingReferences,
                     conversationGoal,
                     needRevisionDetected,
-                    confirmedFactsDelta,
+                    reconciledFactsDelta,
                     effBarrier,
                     hypothesisConfidenceLevel,
                     interestedPackageId,

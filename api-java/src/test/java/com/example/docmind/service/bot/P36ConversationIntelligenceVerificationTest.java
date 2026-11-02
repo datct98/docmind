@@ -448,7 +448,7 @@ class P36ConversationIntelligenceVerificationTest {
 
         assertThat(prompt)
                 .contains("ZERO_SCOPE_DRIFT")
-                .contains("service_group=\"MASSAGE_BODY_TOAN_THAN\"")
+                .contains("service_group=\"MASSAGE_TOAN_THAN\"")
                 .contains("service_group=\"GOI_DAU_DUONG_SINH\"")
                 .contains("service_group=\"LAY_RAY_TAI_CO_BAN\"")
                 .contains("Lấy ráy tai cơ bản 30p")

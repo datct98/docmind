@@ -3399,11 +3399,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     /**
-     * Tầng Fallback Cấu Trúc Đa Ngành An Toàn (Mốc C3-C):
-     * Khi LLM bị timeout, lỗi kết nối, trả rỗng hoặc không thể khôi phục sau 1 lần retry,
-     * dựng câu trả lời/câu hỏi làm rõ trung tính 100% đúng dữ liệu từ {@link PackageCatalogService.PackageSummary#display()},
-     * {@code unitNoun} và {@link com.example.docmind.dto.PagePersonaConfig}, bảo toàn tuyệt đối ngữ cảnh {@code reply_to.mid}
-     * và trạng thái đặt lịch 6 trạng thái.
+     * Tầng Fallback Cấu Trúc Đa Ngành An Toàn & Bảo Toàn Ngữ Cảnh (Mốc C3-C & P3.7-A):
+     * Khi LLM bị timeout ({@code LLM_OUTPUT_UNAVAILABLE}), lỗi kết nối, trả rỗng hoặc không thể khôi phục sau 1 lần retry,
+     * quyết định fallback dựa trên ý định hiện tại, {@code unresolved_requests}, {@code confirmed_facts}, {@code conversation_state},
+     * {@code bookingState}, {@code reply_to.mid} và dữ liệu Catalog/Chunks đã xác minh — tuyệt đối KHÔNG tự tạo hành động bán hàng mới
+     * (báo giá 399k, upsell, downsell, đặt lịch) khi khách không hỏi giá/gói.
      */
     public static List<FanpageBotResponse.ReplyBubble> buildSafeMultiIndustryTurnFallbackBubbles(
             CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
@@ -3417,6 +3417,36 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String selfPronoun,
             String customerPronoun
     ) {
+        return buildContextSafeAciV2Fallback(
+                quoteResolution,
+                bookingState,
+                cleanStage,
+                activeTurnPkg,
+                scopeFilteredCatalog,
+                allCatalog,
+                personaConfig,
+                customerMessage,
+                selfPronoun,
+                customerPronoun,
+                null,
+                List.of()
+        );
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> buildContextSafeAciV2Fallback(
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            ConversationState.StructuredBookingState bookingState,
+            String cleanStage,
+            PackageCatalogService.PackageSummary activeTurnPkg,
+            List<PackageCatalogService.PackageSummary> scopeFilteredCatalog,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            com.example.docmind.dto.PagePersonaConfig personaConfig,
+            String customerMessage,
+            String selfPronoun,
+            String customerPronoun,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Before,
+            List<ReciprocalRankFusion.FusedChunk> retrievedChunks
+    ) {
         String sp = (selfPronoun != null && !selfPronoun.isBlank())
                 ? selfPronoun.strip()
                 : (personaConfig != null ? personaConfig.resolvedSelfPronoun() : "em");
@@ -3426,6 +3456,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String careActor = personaConfig != null ? personaConfig.resolvedCareActor() : "chuyên viên";
         String unitNoun = resolveEffectiveUnitNoun(personaConfig, activeTurnPkg, allCatalog, null);
         String shopRef = formatShopReference(sp);
+        String normMsg = customerMessage != null
+                ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
+                : "";
+        String lowerMsg = normMsg.toLowerCase(Locale.ROOT);
 
         // 1. Bảo toàn tuyệt đối ngữ cảnh reply_to.mid
         if (quoteResolution != null && quoteResolution.resolutionState() != CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE) {
@@ -3449,38 +3483,62 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             );
         }
 
-        // 2. Bảo toàn 6 trạng thái Đặt lịch / Đặt hàng tường minh
+        // 2. Khách từ chối dứt khoát hoặc xin tạm dừng cân nhắc (STAGE_6 / EXPLICIT_REFUSAL / POLITE_DEFERRAL) — 0 chào gói, 0 câu hỏi
+        if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)
+                || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
+                || isExplicitConversationClosingDeferral(normMsg)) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ vâng ạ, " + sp + " tôn trọng quyết định của " + cp
+                            + " và xin phép tạm dừng tư vấn tại đây ạ. Khi nào " + cp
+                            + " cần hỗ trợ thêm thông tin, " + cp + " cứ nhắn " + sp + " nhé ạ.",
+                    0
+            ));
+        }
+
+        // 3. Khách đang phàn nàn về quy trình/cách tư vấn, bức xúc hoặc báo sự cố dịch vụ — tuyệt đối CẤM báo giá hay gạ gói!
+        boolean draft2WasFrustrated = draft2Before != null
+                && draft2Before.consultativeProfile() != null
+                && draft2Before.consultativeProfile().emotion() != null
+                && ("FRUSTRATED".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary())
+                    || "IMPATIENT".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary()));
+        boolean isComplaintOrFrustration = isCommunicationStyleComplaintMessage(normMsg)
+                || PrimaryActionRouter.isFrustrationMessage(normMsg)
+                || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(normMsg)
+                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before));
+        if (isComplaintOrFrustration) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + sp + " thành thật xin lỗi " + cp
+                            + " vì trải nghiệm chưa trọn vẹn và phản hồi vừa rồi bị gián đoạn ạ. Để "
+                            + shopRef + " điều chỉnh ngay cách trao đổi và kết nối bộ phận phụ trách hỗ trợ chu đáo nhất cho "
+                            + cp + " nhé ạ.",
+                    0
+            ));
+        }
+
+        // 4. Bảo toàn 6 trạng thái Đặt lịch / Đặt hàng tường minh (hoặc khách chủ động yêu cầu đặt lịch khi timeout)
         if (bookingState != null && bookingState.status() != null
                 && bookingState.status() != ConversationState.BookingStatus.NONE) {
             ConversationState.BookingStatus st = bookingState.status();
-            if (st == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION) {
-                List<PackageCatalogService.PackageSummary> pool = (scopeFilteredCatalog != null && !scopeFilteredCatalog.isEmpty())
-                        ? scopeFilteredCatalog
-                        : (allCatalog != null ? allCatalog : List.of());
-                List<String> opts = new ArrayList<>();
-                for (int i = 0; i < Math.min(3, pool.size()); i++) {
-                    PackageCatalogService.PackageSummary p = pool.get(i);
-                    if (p != null && !p.isAddon()) {
-                        opts.add(formatPackageClarificationOption(p, unitNoun));
-                    }
-                }
-                String optText = opts.size() >= 2
-                        ? String.join(" hay ", opts)
-                        : ("các " + unitNoun + " " + shopRef + " vừa tư vấn");
-                String datePrefix = (bookingState.bookingDate() != null && !bookingState.bookingDate().isBlank())
-                        ? ("Dạ cho mốc " + bookingState.bookingDate() + ", ")
-                        : "Dạ ";
-                String timeAsk = (bookingState.bookingTime() == null || bookingState.bookingTime().isBlank())
-                        ? " và khung giờ thuận tiện"
+            PackageCatalogService.PackageSummary selectedBookingPkg = (bookingState.selectedProductId() != null && allCatalog != null)
+                    ? AdaptiveConversationIntelligence.resolveCatalogProductByFlexibleIdentifier(
+                            bookingState.selectedProductId(), List.of(), allCatalog)
+                    : null;
+            if (st == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION || selectedBookingPkg == null) {
+                String dateNote = (bookingState.bookingDate() != null && !bookingState.bookingDate().isBlank())
+                        ? (" vào " + bookingState.bookingDate()
+                                + (bookingState.bookingTime() != null && !bookingState.bookingTime().isBlank()
+                                    ? (" lúc " + bookingState.bookingTime()) : ""))
                         : "";
                 return List.of(new FanpageBotResponse.ReplyBubble(
-                        datePrefix + cp + " muốn đặt " + optText + timeAsk + " để " + sp + " hỗ trợ chuẩn xác cho " + cp + " ạ?",
+                        "Dạ " + sp + " đã ghi nhận thông tin lịch hẹn" + dateNote + " của " + cp
+                                + " ạ. Hiện phản hồi tự động đang tạm gián đoạn nhẹ, " + cp + " nhắn giúp " + sp
+                                + " tên " + unitNoun + " và khung giờ thuận tiện để " + shopRef + " kiểm tra lịch trống chuẩn xác cho " + cp + " nhé ạ.",
                         0
                 ));
             }
-            if (st == ConversationState.BookingStatus.AWAITING_DATE_OR_TIME && activeTurnPkg != null) {
-                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
-                String price = activeTurnPkg.formattedPriceWithUnit();
+            if (st == ConversationState.BookingStatus.AWAITING_DATE_OR_TIME) {
+                String item = selectedBookingPkg.displayWithUnitNoun(unitNoun);
+                String price = selectedBookingPkg.formattedPriceWithUnit();
                 if (bookingState.bookingDate() != null && !bookingState.bookingDate().isBlank()) {
                     return List.of(new FanpageBotResponse.ReplyBubble(
                             "Dạ " + sp + " hỗ trợ đặt " + item + " (" + price + ") cho " + cp + " vào "
@@ -3495,9 +3553,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         0
                 ));
             }
-            if (st == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK && activeTurnPkg != null) {
-                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
-                String price = activeTurnPkg.formattedPriceWithUnit();
+            if (st == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK) {
+                String item = selectedBookingPkg.displayWithUnitNoun(unitNoun);
+                String price = selectedBookingPkg.formattedPriceWithUnit();
                 String bDate = bookingState.bookingDate() != null ? bookingState.bookingDate() : "ngày yêu cầu";
                 String bTime = bookingState.bookingTime() != null ? bookingState.bookingTime() : "khung giờ yêu cầu";
                 return List.of(new FanpageBotResponse.ReplyBubble(
@@ -3506,62 +3564,276 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         0
                 ));
             }
-            if (st == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION && activeTurnPkg != null) {
-                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+            if (st == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+                String item = selectedBookingPkg.displayWithUnitNoun(unitNoun);
                 return List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ " + shopRef + " đã kiểm tra còn lịch phù hợp cho " + item + ", " + cp + " xác nhận giúp " + sp + " để hoàn tất nhé ạ?",
                         0
                 ));
             }
-            if (st == ConversationState.BookingStatus.CONFIRMED && activeTurnPkg != null) {
-                String item = activeTurnPkg.displayWithUnitNoun(unitNoun);
+            if (st == ConversationState.BookingStatus.CONFIRMED) {
+                String item = selectedBookingPkg.displayWithUnitNoun(unitNoun);
                 return List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ lịch đặt " + item + " của " + cp + " đã được xác nhận chính thức, " + shopRef + " rất mong được đón tiếp " + cp + " ạ.",
                         0
                 ));
             }
         }
-
-        // 3. Tôn trọng tạm dừng (STAGE_6) — không bơm bất kỳ sản phẩm mới nào
-        if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)) {
-            return List.of(
-                    new FanpageBotResponse.ReplyBubble(
-                            "Dạ vâng ạ, " + sp + " đã lưu lại thông tin trao đổi của " + cp + " rồi ạ. Khi nào thuận tiện cần hỗ trợ thêm, " + cp + " cứ nhắn " + sp + " nhé.",
-                            0
-                    ),
-                    new FanpageBotResponse.ReplyBubble(
-                            "Chúc " + cp + " một ngày nhiều niềm vui và thuận lợi ạ!",
-                            2000
-                    )
-            );
+        if (isExplicitBookingRequestForFallback(lowerMsg)) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + sp + " đã ghi nhận yêu cầu đặt lịch của " + cp
+                            + " ạ. Hiện phản hồi đang tạm gián đoạn nhẹ, để " + shopRef
+                            + " kiểm tra lịch trống thực tế và phản hồi xác nhận cho " + cp + " ngay nhé ạ.",
+                    0
+            ));
         }
 
-        // 4. Có sản phẩm cấu trúc phù hợp trong Catalog
-        PackageCatalogService.PackageSummary groundedPkg = activeTurnPkg;
-        if (groundedPkg == null && scopeFilteredCatalog != null) {
-            for (PackageCatalogService.PackageSummary p : scopeFilteredCatalog) {
-                if (p != null && !p.isAddon()) {
-                    groundedPkg = p;
-                    break;
+        // 5. Khách hỏi thông tin vận hành (địa chỉ / cơ sở / giờ mở cửa) — chỉ trả lời địa chỉ đã xác minh, CẤM báo giá 399k!
+        if (isAddressOrOperationalLocationQuestionForFallback(lowerMsg)) {
+            String verifiedLocationSummary = extractVerifiedLocationSummaryFromChunks(retrievedChunks);
+            if (!verifiedLocationSummary.isEmpty()) {
+                return List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ hiện " + shopRef + " có cơ sở tại: " + verifiedLocationSummary
+                                + ". Không biết " + cp + " tiện di chuyển qua khu vực nào hơn ạ?",
+                        0
+                ));
+            }
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ hiện phản hồi tự động của " + shopRef + " đang tạm gián đoạn nhẹ nên chưa tải kịp chi tiết địa chỉ cơ sở, "
+                            + cp + " nhắn giúp " + sp + " khu vực " + cp + " đang ở để " + careActor + " gửi vị trí gần nhất ngay nhé ạ.",
+                    0
+            ));
+        }
+
+        // 6. Chỉ trả lời bằng dữ liệu giá Catalog khi xác định chắc chắn khách đang hỏi giá / gói dịch vụ / ngân sách
+        if (isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before)) {
+            List<PackageCatalogService.PackageSummary> pool = (allCatalog != null && !allCatalog.isEmpty())
+                    ? allCatalog.stream().filter(p -> p != null && !p.isAddon()).toList()
+                    : (scopeFilteredCatalog != null
+                        ? scopeFilteredCatalog.stream().filter(p -> p != null && !p.isAddon()).toList()
+                        : List.of());
+            PackageCatalogService.PackageSummary specificMatchedPkg = findExplicitlyMentionedPackageInMessage(normMsg, pool);
+            if (specificMatchedPkg != null) {
+                return buildDeterministicQuotedPackageReplyBubbles(
+                        specificMatchedPkg,
+                        customerMessage,
+                        sp,
+                        cp,
+                        personaConfig
+                );
+            }
+            if (pool.size() == 1 || (pool.isEmpty() && activeTurnPkg != null)) {
+                PackageCatalogService.PackageSummary singlePkg = !pool.isEmpty() ? pool.get(0) : activeTurnPkg;
+                return buildDeterministicQuotedPackageReplyBubbles(
+                        singlePkg,
+                        customerMessage,
+                        sp,
+                        cp,
+                        personaConfig
+                );
+            }
+            if (pool.size() >= 2) {
+                String multiGroupSummary = buildMultiGroupStartingPriceSummary(pool, unitNoun);
+                if (!multiGroupSummary.isEmpty()) {
+                    return List.of(new FanpageBotResponse.ReplyBubble(
+                            "Dạ hiện " + shopRef + " có các nhóm dịch vụ với mức giá niêm yết từ: "
+                                    + multiGroupSummary + " ạ. Không biết hiện tại " + cp
+                                    + " đang muốn ưu tiên chăm sóc hay tìm hiểu nhóm dịch vụ nào để " + sp + " báo chi tiết chuẩn xác nhất ạ?",
+                            0
+                    ));
+                }
+            }
+            if (activeTurnPkg != null) {
+                return buildDeterministicQuotedPackageReplyBubbles(
+                        activeTurnPkg,
+                        customerMessage,
+                        sp,
+                        cp,
+                        personaConfig
+                );
+            }
+        }
+
+        // 7. Fallback trung tính bảo toàn ngữ cảnh khi không đủ thông tin chắc chắn (không tự tạo hành động bán hàng mới)
+        return List.of(new FanpageBotResponse.ReplyBubble(
+                "Dạ " + sp + " xin lỗi " + cp + " vì phản hồi vừa rồi bị gián đoạn nhẹ ạ. "
+                        + BubbleTextSanitizer.capitalizeFirstLetter(cp) + " nhắn lại giúp " + sp
+                        + " nội dung đang quan tâm hoặc để đội ngũ " + careActor + " của " + shopRef
+                        + " hỗ trợ trực tiếp cho " + cp + " ngay nhé ạ.",
+                0
+        ));
+    }
+
+    public static String resolveFallbackActualSentSpeechAct(
+            String customerMessage,
+            ConversationState.StructuredBookingState bookingState,
+            CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution quoteResolution,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Before
+    ) {
+        String normMsg = customerMessage != null
+                ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
+                : "";
+        String lowerMsg = normMsg.toLowerCase(Locale.ROOT);
+        if (quoteResolution != null && quoteResolution.resolutionState() != CleanAgentCatalogAndPromptBuilder.ReplyResolutionState.NONE) {
+            return "FALLBACK_QUOTED_CONTEXT";
+        }
+        if (CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
+                || isExplicitConversationClosingDeferral(normMsg)) {
+            return "FALLBACK_RESPECTED_PAUSE";
+        }
+        boolean draft2WasFrustrated = draft2Before != null
+                && draft2Before.consultativeProfile() != null
+                && draft2Before.consultativeProfile().emotion() != null
+                && ("FRUSTRATED".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary())
+                    || "IMPATIENT".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary()));
+        if (isCommunicationStyleComplaintMessage(normMsg)
+                || PrimaryActionRouter.isFrustrationMessage(normMsg)
+                || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(normMsg)
+                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before))) {
+            return "FALLBACK_SERVICE_RECOVERY";
+        }
+        if ((bookingState != null && bookingState.status() != null && bookingState.status() != ConversationState.BookingStatus.NONE)
+                || isExplicitBookingRequestForFallback(lowerMsg)) {
+            return "FALLBACK_BOOKING_HOLD";
+        }
+        if (isAddressOrOperationalLocationQuestionForFallback(lowerMsg)) {
+            return "FALLBACK_OPERATIONAL_INFO";
+        }
+        if (isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before)) {
+            return "FALLBACK_PRICE_INFO";
+        }
+        return "FALLBACK_INTERRUPTION_APOLOGY";
+    }
+
+    private static boolean isExplicitBookingRequestForFallback(String lowerMsg) {
+        if (lowerMsg == null || lowerMsg.isBlank()) {
+            return false;
+        }
+        if (lowerMsg.matches("(?isU).*\\b(?:không|ko|chưa|khỏi|đừng)\\s+(?:muốn\\s+|cần\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*")) {
+            return false;
+        }
+        return lowerMsg.matches("(?isU).*\\b(đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|book\\s+lịch|chốt\\s+lịch|đăng\\s+ký\\s+lịch|hẹn\\s+lịch)\\b.*");
+    }
+
+    private static boolean isAddressOrOperationalLocationQuestionForFallback(String lowerMsg) {
+        if (lowerMsg == null || lowerMsg.isBlank()) {
+            return false;
+        }
+        return lowerMsg.matches("(?isU).*\\b(địa\\s+chỉ|ở\\s+đâu|chi\\s+nhánh|cơ\\s+sở\\s+nào|mấy\\s+cơ\\s+sở|giờ\\s+mở\\s+cửa|mấy\\s+giờ\\s+(?:mở|đóng)|chỗ\\s+đỗ\\s+xe|gửi\\s+xe)\\b.*")
+                && !lowerMsg.matches("(?isU).*\\b(giá|bao\\s+nhiêu\\s+tiền|mấy\\s+tiền|bảng\\s+giá)\\b.*");
+    }
+
+    private static boolean isDirectPriceOrPackageInquiryForFallback(
+            String normMsg,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Before
+    ) {
+        if (normMsg == null || normMsg.isBlank()) {
+            return false;
+        }
+        if (isCommunicationStyleComplaintMessage(normMsg)
+                || PrimaryActionRouter.isFrustrationMessage(normMsg)
+                || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
+                || isExplicitConversationClosingDeferral(normMsg)) {
+            return false;
+        }
+        String lower = normMsg.toLowerCase(Locale.ROOT);
+        if (lower.matches("(?isU)^giá\\s*[?？!.]*$")
+                || lower.matches("(?isU).*\\b(giá|bảng\\s+giá|báo\\s+giá|chi\\s+phí|mấy\\s+tiền|bao\\s+nhiêu\\s+tiền|bao\\s+nhiêu\\s+1|bao\\s+nhiêu\\s+một|rổ\\s+giá|ưu\\s+đãi|khuyến\\s+mãi|\\d{2,4}\\s*k)\\b.*")
+                || lower.matches("(?isU).*\\b(?:có\\s+gói\\s+nào|gói\\s+nào|những\\s+gói\\s+nào|các\\s+gói)\\b.*")) {
+            return true;
+        }
+        if (draft2Before != null && draft2Before.conversationalContext() != null
+                && draft2Before.conversationalContext().unresolvedRequests() != null) {
+            boolean hasOpenPriceReq = draft2Before.conversationalContext().unresolvedRequests().stream()
+                    .anyMatch(r -> r != null
+                            && r.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                            && r.requestSummary() != null
+                            && r.requestSummary().toLowerCase(Locale.ROOT).matches("(?isU).*\\b(giá|bảng\\s+giá|chi\\s+phí|gói)\\b.*"));
+            if (hasOpenPriceReq && lower.matches("(?isU).*\\b(sao|thế\\s+nào|như\\s+nào|báo\\s+lại|xin\\s+lại|vậy)\\b.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static PackageCatalogService.PackageSummary findExplicitlyMentionedPackageInMessage(
+            String normMsg,
+            List<PackageCatalogService.PackageSummary> pool
+    ) {
+        if (normMsg == null || normMsg.isBlank() || pool == null || pool.isEmpty()) {
+            return null;
+        }
+        String lower = normMsg.toLowerCase(Locale.ROOT);
+        Set<Long> mentionedPrices = extractPricesInVndFromText(normMsg);
+        for (PackageCatalogService.PackageSummary p : pool) {
+            if (p == null) continue;
+            if (p.priceAmountVnd() > 0L && mentionedPrices.contains(p.priceAmountVnd())) {
+                return p;
+            }
+            String canon = p.canonicalName() != null ? p.canonicalName().strip().toLowerCase(Locale.ROOT) : "";
+            String noPrefix = canon.replaceFirst("^(?:gói|liệu\\s+trình|dịch\\s+vụ)\\s+", "").strip();
+            if ((!canon.isEmpty() && canon.length() >= 5 && lower.contains(canon))
+                    || (!noPrefix.isEmpty() && noPrefix.length() >= 6 && lower.contains(noPrefix))) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private static String buildMultiGroupStartingPriceSummary(
+            List<PackageCatalogService.PackageSummary> pool,
+            String unitNoun
+    ) {
+        if (pool == null || pool.isEmpty()) {
+            return "";
+        }
+        java.util.Map<String, PackageCatalogService.PackageSummary> minPkgByGroup = new java.util.LinkedHashMap<>();
+        for (PackageCatalogService.PackageSummary p : pool) {
+            if (p == null || p.isAddon() || p.priceAmountVnd() <= 0L) continue;
+            String groupKey = CleanAgentCatalogAndPromptBuilder.resolveCatalogServiceGroup(p);
+            PackageCatalogService.PackageSummary existing = minPkgByGroup.get(groupKey);
+            if (existing == null || p.priceAmountVnd() < existing.priceAmountVnd()) {
+                minPkgByGroup.put(groupKey, p);
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        for (PackageCatalogService.PackageSummary p : minPkgByGroup.values()) {
+            String name = p.canonicalLabel() != null ? p.canonicalLabel().strip() : p.displayWithUnitNoun(unitNoun);
+            String price = resolveFormattedPricePreservingBillingUnit(p);
+            String dur = (p.durationLabel() != null && !p.durationLabel().isBlank()
+                    && !name.toLowerCase(Locale.ROOT).contains(p.durationLabel().toLowerCase(Locale.ROOT)))
+                    ? (" (" + p.durationLabel().strip() + ")")
+                    : "";
+            parts.add(name + dur + " giá " + price);
+            if (parts.size() >= 3) {
+                break;
+            }
+        }
+        return String.join("; ", parts);
+    }
+
+    private static String extractVerifiedLocationSummaryFromChunks(List<ReciprocalRankFusion.FusedChunk> retrievedChunks) {
+        if (retrievedChunks == null || retrievedChunks.isEmpty()) {
+            return "";
+        }
+        List<String> locations = new ArrayList<>();
+        Pattern addrLinePat = Pattern.compile(
+                "(?im)^\\s*(?:[-*•]|\\d+\\.)?\\s*([^\\n]{6,120}\\b(?:số\\s+\\d+|phố|đường|quận|phường|hà\\s+nội|tp\\.?\\s*hcm|cơ\\s+sở|chi\\s+nhánh)[^\\n]{0,80})$"
+        );
+        for (ReciprocalRankFusion.FusedChunk fc : retrievedChunks) {
+            if (fc == null || fc.chunk() == null || fc.chunk().text() == null) continue;
+            Matcher m = addrLinePat.matcher(fc.chunk().text());
+            while (m.find()) {
+                String line = m.group(1).replaceAll("[*|#`]+", "").replaceAll("\\s{2,}", " ").strip();
+                if (line.length() >= 10 && line.length() <= 130 && !locations.contains(line)) {
+                    locations.add(line);
+                    if (locations.size() >= 3) {
+                        return String.join("; ", locations);
+                    }
                 }
             }
         }
-        if (groundedPkg != null) {
-            return buildDeterministicQuotedPackageReplyBubbles(
-                    groundedPkg,
-                    customerMessage,
-                    sp,
-                    cp,
-                    personaConfig
-            );
-        }
-
-        // 5. Fallback trung tính khi chưa có sản phẩm khớp trực tiếp
-        return List.of(new FanpageBotResponse.ReplyBubble(
-                "Dạ hiện kết nối hệ thống của " + shopRef + " đang phản hồi chậm, " + cp + " nhắn giúp " + sp
-                        + " nhu cầu hoặc tên " + unitNoun + " đang quan tâm để đội ngũ " + careActor + " hỗ trợ " + cp + " chuẩn xác nhất nhé ạ.",
-                0
-        ));
+        return String.join("; ", locations);
     }
 
     private static PackageCatalogService.PackageSummary resolveReferencedPackageForBubble(
@@ -5008,6 +5280,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\bvăn\\s+mẫu\\s+(?:thế|quá|vậy)\\b|\\bvăn\\s+vở\\s+(?:thế|quá)\\b|\\bnói\\s+nghe\\s+sến\\b|"
             + "\\btư\\s+vấn\\s+chán\\s+(?:thế|quá|vậy)\\b|\\b(?:chẳng|chả|không)\\s+hiểu\\s+ý\\s+khách\\b|"
             + "\\btụt\\s+(?:hứng|mood|cảm\\s+xúc)\\s+quá\\b|"
+            + "\\bchưa\\s+tìm\\s+hiểu\\s+(?:gì|j|nhu\\s+cầu|ý)(?:\\s+về\\s+(?:kh|khách|khách\\s+hàng|mình|anh|chị))?\\b|"
+            + "\\btự\\s+nhiên\\s+(?:xả|tung|nhồi|bơm|đổ)\\s+(?:cả\\s+đống|hàng\\s+loạt|một\\s+đống)?\\s*thông\\s+tin\\b|"
+            + "\\bxả\\s+(?:cả\\s+đống|một\\s+đống|hàng\\s+loạt)\\s+thông\\s+tin\\b|"
+            + "\\b(?:tự\\s+nhiên|chưa\\s+gì\\s+đã|rồi\\s+lại)\\s+tư\\s+vấn\\b|"
+            + "\\btự\\s+(?:khai|khia|nhận|xưng)\\s+(?:mình\\s+)?là\\s+(?:ai|bot|trợ\\s+lý\\s+ai|chatbot)\\b|"
+            + "\\b(?:kh|khách|khách\\s+hàng)\\s+chạy\\s+mất\\s+dép\\b|"
+            + "\\b(?:nch|nói\\s+chuyện|trả\\s+lời|tư\\s+vấn)\\s+(?:không|ko|k|chẳng|chả)\\s+có\\s+(?:tý|tí|chút|miếng)?\\s*(?:cảm\\s+xúc|chiến\\s+lược|nghệ\\s+thuật|tâm|hồn)\\b|"
+            + "\\b(?:không|ko|k|chẳng|chả)\\s+có\\s+(?:tý|tí|chút)?\\s*(?:chiến\\s+lược|nghệ\\s+thuật)\\s+(?:hay\\s+nghệ\\s+thuật\\s+)?(?:bán\\s+hàng|tư\\s+vấn|sale)\\b|"
             + "\\b(?:được|đc)\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train|bày|chỉ)\\s+(?:phải\\s+|để\\s+|cách\\s+)?(?:reply|trả\\s+lời|nói|nhắn|tư\\s+vấn|đáp)\\b|"
             + "\\b(?:trả\\s+lời|reply|nói\\s+chuyện|tư\\s+vấn)\\s+theo\\s+(?:kịch\\s+bản|bài|mẫu|công\\s+thức|script)\\b|"
             + "\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản|lòng)\\b|"
@@ -5020,6 +5300,41 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\btheo\\s+(?:kịch\\s+bản|công\\s+thức|script)\\b|\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản)\\b|"
             + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\b)"
     );
+
+    private static final Pattern DIRECT_BOT_IDENTITY_VERIFICATION_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:bạn|em|mình|đây)\\s+(?:đang\\s+)?là\\s+(?:bot|ai|trợ\\s+lý\\s+(?:ai|ảo)|máy|người\\s+thật|nhân\\s+viên\\s+thật)\\b|"
+            + "\\b(?:bot|ai|máy)\\s+hay\\s+(?:người\\s+thật|nhân\\s+viên)\\b|"
+            + "\\b(?:người\\s+thật|nhân\\s+viên)\\s+hay\\s+(?:bot|ai|máy)\\b|"
+            + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\s*(?:à|hả|vậy|đấy\\s+à|phải\\s+không)\\b|"
+            + "\\b(?:được|đc)\\s+(?:dạy|huấn\\s+luyện|lập\\s+trình|training|train)\\b)"
+    );
+
+    private static final Pattern CRITICISM_OF_UNSOLICITED_AI_DISCLOSURE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:sao\\s+lại\\s+|tự\\s+nhiên\\s+|tự\\s+dưng\\s+)?tự\\s+(?:khai|khia|nhận|xưng)\\s+(?:mình\\s+)?là\\s+(?:ai|bot|trợ\\s+lý\\s+ai|chatbot)\\b"
+    );
+
+    private static final Pattern UNSOLICITED_BOT_AI_SELF_DISCLOSURE_SENTENCE_OR_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:vâng\\s+)?(?:em|mình)\\s+(?:chỉ\\s+|hiện\\s+)?là\\s+(?:trợ\\s+lý\\s+(?:ai|ảo)|chatbot|bot|ai)(?:\\s+[^.!?,;\\n]{0,95})?(?:[.,;]|\\s+nên\\s+|\\s+và\\s+|$)"
+    );
+
+    public static boolean isDirectBotIdentityOrTrainingQuestion(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        if (CRITICISM_OF_UNSOLICITED_AI_DISCLOSURE_PATTERN.matcher(norm).find()) {
+            return false;
+        }
+        return DIRECT_BOT_IDENTITY_VERIFICATION_PATTERN.matcher(norm).find();
+    }
+
+    public static boolean isProcessOrConsultationFeedbackComplaint(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        return isCommunicationStyleComplaintMessage(customerMessage)
+                && !isDirectBotIdentityOrTrainingQuestion(customerMessage);
+    }
 
     private static final Pattern ACUTE_OR_NEUROLOGICAL_HEALTH_SYMPTOM_PATTERN = Pattern.compile(
             "(?isU)\\b(?:đau\\s+đầu|nhức\\s+đầu|chóng\\s+mặt|hoa\\s+mắt|choáng\\s+váng|mất\\s+thăng\\s+bằng|"
@@ -5052,7 +5367,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     );
 
     private static final Pattern INTERNAL_SKU_FALLBACK_TOKEN_PATTERN = Pattern.compile(
-            "(?i)\\b(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\b"
+            "(?i)\\b(?:(?:HN|HP|QN|SG|HCM)_)?[A-Z]{2,4}0[1-9]\\b"
     );
 
     public static boolean isUnconfirmedHealthSymptomWithoutServiceDemand(
@@ -5175,26 +5490,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
             }
         }
-        // Fallback mặc định cho họ mã nội bộ DS01..DS09 / NS01..NS09 / ADD01..ADD09 kể cả khi catalog chưa truyền vào
-        java.util.Map<String, String> defaultKnownNames = java.util.Map.ofEntries(
-                java.util.Map.entry("DS01", "Lấy ráy tai cơ bản"),
-                java.util.Map.entry("DS02", "Gói dưỡng sinh cơ bản"),
-                java.util.Map.entry("DS03", "Gói dưỡng sinh cao cấp"),
-                java.util.Map.entry("DS04", "Gói gội kết hợp spa thư giãn"),
-                java.util.Map.entry("DS05", "Gói dưỡng sinh nâng cao"),
-                java.util.Map.entry("DS06", "Gói dưỡng sinh chuyên sâu"),
-                java.util.Map.entry("NS01", "Massage cơ bản"),
-                java.util.Map.entry("NS02", "Massage cơ bản nâng cao"),
-                java.util.Map.entry("NS03", "Massage phục hồi"),
-                java.util.Map.entry("NS04", "Massage kết hợp gội dưỡng sinh")
-        );
-        for (java.util.Map.Entry<String, String> e : defaultKnownNames.entrySet()) {
-            skuToDisplayName.putIfAbsent(e.getKey(), e.getValue());
-            for (String prefix : List.of("HN_", "HP_", "QN_", "SG_", "HCM_")) {
-                skuToDisplayName.putIfAbsent(prefix + e.getKey(), e.getValue());
-            }
-        }
-
         List<String> sortedCodes = new ArrayList<>(skuToDisplayName.keySet());
         sortedCodes.sort((a, b) -> Integer.compare(b.length(), a.length()));
 
@@ -5209,13 +5504,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 String disp = skuToDisplayName.getOrDefault(code, "");
                 String cleanDispAfterGoi = disp.replaceFirst("(?iU)^gói\\s+", "").strip();
 
-                // 1. Gỡ ngoặc đơn / ngoặc vuông chỉ chứa mã SKU: "(DS02)", "(mã DS02)", "[NS01]"
+                // 1. Gỡ ngoặc đơn / ngoặc vuông chỉ chứa mã SKU
                 txt = txt.replaceAll("(?iU)\\s*[\\(\\[]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*[\\)\\]]", "");
-                // 2. Rút gọn ngoặc có mã SKU kèm giá/thời lượng: "(NS03 - 580k/100p)" -> "(580k/100p)"
+                // 2. Rút gọn ngoặc có mã SKU kèm giá/thời lượng
                 txt = txt.replaceAll("(?iU)\\(\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*[-–—:|,]\\s*([^)]+)\\)", "($1)");
                 txt = txt.replaceAll("(?iU)\\(\\s*([^)]+?)\\s*[-–—:|,]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?" + Pattern.quote(code) + "\\s*\\)", "($1)");
 
-                // 3. Nếu viết "gói DS02" / "liệu trình NS01" mà chưa có tên gói ngay cạnh -> thế bằng tên hiển thị của gói
+                // 3. Nếu viết "gói <SKU>" / "liệu trình <SKU>" mà chưa có tên gói ngay cạnh -> thế bằng tên hiển thị của gói
                 if (!cleanDispAfterGoi.isEmpty()
                         && !txt.toLowerCase(Locale.ROOT).contains(cleanDispAfterGoi.toLowerCase(Locale.ROOT))) {
                     txt = txt.replaceAll(
@@ -5229,14 +5524,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     );
                 }
 
-                // 4. Xóa mọi token mã SKU đứng lẻ còn sót lại ("mã DS02", "DS01..DS06", "NS01")
+                // 4. Xóa mọi token mã SKU đứng lẻ còn sót lại
                 txt = txt.replaceAll("(?iU)\\bmã(?:\\s+gói)?\\s*[:\\-]?\\s*" + Pattern.quote(code) + "\\b\\s*[-–—:]?", "");
                 txt = txt.replaceAll("(?iU)\\b" + Pattern.quote(code) + "\\b\\s*[-–—:]?", "");
             }
-            // Quét thêm họ DS0x/NS0x/ADD0x phòng trường hợp ngoài danh sách trên
+            // Quét thêm mẫu mã SKU nội bộ tổng quát phòng trường hợp catalog truyền vào rỗng
             if (INTERNAL_SKU_FALLBACK_TOKEN_PATTERN.matcher(txt).find()) {
-                txt = txt.replaceAll("(?iU)\\s*[\\(\\[]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\s*[\\)\\]]", "");
-                txt = txt.replaceAll("(?iU)\\b(?:(?:HN|HP|QN|SG|HCM)_)?(?:DS0[1-9]|NS0[1-9]|ADD0[1-9])\\b\\s*[-–—:]?", "");
+                txt = txt.replaceAll("(?iU)\\s*[\\(\\[]\\s*(?:mã(?:\\s+gói)?\\s*[:\\-]?\\s*)?(?:(?:HN|HP|QN|SG|HCM)_)?[A-Z]{2,4}0[1-9]\\s*[\\)\\]]", "");
+                txt = txt.replaceAll("(?iU)\\b(?:(?:HN|HP|QN|SG|HCM)_)?[A-Z]{2,4}0[1-9]\\b\\s*[-–—:]?", "");
             }
             txt = txt.replaceAll("[ \\t]{2,}", " ")
                      .replaceAll("\\s+([,.;:!?])", "$1")
@@ -5531,7 +5826,22 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
 
             if (isStyleComplaint) {
-                // 2. Nếu lượt liền trước đã mở đầu bằng "Dạ em xin lỗi...", cấm lặp lại cấu trúc xin lỗi hành chính
+                // 2. Nếu khách đang phàn nàn về quy trình/cách tư vấn (chưa hỏi danh tính AI/bot), gỡ bỏ mệnh đề tự khai "Dạ em là trợ lý AI..."
+                if (!isDirectBotIdentityOrTrainingQuestion(customerMessage)) {
+                    String strippedAiClause = UNSOLICITED_BOT_AI_SELF_DISCLOSURE_SENTENCE_OR_CLAUSE_PATTERN.matcher(txt).replaceFirst("").strip();
+                    if (!strippedAiClause.equals(txt)) {
+                        if (strippedAiClause.isEmpty()) {
+                            txt = "";
+                        } else if (!prevHadAdminApology && !strippedAiClause.toLowerCase(Locale.ROOT).contains("xin lỗi")) {
+                            txt = "Dạ " + safeSelf + " xin lỗi " + safeCust + " ạ, "
+                                    + Character.toLowerCase(strippedAiClause.charAt(0)) + strippedAiClause.substring(1);
+                        } else {
+                            txt = prependPoliteDaNaturally(BubbleTextSanitizer.capitalizeFirstLetter(strippedAiClause));
+                        }
+                    }
+                }
+
+                // 3. Nếu lượt liền trước đã mở đầu bằng "Dạ em xin lỗi...", cấm lặp lại cấu trúc xin lỗi hành chính
                 if (idx == 0 && prevHadAdminApology && ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(txt).find()) {
                     txt = ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN.matcher(txt).replaceFirst("").strip();
                     String prefix = "Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ";
@@ -5540,12 +5850,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                             : (prefix + ". " + Character.toUpperCase(txt.charAt(0)) + txt.substring(1));
                 }
 
-                // 3. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc NO_CTA)
+                // 4. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc NO_CTA)
                 String[] sentences = txt.split("(?<=[.!?？])\\s+");
                 List<String> kept = new ArrayList<>();
                 for (String s : sentences) {
                     String trimmed = s.strip();
                     if (trimmed.isEmpty()) continue;
+                    if (!isDirectBotIdentityOrTrainingQuestion(customerMessage)
+                            && trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(?:em|mình)\\s+(?:chỉ\\s+)?là\\s+(?:trợ\\s+lý\\s+(?:ai|ảo)|chatbot|bot)\\b.*")) {
+                        continue;
+                    }
                     boolean isQuestion = trimmed.endsWith("?") || trimmed.endsWith("？");
                     boolean isSalesInvite = TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(trimmed).find()
                             || trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đặt\\s+lịch|khung\\s+giờ|chọn\\s+gói|tham\\s+khảo\\s+gói|giữ\\s+chỗ)\\b.*");

@@ -290,7 +290,10 @@ public class ConversationInboxService {
                 fanpageBotService.getAgentBrainService().evictInMemoryCacheOnly(effPageId, psid);
             }
             messageRepository.deleteBySessionId(s.getId());
-            sessionRepository.deleteById(s.getId());
+            ConversationSessionOptimisticMergeCoordinator effMerge = sessionMergeCoordinator != null
+                    ? sessionMergeCoordinator
+                    : ConversationSessionOptimisticMergeCoordinator.forMockOrPassthroughRepository(sessionRepository);
+            effMerge.deleteSimulatorSessionById(s.getId());
             deletedSessions++;
         }
 
