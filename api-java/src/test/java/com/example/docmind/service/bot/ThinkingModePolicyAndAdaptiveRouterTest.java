@@ -683,9 +683,12 @@ class ThinkingModePolicyAndAdaptiveRouterTest {
                 turn4Msg,
                 null, new ArrayList<>(history), List.of(DOC_ID), null, null, null, 5, null, false, null, null
         ));
-        assertThat(turn4Resp.replyBubbles()).hasSize(2);
-        assertThat(turn4Resp.replyBubbles().get(0).text()).contains("?");
-        assertThat(turn4Resp.replyBubbles().get(1).text().toLowerCase(java.util.Locale.ROOT))
+        // P3.7-B Global Question Invariant: câu hỏi ở Bubble 1 (khi Bubble 2 còn thông tin) được dời về cuối bubble cuối;
+        // Bubble 1 rỗng sau khi dời câu hỏi bị loại bỏ -> 1 bubble, đúng 1 dấu "?" ở cuối.
+        assertThat(turn4Resp.replyBubbles()).hasSize(1);
+        assertThat(turn4Resp.replyBubbles().get(0).text().chars().filter(c -> c == '?').count()).isEqualTo(1L);
+        assertThat(turn4Resp.replyBubbles().get(0).text().strip()).endsWith("?");
+        assertThat(turn4Resp.replyBubbles().get(0).text().toLowerCase(java.util.Locale.ROOT))
                 .contains("239k")
                 .contains("dưỡng sinh cơ bản")
                 .contains("60 phút");

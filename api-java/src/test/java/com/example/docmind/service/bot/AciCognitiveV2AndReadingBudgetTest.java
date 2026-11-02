@@ -2029,7 +2029,7 @@ class AciCognitiveV2AndReadingBudgetTest {
             assertThat(CleanAgentCatalogAndPromptBuilder.getActiveAciPromptVersion())
                     .isEqualTo(CleanAgentCatalogAndPromptBuilder.IN_CODE_ACI_V2_PROMPT_VERSION);
             assertThat(CleanAgentCatalogAndPromptBuilder.getActiveAciPromptSource()).isEqualTo("IN_CODE_FALLBACK");
-            assertThat(builtFallback).contains("CUSTOMER UNDERSTANDING MODEL (DRAFT 2");
+            assertThat(builtFallback).contains("CUSTOMER UNDERSTANDING (ĐA TÍN HIỆU");
         } finally {
             CleanAgentCatalogAndPromptBuilder.setExternalAciPromptPathForTest(null);
             java.nio.file.Files.deleteIfExists(tempPrompt);
@@ -2246,7 +2246,7 @@ class AciCognitiveV2AndReadingBudgetTest {
         String inCodeBody = CleanAgentCatalogAndPromptBuilder.getInCodeAciPromptTemplate().strip();
 
         assertThat(extVersion)
-                .isEqualTo("aci-v2.9-p37a-decision-integrity")
+                .isEqualTo("aci-v2.10-p37b-consultative-journey")
                 .isEqualTo(CleanAgentCatalogAndPromptBuilder.IN_CODE_ACI_V2_PROMPT_VERSION);
         assertThat(extBody).isEqualTo(inCodeBody);
         assertThat(extBody)

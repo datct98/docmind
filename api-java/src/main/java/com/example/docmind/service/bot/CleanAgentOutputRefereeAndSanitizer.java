@@ -4199,6 +4199,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (violations.stream().anyMatch(v -> v.startsWith("FORBIDDEN_MEDICAL_CLAIM") || v.startsWith("EXTREME_MEDICAL_CURE_CLAIM"))) {
             sb.append("- Tuyệt đối KHÔNG cam kết y khoa hay cam kết dứt điểm triệu chứng cực đoan (\"chữa khỏi bệnh\", \"điều trị dứt điểm\", \"chỉ mất 15 phút là hết đau vai gáy\", \"cam kết 1 buổi hết hẳn đau\"); chỉ nêu đúng quy cách thời lượng gói hoặc minh họa cảm nhận thư giãn nhẹ nhõm tự nhiên.\n");
         }
+        if (violations.stream().anyMatch(v -> v.startsWith("ABSOLUTE_CLINICAL_OUTCOME_GUARANTEE"))) {
+            sb.append("- KHÔNG cam kết \"không đau\" hay chắc chắn hết triệu chứng/xử lý xong trong 1 lần hẹn; chỉ nêu đúng quy trình hỗ trợ giảm khó chịu có trong nguồn, nói rõ cảm nhận tùy tình trạng thực tế và việc chọn phương pháp do chuyên gia/bác sĩ quyết định sau khi thăm khám trực tiếp.\n");
+        }
         if (violations.stream().anyMatch(v -> v.startsWith("UNVERIFIED_PAYMENT_CONFIRMATION_CLAIM"))) {
             sb.append("- CHƯA ĐỐI SOÁT GIAO DỊCH THỰC TẾ (`UNVERIFIED_PAYMENT_CONFIRMATION_CLAIM`): TUYỆT ĐỐI CẤM tự xác nhận 'bên em đã nhận được tiền' hoặc 'khoản chuyển khoản đã vào tài khoản'. Chỉ ghi nhận lời khách báo, hứa chuyển bộ phận thu ngân đối soát và phản hồi ngay khi có xác nhận.\n");
         }
@@ -5155,6 +5158,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             addUniqueViolation(violations, "UPWARD_PRICE_PITCH_ON_COST_OBJECTION");
         }
 
+        // P3.7-B: Rào chắn an toàn lâm sàng đa ngành — cấm cam kết "không đau", cam kết chắc chắn hết triệu chứng
+        // hoặc cam kết kết quả xử lý trong 1 lần hẹn (chỉ được nêu quy trình hỗ trợ đã xác thực từ nguồn).
+        if (detectAbsoluteClinicalOutcomeGuarantee(combinedText)) {
+            addUniqueViolation(violations, "ABSOLUTE_CLINICAL_OUTCOME_GUARANTEE");
+        }
+
         // Unit P1.3 / P2.3: Khi khách phàn nàn về cách nói chuyện hoặc hỏi xoáy kịch bản của bot -> bắt buộc NO_CTA, cấm lặp xin lỗi hành chính, cấm câu hỏi mời đặt lịch/chọn gói ở cuối câu
         if (isCommunicationStyleComplaintMessage(originalCustomerMessage)) {
             boolean nonNoCtaPlan = reflection != null
@@ -5553,7 +5562,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             boolean isOpeningTurn
     ) {
         if (bubbles == null || bubbles.size() <= 1) {
-            return bubbles != null ? bubbles : List.of();
+            return bubbles != null ? enforceGlobalSingleTrailingQuestionAcrossBubbles(bubbles) : List.of();
         }
         // Bước 1: Luôn gộp mọi bong bóng kết thúc bằng dấu ":" vào bong bóng liền sau bằng "\n"
         List<FanpageBotResponse.ReplyBubble> mergedColon = new ArrayList<>(bubbles.size());
@@ -5576,14 +5585,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             i++;
         }
 
-        // Bước 2: Ở lượt 1 khi khách hỏi thẳng giá/vận hành ngắn ("Massage toàn thân mấy tiền?", "Giá?"),
-        // nếu bubble 0 chỉ là câu chào dẫn nhập không chứa giá còn bubble 1 là câu báo giá -> gộp vào bubble báo giá (1–2 bubbles)
+        // Bước 2: Ở lượt 1 khi khách hỏi thẳng giá/vận hành ngắn (hỏi giá chung hoặc giá một nhóm dịch vụ):
+        // P3.7-B — chỉ gộp bubble 0 vào bubble báo giá khi bubble 0 là câu dẫn cụt/quá ngắn (VD "Dạ chào mình ạ.");
+        // nếu bubble 0 đã là lời chào thương hiệu hoàn chỉnh thì GIỮ 2 nhịp tách biệt (tránh lặp "Dạ chào... Dạ bên em...").
         if (isOpeningTurn
                 && mergedColon.size() >= 2
                 && CleanAgentCatalogAndPromptBuilder.isDirectTurnOnePriceOrOperationalQuestion(customerMessage)) {
             String b0 = mergedColon.get(0).text().strip();
             String b1 = mergedColon.get(1).text().strip();
-            if (!hasQuotedPriceInText(b0) && hasQuotedPriceInText(b1)) {
+            boolean b0IsBareLeadIn = b0.length() < OPENING_COMPLETE_GREETING_MIN_CHARS;
+            if (!hasQuotedPriceInText(b0) && hasQuotedPriceInText(b1) && b0IsBareLeadIn) {
                 String joiner = (b0.endsWith(":") || b0.endsWith("：")) ? "\n" : " ";
                 List<FanpageBotResponse.ReplyBubble> collapsed = new ArrayList<>(mergedColon.size() - 1);
                 collapsed.add(new FanpageBotResponse.ReplyBubble(b0 + joiner + b1, mergedColon.get(0).typingDelayMs()));
@@ -5592,19 +5603,22 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
                 mergedColon = collapsed;
             }
+            // Giữ tối đa 2 bubble: gộp các bubble phía sau vào bubble nội dung (bubble chào hoàn chỉnh đứng riêng).
             while (mergedColon.size() > 2) {
-                String first = mergedColon.get(0).text().strip();
-                String second = mergedColon.get(1).text().strip();
-                List<FanpageBotResponse.ReplyBubble> nextList = new ArrayList<>(mergedColon.size() - 1);
-                nextList.add(new FanpageBotResponse.ReplyBubble(first + " " + second, mergedColon.get(0).typingDelayMs()));
-                for (int k = 2; k < mergedColon.size(); k++) {
-                    nextList.add(mergedColon.get(k));
-                }
+                int a = mergedColon.size() - 2;
+                String first = mergedColon.get(a).text().strip();
+                String second = mergedColon.get(a + 1).text().strip();
+                List<FanpageBotResponse.ReplyBubble> nextList = new ArrayList<>(mergedColon.subList(0, a));
+                nextList.add(new FanpageBotResponse.ReplyBubble(first + " " + second, mergedColon.get(a).typingDelayMs()));
                 mergedColon = nextList;
             }
         }
-        return mergedColon;
+        // P3.7-B Bất biến toàn cục: tối đa 1 câu hỏi, đặt ở cuối bubble cuối cùng (0 dấu ? ở bubble đứng trước).
+        return enforceGlobalSingleTrailingQuestionAcrossBubbles(mergedColon);
     }
+
+    /** P3.7-B: Ngưỡng tối thiểu để coi bubble chào mở đầu là một lời chào hoàn chỉnh (không phải câu dẫn cụt). */
+    private static final int OPENING_COMPLETE_GREETING_MIN_CHARS = 35;
 
     private static final Pattern TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:đặt\\s+lịch|giữ\\s+lịch|giữ\\s+chỗ|khung\\s+giờ\\s+nào|mấy\\s+giờ|cơ\\s+sở\\s+nào|chi\\s+nhánh\\s+nào|"
@@ -5615,6 +5629,210 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     private static final Pattern ADMINISTRATIVE_APOLOGY_PREFIX_PATTERN = Pattern.compile(
             "(?isU)^\\s*(?:dạ\\s+)?(?:vâng\\s+)?(?:cho\\s+)?(?:em|bên\\s+em|mình)\\s+(?:thành\\s+thật\\s+|rất\\s+|chân\\s+thành\\s+)?xin\\s+lỗi\\b[^.!?,;\\n]{0,90}[.!?,;:]?\\s*"
     );
+
+    /**
+     * P3.7-B: Tín hiệu cấu trúc tổng quát của nhánh {@code OVER_INTRUSION} — khách phàn nàn bị hỏi quá nhiều,
+     * bị nói dài/vòng vo, hoặc yêu cầu bớt hỏi/nói ngắn (đa ngành, không gắn câu ví dụ cụ thể).
+     * Phê phán việc tự khai AI được nhận diện riêng qua {@link #CRITICISM_OF_UNSOLICITED_AI_DISCLOSURE_PATTERN}.
+     */
+    private static final Pattern OVER_ASKING_OR_VERBOSITY_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:có\\s+)?(?:hỏi|vặn|nói|giải\\s+thích|vòng\\s+vo)\\b|"
+            + "\\bhỏi\\s+(?:nhiều|dồn|lắm|mãi|hoài|vặn|vòng\\s+vo|liên\\s+tục)\\b|"
+            + "\\b(?:nói|nhắn|viết|trả\\s+lời)\\s+(?:dài|nhiều|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng)\\b|"
+            + "\\b(?:dài\\s+dòng|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng|rườm\\s+rà)\\b|"
+            + "\\b(?:nói|trả\\s+lời|nhắn)\\s+(?:ngắn|gọn|thẳng)\\s+(?:thôi|đi|gọn|lại)\\b|"
+            + "\\b(?:máy\\s+móc|rập\\s+khuôn|văn\\s+mẫu)\\b)"
+    );
+
+    /** P3.7-B: Dấu hiệu lời mời mua/trải nghiệm/đặt lịch trong một câu hỏi (SALES_CTA) — tổng quát đa ngành. */
+    private static final Pattern SALES_CTA_QUESTION_CUE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:đặt\\s+lịch|đặt\\s+hẹn|giữ\\s+(?:lịch|chỗ)|book|khung\\s+giờ|mấy\\s+giờ|hôm\\s+nào|ngày\\s+nào|"
+            + "cơ\\s+sở\\s+nào|chi\\s+nhánh\\s+nào|ghé|qua\\s+(?:bên|tiệm|phòng)|trải\\s+nghiệm|thử\\s+(?:gói|dịch\\s+vụ|liệu\\s+trình)|"
+            + "gói|combo|liệu\\s+trình|ưu\\s+đãi|khuyến\\s+mãi|thanh\\s+toán|chuyển\\s+khoản)\\b"
+    );
+
+    /**
+     * P3.7-B: Cam kết lâm sàng tuyệt đối (đa ngành chăm sóc sức khỏe / nha khoa / spa):
+     * cam kết "không đau", cam kết khỏi/hết triệu chứng chắc chắn, hoặc cam kết kết quả trong một lần hẹn.
+     */
+    private static final Pattern ABSOLUTE_CLINICAL_GUARANTEE_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:cam\\s+kết|đảm\\s+bảo|bảo\\s+đảm|chắc\\s+chắn|hoàn\\s+toàn|tuyệt\\s+đối|100\\s*%)\\s+(?:là\\s+)?(?:sẽ\\s+)?"
+            + "(?:không\\s+(?:hề\\s+)?(?:đau|ê|buốt|nhức|ê\\s+buốt)|hết\\s+(?:hẳn\\s+)?(?:đau|ê|buốt|ê\\s+buốt|nhức)|khỏi\\s+(?:hẳn\\s+)?(?:đau|ê|buốt|bệnh))\\b|"
+            + "\\bkhông\\s+(?:hề\\s+)?(?:đau|ê|buốt|ê\\s+buốt)\\s+(?:chút\\s+nào|tí\\s+nào|gì\\s+cả|một\\s+chút\\s+nào)\\b|"
+            + "\\b(?:chỉ\\s+)?(?:1|một)\\s+(?:lần\\s+(?:hẹn|làm)|buổi)\\s+(?:là\\s+)?(?:xử\\s+lý\\s+(?:gọn|xong|dứt\\s+điểm)|hết\\s+(?:hẳn\\s+)?(?:ê|buốt|ê\\s+buốt|đau))\\b)"
+    );
+
+    /**
+     * P3.7-B: Nhận diện tín hiệu cấu trúc nhánh {@code OVER_INTRUSION} (0 câu hỏi) trong phàn nàn quy trình tư vấn.
+     */
+    public static boolean isOverIntrusionFeedbackCue(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        return CRITICISM_OF_UNSOLICITED_AI_DISCLOSURE_PATTERN.matcher(norm).find()
+                || OVER_ASKING_OR_VERBOSITY_COMPLAINT_PATTERN.matcher(norm).find();
+    }
+
+    /**
+     * P3.7-B: Câu hỏi khám phá thuần túy ({@code DISCOVERY_QUESTION}) — là câu hỏi, KHÔNG báo giá,
+     * KHÔNG nhắc gói/combo/liệu trình, KHÔNG mời trải nghiệm/đặt lịch/hỏi giờ/cơ sở ({@code SALES_CTA}).
+     */
+    public static boolean isPureDiscoveryQuestionSentence(String sentence) {
+        if (sentence == null || sentence.isBlank()) {
+            return false;
+        }
+        String s = java.text.Normalizer.normalize(sentence.strip(), java.text.Normalizer.Form.NFC);
+        if (!(s.endsWith("?") || s.endsWith("？"))) {
+            return false;
+        }
+        if (hasQuotedPriceInText(s)) {
+            return false;
+        }
+        return !SALES_CTA_QUESTION_CUE_PATTERN.matcher(s).find()
+                && !TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(s).find();
+    }
+
+    /** P3.7-B: Phát hiện cam kết lâm sàng tuyệt đối (không đau / chắc chắn hết triệu chứng / 1 lần là xong). */
+    public static boolean detectAbsoluteClinicalOutcomeGuarantee(String combinedText) {
+        if (combinedText == null || combinedText.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(combinedText.strip(), java.text.Normalizer.Form.NFC);
+        Matcher m = ABSOLUTE_CLINICAL_GUARANTEE_PATTERN.matcher(norm);
+        while (m.find()) {
+            String prefix = norm.substring(Math.max(0, m.start() - 28), m.start()).toLowerCase(Locale.ROOT);
+            // Câu trung thực phủ định cam kết ("không thể cam kết không đau", "chưa dám đảm bảo...") là hợp lệ.
+            if (prefix.matches("(?isU).*\\b(?:không|chưa|chẳng|khó)(?:\\s+(?:thể|dám|được|nên))?\\s*$")) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * P3.7-B Bất biến toàn cục: Toàn bộ phản hồi có TỐI ĐA 1 câu hỏi (1 dấu {@code ?}), đặt ở CUỐI bubble cuối cùng;
+     * mọi bubble đứng trước có 0 dấu {@code ?}. Câu hỏi liền kề ngay trước câu hỏi cuối được gộp thành 1 câu hỏi duy nhất;
+     * các câu hỏi rời rạc khác bị lược bỏ; câu hỏi giữ lại được dời về cuối bubble cuối cùng; bubble rỗng bị loại bỏ.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> enforceGlobalSingleTrailingQuestionAcrossBubbles(
+            List<FanpageBotResponse.ReplyBubble> bubbles
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return bubbles == null ? List.of() : bubbles;
+        }
+        List<List<String>> sentencesPerBubble = new ArrayList<>();
+        List<Integer> delays = new ArrayList<>();
+        int totalQuestionMarks = 0;
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) continue;
+            String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            totalQuestionMarks += countQuestionMarks(txt);
+            List<String> sents = new ArrayList<>();
+            for (String s : txt.split("(?<=[.!?？])\\s+")) {
+                if (!s.isBlank()) sents.add(s.strip());
+            }
+            sentencesPerBubble.add(sents);
+            delays.add(b.typingDelayMs());
+        }
+        if (sentencesPerBubble.isEmpty()) {
+            return List.of();
+        }
+        int lastBubble = sentencesPerBubble.size() - 1;
+        List<String> lastSents = sentencesPerBubble.get(lastBubble);
+        boolean alreadyCompliant = totalQuestionMarks == 0
+                || (totalQuestionMarks == 1
+                    && !lastSents.isEmpty()
+                    && isQuestionSentence(lastSents.get(lastSents.size() - 1))
+                    && countQuestionMarks(lastSents.get(lastSents.size() - 1)) == 1);
+        if (alreadyCompliant) {
+            return bubbles;
+        }
+
+        // 1. Xác định câu hỏi cuối cùng (theo thứ tự đọc) làm câu hỏi duy nhất được giữ lại.
+        int keptBubble = -1;
+        int keptIdx = -1;
+        for (int bi = 0; bi < sentencesPerBubble.size(); bi++) {
+            List<String> sents = sentencesPerBubble.get(bi);
+            for (int si = 0; si < sents.size(); si++) {
+                if (isQuestionSentence(sents.get(si))) {
+                    keptBubble = bi;
+                    keptIdx = si;
+                }
+            }
+        }
+        String keptQuestion = null;
+        if (keptBubble >= 0) {
+            List<String> keptSents = sentencesPerBubble.get(keptBubble);
+            keptQuestion = collapseInnerQuestionMarks(keptSents.get(keptIdx));
+            // 2. Gộp các câu hỏi liền kề ngay trước (cùng bubble) thành 1 câu hỏi duy nhất.
+            int si = keptIdx - 1;
+            while (si >= 0 && isQuestionSentence(keptSents.get(si))) {
+                String prev = collapseInnerQuestionMarks(keptSents.get(si)).replaceAll("[?？]+$", "").strip();
+                keptQuestion = prev + ", " + lowerFirstNaturally(keptQuestion);
+                keptSents.remove(si);
+                keptIdx--;
+                si--;
+            }
+            keptSents.remove(keptIdx);
+        }
+        // 3. Lược bỏ mọi câu hỏi còn lại ở các vị trí khác (0 dấu ? ngoài câu hỏi duy nhất).
+        for (List<String> sents : sentencesPerBubble) {
+            sents.removeIf(CleanAgentOutputRefereeAndSanitizer::isQuestionSentence);
+            sents.replaceAll(s -> s.replace("?", "").replace("？", ""));
+        }
+        // 4. Dời câu hỏi duy nhất về cuối bubble cuối cùng (bubble cuối còn nội dung, hoặc bubble chứa câu hỏi nếu là cuối).
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>();
+        int lastNonEmpty = -1;
+        for (int bi = 0; bi < sentencesPerBubble.size(); bi++) {
+            if (!sentencesPerBubble.get(bi).isEmpty()) lastNonEmpty = bi;
+        }
+        if (keptQuestion != null) {
+            int target = (keptBubble == lastBubble || lastNonEmpty < 0) ? lastBubble : lastNonEmpty;
+            sentencesPerBubble.get(target).add(keptQuestion);
+        }
+        for (int bi = 0; bi < sentencesPerBubble.size(); bi++) {
+            String joined = String.join(" ", sentencesPerBubble.get(bi)).strip();
+            if (!joined.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(joined, delays.get(bi)));
+            }
+        }
+        return out.isEmpty() ? bubbles : out;
+    }
+
+    private static boolean isQuestionSentence(String s) {
+        if (s == null) return false;
+        String t = s.strip();
+        return t.endsWith("?") || t.endsWith("？");
+    }
+
+    private static int countQuestionMarks(String s) {
+        if (s == null) return 0;
+        int c = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '?' || ch == '？') c++;
+        }
+        return c;
+    }
+
+    private static String collapseInnerQuestionMarks(String s) {
+        String t = s.strip();
+        String body = t.replaceAll("[?？]+$", "");
+        body = body.replace("?", ",").replace("？", ",").replaceAll(",\\s*,", ",");
+        return body.strip() + "?";
+    }
+
+    private static String lowerFirstNaturally(String s) {
+        if (s == null || s.length() < 2) return s;
+        char c0 = s.charAt(0);
+        char c1 = s.charAt(1);
+        if (Character.isUpperCase(c0) && !Character.isUpperCase(c1)) {
+            return Character.toLowerCase(c0) + s.substring(1);
+        }
+        return s;
+    }
 
     public static boolean detectForbiddenThaoMaiEmpathyCliche(String text) {
         if (text == null || text.isBlank()) {
@@ -5651,7 +5869,26 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 || custNorm.contains("bao nhiêu")
                 || custNorm.contains("mấy tiền")
                 || custNorm.contains("ở đâu");
-        return !customerAlsoAskedServiceQuestion && (norm.endsWith("?") || norm.endsWith("？"));
+        boolean endsWithQuestion = norm.endsWith("?") || norm.endsWith("？");
+        if (!endsWithQuestion || customerAlsoAskedServiceQuestion) {
+            return false;
+        }
+        // P3.7-B: Nhánh MISSED_DISCOVERY — 1 câu hỏi khám phá thuần túy (không giá/gói/mời đặt lịch) ở cuối là hợp lệ.
+        if (isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage)) {
+            String[] sents = norm.split("(?<=[.!?？])\\s+");
+            String lastSentence = sents.length > 0 ? sents[sents.length - 1] : norm;
+            return !isPureDiscoveryQuestionSentence(lastSentence);
+        }
+        return true;
+    }
+
+    /**
+     * P3.7-B: Trong lượt phàn nàn quy trình tư vấn, chỉ cho phép 1 {@code DISCOVERY_QUESTION} khi KHÔNG có tín hiệu
+     * {@code OVER_INTRUSION} và khách không hỏi trực tiếp danh tính AI/training. {@code SALES_CTA} luôn bị chặn.
+     */
+    public static boolean isDiscoveryQuestionAllowedOnProcessFeedback(String customerMessage) {
+        return !isOverIntrusionFeedbackCue(customerMessage)
+                && !isDirectBotIdentityOrTrainingQuestion(customerMessage);
     }
 
     public static boolean repeatsPreviousAdministrativeApologyStructure(String currentText, String previousAssistantMessage) {
@@ -5820,6 +6057,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 sanitizePatronizingEmpathyPhrasesInPlace(bubbles, safeSelf, safeCust);
 
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(empathyCleaned.size());
+        String discoveryCandidate = null;
         for (int idx = 0; idx < empathyCleaned.size(); idx++) {
             FanpageBotResponse.ReplyBubble b = empathyCleaned.get(idx);
             if (b == null || b.text() == null || b.text().isBlank()) continue;
@@ -5850,7 +6088,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                             : (prefix + ". " + Character.toUpperCase(txt.charAt(0)) + txt.substring(1));
                 }
 
-                // 4. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc NO_CTA)
+                // 4. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc SALES_CTA = NONE).
+                //    P3.7-B: nhánh MISSED_DISCOVERY được giữ đúng 1 DISCOVERY_QUESTION thuần túy (câu hỏi cuối cùng hợp lệ);
+                //    nhánh OVER_INTRUSION giữ nguyên 0 câu hỏi. Câu báo giá cũng bị lược trong lượt phục hồi (ZERO_PITCH)
+                //    trừ khi khách đồng thời hỏi giá.
+                boolean allowDiscovery = isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage);
+                boolean customerAskedPrice = customerAskedPriceOrOperationalInfo(customerMessage);
                 String[] sentences = txt.split("(?<=[.!?？])\\s+");
                 List<String> kept = new ArrayList<>();
                 for (String s : sentences) {
@@ -5863,7 +6106,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     boolean isQuestion = trimmed.endsWith("?") || trimmed.endsWith("？");
                     boolean isSalesInvite = TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(trimmed).find()
                             || trimmed.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đặt\\s+lịch|khung\\s+giờ|chọn\\s+gói|tham\\s+khảo\\s+gói|giữ\\s+chỗ)\\b.*");
+                    if (isQuestion && allowDiscovery && !isSalesInvite && isPureDiscoveryQuestionSentence(trimmed)) {
+                        discoveryCandidate = trimmed;
+                        continue;
+                    }
                     if (isQuestion || isSalesInvite) {
+                        continue;
+                    }
+                    if (!customerAskedPrice && hasQuotedPriceInText(trimmed)) {
                         continue;
                     }
                     kept.add(trimmed);
@@ -5892,14 +6142,29 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                             ? ("Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý thẳng thắn ạ, để " + safeSelf + " trao đổi tự nhiên, đi thẳng vào điều " + safeCust + " đang quan tâm nhé ạ.")
                             : ("Dạ " + safeSelf + " tiếp thu góp ý của " + safeCust + " ạ, để " + safeSelf + " trao đổi gọn gàng và sát đúng nhu cầu của " + safeCust + " hơn nha.");
                 }
+                if (discoveryCandidate != null) {
+                    return List.of(new FanpageBotResponse.ReplyBubble(
+                            "Dạ " + safeSelf + " tiếp thu góp ý của " + safeCust + " ạ. " + discoveryCandidate, 0));
+                }
                 return List.of(new FanpageBotResponse.ReplyBubble(naturalAck, 0));
             }
-            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp / nhận xét kịch bản (NO_CTA)
-            if (out.size() > 1) {
-                return List.of(out.get(0));
+            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp / nhận xét kịch bản (SALES_CTA = NONE)
+            FanpageBotResponse.ReplyBubble single = out.get(0);
+            if (discoveryCandidate != null) {
+                String base = single.text().strip();
+                single = new FanpageBotResponse.ReplyBubble(base + " " + discoveryCandidate, single.typingDelayMs());
             }
+            return List.of(single);
         }
         return out;
+    }
+
+    private static boolean customerAskedPriceOrOperationalInfo(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String c = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return c.contains("giá") || c.contains("bao nhiêu") || c.contains("mấy tiền") || c.contains("ở đâu");
     }
 
     private static final Pattern INTERNAL_SCHEMA_OR_POLICY_TOKEN_LEAK_PATTERN = Pattern.compile(

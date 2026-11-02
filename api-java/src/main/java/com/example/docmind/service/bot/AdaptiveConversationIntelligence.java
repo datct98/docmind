@@ -1353,6 +1353,39 @@ public final class AdaptiveConversationIntelligence {
         return "STANDARD";
     }
 
+    /**
+     * P3.7-B: {@code next_action} dành riêng cho câu hỏi khám phá/lắng nghe nhu cầu ({@code DISCOVERY_QUESTION}).
+     * Tách bạch khỏi {@code cta_level} (= {@code SALES_CTA}: mời chọn gói/trải nghiệm/đặt lịch) — một lượt có thể
+     * {@code cta_level = NO_CTA} nhưng vẫn được phép đúng 1 câu hỏi khám phá ở cuối phản hồi.
+     */
+    public static final String DISCOVERY_QUESTION_NEXT_ACTION = "ASK_ONE_DISCOVERY_QUESTION";
+
+    /** P3.7-B: Hai nhánh phục hồi giao tiếp khi khách phàn nàn quy trình tư vấn ({@code PROCESS_FEEDBACK}). */
+    public enum FrictionRecoveryMode {
+        /** Khách trách chưa được lắng nghe/khám phá nhu cầu -> {@code DISCOVERY_QUESTION = 1}, {@code SALES_CTA = NONE}. */
+        MISSED_DISCOVERY,
+        /** Khách trách bị hỏi nhiều/nói dài/máy móc/tự khai AI -> {@code DISCOVERY_QUESTION = NONE}, {@code SALES_CTA = NONE}. */
+        OVER_INTRUSION
+    }
+
+    /**
+     * P3.7-B: Hợp giải nhánh {@link FrictionRecoveryMode} — quyết định ngữ nghĩa thuộc về LLM ({@code next_action}
+     * trong {@code response_plan}); Java chỉ giữ quyền phủ quyết an toàn theo tín hiệu cấu trúc tổng quát
+     * (khách phê phán việc tự khai AI hoặc yêu cầu bớt hỏi/bớt nói) để luôn nghiêng về {@code OVER_INTRUSION} (0 câu hỏi).
+     * Mặc định khi LLM không chọn câu hỏi: {@code OVER_INTRUSION} (an toàn, không hỏi thêm).
+     */
+    public static FrictionRecoveryMode resolveFrictionRecoveryMode(String rawUserMessage, String llmPlannedNextAction) {
+        if (CleanAgentOutputRefereeAndSanitizer.isOverIntrusionFeedbackCue(rawUserMessage)) {
+            return FrictionRecoveryMode.OVER_INTRUSION;
+        }
+        String normalized = normalizePlannerNextAction(llmPlannedNextAction);
+        if (DISCOVERY_QUESTION_NEXT_ACTION.equals(normalized)
+                || "ASK_ONE_CLARIFYING_QUESTION".equals(normalized)) {
+            return FrictionRecoveryMode.MISSED_DISCOVERY;
+        }
+        return FrictionRecoveryMode.OVER_INTRUSION;
+    }
+
     public static String normalizePlannerNextAction(String raw) {
         if (raw == null || raw.isBlank()) {
             return "NO_ADDITIONAL_ACTION";
@@ -1361,6 +1394,7 @@ public final class AdaptiveConversationIntelligence {
         if (u.contains("NO_ADDITIONAL") || "NONE".equals(u) || "STOP".equals(u) || "NO_QUESTION".equals(u)) {
             return "NO_ADDITIONAL_ACTION";
         }
+        if (u.contains("DISCOVERY")) return DISCOVERY_QUESTION_NEXT_ACTION;
         if (u.contains("CLARIFY") || u.contains("QUESTION")) return "ASK_ONE_CLARIFYING_QUESTION";
         if (u.contains("SCHEDUL") || u.contains("BOOK") || u.contains("AVAILAB")) return "GENTLE_SCHEDULE_CHECK";
         if (u.contains("FEEL") || u.contains("INVITE") || u.contains("SOFT")) return "SOFT_FEELING_CHECK";
@@ -1725,12 +1759,17 @@ public final class AdaptiveConversationIntelligence {
         }
 
         public AdaptiveCognitiveReflection withForcedNoCta() {
+            // P3.7-B: NO_CTA chỉ khóa SALES_CTA; câu hỏi khám phá (DISCOVERY_QUESTION) đã được hợp giải ở nhánh
+            // MISSED_DISCOVERY thì được giữ nguyên (không phải lời mời mua/đặt lịch).
+            String keptNextAction = DISCOVERY_QUESTION_NEXT_ACTION.equals(responsePlan.nextAction())
+                    ? DISCOVERY_QUESTION_NEXT_ACTION
+                    : "NO_ADDITIONAL_ACTION";
             AdaptiveResponsePlan noCtaPlan = new AdaptiveResponsePlan(
                     responsePlan.objective(),
                     responsePlan.strategy(),
                     responsePlan.tone(),
                     responsePlan.depth(),
-                    "NO_ADDITIONAL_ACTION",
+                    keptNextAction,
                     CtaLevel.NO_CTA,
                     responsePlan.adaptation(),
                     responsePlan.previousOutcome()
@@ -1877,12 +1916,22 @@ public final class AdaptiveConversationIntelligence {
                 }
                 prio = new PriorityFocus("SERVICE_RECOVERY", List.of("TRUST_BUILDING"));
                 effBarrier = "COMMUNICATION_FRICTION";
+                // P3.7-B: Phân hóa 2 nhánh phục hồi — SALES_CTA luôn NONE (cta_level = NO_CTA);
+                // chỉ nhánh MISSED_DISCOVERY được giữ đúng 1 DISCOVERY_QUESTION ở cuối phản hồi.
+                FrictionRecoveryMode recoveryMode = resolveFrictionRecoveryMode(
+                        rawUserMessage, responsePlan != null ? responsePlan.nextAction() : null);
+                boolean missedDiscovery = recoveryMode == FrictionRecoveryMode.MISSED_DISCOVERY;
+                if (missedDiscovery && perm == InteractionPermission.CONCISE_PREFERRED) {
+                    perm = InteractionPermission.OPEN;
+                }
                 plan = new AdaptiveResponsePlan(
-                        "Acknowledge consultation process feedback and adjust communication pace without defending AI identity",
+                        missedDiscovery
+                                ? "Acknowledge missed discovery sincerely and ask one open listening question without any sales pitch"
+                                : "Acknowledge consultation process feedback and adjust communication pace without defending AI identity",
                         "Active Listening",
                         "Sincere & Attentive",
                         "CONCISE",
-                        "NO_ADDITIONAL_ACTION",
+                        missedDiscovery ? DISCOVERY_QUESTION_NEXT_ACTION : "NO_ADDITIONAL_ACTION",
                         CtaLevel.NO_CTA,
                         StrategyAdaptationMode.PIVOT,
                         StrategyOutcome.REJECTED
