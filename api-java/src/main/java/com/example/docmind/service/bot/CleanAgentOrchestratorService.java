@@ -155,9 +155,22 @@ public class CleanAgentOrchestratorService {
     );
 
     private static final Pattern BARE_ACKNOWLEDGMENT_CLEAN_PATTERN = Pattern.compile(
-            "(?isU)^\\s*(?:dạ\\s+)?(?:ok|oke|okay|okie|okela|ừ|ừa|ừm|uk|uki|ukm|uh|uhm|vâng|dạ|cảm\\s+ơn|thanks|thank\\s+you|tks)"
-            + "(?:\\s+(?:em|chị|anh|bạn|shop|mình|nhé|nha|ạ|nhé\\s+em|nha\\s+em|rồi|được\\s+rồi|cảm\\s+ơn|cảm\\s+ơn\\s+em))*\\s*[.!~]*\\s*$"
+            "(?isU)^\\s*(?:dạ\\s+)?(?:ok|oke|okay|okie|okela|ừ|ừa|ừm|uk|uki|ukm|uh|uhm|vâng|dạ|cảm\\s+ơn|cám\\s+ơn|thanks|thank\\s+you|tks)"
+            + "(?:\\s+(?:em|e|chị|anh|bạn|shop|mình|nhé|nha|ạ|nhiều|lắm|nhé\\s+em|nhé\\s+e|nha\\s+em|nha\\s+e|rồi|được\\s+rồi|cảm\\s+ơn|cám\\s+ơn|cảm\\s+ơn\\s+em|cảm\\s+ơn\\s+e))*\\s*[.!~]*\\s*$"
     );
+
+    private static final Pattern POLITE_THANK_YOU_CLOSING_ACK_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+)?(?:ok|oke|okay|okie|okela|ừ|ừa|ừm|uk|uki|ukm|uh|uhm|vâng|dạ|rồi|thế\\s+thôi)?\\s*"
+            + "(?:cảm\\s+ơn|cám\\s+ơn|thanks|thank\\s+you|tks)"
+            + "(?:\\s+(?:em|e|chị|anh|bạn|shop|mình|nhé|nha|ạ|nhiều|lắm))*\\s*[.!~]*\\s*$"
+    );
+
+    public static boolean isPoliteThankYouClosingAckMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return POLITE_THANK_YOU_CLOSING_ACK_PATTERN.matcher(message.strip()).matches();
+    }
 
     private static final Pattern PROACTIVE_BOOKING_OR_PACKAGE_SELECTION_CLEAN_PATTERN = Pattern.compile(
             "(?isU).*\\b("
@@ -4700,6 +4713,14 @@ public class CleanAgentOrchestratorService {
             // trước khi chạy Referee để không tốn 24s LLM retry cho lỗi hình thức, trong khi giữ nguyên Referee cho mọi lỗi bịa đặt nội dung!
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.sanitizePatronizingEmpathyPhrasesInPlace(
                     candidateBubbles, selfPronoun, safeHonorific);
+            if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim)) {
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                        candidateBubbles, originalVerbatim, prevBotTurnText, selfPronoun, safeHonorific);
+            }
+            if (isPoliteThankYouClosingAckMessage(originalVerbatim)) {
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforcePoliteClosingPauseSingleBubbleNoQuestionInPlace(
+                        candidateBubbles, selfPronoun, safeHonorific, priorBookingState, prevBotTurnText);
+            }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
                     candidateBubbles, allCatalog);
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
@@ -4729,18 +4750,32 @@ public class CleanAgentOrchestratorService {
                         handoffEventDispatcher
                 );
         if ("MEDICAL_SAFETY_HANDOFF".equals(handoffDecision.handoffCategory())
-                && handoffDecision.isHandoffCreated()
-                && (reflection.handoffRequest() == null || !reflection.handoffRequest().requested())) {
+                && handoffDecision.isHandoffCreated()) {
             boolean isAcuteOrNeuro = FanpageBotService.isUniversalAcuteMedicalEmergency(originalVerbatim);
-            String safeMedicalText = isAcuteOrNeuro
-                    ? ("Dạ những dấu hiệu này cần được kiểm tra y tế sớm để đảm bảo an toàn, nên " + safeHonorific
-                        + " hãy thăm khám bác sĩ hoặc cơ sở y tế gần nhất trước nhé ạ. "
-                        + BubbleTextSanitizer.capitalizeFirstLetter(selfPronoun)
-                        + " xin phép kết nối chuyên viên hỗ trợ trực tiếp cho " + safeHonorific + " ngay ạ.")
-                    : ("Dạ với trường hợp này, để đảm bảo an toàn tuyệt đối cho " + safeHonorific + ", "
-                        + selfPronoun + " xin phép kết nối chuyên viên phụ trách kiểm tra và tư vấn trực tiếp cho "
-                        + safeHonorific + " ngay nhé ạ.");
-            candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeMedicalText, 0));
+            String combinedCandidateLower = candidateBubbles.stream()
+                    .map(FanpageBotResponse.ReplyBubble::text)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce("", (a, b) -> a + " " + b)
+                    .toLowerCase(Locale.ROOT);
+            if (isAcuteOrNeuro) {
+                boolean has115OrEmergency = combinedCandidateLower.matches("(?isU).*\\b(115|cấp\\s+cứu)\\b.*");
+                boolean hasSpaStaffHandoff = combinedCandidateLower.matches("(?isU).*\\b(kết\\s+nối\\s+chuyên\\s+viên|chuyên\\s+viên\\s+hỗ\\s+trợ|kỹ\\s+thuật\\s+viên)\\b.*");
+                if (!has115OrEmergency || hasSpaStaffHandoff) {
+                    String safeAcuteEmergencyText = "Dạ với các dấu hiệu cấp tính như vậy, để đảm bảo an toàn sức khỏe tuyệt đối, "
+                            + safeHonorific + " hãy tạm dừng vận động, nằm nghỉ ngơi tại chỗ ngay và nhờ người thân gọi cấp cứu 115 hoặc đưa "
+                            + safeHonorific + " đến bệnh viện/cơ sở y tế gần nhất để bác sĩ kiểm tra khẩn cấp ngay nhé ạ.";
+                    candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeAcuteEmergencyText, 0));
+                }
+            } else if (reflection.handoffRequest() == null || !reflection.handoffRequest().requested()) {
+                boolean alreadyMentionsInternalSpecialist = combinedCandidateLower.matches(
+                        "(?isU).*\\b(chuyên\\s+viên|quản\\s+lý|kỹ\\s+thuật\\s+viên|bộ\\s+phận\\s+chuyên\\s+môn|bác\\s+sĩ|nhân\\s+sự\\s+phụ\\s+trách).*");
+                if (!alreadyMentionsInternalSpecialist) {
+                    String safeMedicalText = "Dạ với trường hợp này, để đảm bảo an toàn tuyệt đối cho " + safeHonorific + ", "
+                            + selfPronoun + " xin phép kết nối chuyên viên phụ trách kiểm tra và tư vấn trực tiếp cho "
+                            + safeHonorific + " ngay nhé ạ.";
+                    candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeMedicalText, 0));
+                }
+            }
         }
 
         // Kiểm định Referee V2 (CHỈ giữ Sự thật, Quyền hạn & An toàn — TẮT ép chiến thuật bán hàng thay LLM)
@@ -4970,6 +5005,10 @@ public class CleanAgentOrchestratorService {
                             selfPronoun,
                             safeHonorific
                     );
+                    repairApplied = true;
+                } else if (postRepairViolations.size() == 1
+                        && "UNGROUNDED_TIP_POLICY_CLAIM".equals(postRepairViolations.get(0))) {
+                    candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripUngroundedTipPolicyClaimsInPlace(candidateBubbles);
                     repairApplied = true;
                 } else {
                     log.warn("[ACI-V2] Post-repair still has authority/safety violation ({}) -> building safe factual response", postRepairViolations);
@@ -5757,7 +5796,7 @@ public class CleanAgentOrchestratorService {
         // và reasoning_effort="low" trên DEEP_THINK (~2050 tokens + ~650 tokens JSON < 3200 maxTokens)
         int maxTokens = deep ? 3200 : 2500;
         String effort = deep ? "low" : "none";
-        int timeoutSec = deep ? 60 : 45;
+        int timeoutSec = deep ? 90 : 75;
         return new ReasoningBudget(
                 complexity,
                 effort,

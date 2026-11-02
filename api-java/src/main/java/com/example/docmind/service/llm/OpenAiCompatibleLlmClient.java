@@ -291,6 +291,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
             if (isQwenModelOrProvider()) {
                 body.put("enable_thinking", false);
+                body.put("chat_template_kwargs", Map.of("enable_thinking", false));
             }
             int maxToks = (budget != null && budget.maxTokens() > 0)
                     ? budget.maxTokens()

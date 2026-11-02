@@ -1814,9 +1814,12 @@ public final class AdaptiveConversationIntelligence {
             String normLower = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
                     .toLowerCase(Locale.ROOT);
             boolean explicitStop = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(rawUserMessage);
+            boolean politeThankYouClosingAck = !explicitStop
+                    && CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(rawUserMessage);
             boolean directBotIdentityQuestion = CleanAgentOutputRefereeAndSanitizer
                     .isDirectBotIdentityOrTrainingQuestion(rawUserMessage);
             boolean processFeedbackComplaint = !explicitStop
+                    && !politeThankYouClosingAck
                     && !directBotIdentityQuestion
                     && (CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
                         || (customerUnderstanding.secondaryIntents() != null
@@ -1825,19 +1828,22 @@ public final class AdaptiveConversationIntelligence {
                                         || s.toUpperCase(Locale.ROOT).contains("CONSULTATION_FEEDBACK")
                                         || s.toUpperCase(Locale.ROOT).contains("STYLE_COMPLAINT")))));
             boolean pureBudgetBoundedInquiry = !explicitStop
+                    && !politeThankYouClosingAck
                     && !processFeedbackComplaint
                     && CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(rawUserMessage);
             boolean competitorComparison = !explicitStop
+                    && !politeThankYouClosingAck
                     && !processFeedbackComplaint
                     && !pureBudgetBoundedInquiry
                     && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawUserMessage);
             boolean negatedBooking = normLower.matches(
                     "(?isU).*\\b(?:không|ko|chưa|khỏi|đừng|chẳng)\\s+(?:muốn\\s+|cần\\s+|vội\\s+|định\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
             );
-            boolean affirmativeBookingCue = !explicitStop && !processFeedbackComplaint && !negatedBooking && normLower.matches(
+            boolean affirmativeBookingCue = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint && !negatedBooking && normLower.matches(
                     "(?isU).*\\b(đăng\\s+ký\\s+đặt\\s+lịch|(?:rồi\\s+)?(?:anh|chị|mình|tôi|em|a)\\s+(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch|đặt\\s+lịch\\s+(?:nhé|nha|giúp|cho)|chốt\\s+lịch\\s+(?:nhé|nha|luôn))\\b.*"
             );
             if (!explicitStop
+                    && !politeThankYouClosingAck
                     && !processFeedbackComplaint
                     && !pureBudgetBoundedInquiry
                     && !competitorComparison
@@ -1872,6 +1878,30 @@ public final class AdaptiveConversationIntelligence {
                         "Respectful Pause",
                         plan.tone(),
                         plan.depth(),
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.STOP,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Respectful Pause",
+                        StrategyAdaptationMode.STOP,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (politeThankYouClosingAck) {
+                detIntent = "POLITE_DEFERRAL";
+                secIntents.removeIf(s -> s != null && s.toUpperCase(Locale.ROOT).contains("FEEDBACK"));
+                convState = "PAUSED_BY_CUSTOMER";
+                perm = InteractionPermission.PAUSED;
+                buySig = BuyingSignal.NONE;
+                prio = new PriorityFocus("POLITE_CLOSURE", List.of());
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+                plan = new AdaptiveResponsePlan(
+                        plan.objective(),
+                        "Respectful Pause",
+                        plan.tone(),
+                        "CONCISE",
                         "NO_ADDITIONAL_ACTION",
                         CtaLevel.NO_CTA,
                         StrategyAdaptationMode.STOP,

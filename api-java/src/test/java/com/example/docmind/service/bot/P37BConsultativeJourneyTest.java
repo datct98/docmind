@@ -213,4 +213,79 @@ class P37BConsultativeJourneyTest {
         assertThat(body.toLowerCase()).doesNotContain("nàng sen").doesNotContain("massage").doesNotContain("rèm")
                 .doesNotContain("composite").doesNotContain("ráy tai");
     }
+
+    @Test
+    @DisplayName("P3.7-B.1: Contextual Symptom Understanding (Cấp 2 đời thường không bị chặn là triệu chứng y khoa độc lập; Cấp 3/4 phân tách rõ)")
+    void p37b1ContextualSymptomLevelsAndRuleGates() {
+        String level2Work = "Dạo này chị làm việc căng thẳng, mất ngủ, đau mỏi cổ vai gáy và đứng dậy hay hoa mắt chóng mặt, bên em có gói nào phù hợp không?";
+        String level2Postural = "Nhưng chị hay bị đau đầu với thi thoảng hoa mắt chóng mặt vì ngồi máy tính lâu thì làm gói này có hợp không em?";
+        assertThat(CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(level2Work, List.of())).isFalse();
+        assertThat(CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(level2Postural, List.of())).isFalse();
+        assertThat(CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(level2Work.toLowerCase())).isFalse();
+        assertThat(CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(level2Postural.toLowerCase())).isFalse();
+        assertThat(FanpageBotService.isUniversalAcuteMedicalEmergency(level2Work)).isFalse();
+
+        String level3PostSurgery = "Anh mới phẫu thuật khớp vai được 2 tuần, vết mổ vẫn hơi sưng nhưng mỏi lưng quá muốn qua làm nhẹ có được không?";
+        assertThat(CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(level3PostSurgery.toLowerCase())).isTrue();
+        assertThat(FanpageBotService.isUniversalAcuteMedicalEmergency(level3PostSurgery)).isFalse();
+
+        String level4Acute = "Tự nhiên anh thấy tức ngực khó thở, tê nửa người bên trái và chóng mặt dữ dội";
+        assertThat(FanpageBotService.isUniversalAcuteMedicalEmergency(level4Acute)).isTrue();
+    }
+
+    @Test
+    @DisplayName("P3.7-B.1: Live UI 0A — Lượt 1 'Tư vấn' không xả giá; Lượt 2 'Chưa j đã xả hết thông tin rồi, chưa cả tìm hiểu j cả' bắt buộc có 1 câu hỏi mở và 0 câu tự khóa")
+    void p37b1Ui0ATurn1ConsultAndTurn2MissedDiscoveryRecovery() throws Exception {
+        assertThat(CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest("Tư vấn")).isTrue();
+        assertThat(CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest("Giá")).isFalse();
+
+        List<FanpageBotResponse.ReplyBubble> t1Out = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
+                bubbles("Dạ chào mình ạ. Bên em có gói cơ bản 239k và gói chuyên sâu 399k ạ.",
+                        "Mình đang muốn chăm sóc vùng nào để em hỗ trợ ạ?"),
+                "Tư vấn", true);
+        assertGlobalQuestionInvariant(t1Out);
+        String t1Combined = String.join(" ", t1Out.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
+        assertThat(t1Combined).doesNotContain("239k").doesNotContain("399k").endsWith("?");
+
+        String ui0aT2 = "Chưa j đã xả hết thông tin rồi, chưa cả tìm hiểu j cả";
+        assertThat(CleanAgentOutputRefereeAndSanitizer.isMissedDiscoveryFeedbackCue(ui0aT2)).isTrue();
+        assertThat(AdaptiveConversationIntelligence.resolveFrictionRecoveryMode(ui0aT2, "ASK_ONE_DISCOVERY_QUESTION"))
+                .isEqualTo(AdaptiveConversationIntelligence.FrictionRecoveryMode.MISSED_DISCOVERY);
+
+        List<FanpageBotResponse.ReplyBubble> t2Out = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
+                bubbles("Mình nói đúng ạ, em xin lỗi vì đã đưa nhiều thông tin quá sớm khi chưa hỏi kỹ nhu cầu của mình. Em sẽ dừng lại và chỉ tư vấn đúng điều mình cần nhé."),
+                ui0aT2, null, "em", "mình");
+        assertThat(t2Out).hasSize(1);
+        String t2Text = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenerInPlace(t2Out.get(0).text(), "em", "mình");
+        assertThat(t2Text)
+                .doesNotStartWith("Mình nói đúng")
+                .doesNotContain("chỉ tư vấn đúng điều mình cần nhé")
+                .endsWith("?");
+        assertThat(countQ(t2Text)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("P3.7-B.1: Ngữ nghĩa giá đời thường ('hơn trăm', 'trăm rưỡi', '100-150k'), độ chênh toán học (239k - 90k = 149k) và đóng phiên lịch sự 'ok cảm ơn e nhé'")
+    void p37b1ColloquialPriceProvenanceExactDeltaAndPoliteClosingAck() {
+        var prov = CleanAgentOutputRefereeAndSanitizer.extractCustomerSessionPriceProvenance(
+                "Tầm hơn trăm hoặc trăm rưỡi có gói nào không shop?", List.of());
+        assertThat(prov.userAskedPrices()).contains(100_000L, 150_000L, 200_000L);
+
+        var deltaProv = CleanAgentOutputRefereeAndSanitizer.extractCustomerSessionPriceProvenance(
+                "Chỗ khác gội có 90k thôi", List.of());
+        String deltaBubble = "Dạ mức 239k bên em chênh khoảng 149k so với tiệm 90k bên ngoài vì bao gồm 60 phút chăm sóc chuyên sâu ạ.";
+        int idx149 = deltaBubble.indexOf("149k");
+        var role149 = CleanAgentOutputRefereeAndSanitizer.classifyPriceMentionSemanticRole(
+                deltaBubble, idx149, idx149 + 4, 149_000L, java.util.Set.of(239_000L, 399_000L), java.util.Set.of(), deltaProv);
+        assertThat(role149).isEqualTo(CleanAgentOutputRefereeAndSanitizer.PriceMentionSemanticRole.USER_PROVIDED_COMPARISON_PRICE);
+
+        String closingMsg = "ok cảm ơn e nhé";
+        assertThat(CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(closingMsg)).isTrue();
+        List<FanpageBotResponse.ReplyBubble> closingOut = CleanAgentOutputRefereeAndSanitizer.enforcePoliteClosingPauseSingleBubbleNoQuestionInPlace(
+                bubbles("Dạ em cảm ơn chị nhiều ạ. Khi nào chị sắp xếp được thời gian ghé cơ sở thì cứ nhắn em nhé ạ.",
+                        "Vậy chị muốn dời sang mấy giờ ngày mai để em giữ lịch luôn ạ?"),
+                "em", "chị");
+        assertThat(closingOut).hasSize(1);
+        assertThat(countQ(closingOut.get(0).text())).isZero();
+    }
 }

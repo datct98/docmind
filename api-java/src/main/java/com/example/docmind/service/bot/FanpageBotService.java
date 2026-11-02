@@ -96,7 +96,7 @@ public class FanpageBotService {
             + "mới\\s+phẫu\\s+thuật|phẫu\\s+thuật|mới\\s+mổ|vết\\s+thương\\s+hở|viêm\\s+da\\s+nặng|nhiễm\\s+trùng\\s+da|sốt\\s+cao|"
             + "huyết\\s+áp\\s+cao|cao\\s+huyết\\s+áp|tim\\s+mạch(?:\\s+nặng)?|giãn\\s+tĩnh\\s+mạch(?:\\s+nặng)?|"
             + "thoát\\s+vị(?:\\s+đĩa\\s+đệm)?(?:\\s+cấp)?|chèn\\s+ép\\s+(?:rễ\\s+|dây\\s+)?thần\\s+kinh|gãy\\s+xương|trật\\s+khớp|"
-            + "tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|chóng\\s+mặt\\s+nhiều|teo\\s+cơ|tê\\s+lan\\s+xuống\\s+tay|"
+            + "tức\\s+ngực|đau\\s+ngực|khó\\s+thở|đau\\s+đầu\\s+dữ\\s+dội|teo\\s+cơ|tê\\s+lan\\s+xuống\\s+tay|"
             + "đau\\s+tai|ù\\s+tai|viêm\\s+tai|chảy\\s+dịch\\s+tai|chảy\\s+mủ\\s+tai|nghe\\s+kém)\\b|"
             + "\\btai\\b[^.!?\\n]{0,30}\\b(đau|ù|chảy\\s+dịch|chảy\\s+mủ|viêm)\\b)"
     );
@@ -3085,10 +3085,11 @@ public class FanpageBotService {
         }
         String qLow = mergedMessage.toLowerCase(Locale.ROOT);
         boolean asksPromo = qLow.matches("(?s).*(?:\\bkm\\b|khuyến\\s+mãi|khuyến\\s+mại|giảm\\s+giá|ưu\\s+đãi|voucher|sale|\\btip\\b|phụ\\s+phí|đắt|cao\\s+quá|chi\\s+phí|giá\\s+cao|trọn\\s+gói|ngày\\s+công|ngày\\s+làm).*");
+        boolean asksTip = qLow.matches("(?s).*(?:\\btip\\b|phụ\\s+phí|trọn\\s+gói|phát\\s+sinh).*");
         boolean asksInclusion = qLow.matches("(?s).*(?:ăn\\s+nhẹ|điểm\\s+tâm|trà\\s+dưỡng\\s+sinh|bao\\s+gồm|gồm\\s+gì|gồm\\s+những\\s+gì).*");
-        boolean asksHours = qLow.matches("(?s).*(?:mở\\s+cửa|đóng\\s+cửa|mấy\\s+giờ|giờ\\s+hoạt\\s+động|giờ\\s+làm\\s+việc|nhận\\s+khách).*");
+        boolean asksHours = qLow.matches("(?s).*(?:mở\\s+cửa|đóng\\s+cửa|mấy\\s+giờ|giờ\\s+hoạt\\s+động|giờ\\s+làm\\s+việc|nhận\\s+khách|đặt\\s+lịch|đặt\\s+luôn|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+chỗ|còn\\s+lịch|còn\\s+phòng|\\bcọc\\b|đặt\\s+cọc|\\b(?:19|20|21|22|[789])\\s*(?:h|giờ)\\b|tối\\s+nay).*");
         boolean asksAddress = qLow.matches("(?s).*(?:ở\\s+đâu|địa\\s+chỉ|cơ\\s+sở|chi\\s+nhánh|bích\\s+câu|mỹ\\s+đình|long\\s+biên|nguyễn\\s+công\\s+trứ).*");
-        if (!asksPromo && !asksInclusion && !asksHours && !asksAddress) {
+        if (!asksPromo && !asksTip && !asksInclusion && !asksHours && !asksAddress) {
             return baseList;
         }
         boolean filterHanoi = qLow.contains("hà nội") || qLow.contains("ha noi") || qLow.contains("hn");
@@ -3108,11 +3109,17 @@ public class FanpageBotService {
                     || nLow.contains("ưu đãi mua liệu trình"))) {
                 match = true;
             }
+            if ((asksPromo || asksTip) && (nLow.contains("quy định về tip")
+                    || nLow.contains("hoàn toàn tùy tâm"))) {
+                match = true;
+            }
             if (asksInclusion && (nLow.contains("đồ ăn nhẹ có tính thêm phí không")
                     || nLow.contains("phần ăn nhẹ và trà dưỡng sinh đã bao gồm"))) {
                 match = true;
             }
-            if (asksHours && (nLow.contains("giờ mở cửa hoạt động") || (nLow.contains("mở cửa từ") && nLow.contains("nhận khách cuối")))) {
+            if (asksHours && (nLow.contains("giờ mở cửa hoạt động")
+                    || nLow.contains("chính sách đặt lịch")
+                    || (nLow.contains("mở cửa từ") && nLow.contains("nhận khách cuối")))) {
                 match = true;
             }
             if (asksAddress && nLow.contains("địa chỉ:")) {
