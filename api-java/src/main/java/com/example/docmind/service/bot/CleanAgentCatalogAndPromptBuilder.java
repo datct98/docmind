@@ -3970,6 +3970,16 @@ public final class CleanAgentCatalogAndPromptBuilder {
         // Chỉ luôn nạp các rule có Boolean.TRUE.equals(r.alwaysOn()) NẾU không bị chặn bởi semantic gate (SAFETY/CORRECTION/STYLE);
         // với rule ngữ cảnh (alwaysOn == false), bắt buộc scoreLearnedRuleRelevance(...) > 0 mới được đưa vào <PAGE_PLAYBOOK_COMPACT_DIRECTIVES>.
         boolean isStyleComplaintTurn = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(currentMessage);
+        // ACI V3 P1 §3.4: Lượt phản bác giả định sai (CUSTOMER_CORRECTION / REJECTED_BOT_ASSUMPTION) —
+        // chặn mọi learned rule thúc ép chốt đơn sớm / xin SĐT / khóa cứng khung giờ / template cứng
+        // (VD các rule học lệch vertical từ dental/derma áp vào Nàng Sen) — trừ rule SAFETY / CORRECTION / EMOTIONAL-REPAIR.
+        boolean isScopeCorrectionTurn = false;
+        if (currentMessage != null && !currentMessage.isBlank()) {
+            VietnameseScopeSignalExtractor.ScopeSignalResult sig =
+                    VietnameseScopeSignalExtractor.analyze(currentMessage, List.of());
+            isScopeCorrectionTurn = sig.possibleCorrection() || sig.explicitCorrectionGroupD()
+                    || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(currentMessage);
+        }
         List<LearnedRuleDto> selected = new ArrayList<>();
         record ScoredContextualRule(LearnedRuleDto rule, int score) {}
         List<ScoredContextualRule> scoredContextualPool = new ArrayList<>();
@@ -3987,6 +3997,13 @@ public final class CleanAgentCatalogAndPromptBuilder {
             if (isStyleComplaintTurn
                     && !codeUpper.contains("EMOTIONAL-REPAIR")
                     && !codeUpper.contains("STYLE-REPAIR")) {
+                continue;
+            }
+            if (isScopeCorrectionTurn
+                    && !isSafetyRule
+                    && !codeUpper.contains("EMOTIONAL-REPAIR")
+                    && !codeUpper.contains("CORRECTION")
+                    && rulePushesEarlyClosingOrRigidTemplate(r)) {
                 continue;
             }
             if (Boolean.TRUE.equals(r.alwaysOn())) {
@@ -4015,6 +4032,23 @@ public final class CleanAgentCatalogAndPromptBuilder {
             selected.add(sc.rule());
         }
         return List.copyOf(selected);
+    }
+
+    /**
+     * ACI V3 P1 §3.4: Nhận diện learned rule thúc ép chốt đơn sớm / xin SĐT / khóa cứng khung giờ /
+     * template cứng — bị chặn trên lượt phản bác giả định sai để không "vừa xin lỗi vừa chốt lịch".
+     */
+    private static final Pattern EARLY_CLOSING_OR_RIGID_TEMPLATE_RULE_PATTERN = Pattern.compile(
+            "(?isU).*(chốt\\s+(?:đơn|lịch|gói|luôn)|khóa\\s+(?:cứng\\s+)?(?:khung\\s+)?giờ|khóa\\s+lịch|"
+                    + "xin\\s+(?:sđt|sdt|số\\s+điện\\s+thoại)|gửi\\s+(?:sđt|sdt|số\\s+điện\\s+thoại)|"
+                    + "đồng\\s+ý\\s+thử|xác\\s+nhận\\s+đặt\\s+lịch\\s+ngay|mẫu\\s+câu\\s+cố\\s+định|template\\s+cứng).*"
+    );
+
+    private static boolean rulePushesEarlyClosingOrRigidTemplate(LearnedRuleDto r) {
+        String content = ((r.ruleCode() != null ? r.ruleCode() : "") + " "
+                + (r.generalizedRule() != null ? r.generalizedRule() : "") + " "
+                + (r.doActions() != null ? r.doActions() : ""));
+        return EARLY_CLOSING_OR_RIGID_TEMPLATE_RULE_PATTERN.matcher(content).matches();
     }
 
     private static final Set<String> LEARNED_RULE_MATCH_STOPWORDS = Set.of(

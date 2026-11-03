@@ -484,11 +484,9 @@ public record PagePersonaConfig(
                 if (s != null && !s.isBlank()) merged.add(s.strip());
             }
         }
-        if (merged.isEmpty() && domainKeywords != null) {
-            for (String s : domainKeywords) {
-                if (s != null && !s.isBlank()) merged.add(s.strip());
-            }
-        }
+        // ACI V3 P1 §3.2: KHÔNG fallback sang domainKeywords — domain_keywords là từ khóa lĩnh vực
+        // (VD "cổ vai gáy" là tên dịch vụ phổ biến), không phải từ điển vùng cơ thể. Nếu page chưa
+        // cấu hình scope_taxonomy/body_area_keywords thì trả rỗng và để tầng matcher dùng lexicon mặc định.
         return merged.isEmpty() ? Collections.emptyList() : List.copyOf(merged);
     }
 

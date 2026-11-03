@@ -107,6 +107,25 @@ public final class VietnameseScopeSignalExtractor {
             "(?iU)\\b(bắp\\s+chân|bàn\\s+chân|cổ\\s+chân|gót\\s+chân)\\b"
     );
 
+    // Nhóm D - Mẫu 6 (ACI V3 P1 §3.2): Câu hỏi phản bác phạm vi "sao lại <scope>?"
+    // KHÔNG dùng bare regex "sao lại" để kết luận frustration — phải tách ngữ cảnh theo mệnh đề đích:
+    //  - "Sao lại cổ vai gáy?"      -> phản bác phạm vi bot vừa giả định (REJECTED_BOT_ASSUMPTION)
+    //  - "Sao lại có giá như vậy?"  -> câu hỏi GIÁ (không phải correction)
+    //  - "Sao lại massage 60 phút?" -> câu hỏi dịch vụ/thời lượng (không phải correction)
+    private static final Pattern GROUP_D6_SAO_LAI_SCOPE_PUSHBACK_PATTERN = Pattern.compile(
+            "(?isU)\\bsao\\s+lại\\s+(?:có\\s+)?(?:massage|mát\\s+xa|tư\\s+vấn|làm|gợi\\s+ý|nhắc\\s+(?:tới|đến)|nói\\s+(?:tới|đến|về))?\\s*(?<target>[^.!?]+?)\\s*[.!?]*\\s*$"
+    );
+
+    // Cue giá trong mệnh đề đích -> định tuyến sang PRICE_INQUIRY, không phải phản bác phạm vi
+    private static final Pattern GROUP_D6_PRICE_CUE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|tiền|đắt|rẻ|mắc|\\d{2,4}\\s*k)\\b.*"
+    );
+
+    // Cue thời lượng/số liệu dịch vụ trong mệnh đề đích -> câu hỏi dịch vụ, không phải phản bác phạm vi
+    private static final Pattern GROUP_D6_DURATION_CUE_PATTERN = Pattern.compile(
+            "(?isU).*(\\d+\\s*(?:phút|giờ|tiếng|p|h)\\b|(?:bao\\s+)?lâu).*"
+    );
+
     private static final Pattern ATOMIC_BODY_OR_GENERAL_SCOPE_PATTERN = Pattern.compile(
             "(?iU)(?<![\\p{L}\\d])(thắt\\s+lưng|bả\\s+vai|cánh\\s+tay|bàn\\s+tay|cổ\\s+tay|toàn\\s+thân|body|cổ|vai|gáy|lưng|eo|hông|đầu|chân|tay|mắt)(?![\\p{L}\\d])"
     );
@@ -190,6 +209,28 @@ public final class VietnameseScopeSignalExtractor {
             if (hasExplicitNegationCueInB) {
                 ScopeSignalResult r = buildGroupDResult(clauseA, clauseB, tenantScopeTaxonomy);
                 if (r.explicitCorrectionGroupD()) return r;
+            }
+        }
+
+        // 2b. Nhóm D - Mẫu 6 (ACI V3 P1 §3.2): "sao lại <scope>?" — câu hỏi phản bác phạm vi bot vừa giả định.
+        // Chỉ kích hoạt khi mệnh đề đích chứa phạm vi/vùng cơ thể thực sự VÀ không mang cue giá hay thời lượng.
+        Matcher mD6 = GROUP_D6_SAO_LAI_SCOPE_PUSHBACK_PATTERN.matcher(lower);
+        if (mD6.find()) {
+            String targetClause = mD6.group("target");
+            boolean priceContext = GROUP_D6_PRICE_CUE_PATTERN.matcher(targetClause).matches();
+            boolean durationContext = GROUP_D6_DURATION_CUE_PATTERN.matcher(targetClause).matches();
+            if (!priceContext && !durationContext) {
+                Set<String> pushedBackScopes = extractScopesFromClause(targetClause, tenantScopeTaxonomy, true);
+                if (!pushedBackScopes.isEmpty()) {
+                    return new ScopeSignalResult(
+                            Set.of(),
+                            Collections.unmodifiableSet(new LinkedHashSet<>(pushedBackScopes)),
+                            false,
+                            true,
+                            "REPAIR_AND_RECONFIRM",
+                            "WRONG_SCOPE_INTERROGATIVE_PUSHBACK"
+                    );
+                }
             }
         }
 
@@ -339,8 +380,11 @@ public final class VietnameseScopeSignalExtractor {
         working = multiDomainMatcher.replaceAll(" ");
 
         // 5. Bắt các phạm vi đơn/cụm cơ bản (tránh bắt nhầm chữ "đầu" trong "gội đầu", "lần đầu", "ban đầu", "bắt đầu")
+        // ACI V3 P1 §3.2: "hoa mắt"/"chóng mặt" là TRIỆU CHỨNG (không phải vùng cơ thể) -> che trước khi bắt scope
         String maskedWorking = working
                 .replaceAll("(?iU)\\b(?:gội|lần|ban|bắt)\\s+đầu\\b", " ")
+                .replaceAll("(?iU)\\bhoa\\s+mắt\\b", " ")
+                .replaceAll("(?iU)\\bchóng\\s+mặt\\b", " ")
                 .replaceAll("(?iU)\\bchân\\s+răng\\b", "răng")
                 .replaceAll("(?iU)\\bchân\\s+thành\\b", " ");
         Matcher atomicMatcher = ATOMIC_BODY_OR_GENERAL_SCOPE_PATTERN.matcher(maskedWorking);

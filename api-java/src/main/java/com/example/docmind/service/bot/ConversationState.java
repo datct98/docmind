@@ -3363,7 +3363,11 @@ public record ConversationState(
         String nextRegion = detectPreferredRegion(lower, this.preferredRegion);
         VietnameseScopeSignalExtractor.ScopeSignalResult scopeSignal =
                 VietnameseScopeSignalExtractor.analyze(currentMessage, domainKeywords);
-        boolean isMismatch = SentimentIntentLayer.isEntityMismatchCorrection(content);
+        boolean isMismatch = SentimentIntentLayer.isEntityMismatchCorrection(content)
+                // ACI V3 P1 §3.1: câu hỏi phản bác phạm vi ("sao lại cổ vai gáy?") là REJECTED_BOT_ASSUMPTION,
+                // KHÔNG được đi nhánh mismatch (vốn sẽ clear vùng đã biết và bắt scope từ chính câu phản bác)
+                && !scopeSignal.possibleCorrection()
+                && !scopeSignal.explicitCorrectionGroupD();
         String cleanContent = SentimentIntentLayer.stripMismatchCritiqueClause(content);
         String cleanLower = Normalizer.normalize(cleanContent, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
 

@@ -5418,6 +5418,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             "(?isU)\\b(?:nghe\\s+(?:mình\\s+|chị\\s+|anh\\s+|bạn\\s+|cô\\s+|chú\\s+|bác\\s+)?(?:chia\\s+sẻ|kể|nói|tâm\\s+sự)(?:\\s+mà)?(?:\\s+(?:em|mình))?\\s+thấy\\s+thương|"
             + "thấy\\s+thương(?!\\s+(?:hiệu|mại|lượng|gia|nhân|tổn|vong|tích)\\b)(?:\\s+(?:mình|chị|anh|bạn|cô|chú|bác))?(?:\\s+(?:quá|lắm|ghê|thật))?|"
             + "(?:(?:em|mình)\\s+)?thương\\s+(?:(?:mình|chị|anh|bạn|cô|chú|bác)\\s+)?(?:quá|lắm|ghê)\\b|"
+            + "(?:em\\s+|mình\\s+)?(?:rất\\s+|thật\\s+|quá\\s+)?thương\\s+khi\\s+nghe\\b|"
             + "xót\\s+(?:(?:mình|chị|anh|bạn|cô|chú|bác)\\s+)?(?:quá|lắm|xa\\s+quá|ruột\\s+quá)\\b|"
             + "khổ\\s+tâm\\s+(?:quá|lắm))\\b"
     );
@@ -5440,6 +5441,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\b(?:trả\\s+lời|reply|nói\\s+chuyện|tư\\s+vấn)\\s+theo\\s+(?:kịch\\s+bản|bài|mẫu|công\\s+thức|script)\\b|"
             + "\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản|lòng)\\b|"
             + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\s*(?:à|hả|vậy|đấy\\s+à|phải\\s+không)\\b|"
+            // ACI V3 P1 §5.2: phàn nàn vòng vo/lan man/dài dòng ("đừng nói vòng vo nữa, báo giá đi", "viết dài thế đọc thế quái nào được")
+            + "\\b(?:nói|viết|nhắn|trả\\s+lời)\\s+(?:vòng\\s+vo|lan\\s+man|dài\\s+(?:dòng|thế|quá|vậy|lắm))\\b|"
+            + "\\bđừng\\s+(?:nói|viết)\\s+(?:vòng\\s+vo|lan\\s+man|dài\\s+dòng)\\b|"
             + "\\brập\\s+khuôn\\s+(?:thế|quá|vậy)\\b)"
     );
 
@@ -6151,6 +6155,99 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return false;
         }
         return COMMUNICATION_STYLE_COMPLAINT_PATTERN.matcher(norm).find();
+    }
+
+    /**
+     * ACI V3 (P1 §3.5 / §5.2 test 12): Phát hiện yêu cầu trả lời NGẮN GỌN tường minh từ khách
+     * ("viết dài thế đọc thế quái nào được", "nói ngắn thôi", "trả lời ngắn gọn giúp em").
+     * Chỉ khi khách phàn nàn về ĐỘ DÀI mới được ghi CONCISE_PREFERRED — tuyệt đối không sụp
+     * mọi COMMUNICATION_FRICTION thành CONCISE_PREFERRED.
+     */
+    private static final Pattern EXPLICIT_CONCISE_REPLY_REQUEST_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:viết\\s+dài|nói\\s+dài|dài\\s+(?:dòng|thế|quá|vậy|ngoằng|lắm)|đọc\\s+(?:mỏi|mệt|không\\s+hết|không\\s+nổi|thế\\s+quái)|ngắn\\s+gọn|nói\\s+ngắn|trả\\s+lời\\s+ngắn|tóm\\s+gọn|gọn\\s+(?:lại|thôi|giùm))\\b.*"
+    );
+
+    public static boolean isExplicitConciseReplyRequest(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        return EXPLICIT_CONCISE_REPLY_REQUEST_PATTERN.matcher(norm).find();
+    }
+
+    /**
+     * ACI V3 (P1 §3.5): False Apology Guard — phát hiện lời xin lỗi tham chiếu nội dung cụ thể
+     * mà bot bị cho là "vừa nhắc tới / đã tư vấn" (VD "xin lỗi vì vừa nhắc tới cổ vai gáy").
+     */
+    private static final Pattern APOLOGY_CONTENT_REFERENCE_PATTERN = Pattern.compile(
+            "(?isU)(?:xin\\s+lỗi|thành\\s+thật\\s+xin\\s+lỗi|lỗi)\\s+(?:vì|về|rằng)\\s+(?:đã\\s+|vừa\\s+)?"
+                    + "(?:nhắc\\s+(?:tới|đến)|nói\\s+(?:tới|đến|về)|tư\\s+vấn|giới\\s+thiệu|đề\\s+cập|gợi\\s+ý)"
+                    + "\\s+(?<ref>.+?)(?=\\s+(?:trong\\s+khi|mà|nhưng|dù|khi\\s+)|[.!?,]|$)"
+    );
+
+    /**
+     * ACI V3 (P1 §3.5): False Apology Guard — nếu bong bóng chứa lời xin lỗi tham chiếu nội dung
+     * cụ thể mà bot bị cho là "vừa nhắc tới / đã tư vấn" (VD "xin lỗi vì vừa nhắc tới cổ vai gáy")
+     * nhưng {@code priorAssistantTexts} chưa từng chứa nội dung đó -> viết lại thành lời xin lỗi
+     * trung thực, không nhận đã nói điều chưa nói. Nếu nội dung tham chiếu CÓ trong lịch sử
+     * assistant (bot đã thật sự nói) -> giữ nguyên lời xin lỗi có căn cứ.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> enforceGroundedApologyAgainstHistoryInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<String> priorAssistantTexts,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder historyBuf = new StringBuilder();
+        if (priorAssistantTexts != null) {
+            for (String t : priorAssistantTexts) {
+                if (t != null && !t.isBlank()) {
+                    historyBuf.append(' ').append(
+                            java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFC)
+                                    .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip());
+                }
+            }
+        }
+        String historyLow = historyBuf.toString();
+        String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                continue;
+            }
+            String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            Matcher m = APOLOGY_CONTENT_REFERENCE_PATTERN.matcher(norm);
+            boolean hasFalseReference = false;
+            while (m.find()) {
+                String ref = m.group("ref");
+                if (ref == null) {
+                    continue;
+                }
+                String refLow = java.text.Normalizer.normalize(ref.strip(), java.text.Normalizer.Form.NFC)
+                        .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+                // Bỏ qua tham chiếu quá chung chung ("điều đó", "vậy") — chỉ chặn tham chiếu nội dung cụ thể
+                if (refLow.length() < 3 || refLow.matches("(?isU)(?:điều\\s+đó|vậy|thế|đó|nó)")) {
+                    continue;
+                }
+                if (!historyLow.contains(refLow)) {
+                    hasFalseReference = true;
+                    break;
+                }
+            }
+            if (hasFalseReference) {
+                out.add(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + safeSelf + " xin lỗi vì câu trả lời trước chưa bám sát những gì "
+                                + safeCust + " chia sẻ ạ.",
+                        b.typingDelayMs()));
+            } else {
+                out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
+            }
+        }
+        return out;
     }
 
     public static boolean hasTrailingSalesOrBookingCtaOnStyleComplaint(String text, String customerMessage) {

@@ -2173,8 +2173,13 @@ class AciCognitiveV2AndReadingBudgetTest {
         AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot s1 =
                 sharedBrain.getCustomerUnderstandingDraft2Snapshot(PAGE_ID, sender);
         assertThat(s1.consultativeProfile().conversationGoal()).isEqualTo("RELIEVE_NECK_SHOULDER_FATIGUE");
+        // ACI V3 P1 §3.1: triệu chứng ghép được tách nguyên tử — "mỏi cổ vai gáy" lưu thành
+        // "mỏi cổ" / "mỏi vai" / "mỏi gáy", KHÔNG lưu composite song song với các atom con.
         assertThat(s1.consultativeProfile().selfReportedSymptoms())
-                .anyMatch(f -> f.value().contains("mỏi cổ vai gáy"));
+                .anyMatch(f -> f.value().contains("mỏi cổ"))
+                .anyMatch(f -> f.value().contains("mỏi vai"))
+                .anyMatch(f -> f.value().contains("mỏi gáy"))
+                .noneMatch(f -> f.value().contains("mỏi cổ vai gáy"));
         assertThat(s1.businessCommitment().interestedPackageId()).isEqualTo("DS02");
         assertThat(s1.businessCommitment().selectedPackageId()).isNull();
         assertThat(s1.businessCommitment().bookingStatus()).isEqualTo("NONE");

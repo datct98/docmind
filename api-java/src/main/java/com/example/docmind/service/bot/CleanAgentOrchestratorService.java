@@ -4388,6 +4388,13 @@ public class CleanAgentOrchestratorService {
             if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(turn.content())) {
                 continue;
             }
+            // ACI V3 P1 §3.3: KHÔNG quét từ khóa triệu chứng trên lượt phản bác/đính chính
+            // ("ơ bị dở à sao lại cổ vai gáy") — từ khóa trong câu phủ định không phải bằng chứng nhu cầu.
+            VietnameseScopeSignalExtractor.ScopeSignalResult historyTurnSignal =
+                    VietnameseScopeSignalExtractor.analyze(turn.content(), List.of());
+            if (historyTurnSignal.possibleCorrection() || historyTurnSignal.explicitCorrectionGroupD()) {
+                continue;
+            }
             String turnLower = turn.content().toLowerCase(Locale.ROOT);
             for (String symptomKey : historySymptomKeys) {
                 if (turnLower.contains(symptomKey) && !shadowScopeCandidates.contains(symptomKey)) {
@@ -4781,11 +4788,18 @@ public class CleanAgentOrchestratorService {
             }
         }
 
+        // ACI V3 P1 §3.1: bằng chứng grounding gồm phát ngôn hiện tại + toàn bộ phát ngôn khách
+        // trước đó trong phiên (fact được LLM mang từ lượt trước sang vẫn hợp lệ).
+        String historicalCustomerEvidence = safeHistory.stream()
+                .filter(t -> t != null && t.content() != null
+                        && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role()))
+                .map(FanpageBotRequest.ConversationTurn::content)
+                .collect(java.util.stream.Collectors.joining("\n"));
         AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection =
                 ((structured != null && structured.aciReflection() != null)
                         ? structured.aciReflection()
                         : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty())
-                        .reconcileWithCurrentUtterance(originalVerbatim);
+                        .reconcileWithCurrentUtterance(originalVerbatim, historicalCustomerEvidence);
         if (!pronounLockedFromSelfReference && reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
             safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
         }
@@ -4841,6 +4855,18 @@ public class CleanAgentOrchestratorService {
             }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.mergeTrailingColonAndTurn1PriceIntroBubbles(
                     candidateBubbles, originalVerbatim, safeHistory.isEmpty());
+            // ACI V3 P1 §3.5: False Apology Guard — chặn lời xin lỗi tham chiếu nội dung cụ thể
+            // mà bot chưa từng nói trong lịch sử ("xin lỗi vì vừa nhắc tới cổ vai gáy" khi bot chưa hề nhắc)
+            {
+                List<String> priorAssistantTexts = safeHistory.stream()
+                        .filter(t -> t != null
+                                && ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role())))
+                        .map(FanpageBotRequest.ConversationTurn::content)
+                        .filter(java.util.Objects::nonNull)
+                        .toList();
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        candidateBubbles, priorAssistantTexts, selfPronoun, safeHonorific);
+            }
         }
 
         // Áp dụng ProposedBookingPatch qua cổng thẩm quyền Java Core & đánh giá Conditional Handoff (Mục 3.4 & Mục 4)
@@ -4991,7 +5017,8 @@ public class CleanAgentOrchestratorService {
                             structured = repairedStructured;
                             if (repairedStructured != null && repairedStructured.aciReflection() != null
                                     && repairedStructured.aciReflection().parsedFromV2Schema()) {
-                                reflection = repairedStructured.aciReflection().reconcileWithCurrentUtterance(originalVerbatim);
+                                reflection = repairedStructured.aciReflection()
+                                        .reconcileWithCurrentUtterance(originalVerbatim, historicalCustomerEvidence);
                                 if (!pronounLockedFromSelfReference && reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
                                     safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
                                 }
@@ -5825,6 +5852,18 @@ public class CleanAgentOrchestratorService {
                     && AdaptiveConversationIntelligence.classifyPriceIntentSubMode(msg) == AdaptiveConversationIntelligence.PriceIntentSubMode.NONE
                     && !AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(msg))) {
             return List.of();
+        }
+        // ACI V3 P1 §3.4: Lượt phản bác giả định sai của bot (CUSTOMER_CORRECTION / REJECTED_BOT_ASSUMPTION)
+        // — discovery_empathy_and_scope không được chi phối (tránh gợi ý vùng cơ thể giả định lần nữa),
+        // đồng thời loại trừ mọi skill chốt lịch/bán hàng pushy. Phản hồi lượt này thuộc về xin lỗi
+        // trung thực + bám lại đúng lời khách, không phải khai thác thêm nhu cầu.
+        if (!msg.isEmpty()) {
+            VietnameseScopeSignalExtractor.ScopeSignalResult correctionSignal =
+                    VietnameseScopeSignalExtractor.analyze(msg, List.of());
+            if (correctionSignal.possibleCorrection() || correctionSignal.explicitCorrectionGroupD()
+                    || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(msg)) {
+                return List.of();
+            }
         }
         String normLower = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
         boolean bookingActive = priorBookingState != null && priorBookingState.status().isActiveOrConfirmed();

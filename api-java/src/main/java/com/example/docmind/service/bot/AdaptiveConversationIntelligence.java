@@ -1326,6 +1326,35 @@ public final class AdaptiveConversationIntelligence {
      * Tách biểu hiện sức khỏe liệt kê/kết hợp ("đau đầu, chóng mặt", "đau đầu kèm buồn nôn")
      * thành danh sách các biểu hiện nguyên tử đã chuẩn hóa và khử trùng lặp.
      */
+    /**
+     * ACI V3 P1 §3.1: Fact grounding — fact ADD chỉ được nhận khi có bằng chứng từ vựng trong lời khách:
+     * (a) value xuất hiện nguyên văn trong câu; hoặc
+     * (b) mọi phạm vi/vùng cơ thể cấu thành value đều có bằng chứng alias trong câu ("tê chân" -&gt; "chân").
+     * Value không mang token phạm vi nào thì bắt buộc bằng chứng nguyên văn.
+     * Tuyệt đối không ghi fact CONFIRMED/HIGH với source=CUSTOMER_MESSAGE khi thiếu bằng chứng này.
+     */
+    public static boolean hasLexicalEvidenceInUtterance(String factValue, String rawUserMessage) {
+        if (factValue == null || factValue.isBlank() || rawUserMessage == null || rawUserMessage.isBlank()) {
+            return false;
+        }
+        String msg = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        String val = Normalizer.normalize(factValue.strip(), Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        if (val.isEmpty()) {
+            return false;
+        }
+        if (msg.contains(val)) {
+            return true;
+        }
+        List<String> valueScopes = ScopeMatcher.extractScopesFromText(val, List.of());
+        if (valueScopes.isEmpty()) {
+            return false;
+        }
+        Set<String> evidenceScopes = new LinkedHashSet<>(ScopeMatcher.extractScopesFromText(msg, List.of()));
+        return evidenceScopes.containsAll(valueScopes);
+    }
+
     public static List<String> splitAtomicHealthExpressions(String raw) {
         if (raw == null || raw.isBlank()) {
             return List.of();
@@ -1342,12 +1371,60 @@ public final class AdaptiveConversationIntelligence {
             if (p == null || p.isBlank()) continue;
             String cleaned = cleanAtomicSymptomValue(p);
             if (cleaned.isBlank()) continue;
-            String canon = canonicalSymptomKey(cleaned);
-            if (!canon.isBlank()) {
-                dedupByCanonical.putIfAbsent(canon, cleaned);
+            // ACI V3 P1 §3.1: tách biểu hiện ghép nhiều vùng ("đau cổ vai gáy") thành atoms,
+            // tránh lưu đồng thời chuỗi tổng hợp và các phần tử con trong extracted_pains
+            for (String atom : expandCompoundBodyAreaSymptom(cleaned)) {
+                String canon = canonicalSymptomKey(atom);
+                if (!canon.isBlank()) {
+                    dedupByCanonical.putIfAbsent(canon, atom);
+                }
             }
         }
         return List.copyOf(dedupByCanonical.values());
+    }
+
+    private static final Set<String> COMPOUND_BODY_AREA_TOKENS = Set.of(
+            "cổ", "vai", "gáy", "lưng", "eo", "hông", "chân", "tay", "đầu", "bụng", "mông", "gối"
+    );
+
+    private static final Pattern SYMPTOM_VERB_COMPOUND_PREFIX_PATTERN = Pattern.compile(
+            "(?iU)^(đau\\s+nhức|đau|mỏi|nhức|căng|tê|sưng|cứng|nóng|nặng)\\s+(.+)$"
+    );
+
+    /**
+     * ACI V3 P1 §3.1: Tách "{động từ triệu chứng} + chuỗi ≥2 vùng cơ thể" ("đau cổ vai gáy",
+     * "mỏi vai gáy") thành các atom từng vùng. Giữ nguyên cụm ghép đặc biệt "đầu gối".
+     */
+    private static List<String> expandCompoundBodyAreaSymptom(String cleaned) {
+        if (cleaned == null || cleaned.isBlank()) {
+            return List.of();
+        }
+        String low = Normalizer.normalize(cleaned.strip(), Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        Matcher m = SYMPTOM_VERB_COMPOUND_PREFIX_PATTERN.matcher(low);
+        if (!m.matches()) {
+            return List.of(cleaned);
+        }
+        String verb = m.group(1).strip();
+        String rest = m.group(2).strip()
+                .replaceAll("(?iU)\\bđầu\\s+gối\\b", "đầu_gối");
+        String[] tokens = rest.split("\\s+");
+        if (tokens.length < 2) {
+            return List.of(cleaned);
+        }
+        List<String> areas = new ArrayList<>();
+        for (String t : tokens) {
+            String tok = t.replace("_", " ");
+            if (!COMPOUND_BODY_AREA_TOKENS.contains(tok) && !"đầu gối".equals(tok)) {
+                return List.of(cleaned);
+            }
+            areas.add(tok);
+        }
+        List<String> expanded = new ArrayList<>(areas.size());
+        for (String area : areas) {
+            expanded.add(verb + " " + area);
+        }
+        return expanded;
     }
 
     public static String cleanAtomicSymptomValue(String rawPart) {
@@ -1875,6 +1952,34 @@ public final class AdaptiveConversationIntelligence {
             responsePlan = responsePlan != null ? responsePlan : AdaptiveResponsePlan.empty();
         }
 
+        public AdaptiveCognitiveReflection withConfirmedFactsDelta(List<FactDeltaProposal> newDelta) {
+            return new AdaptiveCognitiveReflection(
+                    customerUnderstanding,
+                    priority,
+                    workingHypothesis,
+                    strategy,
+                    uncertainties,
+                    customerStatements,
+                    commitmentDelta,
+                    handoffRequest,
+                    proposedBookingPatch,
+                    blockedUnauthorizedCompletionCount,
+                    parsedFromV2Schema,
+                    activatedSkillCodes,
+                    explicitActivatedSkillCodes,
+                    currentTopic,
+                    unresolvedRequestsDelta,
+                    pendingReferences,
+                    conversationGoal,
+                    needRevisionDetected,
+                    newDelta,
+                    barrierType,
+                    hypothesisConfidenceLevel,
+                    interestedPackageId,
+                    responsePlan
+            );
+        }
+
         public AdaptiveCognitiveReflection withForcedNoCta() {
             // P3.7-B: NO_CTA chỉ khóa SALES_CTA; câu hỏi khám phá (DISCOVERY_QUESTION) đã được hợp giải ở nhánh
             // MISSED_DISCOVERY thì được giữ nguyên (không phải lời mời mua/đặt lịch).
@@ -1924,9 +2029,43 @@ public final class AdaptiveConversationIntelligence {
          * và tôn trọng tuyệt đối lời từ chối dừng tư vấn rõ ràng của khách.
          */
         public AdaptiveCognitiveReflection reconcileWithCurrentUtterance(String rawUserMessage) {
+            return reconcileWithCurrentUtterance(rawUserMessage, null);
+        }
+
+        /**
+         * ACI V3 P1 §3.1 (hiệu chỉnh): bằng chứng từ vựng của một fact = phát ngôn hiện tại
+         * <b>hoặc</b> các phát ngôn khách đã nói trước đó trong cùng phiên (LLM thường mang
+         * các fact đã xác nhận ở lượt trước sang confirmed_facts_delta của lượt hiện tại —
+         * VD khách nói "đau đầu chóng mặt" ở T1, lượt T3 chỉ nói "thỉnh thoảng bị lại").
+         * Fact KHÔNG có bằng chứng ở cả hai nơi (bot tự suy diễn, VD "cổ vai gáy" khi khách
+         * chỉ từng nói "tê chân") vẫn bị loại tuyệt đối.
+         */
+        public AdaptiveCognitiveReflection reconcileWithCurrentUtterance(String rawUserMessage,
+                String historicalCustomerEvidence) {
             if (rawUserMessage == null || rawUserMessage.isBlank()
                     || PromptSecurityGuard.isDirectJailbreakAttempt(rawUserMessage)) {
                 return this;
+            }
+            // ACI V3 P1 §3.1: Fact grounding — mọi fact ADD do LLM đề xuất phải có bằng chứng từ vựng
+            // trong lời khách (lượt hiện tại hoặc lịch sử phiên); fact không có bằng chứng (bot tự
+            // suy diễn, VD "cổ vai gáy" khi khách chỉ nói "tê chân") bị loại khỏi confirmed_facts_delta,
+            // không bao giờ được ghi CONFIRMED/HIGH với source=CUSTOMER_MESSAGE.
+            String groundingEvidence = historicalCustomerEvidence != null && !historicalCustomerEvidence.isBlank()
+                    ? rawUserMessage + "\n" + historicalCustomerEvidence
+                    : rawUserMessage;
+            List<FactDeltaProposal> groundedDelta = new ArrayList<>();
+            boolean droppedUngrounded = false;
+            for (FactDeltaProposal f : confirmedFactsDelta) {
+                if (f != null && f.op() == FactMutationOp.ADD
+                        && !hasLexicalEvidenceInUtterance(f.value(), groundingEvidence)) {
+                    droppedUngrounded = true;
+                    continue;
+                }
+                groundedDelta.add(f);
+            }
+            if (droppedUngrounded) {
+                return withConfirmedFactsDelta(groundedDelta)
+                        .reconcileWithCurrentUtterance(rawUserMessage, historicalCustomerEvidence);
             }
             String normLower = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC)
                     .toLowerCase(Locale.ROOT);

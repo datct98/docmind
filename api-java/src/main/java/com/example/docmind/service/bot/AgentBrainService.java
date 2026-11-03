@@ -1486,6 +1486,12 @@ public class AgentBrainService {
                     mem.draft2EffectiveTurnDepth = mem.communicationStylePreference;
                 }
             }
+            // ACI V3 P1 §3.5/§5.2-12: Chỉ khi khách phàn nàn TƯỜNG MINH về độ dài ("viết dài thế đọc thế quái
+            // nào được") mới ghi CONCISE — không sụp mọi COMMUNICATION_FRICTION thành CONCISE_PREFERRED.
+            if (CleanAgentOutputRefereeAndSanitizer.isExplicitConciseReplyRequest(originalCustomerMessage)) {
+                mem.communicationStylePreference = "CONCISE";
+                mem.draft2EffectiveTurnDepth = "CONCISE";
+            }
             mem.operationalState = new AdaptiveConversationIntelligence.OperationalStateSnapshot(
                     bookingStatusStr,
                     nextHandoffStatus,
