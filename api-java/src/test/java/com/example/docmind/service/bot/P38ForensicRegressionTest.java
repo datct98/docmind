@@ -929,6 +929,527 @@ class P38ForensicRegressionTest {
         assertThat(template).containsIgnoringCase("branch=");
     }
 
+    // =========================================================================
+    // TEST 31 (P3 §4.9/§5.1): decision_trace phải hiện diện với ĐỦ trường bắt
+    // buộc trên lượt correction — và tuyệt đối không rò rỉ raw message (PII).
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T31 §4.9: decision_trace đủ trường trên lượt correction, hash SHA-256 rút gọn, 0 rò rỉ raw message")
+    void test31_decisionTraceCompletenessOnCorrectionTurnAndPiiRedaction() throws Exception {
+        String msg = "ơ bị dở à sao lại cổ vai gáy";
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "dạo này em hay bị tê chân"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ với tình trạng của mình thì em nghĩ gói massage cổ vai gáy sẽ hợp ạ.")
+        );
+        ConversationState prior = ConversationState
+                .hydrateForTurn(PAGE_ID, SENDER, null, history, NANG_SEN_TAXONOMY, List.of());
+        ConversationState post = prior.enrichWithCurrentMessage(msg, NANG_SEN_TAXONOMY);
+
+        AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection =
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty()
+                        .withConfirmedFactsDelta(List.of(
+                                new AdaptiveConversationIntelligence.FactDeltaProposal(
+                                        "self_reported_symptom", "khó ngủ",
+                                        AdaptiveConversationIntelligence.FactMutationOp.ADD, "HIGH")));
+
+        List<AgentSkillDto> sixSkills = buildNangSenSixSkills();
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        List<FanpageBotResponse.ReplyBubble> finalBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ.", 0));
+
+        com.example.docmind.dto.bot.DecisionTrace trace = CleanAgentOrchestratorService.buildAciV3DecisionTrace(
+                "T3", msg, reflection,
+                AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial(),
+                prior, post, null,
+                sixSkills, List.of(),           // correction turn -> selected rỗng (gate §3.4)
+                List.of(), List.of(),
+                catalog.subList(0, 2), catalog.subList(2, 4),
+                List.of("Dạ em rất thương khi nghe mình vất vả vậy ạ."),  // raw LLM có cliché bị cấm
+                finalBubbles,
+                false,
+                NANG_SEN_TAXONOMY);
+
+        assertThat(trace).isNotNull();
+        assertThat(trace.turnId()).isEqualTo("T3");
+        assertThat(trace.customerMessageHash())
+                .as("hash SHA-256 rút gọn 16 hex, deterministic")
+                .isEqualTo(com.example.docmind.dto.bot.DecisionTrace.sha256Short(msg))
+                .hasSize(16)
+                .matches("[0-9a-f]{16}");
+        assertThat(trace.negativeReactionSubtype())
+                .as("'sao lại cổ vai gáy' phải là CUSTOMER_CORRECTION (§4.1)")
+                .isEqualTo("CUSTOMER_CORRECTION");
+        assertThat(trace.factChanges().extractedPains()).contains("khó ngủ");
+        assertThat(trace.factChanges().knownBodyAreas())
+                .contains("chân")
+                .noneMatch(s -> s.contains("cổ"))
+                .noneMatch(s -> s.contains("vai"))
+                .noneMatch(s -> s.contains("gáy"));
+        assertThat(trace.scopesBefore()).contains("chân");
+        assertThat(trace.scopesAfter()).contains("chân");
+        assertThat(trace.selectedSkills()).isEmpty();
+        assertThat(trace.excludedSkillsOrRulesOnCorrection())
+                .as("lượt correction phải ghi rõ 6 skill bị loại bởi correction-turn gate")
+                .hasSize(6)
+                .allSatisfy(e -> assertThat(e).startsWith("skill:").contains("CORRECTION_TURN_GATE"));
+        assertThat(trace.catalogCandidates())
+                .anySatisfy(c -> {
+                    assertThat(c.productId()).isEqualTo("HN:NS01:399000");
+                    assertThat(c.branch()).isEqualTo("HN");
+                    assertThat(c.priceDisplay()).isEqualTo("399k");
+                    assertThat(c.durationLabel()).isEqualTo("60 phút");
+                });
+        assertThat(trace.responsePlan()).isNotNull();
+        assertThat(trace.responsePlan().explicitPriceDemand()).isFalse();
+        assertThat(trace.sanitizerMutations().falseApologyRewritten())
+                .as("bubble cuối chứa văn bản rewrite của False Apology Guard -> mutation được ghi nhận")
+                .isTrue();
+        assertThat(trace.sanitizerMutations().clicheEmpathyStripped())
+                .as("raw LLM có 'em rất thương khi nghe mình...' nhưng output cuối không còn -> stripped")
+                .isTrue();
+        assertThat(trace.sanitizerMutations().priceGroundingApplied()).isFalse();
+
+        // PII redaction: serialize ra JSON — tuyệt đối không chứa raw message, đủ khóa bắt buộc.
+        JsonNode json = objectMapper.valueToTree(trace);
+        for (String key : new String[]{"turn_id", "customer_message_hash", "detected_intent",
+                "negative_reaction_subtype", "fact_changes", "scopes_before", "scopes_after",
+                "selected_skills", "excluded_skills_or_rules_on_correction", "catalog_candidates",
+                "response_plan", "sanitizer_mutations"}) {
+            assertThat(json.has(key)).as("decision_trace phải có khóa " + key).isTrue();
+        }
+        assertThat(json.get("fact_changes").has("retracted_bot_assumptions")).isTrue();
+        assertThat(json.get("response_plan").has("explicit_price_demand")).isTrue();
+        assertThat(json.toString())
+                .as("raw customer message tuyệt đối không xuất hiện trong trace (PII)")
+                .doesNotContain("ơ bị dở");
+    }
+
+    // =========================================================================
+    // TEST 32 (P3 §4.9/§4.2): lượt complaint kèm yêu cầu giá tường minh — trace
+    // ghi explicit_price_demand=true, price_grounding_applied=true khi final
+    // bubbles báo giá, và KHÔNG đổ correction exclusions (subtype ≠ correction).
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T32 §4.9/§4.2: lượt 'đừng nói vòng vo, báo giá đi' -> price demand + grounding được trace, 0 exclusion")
+    void test32_decisionTraceOnStyleComplaintWithExplicitPriceDemand() throws Exception {
+        String msg = "đừng nói vòng vo nữa, báo giá đi";
+        ConversationState prior = ConversationState
+                .hydrateForTurn(PAGE_ID, SENDER, null, List.of(
+                        new FanpageBotRequest.ConversationTurn("user", "đau mỏi chân và khó ngủ quá")),
+                        NANG_SEN_TAXONOMY, List.of());
+        ConversationState post = prior.enrichWithCurrentMessage(msg, NANG_SEN_TAXONOMY);
+
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        List<FanpageBotResponse.ReplyBubble> finalBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ gói NS01 ở Hà Nội là 399k/60 phút ạ.", 0));
+
+        com.example.docmind.dto.bot.DecisionTrace trace = CleanAgentOrchestratorService.buildAciV3DecisionTrace(
+                "T2", msg,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty(),
+                AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot.initial(),
+                prior, post, "HN",
+                buildNangSenSixSkills(), buildNangSenSixSkills().subList(0, 1),
+                List.of(), List.of(),
+                catalog.subList(0, 1), List.of(),
+                List.of("Dạ gói NS01 ở Hà Nội là 399k/60 phút ạ."),
+                finalBubbles,
+                false,
+                NANG_SEN_TAXONOMY);
+
+        assertThat(trace.negativeReactionSubtype())
+                .as("phàn nàn phong cách kèm đòi giá -> COMMUNICATION_COMPLAINT, không phải correction")
+                .isEqualTo("COMMUNICATION_COMPLAINT");
+        assertThat(trace.responsePlan().explicitPriceDemand())
+                .as("'báo giá đi' là yêu cầu giá tường minh (§4.2)")
+                .isTrue();
+        assertThat(trace.sanitizerMutations().priceGroundingApplied())
+                .as("final bubble có giá 399k và không safe-handoff -> grounding đã áp")
+                .isTrue();
+        assertThat(trace.sanitizerMutations().falseApologyRewritten()).isFalse();
+        assertThat(trace.excludedSkillsOrRulesOnCorrection())
+                .as("không phải correction turn -> không đổ correction exclusions")
+                .isEmpty();
+        assertThat(trace.selectedSkills())
+                .singleElement()
+                .satisfies(s -> {
+                    assertThat(s.code()).isEqualTo("discovery_empathy_and_scope");
+                    assertThat(s.reason()).isNotBlank();
+                });
+        assertThat(trace.factChanges().preferredRegion()).isEqualTo("HN");
+
+        // wither gắn trace vào response và serialize ra đúng khóa decision_trace
+        FanpageBotResponse resp = new FanpageBotResponse(
+                "Dạ gói NS01 ở Hà Nội là 399k/60 phút ạ.", finalBubbles, "VALUE_CONSULTATION", 1.0,
+                false, null, null, null, List.of(), null, List.of())
+                .withDecisionTrace(trace);
+        JsonNode respJson = objectMapper.valueToTree(resp);
+        assertThat(respJson.has("decision_trace")).isTrue();
+        assertThat(respJson.get("decision_trace").get("negative_reaction_subtype").asText())
+                .isEqualTo("COMMUNICATION_COMPLAINT");
+    }
+
+    // =========================================================================
+    // TEST 33 (P3 Fix-A): đại từ đứng giữa "xin lỗi" và "vì" + động từ
+    // "nhắc sang" — biến thể thực tế từ stability run 9.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T33 Fix-A: 'Em xin lỗi mình vì đã nhắc sang cổ vai gáy' (đại từ giữa xin lỗi-vì) bị viết lại khi bot chưa từng nhắc")
+    void test33_falseApologyPronounGapAndNhacSangVariantRewritten() {
+        List<String> priorAssistantTexts = List.of(
+                "Dạ em nghe mình chia sẻ rồi ạ.",
+                "Dạ mình đang bị hoa mắt, chóng mặt, tê chân và khó ngủ đúng không ạ?"
+        );
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Em xin lỗi mình vì đã nhắc sang cổ vai gáy, trong khi mình chỉ kể hoa mắt chóng mặt, tê chân và khó ngủ thôi ạ.", 0),
+                new FanpageBotResponse.ReplyBubble(
+                        "Mình kể em nghe thêm một chút nhé, lúc hoa mắt chóng mặt ấy thì mình thường đang làm gì ạ?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> guarded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        bubbles, priorAssistantTexts, List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ"),
+                        "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(guarded.get(0).text())
+                .as("bot chưa từng nhắc cổ vai gáy -> câu tự nhận 'đã nhắc sang' bị viết lại")
+                .containsIgnoringCase("xin lỗi")
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .doesNotContainIgnoringCase("nhắc sang");
+        assertThat(guarded.get(0).text())
+                .as("vế ghi nhận đúng triệu chứng khách đã chia sẻ được nối vào lời xin lỗi")
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("chóng mặt")
+                .containsIgnoringCase("tê chân")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(guarded.get(1).text())
+                .as("bubble hỏi khám phá thuần của LLM được giữ nguyên, không sinh thêm câu hỏi thứ hai")
+                .contains("lúc hoa mắt chóng mặt");
+        assertThat(guarded).hasSize(2);
+    }
+
+    // =========================================================================
+    // TEST 34 (P3 Fix-A): các biến thể thực tế từ stability runs 2/11/12 —
+    // "nhắc tới vùng", "nhắc chưa đúng ý ... chứ không phải", "đoán nhầm sang".
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T34 Fix-A: 'nhắc tới vùng cổ vai gáy' / 'nhắc chưa đúng ý... chứ không phải cổ vai gáy' / 'đoán nhầm sang' đều bị viết lại")
+    void test34_falseApologyNhacToiChuaDungYDoanNhamVariantsRewritten() {
+        List<String> priorAssistantTexts = List.of("Dạ em nghe mình chia sẻ rồi ạ.");
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+
+        List<FanpageBotResponse.ReplyBubble> g1 =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(
+                                "Dạ em xin lỗi mình vì đã nhắc tới vùng cổ vai gáy khi mình chưa hề nói tới, là em nói vội quá ạ.", 0)),
+                        priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(g1.get(0).text())
+                .containsIgnoringCase("xin lỗi")
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .doesNotContainIgnoringCase("đã nhắc");
+
+        List<FanpageBotResponse.ReplyBubble> g2 =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(
+                                "Dạ em xin lỗi mình vì đã nhắc chưa đúng ý, mình đang chia sẻ hoa mắt chóng mặt, tê chân và khó ngủ chứ không phải cổ vai gáy, em ghi nhận lại đúng như vậy ạ.", 0)),
+                        priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(g2.get(0).text())
+                .containsIgnoringCase("xin lỗi")
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .doesNotContainIgnoringCase("đã nhắc");
+
+        List<FanpageBotResponse.ReplyBubble> g3 =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(
+                                "Dạ em xin lỗi mình, em đoán nhầm sang cổ vai gáy trong khi mình chỉ kể hoa mắt, chóng mặt, tê chân và khó ngủ.", 0)),
+                        priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(g3.get(0).text())
+                .containsIgnoringCase("xin lỗi")
+                .doesNotContainIgnoringCase("cổ vai gáy");
+    }
+
+    // =========================================================================
+    // TEST 35 (P3 Fix-A): KHÔNG được over-trigger — xin lỗi có căn cứ (bot đã
+    // nói thật) và tham chiếu mô tả phía khách ("vùng mình không cần chăm sóc")
+    // đều phải giữ nguyên.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T35 Fix-A: xin lỗi grounded (bot ĐÃ nói) và tham chiếu phía khách đều được giữ nguyên")
+    void test35_groundedOrCustomerRelativeApologyPreserved() {
+        List<String> priorAssistantTexts = List.of(
+                "Dạ với tình trạng của mình thì em nghĩ gói massage cổ vai gáy sẽ hợp ạ.");
+
+        // Grounded: bot đã thật sự nhắc cổ vai gáy -> biến thể "nhắc sang" cũng được giữ
+        List<FanpageBotResponse.ReplyBubble> grounded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(
+                                "Em xin lỗi mình vì đã nhắc sang cổ vai gáy trong khi mình chưa hỏi về vùng đó ạ.", 0)),
+                        priorAssistantTexts, List.of(), null, "em", "mình");
+        assertThat(grounded.get(0).text())
+                .as("bot đã nhắc cổ vai gáy thật -> lời xin lỗi có căn cứ, không bị viết lại")
+                .containsIgnoringCase("cổ vai gáy")
+                .containsIgnoringCase("nhắc sang");
+
+        // Customer-relative: "vùng mình không cần chăm sóc" là trạng thái của khách, không phải
+        // nội dung bot bị quy kết đã nói -> không viết lại (tránh over-trigger run 10/18)
+        List<FanpageBotResponse.ReplyBubble> customerRelative =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(
+                                "Em xin lỗi mình vì đã nhắc tới vùng mình không cần chăm sóc ạ.", 0)),
+                        List.of("Dạ em nghe mình chia sẻ rồi ạ."), List.of(), null, "em", "mình");
+        assertThat(customerRelative.get(0).text())
+                .as("tham chiếu 'vùng mình không cần chăm sóc' là phía khách -> giữ nguyên, không rewrite mù")
+                .containsIgnoringCase("chăm sóc")
+                .containsIgnoringCase("nhắc tới");
+    }
+
+    // =========================================================================
+    // TEST 36 (P3 Fix-B): lượt CUSTOMER_CORRECTION không đòi giá -> strip sạch
+    // câu giá/gói/câu hỏi chốt chi nhánh, nối câu hỏi mở bám triệu chứng.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T36 Fix-B: lượt correction (0 explicit price demand) -> strip pitch giá/gói/chốt chi nhánh, nối câu hỏi mở bám triệu chứng")
+    void test36_correctionTurnStripsUnsolicitedPricePitchAndAppendsSymptomQuestion() {
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ.", 0),
+                new FanpageBotResponse.ReplyBubble(
+                        "Bên em có gói massage thư giãn toàn thân 60 phút, khởi điểm 399k ở Hà Nội và 570k cho bản 70 phút ở Sài Gòn, không gian yên tĩnh ạ. Mình đang ở khu vực nào để em tư vấn đúng cơ sở ạ?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> cleaned =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        bubbles, "ơ bị dở à sao lại cổ vai gáy", symptoms, NANG_SEN_TAXONOMY, "em", "mình");
+        String joined = joinBubbleTexts(cleaned);
+        assertThat(joined)
+                .doesNotContain("399").doesNotContain("570")
+                .doesNotContainIgnoringCase("gói massage")
+                .doesNotContainIgnoringCase("khu vực nào");
+        assertThat(joined)
+                .as("câu hỏi mở bám đúng 4 triệu chứng khách đã chia sẻ (gate tc5)")
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("chóng mặt")
+                .containsIgnoringCase("tê chân")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(joined).contains("?");
+    }
+
+    // =========================================================================
+    // TEST 37 (P3 Fix-B, §4.2): ngoại lệ bắt buộc — friction nhưng khách ĐÒI GIÁ
+    // tường minh -> tuyệt đối không cắt nội dung giá grounded.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T37 Fix-B §4.2: friction + 'báo giá đi' (explicit price demand) -> KHÔNG cắt nội dung giá")
+    void test37_frictionWithExplicitPriceDemandKeepsGroundedPriceAnswer() {
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ gói NS01 ở Hà Nội là 399k/60 phút ạ.", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> kept =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        bubbles, "đừng nói vòng vo nữa, báo giá đi", List.of(), NANG_SEN_TAXONOMY, "em", "mình");
+        assertThat(kept).hasSize(1);
+        assertThat(joinBubbleTexts(kept))
+                .as("§4.2: explicit price demand phải được trả lời giá grounded, guard không can thiệp")
+                .contains("399");
+    }
+
+    // =========================================================================
+    // TEST 38 (P3 Fix-B): lượt hỏi giá/gói bình thường (subtype NONE) -> guard
+    // hoàn toàn không can thiệp; lượt OVER_INTRUSION -> strip pitch nhưng giữ
+    // nguyên chính sách 0 câu hỏi.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T38 Fix-B: lượt thường (NONE) không can thiệp; OVER_INTRUSION strip pitch nhưng 0 câu hỏi được thêm")
+    void test38_normalTurnUntouchedAndOverIntrusionStripsWithoutQuestion() {
+        List<FanpageBotResponse.ReplyBubble> priceAnswer = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ gói massage body tinh dầu ở Hà Nội là 399k/60 phút ạ.", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> untouched =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        priceAnswer, "giá bao nhiêu vậy", List.of(), NANG_SEN_TAXONOMY, "em", "mình");
+        assertThat(untouched).hasSize(1);
+        assertThat(joinBubbleTexts(untouched)).contains("399");
+
+        List<FanpageBotResponse.ReplyBubble> intrusionBubbles = List.of(
+                new FanpageBotResponse.ReplyBubble("Dạ em xin lỗi vì đã làm mình khó chịu ạ.", 0),
+                new FanpageBotResponse.ReplyBubble("Gói massage cơ bản bên em từ 399k ạ. Mình đặt lịch luôn nhé?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> intrusionCleaned =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        intrusionBubbles, "đừng ép chốt nữa", List.of("đau lưng"), NANG_SEN_TAXONOMY, "em", "mình");
+        String intrusionJoined = joinBubbleTexts(intrusionCleaned);
+        assertThat(intrusionJoined)
+                .doesNotContain("399")
+                .doesNotContainIgnoringCase("đặt lịch")
+                .doesNotContainIgnoringCase("gói massage");
+        assertThat(intrusionJoined)
+                .as("nhánh OVER_INTRUSION giữ nguyên chính sách 0 câu hỏi")
+                .doesNotContain("?");
+    }
+
+    // =========================================================================
+    // TEST 39 (P3 Fix-B): toàn bộ output đều là pitch -> thay bằng lời xin lỗi
+    // trung thực kèm ghi nhận triệu chứng + câu hỏi mở (không để lượt rỗng).
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T39 Fix-B: mọi bubble đều là pitch -> fallback xin lỗi trung thực + ghi nhận triệu chứng + câu hỏi mở")
+    void test39_allPitchOutputReplacedByHonestApologyAndQuestion() {
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Gói Massage cơ bản toàn thân 60 phút bên em khởi điểm từ 399k ở Hà Nội và 570k ở Sài Gòn ạ.", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> cleaned =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        bubbles, "ơ bị dở à sao lại cổ vai gáy", symptoms, NANG_SEN_TAXONOMY, "em", "mình");
+        String joined = joinBubbleTexts(cleaned);
+        assertThat(cleaned).isNotEmpty();
+        assertThat(joined)
+                .doesNotContain("399").doesNotContain("570")
+                .doesNotContainIgnoringCase("gói massage");
+        assertThat(joined)
+                .containsIgnoringCase("xin lỗi")
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(joined).contains("?");
+    }
+
+    // =========================================================================
+    // TEST 40 (P3 Fix-A+B phối hợp): trên cùng lượt correction — rewrite xin lỗi
+    // sai lịch sử rồi strip pitch; kết quả cuối chỉ còn lời xin lỗi trung thực
+    // + ghi nhận triệu chứng + câu hỏi mở.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T40 Fix-A+B: rewrite apology + strip pitch trên cùng lượt correction -> output cuối sạch giá/gói, bám triệu chứng")
+    void test40_falseApologyRewriteThenPitchStripCombined() {
+        List<String> priorAssistantTexts = List.of(
+                "Dạ em nghe mình chia sẻ rồi ạ.",
+                "Dạ mình đang bị hoa mắt, chóng mặt, tê chân và khó ngủ đúng không ạ?"
+        );
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+        List<FanpageBotResponse.ReplyBubble> llmDraft = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Em xin lỗi mình vì đã nhắc sang cổ vai gáy, trong khi mình chỉ kể hoa mắt chóng mặt, tê chân và khó ngủ thôi ạ.", 0),
+                new FanpageBotResponse.ReplyBubble(
+                        "Với những gì mình chia sẻ thì một buổi massage toàn thân nhẹ nhàng sẽ dễ chịu hơn, gói Massage cơ bản 60 phút bên em từ 399k ạ. Mình muốn buổi vừa đủ để thử trước, hay muốn dài hơn một chút ạ?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> afterApology =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        llmDraft, priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        List<FanpageBotResponse.ReplyBubble> finalOut =
+                CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                        afterApology, "ơ bị dở à sao lại cổ vai gáy", symptoms, NANG_SEN_TAXONOMY, "em", "mình");
+        String joined = joinBubbleTexts(finalOut);
+        assertThat(joined).containsIgnoringCase("xin lỗi");
+        assertThat(joined)
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .doesNotContain("399")
+                .doesNotContainIgnoringCase("gói massage")
+                .doesNotContainIgnoringCase("buổi vừa đủ");
+        assertThat(joined)
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("chóng mặt")
+                .containsIgnoringCase("tê chân")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(joined).contains("?");
+    }
+
+    // =========================================================================
+    // TEST 41 (P3 Fix-A, tc5): lượt correction mà lời xin lỗi GROUNDED (bot đã
+    // nhắc thật) nhưng cả lượt không nhắc lại triệu chứng nào -> chèn vế ghi
+    // nhận triệu chứng ngay sau câu xin lỗi, trước câu hỏi cuối.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T41 Fix-A: xin lỗi grounded thiếu echo triệu chứng -> chèn vế ghi nhận sau câu xin lỗi, giữ nguyên câu hỏi")
+    void test41_groundedApologyWithoutSymptomEchoGetsSymptomReconnect() {
+        List<String> priorAssistantTexts = List.of(
+                "Dạ em nghe mình chia sẻ rồi ạ.",
+                "Dạ mình muốn ưu tiên thư giãn nhẹ nhàng vùng đầu cổ vai gáy hay dành thời gian cho toàn thân ạ?"
+        );
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Em xin lỗi mình vì đã tự thêm vùng cổ vai gáy trong khi mình chưa hề nhắc tới ạ. Mình kể em nghe lúc này cơ thể mình đang khó chịu nhất ở đâu để em hiểu đúng ý mình không ạ?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> guarded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        bubbles, priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(guarded).hasSize(1);
+        String text = guarded.get(0).text();
+        assertThat(text)
+                .as("lời xin lỗi grounded được giữ nguyên (bot đã nhắc cổ vai gáy thật ở lượt trước)")
+                .containsIgnoringCase("tự thêm vùng cổ vai gáy");
+        assertThat(text)
+                .as("vế ghi nhận triệu chứng được chèn để lượt sửa sai nối lại đúng lời khách (gate tc5)")
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("chóng mặt")
+                .containsIgnoringCase("tê chân")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(text.indexOf("ghi nhận"))
+                .as("vế ghi nhận đứng sau câu xin lỗi và trước câu hỏi cuối của LLM")
+                .isGreaterThan(text.indexOf("xin lỗi"))
+                .isLessThan(text.indexOf("để em hiểu đúng ý mình không ạ?"));
+    }
+
+    // =========================================================================
+    // TEST 42 (P3 Fix-A/B): nguồn triệu chứng fallback cho guard — luồng
+    // LLM_COGNITIVE_V2 hydrate state tối giản (knownSymptoms rỗng) nên guard
+    // trích triệu chứng trực tiếp từ lịch sử user; clause phủ định bị loại.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T42 Fix-A/B: extractSymptomsMentionedInText bắt đúng triệu chứng khách kể, bỏ clause phủ định và scope bị correction")
+    void test42_symptomExtractionFromFreeTextWithNegationFiltering() {
+        assertThat(ConversationState.extractSymptomsMentionedInText("hoa mắt, chóng mặt, tê chân"))
+                .containsExactly("hoa mắt", "chóng mặt", "tê chân");
+        assertThat(ConversationState.extractSymptomsMentionedInText("khó ngủ"))
+                .containsExactly("khó ngủ");
+        assertThat(ConversationState.extractSymptomsMentionedInText("đau mỏi chân và khó ngủ quá"))
+                .contains("khó ngủ");
+        // Clause phủ định: triệu chứng khách PHỦ NHẬN không được echo
+        assertThat(ConversationState.extractSymptomsMentionedInText("tôi không bị đau đầu, chỉ hơi chóng mặt thôi"))
+                .doesNotContain("đau đầu")
+                .contains("chóng mặt");
+        // Câu correction nhắc scope không có tiền tố triệu chứng -> không sinh triệu chứng ảo
+        assertThat(ConversationState.extractSymptomsMentionedInText("ơ bị dở à sao lại cổ vai gáy"))
+                .isEmpty();
+        assertThat(ConversationState.extractSymptomsMentionedInText(null)).isEmpty();
+        assertThat(ConversationState.extractSymptomsMentionedInText("  ")).isEmpty();
+    }
+
+    // =========================================================================
+    // TEST 43 (P3 Fix-A): biến thể "nhắc nhầm sang" (stability run 1 lần 2) —
+    // trạng từ "nhầm/sai" chen giữa động từ nhắc/nói/hỏi và từ chỉ hướng.
+    // =========================================================================
+    @Test
+    @DisplayName("P3-T43 Fix-A: 'xin lỗi mình vì đã nhắc nhầm sang vùng cổ vai gáy' bị viết lại khi bot chưa từng nhắc")
+    void test43_falseApologyNhacNhamSangVariantRewritten() {
+        List<String> priorAssistantTexts = List.of(
+                "Dạ em nghe mình chia sẻ rồi ạ.",
+                "Dạ mình đang bị hoa mắt, chóng mặt, tê chân và khó ngủ đúng không ạ?"
+        );
+        List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
+                new FanpageBotResponse.ReplyBubble(
+                        "Dạ em xin lỗi mình vì đã nhắc nhầm sang vùng cổ vai gáy, mình chưa hề nói tới vùng đó ạ.", 0),
+                new FanpageBotResponse.ReplyBubble(
+                        "Điều mình chia sẻ là hoa mắt, chóng mặt, tê chân và khó ngủ, em xin ghi nhận đúng như vậy, mình thấy khó chịu nhất ở đâu trước ạ?", 0)
+        );
+        List<FanpageBotResponse.ReplyBubble> guarded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        bubbles, priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
+        assertThat(guarded.get(0).text())
+                .as("biến thể 'nhắc nhầm sang' tham chiếu nội dung bot chưa nói -> bị viết lại")
+                .containsIgnoringCase("xin lỗi")
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .doesNotContainIgnoringCase("nhắc nhầm");
+        assertThat(guarded.get(0).text())
+                .containsIgnoringCase("hoa mắt")
+                .containsIgnoringCase("khó ngủ");
+        assertThat(guarded.get(1).text())
+                .as("bubble hỏi khám phá của LLM giữ nguyên")
+                .contains("khó chịu nhất ở đâu");
+    }
+
     private static List<AgentSkillDto> buildNangSenSixSkills() {
         Instant now = Instant.now();
         String p = PAGE_ID.toString();

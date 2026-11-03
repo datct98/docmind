@@ -633,6 +633,38 @@ public record ConversationState(
     }
 
     /**
+     * ACI V3 (P3 Fix-A/B): trích xuất triệu chứng khách tự kể từ một đoạn text tự do.
+     * Luồng {@code LLM_COGNITIVE_V2} hydrate state tối giản ({@link #hydrateMinimalForAciV2})
+     * nên {@code knownSymptoms} thường rỗng — các guard tầng output dùng hàm này để echo lại
+     * đúng triệu chứng khách đã chia sẻ trong lịch sử. Clause chứa phủ định
+     * ("không/chẳng/chả/đâu/hết/đừng") được bỏ qua để không echo triệu chứng khách đã phủ nhận.
+     */
+    public static List<String> extractSymptomsMentionedInText(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        String clean = Normalizer.normalize(text.strip(), Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        Set<String> out = new LinkedHashSet<>();
+        for (String clause : clean.split("[,;.!?？\\n]+")) {
+            if (clause == null || clause.isBlank()) {
+                continue;
+            }
+            if (clause.matches("(?isU).*\\b(?:không|chẳng|chả|đâu|hết|đừng)\\b.*")) {
+                continue;
+            }
+            Matcher m = SYMPTOM_TOKEN_PATTERN.matcher(clause);
+            while (m.find()) {
+                String tok = m.group(1).replaceAll("\\s+", " ").strip();
+                if (tok.length() >= 2) {
+                    out.add(tok);
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
      * Unit P1.1: Gắn danh mục Catalog đã trích xuất từ chunk cho {@code LLM_COGNITIVE_V2} mà không chạy V1 history/doc-flag regex.
      */
     public ConversationState withCatalogOnlyForAciV2(

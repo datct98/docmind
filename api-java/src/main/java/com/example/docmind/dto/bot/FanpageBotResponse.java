@@ -77,7 +77,15 @@ public record FanpageBotResponse(
         TurnProfiling turnProfiling,
 
         @JsonProperty("inbound_external_mid")
-        String inboundExternalMid
+        String inboundExternalMid,
+
+        /**
+         * ACI V3 — Stage P3 (Directive §4.9/§5.1): decision trace tối thiểu cho debug/audit.
+         * Chỉ được gắn trên đường ACI Cognitive V2; các đường early-return/legacy để {@code null}.
+         */
+        @JsonProperty("decision_trace")
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        DecisionTrace decisionTrace
 ) {
     public FanpageBotResponse {
         if (appliedRules == null) {
@@ -148,6 +156,7 @@ public record FanpageBotResponse(
                 selectedSkills,
                 activatedSkills,
                 turnProfiling,
+                null,
                 null
         );
     }
@@ -191,6 +200,7 @@ public record FanpageBotResponse(
                 activeSkills,
                 activeSkills,
                 null,
+                null,
                 null
         );
     }
@@ -223,7 +233,35 @@ public record FanpageBotResponse(
                 selectedSkills != null ? List.copyOf(selectedSkills) : safeActivated,
                 safeActivated,
                 turnProfiling,
-                this.inboundExternalMid
+                this.inboundExternalMid,
+                this.decisionTrace
+        );
+    }
+
+    public FanpageBotResponse withDecisionTrace(DecisionTrace decisionTrace) {
+        return new FanpageBotResponse(
+                this.replyText,
+                this.replyBubbles,
+                this.bubbleDelaysMs,
+                this.salesStage,
+                this.confidenceScore,
+                this.needsHumanHandoff,
+                this.handoffCategory,
+                this.handoffReason,
+                this.extractedLead,
+                this.appliedRules,
+                this.customerInsight,
+                this.activeSkills,
+                this.triggeredHooks,
+                this.pendingSecondBubble,
+                this.pendingTurnSequence,
+                this.priceBubbleSentAtNs,
+                this.availableSkills,
+                this.selectedSkills,
+                this.activatedSkills,
+                this.turnProfiling,
+                this.inboundExternalMid,
+                decisionTrace
         );
     }
 
@@ -249,7 +287,8 @@ public record FanpageBotResponse(
                 this.selectedSkills,
                 this.activatedSkills,
                 this.turnProfiling,
-                externalMid
+                externalMid,
+                this.decisionTrace
         );
     }
 
@@ -377,7 +416,9 @@ public record FanpageBotResponse(
                 this.availableSkills,
                 this.selectedSkills,
                 this.activatedSkills,
-                this.turnProfiling
+                this.turnProfiling,
+                this.inboundExternalMid,
+                this.decisionTrace
         );
     }
 

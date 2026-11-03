@@ -578,7 +578,8 @@ public class FanpageBotService {
                 List.of(),
                 List.of(),
                 null,
-                inboundExternalMid
+                inboundExternalMid,
+                null
         );
     }
 

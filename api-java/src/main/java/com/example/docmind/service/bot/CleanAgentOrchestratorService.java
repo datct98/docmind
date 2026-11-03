@@ -3,6 +3,7 @@ package com.example.docmind.service.bot;
 import com.example.docmind.dto.LearnedRuleDto;
 import com.example.docmind.dto.bot.AgentSkillDto;
 import com.example.docmind.dto.bot.CustomerInsightDto;
+import com.example.docmind.dto.bot.DecisionTrace;
 import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import com.example.docmind.service.llm.LlmClient;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -4181,6 +4183,35 @@ public class CleanAgentOrchestratorService {
         }
     }
 
+    /**
+     * ACI V3 (P3 Fix-A/B): nguồn triệu chứng cho các guard tầng output. Luồng LLM_COGNITIVE_V2
+     * hydrate state tối giản nên {@code knownSymptoms} thường rỗng — khi đó fallback trích trực tiếp
+     * từ các lượt user trong lịch sử (đã lọc clause phủ định) để lời xin lỗi/câu hỏi mở vẫn bám
+     * đúng triệu chứng khách đã chia sẻ.
+     */
+    private static List<String> resolveKnownSymptomsForOutputGuards(
+            ConversationState safeConv,
+            List<FanpageBotRequest.ConversationTurn> safeHistory
+    ) {
+        List<String> fromState = safeConv != null && safeConv.knownSymptoms() != null
+                ? safeConv.knownSymptoms() : List.of();
+        if (!fromState.isEmpty()) {
+            return fromState;
+        }
+        if (safeHistory == null || safeHistory.isEmpty()) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> fromHistory = new java.util.LinkedHashSet<>();
+        for (FanpageBotRequest.ConversationTurn t : safeHistory) {
+            if (t == null || t.content() == null
+                    || !("user".equalsIgnoreCase(t.role()) || "customer".equalsIgnoreCase(t.role()))) {
+                continue;
+            }
+            fromHistory.addAll(ConversationState.extractSymptomsMentionedInText(t.content()));
+        }
+        return List.copyOf(fromHistory);
+    }
+
     public FanpageBotResponse executeAciCognitiveTurn(
             UUID pageId,
             FanpageBotRequest request,
@@ -4861,8 +4892,11 @@ public class CleanAgentOrchestratorService {
                         .map(FanpageBotRequest.ConversationTurn::content)
                         .filter(java.util.Objects::nonNull)
                         .toList();
+                List<String> knownSymptomsForApologyGuard =
+                        resolveKnownSymptomsForOutputGuards(safeConv, safeHistory);
                 candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
-                        candidateBubbles, priorAssistantTexts, selfPronoun, safeHonorific);
+                        candidateBubbles, priorAssistantTexts, knownSymptomsForApologyGuard, originalVerbatim,
+                        selfPronoun, safeHonorific);
             }
         }
 
@@ -5239,6 +5273,37 @@ public class CleanAgentOrchestratorService {
                     effectivePersonaConfig != null ? effectivePersonaConfig.resolvedCareActor() : "kỹ thuật viên",
                     turnContextSnapshot.plan()
             );
+        }
+
+        // ACI V3 — Stage P3 Gate (tc2/tc3/tc5): tuyến phòng thủ CUỐI trên output hậu Referee-repair.
+        // Nhánh repair của Referee (REFEREE_VIOLATION retry) không đi qua các guard đầu pipeline, nên cả
+        // False Apology Guard lẫn Zero Unsolicited Pitch đều phải chạy lại ở đây trên formattedBubbles:
+        //  (a) False Apology Guard: chặn lời xin lỗi tự nhận "đã nhắc sang/đoán nhầm/suy diễn..." nội dung
+        //      bot chưa từng nói; khi viết lại thì nối vế ghi nhận triệu chứng khách đã chia sẻ;
+        //  (b) Zero Unsolicited Pitch: lượt CUSTOMER_CORRECTION / OVER_INTRUSION / COMMUNICATION_COMPLAINT
+        //      mà khách KHÔNG đòi giá tường minh -> cắt mọi câu chứa giá/tên gói/CTA chốt chi nhánh và nối
+        //      câu hỏi mở bám đúng triệu chứng khách.
+        // Lượt đang có flow đặt lịch dở (bookingState active) được miễn để không phá nhịp xác nhận lịch.
+        if (!usedSafeHandoffFallback && !usedStructuredFallbackOnLlmFailure
+                && (authoritativeBookingState == null
+                    || authoritativeBookingState.status() == null
+                    || authoritativeBookingState.status() == ConversationState.BookingStatus.NONE)) {
+            List<String> priorAssistantTextsFinalGate = safeHistory.stream()
+                    .filter(t -> t != null
+                            && ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role())))
+                    .map(FanpageBotRequest.ConversationTurn::content)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            List<String> knownSymptomsFinalGate =
+                    resolveKnownSymptomsForOutputGuards(safeConv, safeHistory);
+            formattedBubbles = new ArrayList<>(
+                    CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                            formattedBubbles, priorAssistantTextsFinalGate, knownSymptomsFinalGate, originalVerbatim,
+                            selfPronoun, safeHonorific));
+            formattedBubbles = new ArrayList<>(
+                    CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+                            formattedBubbles, originalVerbatim, knownSymptomsFinalGate, domainKeywords,
+                            selfPronoun, safeHonorific));
         }
 
         // Price Quote Reading Budget (10s) (Mục 6):
@@ -5697,6 +5762,26 @@ public class CleanAgentOrchestratorService {
         );
 
         FanpageBotService.markProvenanceV38Logged();
+        // ACI V3 — Stage P3 (Directive §4.9/§5.1): Decision Trace chuẩn hóa cho debug/audit.
+        DecisionTrace decisionTrace = buildAciV3DecisionTrace(
+                sequentialTurnId,
+                originalVerbatim,
+                reflection,
+                draft2After,
+                safePrior,
+                postTurnSessionState,
+                effectivePromptRegion,
+                availableSkills,
+                selectedSkills,
+                activePageRules,
+                turnRelevantRules,
+                promptPrimaries,
+                promptEconomicals,
+                rawLlmBubbleTexts,
+                finalBubbles,
+                usedSafeHandoffFallback,
+                effectivePersonaConfig.resolvedScopeTaxonomy()
+        );
         return new FanpageBotResponse(
                 combinedReplyText,
                 finalBubbles,
@@ -5716,6 +5801,208 @@ public class CleanAgentOrchestratorService {
                 selectedSkills,
                 activatedSkills,
                 turnProfiling
+        ).withDecisionTrace(decisionTrace);
+    }
+
+    /**
+     * ACI V3 — Stage P3 (Directive §4.9/§5.1): Lắp {@link DecisionTrace} từ các biến quyết định
+     * đã có sẵn tại cuối lượt ACI Cognitive V2. Không gọi LLM, không đọc DB; thuần ánh xạ dữ liệu
+     * trong bộ nhớ của lượt hiện tại. Tin nhắn khách chỉ xuất hiện dưới dạng SHA-256 rút gọn (PII-safe).
+     *
+     * <p>Ngữ nghĩa {@code sanitizer_mutations}: phát hiện từ khác biệt quan sát được giữa raw LLM
+     * bubbles và final bubbles — {@code false_apology_rewritten} khi bubble cuối chứa đúng văn bản
+     * rewrite trung thực của False Apology Guard (§3.5); {@code cliche_empathy_stripped} khi raw LLM
+     * output chứa văn mẫu đồng cảm bị cấm nhưng output cuối không còn; {@code price_grounding_applied}
+     * khi câu trả lời cuối có báo giá và lượt không rơi vào safe-handoff do giá không grounded.</p>
+     */
+    static DecisionTrace buildAciV3DecisionTrace(
+            String sequentialTurnId,
+            String originalVerbatim,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2After,
+            ConversationState priorState,
+            ConversationState postTurnState,
+            String effectivePromptRegion,
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            List<LearnedRuleDto> activePageRules,
+            List<LearnedRuleDto> turnRelevantRules,
+            List<PackageCatalogService.PackageSummary> promptPrimaries,
+            List<PackageCatalogService.PackageSummary> promptEconomicals,
+            List<String> rawLlmBubbleTexts,
+            List<FanpageBotResponse.ReplyBubble> finalBubbles,
+            boolean usedSafeHandoffFallback,
+            List<String> scopeTaxonomy
+    ) {
+        CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype subtype =
+                CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(originalVerbatim, scopeTaxonomy);
+
+        String detectedIntent = "";
+        if (reflection != null && reflection.customerUnderstanding() != null
+                && reflection.customerUnderstanding().detectedIntent() != null
+                && !reflection.customerUnderstanding().detectedIntent().isBlank()) {
+            detectedIntent = reflection.customerUnderstanding().detectedIntent();
+        } else if (draft2After != null && draft2After.consultativeProfile() != null) {
+            detectedIntent = draft2After.consultativeProfile().turnIntent();
+        }
+
+        // fact_changes: extracted_pains lấy từ confirmed_facts_delta đã qua grounding (P1 §3.1);
+        // known_* lấy từ session state SAU lượt; retracted = forbiddenScopes mới xuất hiện sau lượt.
+        List<String> extractedPains = new ArrayList<>();
+        if (reflection != null && reflection.confirmedFactsDelta() != null) {
+            for (AdaptiveConversationIntelligence.FactDeltaProposal fd : reflection.confirmedFactsDelta()) {
+                if (fd != null && "self_reported_symptom".equalsIgnoreCase(fd.key())
+                        && fd.op() == AdaptiveConversationIntelligence.FactMutationOp.ADD
+                        && fd.value() != null && !fd.value().isBlank()) {
+                    extractedPains.add(fd.value());
+                }
+            }
+        }
+        List<String> knownSymptomsAfter = postTurnState != null && postTurnState.knownSymptoms() != null
+                ? postTurnState.knownSymptoms() : List.of();
+        List<String> knownBodyAreasAfter = postTurnState != null && postTurnState.knownBodyAreas() != null
+                ? postTurnState.knownBodyAreas() : List.of();
+        List<String> scopesBefore = priorState != null && priorState.knownBodyAreas() != null
+                ? priorState.knownBodyAreas() : List.of();
+        java.util.Set<String> forbiddenBefore = priorState != null && priorState.forbiddenScopes() != null
+                ? priorState.forbiddenScopes() : java.util.Set.of();
+        List<String> retractedBotAssumptions = new ArrayList<>();
+        if (postTurnState != null && postTurnState.forbiddenScopes() != null) {
+            for (String fs : postTurnState.forbiddenScopes()) {
+                if (fs != null && !forbiddenBefore.contains(fs)) {
+                    retractedBotAssumptions.add(fs);
+                }
+            }
+        }
+        String preferredRegion = effectivePromptRegion != null ? effectivePromptRegion
+                : (postTurnState != null ? postTurnState.preferredRegion() : null);
+
+        // selected_skills kèm lý do chọn; excluded_* chỉ đổ khi lượt là correction (gate P1 §3.4/P2 §4.1).
+        List<DecisionTrace.SkillSelection> skillSelections = new ArrayList<>();
+        List<String> activatedByReflection = reflection != null && reflection.activatedSkillCodes() != null
+                ? reflection.activatedSkillCodes() : List.of();
+        if (selectedSkills != null) {
+            for (AgentSkillDto s : selectedSkills) {
+                if (s == null) {
+                    continue;
+                }
+                String reason = activatedByReflection.contains(s.code())
+                        ? "ACTIVATED_BY_BRAIN_REFLECTION"
+                        : "PRE_LLM_TURN_RELEVANT_SELECTION";
+                skillSelections.add(new DecisionTrace.SkillSelection(s.code(), reason));
+            }
+        }
+        List<String> excludedOnCorrection = new ArrayList<>();
+        boolean correctionTurn = subtype == CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.CUSTOMER_CORRECTION
+                || subtype == CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.OVER_INTRUSION;
+        if (correctionTurn) {
+            java.util.Set<String> selectedCodes = new HashSet<>();
+            if (selectedSkills != null) {
+                for (AgentSkillDto s : selectedSkills) {
+                    if (s != null && s.code() != null) {
+                        selectedCodes.add(s.code());
+                    }
+                }
+            }
+            if (availableSkills != null) {
+                for (AgentSkillDto s : availableSkills) {
+                    if (s != null && s.code() != null && !selectedCodes.contains(s.code())) {
+                        excludedOnCorrection.add("skill:" + s.code() + " (CORRECTION_TURN_GATE)");
+                    }
+                }
+            }
+            java.util.Set<String> relevantRuleIds = new HashSet<>();
+            if (turnRelevantRules != null) {
+                for (LearnedRuleDto r : turnRelevantRules) {
+                    if (r != null && r.id() != null) {
+                        relevantRuleIds.add(r.id().toString());
+                    }
+                }
+            }
+            if (activePageRules != null) {
+                for (LearnedRuleDto r : activePageRules) {
+                    if (r != null && r.id() != null && !relevantRuleIds.contains(r.id().toString())) {
+                        excludedOnCorrection.add("rule:" + r.id() + " (CORRECTION_TURN_GATE)");
+                    }
+                }
+            }
+        }
+
+        // catalog_candidates: các biến thể đưa vào prompt lượt này (đã region-filter + dedup theo giá),
+        // giới hạn 12 dòng để trace gọn (đủ cho audit ranking).
+        List<DecisionTrace.CatalogCandidate> catalogCandidates = new ArrayList<>();
+        java.util.Set<String> seenProductIds = new LinkedHashSet<>();
+        List<PackageCatalogService.PackageSummary> candidateSource = new ArrayList<>();
+        if (promptPrimaries != null) {
+            candidateSource.addAll(promptPrimaries);
+        }
+        if (promptEconomicals != null) {
+            candidateSource.addAll(promptEconomicals);
+        }
+        for (PackageCatalogService.PackageSummary p : candidateSource) {
+            if (p == null || !seenProductIds.add(p.packageUid())) {
+                continue;
+            }
+            catalogCandidates.add(new DecisionTrace.CatalogCandidate(
+                    p.packageUid(),
+                    p.region(),
+                    p.priceDisplay(),
+                    p.durationLabel()
+            ));
+            if (catalogCandidates.size() >= 12) {
+                break;
+            }
+        }
+
+        String recommendedAction = draft2After != null && draft2After.lastResponsePlan() != null
+                ? draft2After.lastResponsePlan().nextAction() : null;
+        String communicationStylePreference = draft2After != null && draft2After.consultativeProfile() != null
+                ? draft2After.consultativeProfile().communicationPreference() : null;
+        String turnDepth = draft2After != null && draft2After.consultativeProfile() != null
+                ? draft2After.consultativeProfile().effectiveTurnDepth() : null;
+        boolean explicitPriceDemand =
+                CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(originalVerbatim);
+
+        boolean falseApologyRewritten = finalBubbles != null && finalBubbles.stream()
+                .anyMatch(b -> b != null && b.text() != null
+                        && b.text().contains("xin lỗi vì câu trả lời trước chưa bám sát"));
+        boolean rawHadCliche = rawLlmBubbleTexts != null && rawLlmBubbleTexts.stream()
+                .anyMatch(t -> t != null && CleanAgentOutputRefereeAndSanitizer.detectForbiddenThaoMaiEmpathyCliche(t));
+        boolean finalStillHasCliche = finalBubbles != null && finalBubbles.stream()
+                .anyMatch(b -> b != null && b.text() != null
+                        && CleanAgentOutputRefereeAndSanitizer.detectForbiddenThaoMaiEmpathyCliche(b.text()));
+        boolean clicheEmpathyStripped = rawHadCliche && !finalStillHasCliche;
+        boolean priceGroundingApplied = !usedSafeHandoffFallback && finalBubbles != null && finalBubbles.stream()
+                .anyMatch(b -> b != null && CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(b.text()));
+
+        return new DecisionTrace(
+                sequentialTurnId,
+                DecisionTrace.sha256Short(originalVerbatim),
+                detectedIntent,
+                subtype.name(),
+                new DecisionTrace.FactChanges(
+                        extractedPains,
+                        knownSymptomsAfter,
+                        knownBodyAreasAfter,
+                        retractedBotAssumptions,
+                        preferredRegion
+                ),
+                scopesBefore,
+                knownBodyAreasAfter,
+                skillSelections,
+                excludedOnCorrection,
+                catalogCandidates,
+                new DecisionTrace.ResponsePlanTrace(
+                        recommendedAction,
+                        communicationStylePreference,
+                        turnDepth,
+                        explicitPriceDemand
+                ),
+                new DecisionTrace.SanitizerMutations(
+                        falseApologyRewritten,
+                        clicheEmpathyStripped,
+                        priceGroundingApplied
+                )
         );
     }
 

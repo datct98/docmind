@@ -6294,13 +6294,55 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     /**
-     * ACI V3 (P1 §3.5): False Apology Guard — phát hiện lời xin lỗi tham chiếu nội dung cụ thể
-     * mà bot bị cho là "vừa nhắc tới / đã tư vấn" (VD "xin lỗi vì vừa nhắc tới cổ vai gáy").
+     * ACI V3 (P1 §3.5 + P3 Fix-A): False Apology Guard — phát hiện lời xin lỗi tham chiếu nội dung cụ thể
+     * mà bot bị cho là "vừa nhắc tới / đã nhắc sang / hỏi sang / đoán nhầm sang / tự suy diễn..."
+     * (VD "xin lỗi vì vừa nhắc tới cổ vai gáy"). Cho phép đại từ xưng hô đứng giữa "xin lỗi" và
+     * "vì/về/rằng" ("xin lỗi mình vì đã nhắc sang...").
      */
     private static final Pattern APOLOGY_CONTENT_REFERENCE_PATTERN = Pattern.compile(
-            "(?isU)(?:xin\\s+lỗi|thành\\s+thật\\s+xin\\s+lỗi|lỗi)\\s+(?:vì|về|rằng)\\s+(?:đã\\s+|vừa\\s+)?"
-                    + "(?:nhắc\\s+(?:tới|đến)|nói\\s+(?:tới|đến|về)|tư\\s+vấn|giới\\s+thiệu|đề\\s+cập|gợi\\s+ý)"
-                    + "\\s+(?<ref>.+?)(?=\\s+(?:trong\\s+khi|mà|nhưng|dù|khi\\s+)|[.!?,]|$)"
+            "(?isU)(?:thành\\s+thật\\s+|chân\\s+thành\\s+)?xin\\s+lỗi"
+                    + "(?:\\s+(?:mình|anh|chị|bạn|em|quý\\s+khách|cả\\s+mình|anh/chị))*"
+                    + "\\s+(?:vì|về|rằng)\\s+(?:(?:đã|vừa|lỡ|tự|vô\\s+tình|lại)\\s+){0,2}"
+                    + "(?:nhắc\\s+(?:nhầm\\s+|sai\\s+)?(?:tới|đến|sang|về)|nói\\s+(?:nhầm\\s+|sai\\s+)?(?:tới|đến|về|sang)|"
+                    + "hỏi\\s+(?:nhầm\\s+)?(?:sang|lệch|tới|đến|về)|"
+                    + "đoán\\s+(?:nhầm|sai)(?:\\s+(?:sang|ra|về))?|suy\\s+diễn(?:\\s+ra)?|liên\\s+tưởng(?:\\s+(?:tới|đến|sang))?|"
+                    + "tư\\s+vấn(?:\\s+(?:nhầm\\s+)?(?:sang|về|tới|đến))?|giới\\s+thiệu(?:\\s+(?:nhầm\\s+)?(?:tới|đến|về))?|"
+                    + "đề\\s+cập(?:\\s+(?:nhầm\\s+)?(?:tới|đến|về))?|gợi\\s+ý(?:\\s+(?:nhầm\\s+)?(?:tới|đến|về))?)"
+                    + "\\s+(?<ref>.+?)(?=\\s+(?:trong\\s+khi|mà|nhưng|dù|khi\\s+|chứ\\s+)|[,;.!?？]|$)"
+    );
+
+    /**
+     * ACI V3 (P3 Fix-A): cue tự nhận đã đề cập/suy diễn nội dung trong cùng bong bóng xin lỗi —
+     * dùng cho nhánh tham chiếu thứ cấp (VD "xin lỗi vì đã nhắc chưa đúng ý, ... chứ không phải cổ vai gáy").
+     */
+    private static final Pattern APOLOGY_SELF_BLAME_MENTION_CUE_PATTERN = Pattern.compile(
+            "(?isU)(?:thành\\s+thật\\s+|chân\\s+thành\\s+)?xin\\s+lỗi\\b[^.!?？]{0,160}\\b(?:(?:đã|vừa|lỡ|tự|cũng|lại|em|mình)\\s+){0,2}"
+                    + "(?:nhắc|nói|hỏi|đoán|suy\\s+diễn|liên\\s+tưởng|tư\\s+vấn|giới\\s+thiệu|đề\\s+cập|gợi\\s+ý)\\b"
+    );
+
+    /**
+     * ACI V3 (P3 Fix-A): trích tham chiếu nội dung thứ cấp trong bong bóng xin lỗi — cụm đứng sau
+     * "đoán nhầm (sang) / suy diễn ra / nhắc sang / hỏi sang / chứ không phải / thay vì ...".
+     */
+    private static final Pattern APOLOGY_SECONDARY_CONTENT_REFERENCE_PATTERN = Pattern.compile(
+            "(?isU)(?:đoán\\s+nhầm(?:\\s+(?:sang|ra|về))?|suy\\s+diễn\\s+ra|nhắc\\s+(?:nhầm\\s+)?sang|hỏi\\s+(?:nhầm\\s+)?(?:sang|lệch)|"
+                    + "liên\\s+tưởng\\s+(?:tới|đến|sang)|chứ\\s+không\\s+(?:phải|hề)|không\\s+phải(?:\\s+là)?|thay\\s+vì)"
+                    + "\\s+(?<ref>.+?)(?=\\s+(?:trong\\s+khi|mà|nhưng|dù|khi\\s+)|[,;.!?？]|$)"
+    );
+
+    /** ACI V3 (P3 Fix-A): tiền tố nhiễu đứng trước tham chiếu nội dung ("vùng cổ vai gáy" -> "cổ vai gáy"). */
+    private static final Pattern APOLOGY_REF_LEADING_NOISE_PATTERN = Pattern.compile(
+            "(?isU)^(?:vùng|phần|khu\\s+vực|vấn\\s+đề|chuyện|việc|cái|là|ra|sang|tới|đến|về)\\s+"
+    );
+
+    /**
+     * ACI V3 (P3 Fix-A): tham chiếu quá chung chung hoặc mô tả trạng thái của khách
+     * ("mình không cần chăm sóc", "điều mình đang quan tâm") — không phải nội dung bot bị quy kết đã nói.
+     */
+    private static final Pattern APOLOGY_REF_GENERIC_OR_CUSTOMER_RELATIVE_PATTERN = Pattern.compile(
+            "(?isU)(?:điều\\s+đó|vậy|thế|đó|nó|ý\\s+(?:của\\s+)?mình|chưa\\s+đúng(?:\\s+ý)?|"
+                    + "(?:mình|anh|chị|bạn|em|tôi|khách)\\s+(?:không|chưa|chẳng|đâu|cần|đang|muốn)\\b.*|"
+                    + "điều\\s+(?:mình|anh|chị|bạn)\\s+(?:nói|chia\\s+sẻ|quan\\s+tâm|cần|muốn).*)"
     );
 
     /**
@@ -6313,6 +6355,27 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     public static List<FanpageBotResponse.ReplyBubble> enforceGroundedApologyAgainstHistoryInPlace(
             List<FanpageBotResponse.ReplyBubble> bubbles,
             List<String> priorAssistantTexts,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        return enforceGroundedApologyAgainstHistoryInPlace(
+                bubbles, priorAssistantTexts, List.of(), null, selfPronoun, customerPronoun);
+    }
+
+    /**
+     * ACI V3 (P1 §3.5 + P3 Fix-A): False Apology Guard đầy đủ — bắt mọi biến thể tự nhận lỗi sai lịch sử
+     * ("đã nhắc", "vừa nhắc", "nhắc sang", "nhắc tới", "hỏi sang", "hỏi lệch", "đoán nhầm sang",
+     * "tự suy diễn") kèm tham chiếu nội dung mà {@code priorAssistantTexts} chưa từng chứa.
+     *
+     * <p>Khi viết lại, câu xin lỗi trung thực được nối vế ghi nhận các triệu chứng khách đã chia sẻ
+     * ({@code knownSymptoms}); và nếu cả lượt không còn câu hỏi mở khám phá nào (đồng thời chính sách
+     * lượt cho phép hỏi) thì bổ sung một câu hỏi mở tự nhiên bám sát đúng các triệu chứng đó.</p>
+     */
+    public static List<FanpageBotResponse.ReplyBubble> enforceGroundedApologyAgainstHistoryInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            List<String> priorAssistantTexts,
+            List<String> knownSymptoms,
+            String customerMessage,
             String selfPronoun,
             String customerPronoun
     ) {
@@ -6332,23 +6395,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String historyLow = historyBuf.toString();
         String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
         String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        List<String> safeSymptoms = sanitizeKnownSymptomsForEcho(knownSymptoms);
+        boolean anyRewritten = false;
+        int firstRewrittenIdx = -1;
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) {
                 continue;
             }
             String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
-            Matcher m = APOLOGY_CONTENT_REFERENCE_PATTERN.matcher(norm);
             boolean hasFalseReference = false;
+            Matcher m = APOLOGY_CONTENT_REFERENCE_PATTERN.matcher(norm);
             while (m.find()) {
-                String ref = m.group("ref");
-                if (ref == null) {
-                    continue;
-                }
-                String refLow = java.text.Normalizer.normalize(ref.strip(), java.text.Normalizer.Form.NFC)
-                        .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
-                // Bỏ qua tham chiếu quá chung chung ("điều đó", "vậy") — chỉ chặn tham chiếu nội dung cụ thể
-                if (refLow.length() < 3 || refLow.matches("(?isU)(?:điều\\s+đó|vậy|thế|đó|nó)")) {
+                String refLow = normalizeApologyContentReference(m.group("ref"));
+                if (refLow == null) {
                     continue;
                 }
                 if (!historyLow.contains(refLow)) {
@@ -6356,16 +6416,329 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     break;
                 }
             }
+            if (!hasFalseReference && APOLOGY_SELF_BLAME_MENTION_CUE_PATTERN.matcher(norm).find()) {
+                Matcher m2 = APOLOGY_SECONDARY_CONTENT_REFERENCE_PATTERN.matcher(norm);
+                while (m2.find()) {
+                    String refLow = normalizeApologyContentReference(m2.group("ref"));
+                    if (refLow == null) {
+                        continue;
+                    }
+                    if (!historyLow.contains(refLow)) {
+                        hasFalseReference = true;
+                        break;
+                    }
+                }
+            }
             if (hasFalseReference) {
+                if (firstRewrittenIdx < 0) {
+                    firstRewrittenIdx = out.size();
+                }
+                anyRewritten = true;
                 out.add(new FanpageBotResponse.ReplyBubble(
-                        "Dạ " + safeSelf + " xin lỗi vì câu trả lời trước chưa bám sát những gì "
-                                + safeCust + " chia sẻ ạ.",
+                        buildHonestCorrectionApologyText(safeSelf, safeCust, safeSymptoms),
                         b.typingDelayMs()));
             } else {
                 out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
             }
         }
+        // P3 Fix-A: lượt sửa sai phải khép lại tự nhiên — nếu không còn câu hỏi mở nào và lượt được phép hỏi
+        // thì nối 1 câu hỏi mở bám đúng triệu chứng khách đã chia sẻ.
+        if (anyRewritten && firstRewrittenIdx >= 0
+                && (customerMessage == null || customerMessage.isBlank()
+                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage))) {
+            boolean anyQuestion = out.stream().anyMatch(x -> x != null && x.text() != null
+                    && (x.text().contains("?") || x.text().contains("？")));
+            if (!anyQuestion) {
+                FanpageBotResponse.ReplyBubble rw = out.get(firstRewrittenIdx);
+                out.set(firstRewrittenIdx, new FanpageBotResponse.ReplyBubble(
+                        rw.text() + " " + buildSymptomAnchoredDiscoveryQuestion(safeSymptoms, safeSelf, safeCust),
+                        rw.typingDelayMs()));
+            }
+        }
+        // P3 Fix-A (tc5): lượt sửa sai phải nối lại đúng triệu chứng khách đã chia sẻ — kể cả khi lời
+        // xin lỗi có căn cứ (bot đã nói thật, không bị viết lại) mà cả lượt không nhắc lại triệu chứng
+        // nào thì chèn vế ghi nhận ngay sau câu xin lỗi (trước câu hỏi cuối nếu có).
+        if (!safeSymptoms.isEmpty()
+                && (customerMessage == null || customerMessage.isBlank()
+                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage))) {
+            String allText = out.stream()
+                    .map(FanpageBotResponse.ReplyBubble::text)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining(" "))
+                    .toLowerCase(Locale.ROOT);
+            boolean anySymptomEchoed = safeSymptoms.stream()
+                    .anyMatch(s -> allText.contains(s.toLowerCase(Locale.ROOT)));
+            if (!anySymptomEchoed) {
+                for (int i = 0; i < out.size(); i++) {
+                    FanpageBotResponse.ReplyBubble ap = out.get(i);
+                    if (ap.text() == null || !ap.text().toLowerCase(Locale.ROOT).contains("xin lỗi")) {
+                        continue;
+                    }
+                    String clause = buildSymptomAcknowledgementClause(safeSelf, safeCust, safeSymptoms);
+                    String[] sentences = ap.text().split("(?<=[.!?？])\\s+");
+                    int apologySentenceIdx = -1;
+                    for (int s = 0; s < sentences.length; s++) {
+                        if (sentences[s].toLowerCase(Locale.ROOT).contains("xin lỗi")) {
+                            apologySentenceIdx = s;
+                            break;
+                        }
+                    }
+                    String merged;
+                    if (apologySentenceIdx >= 0 && apologySentenceIdx < sentences.length - 1) {
+                        List<String> parts = new ArrayList<>(List.of(sentences));
+                        parts.add(apologySentenceIdx + 1, clause);
+                        merged = String.join(" ", parts);
+                    } else {
+                        merged = ap.text() + " " + clause;
+                    }
+                    out.set(i, new FanpageBotResponse.ReplyBubble(merged, ap.typingDelayMs()));
+                    break;
+                }
+            }
+        }
         return out;
+    }
+
+    /** ACI V3 (P3 Fix-A): chuẩn hóa tham chiếu nội dung trong lời xin lỗi; trả null nếu quá chung chung. */
+    private static String normalizeApologyContentReference(String rawRef) {
+        if (rawRef == null) {
+            return null;
+        }
+        String refLow = java.text.Normalizer.normalize(rawRef.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        String prev;
+        do {
+            prev = refLow;
+            refLow = APOLOGY_REF_LEADING_NOISE_PATTERN.matcher(refLow).replaceFirst("").strip();
+        } while (!refLow.equals(prev) && !refLow.isEmpty());
+        if (refLow.length() < 3 || APOLOGY_REF_GENERIC_OR_CUSTOMER_RELATIVE_PATTERN.matcher(refLow).matches()) {
+            return null;
+        }
+        return refLow;
+    }
+
+    /**
+     * ACI V3 (P3 Fix-A): câu xin lỗi trung thực sau khi cắt tham chiếu sai lịch sử — kèm vế ghi nhận
+     * đúng các triệu chứng khách đã chia sẻ (nếu có) để lượt sửa sai vẫn bám sát lời khách.
+     */
+    private static String buildHonestCorrectionApologyText(String safeSelf, String safeCust, List<String> safeSymptoms) {
+        String base = "Dạ " + safeSelf + " xin lỗi vì câu trả lời trước chưa bám sát những gì "
+                + safeCust + " chia sẻ ạ.";
+        if (safeSymptoms == null || safeSymptoms.isEmpty()) {
+            return base;
+        }
+        return base + " " + buildSymptomAcknowledgementClause(safeSelf, safeCust, safeSymptoms);
+    }
+
+    /** ACI V3 (P3 Fix-A): vế ghi nhận đúng các triệu chứng khách đã chia sẻ. */
+    private static String buildSymptomAcknowledgementClause(String safeSelf, String safeCust, List<String> safeSymptoms) {
+        return BubbleTextSanitizer.capitalizeFirstLetter(
+                safeSelf + " ghi nhận đúng là " + safeCust + " đang gặp "
+                        + joinVietnameseEnumeration(safeSymptoms) + " ạ.");
+    }
+
+    /** ACI V3 (P3 Fix-A/B): câu hỏi mở khám phá tự nhiên bám sát đúng triệu chứng khách đã chia sẻ. */
+    private static String buildSymptomAnchoredDiscoveryQuestion(
+            List<String> safeSymptoms, String safeSelf, String safeCust) {
+        if (safeSymptoms == null || safeSymptoms.isEmpty()) {
+            return "Hiện tại " + safeCust + " đang thấy khó chịu nhất ở điểm nào để " + safeSelf
+                    + " lắng nghe và hỗ trợ đúng ý " + safeCust + " ạ?";
+        }
+        return "Hiện tại trong các tình trạng " + joinVietnameseEnumeration(safeSymptoms)
+                + " thì " + safeCust + " đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?";
+    }
+
+    /** ACI V3 (P3 Fix-A/B): chuẩn hóa danh sách triệu chứng khách đã nêu để echo lại (khử trùng, tối đa 6). */
+    private static List<String> sanitizeKnownSymptomsForEcho(List<String> knownSymptoms) {
+        if (knownSymptoms == null || knownSymptoms.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String s : knownSymptoms) {
+            if (s == null) {
+                continue;
+            }
+            String norm = java.text.Normalizer.normalize(s.strip(), java.text.Normalizer.Form.NFC)
+                    .replaceAll("\\s+", " ").strip();
+            if (norm.length() < 2 || norm.length() > 60) {
+                continue;
+            }
+            if (out.stream().anyMatch(x -> x.equalsIgnoreCase(norm))) {
+                continue;
+            }
+            out.add(norm);
+            if (out.size() >= 6) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    /** ACI V3 (P3 Fix-A/B): nối liệt kê tiếng Việt tự nhiên ("a, b và c"). */
+    private static String joinVietnameseEnumeration(List<String> items) {
+        if (items == null || items.isEmpty()) {
+            return "";
+        }
+        if (items.size() == 1) {
+            return items.get(0);
+        }
+        return String.join(", ", items.subList(0, items.size() - 1)) + " và " + items.get(items.size() - 1);
+    }
+
+    // =========================================================================
+    // ACI V3 — Stage P3 (Fix-B / Gate tc3): Zero Unsolicited Pitch trên lượt
+    // CUSTOMER_CORRECTION / OVER_INTRUSION / COMMUNICATION_COMPLAINT khi khách
+    // KHÔNG đòi giá tường minh (explicit_price_demand == false).
+    // =========================================================================
+
+    /** P3 Fix-B: câu hỏi chốt chi nhánh phục vụ báo giá/tư vấn gói ("Mình đang ở khu vực nào để em báo đúng giá ạ?"). */
+    private static final Pattern BRANCH_ROUTING_FOR_PITCH_QUESTION_PATTERN = Pattern.compile(
+            "(?isU)(?:khu\\s+vực\\s+nào|quận\\s+nào|tỉnh\\s+nào|thành\\s+phố\\s+nào|"
+                    + "hà\\s+nội\\s+hay\\s+sài\\s+gòn|sài\\s+gòn\\s+hay\\s+hà\\s+nội)"
+                    + "[^.!?？]*\\b(?:báo|giá|tư\\s+vấn|cơ\\s+sở|chi\\s+nhánh|thời\\s+lượng|chốt)\\b"
+    );
+
+    /** P3 Fix-B: câu giới thiệu/chào gói không được yêu cầu ("bên em có gói massage thư giãn toàn thân..."). */
+    private static final Pattern UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bgói\\b[^.!?？]*\\b(?:massage|liệu\\s+trình|chăm\\s+sóc|thư\\s+giãn|trị\\s+liệu|dưỡng\\s+sinh|"
+                    + "phút|bên\\s+em|bên\\s+mình|giá|phù\\s+hợp|niêm\\s+yết|khởi\\s+điểm)\\b)"
+                    + "|(?:\\bgói\\s+(?:này|đó|kia|cơ\\s+bản|chuyên\\s+sâu|toàn\\s+thân)\\b)"
+    );
+
+    /** P3 Fix-B: CTA đặt lịch / giữ chỗ / inbox / chốt gói trên lượt phản ứng tiêu cực. */
+    private static final Pattern UNSOLICITED_BOOKING_OR_PACKAGE_CTA_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:đặt\\s+lịch|giữ\\s+chỗ|giữ\\s+lịch|chốt\\s+lịch|chốt\\s+gói|chọn\\s+gói|giữ\\s+suất|"
+                    + "inbox\\s+(?:để|cho|ngay|bên)|nhắn\\s+inbox)\\b"
+    );
+
+    /** P3 Fix-B: câu hỏi chốt lựa chọn gói/buổi/thời lượng ("Mình muốn buổi vừa đủ để thử trước, hay dài hơn ạ?"). */
+    private static final Pattern PACKAGE_CHOICE_QUESTION_CUE_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bbuổi\\s+(?:vừa\\s+đủ|thử|đầu|ngắn|dài)\\b|\\bgói\\b|\\bliệu\\s+trình\\b|"
+                    + "\\bthời\\s+lượng\\b|\\b\\d+\\s*phút\\b|\\b(?:dài|ngắn)\\s+hơn\\s+(?:một\\s+chút|chút|hơn)?)"
+    );
+
+    /**
+     * ACI V3 — Stage P3 (Fix-B): Zero Unsolicited Pitch. Trên lượt {@code CUSTOMER_CORRECTION} /
+     * {@code OVER_INTRUSION} / {@code COMMUNICATION_COMPLAINT} mà khách KHÔNG có
+     * {@code explicit_price_demand} (và không hỏi thẳng gói/giá), mọi câu/bong bóng chứa giá tiền,
+     * tên gói, CTA đặt lịch hay câu hỏi chốt chi nhánh phục vụ báo giá do LLM tự ý chèn đều bị
+     * <b>strip</b>; phần còn lại được nối một câu hỏi mở nhẹ nhàng bám sát các triệu chứng khách
+     * đã chia sẻ (trừ nhánh OVER_INTRUSION — chính sách 0 câu hỏi).
+     *
+     * <p>Nếu toàn bộ nội dung đều là pitch bị cắt, thay bằng lời xin lỗi trung thực kèm ghi nhận
+     * triệu chứng (cùng hình thức với False Apology Guard ở §3.5).</p>
+     */
+    public static List<FanpageBotResponse.ReplyBubble> stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage,
+            List<String> knownSymptoms,
+            List<String> scopeTaxonomy,
+            String selfPronoun,
+            String customerPronoun
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        NegativeReactionSubtype subtype = classifyNegativeReactionSubtype(customerMessage, scopeTaxonomy);
+        boolean guardedTurn = subtype == NegativeReactionSubtype.CUSTOMER_CORRECTION
+                || subtype == NegativeReactionSubtype.OVER_INTRUSION
+                || subtype == NegativeReactionSubtype.COMMUNICATION_COMPLAINT;
+        if (!guardedTurn) {
+            return bubbles;
+        }
+        // Ngoại lệ bắt buộc (§4.2): khách đang đòi giá / hỏi thẳng gói trong chính lượt này
+        // -> tuyệt đối không cắt nội dung trả lời giá/gói grounded.
+        if (hasExplicitPriceDemandInMessage(customerMessage)
+                || isDirectPriceOrPackageInquiryForFallback(customerMessage, null)) {
+            return bubbles;
+        }
+        String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        List<String> safeSymptoms = sanitizeKnownSymptomsForEcho(knownSymptoms);
+        boolean strippedAny = false;
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                continue;
+            }
+            String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            String[] sentences = norm.split("(?<=[.!?？])\\s+");
+            List<String> kept = new ArrayList<>();
+            for (String s : sentences) {
+                String st = s.strip();
+                if (st.isEmpty()) {
+                    continue;
+                }
+                if (isUnsolicitedPitchSentenceOnNegativeReaction(st)) {
+                    strippedAny = true;
+                    continue;
+                }
+                kept.add(st);
+            }
+            String merged = String.join(" ", kept)
+                    .replaceAll("\\s+([,.!?？])", "$1")
+                    .replaceAll("[ \\t]{2,}", " ")
+                    .strip();
+            if (!merged.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs()));
+            }
+        }
+        if (out.isEmpty()) {
+            out.add(new FanpageBotResponse.ReplyBubble(
+                    buildHonestCorrectionApologyText(safeSelf, safeCust, safeSymptoms), 0));
+            strippedAny = true;
+        }
+        // Nối câu hỏi mở bám triệu chứng khi vừa cắt pitch mà lượt không còn câu hỏi nào;
+        // nhánh OVER_INTRUSION giữ nguyên chính sách 0 câu hỏi.
+        boolean questionAllowed = subtype != NegativeReactionSubtype.OVER_INTRUSION
+                && (customerMessage == null || customerMessage.isBlank()
+                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage));
+        boolean anyQuestion = out.stream().anyMatch(x -> x != null && x.text() != null
+                && (x.text().contains("?") || x.text().contains("？")));
+        if (strippedAny && questionAllowed && !anyQuestion) {
+            int lastIdx = out.size() - 1;
+            FanpageBotResponse.ReplyBubble last = out.get(lastIdx);
+            out.set(lastIdx, new FanpageBotResponse.ReplyBubble(
+                    last.text() + " " + buildSymptomAnchoredDiscoveryQuestion(safeSymptoms, safeSelf, safeCust),
+                    last.typingDelayMs()));
+        }
+        return out;
+    }
+
+    /** P3 Fix-B: nhận diện câu pitch gói/giá/CTA tự ý chèn trên lượt phản ứng tiêu cực. */
+    private static boolean isUnsolicitedPitchSentenceOnNegativeReaction(String sentence) {
+        if (sentence == null || sentence.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(sentence.strip(), java.text.Normalizer.Form.NFC);
+        String low = norm.toLowerCase(Locale.ROOT);
+        boolean question = isQuestionSentence(norm);
+        // 1. Câu chứa số giá tiền (399k / 570.000đ / 399,000 VND...)
+        if (hasQuotedPriceInText(norm)) {
+            return true;
+        }
+        // 2. Mã SKU gói nội bộ đi kèm ngữ cảnh gói/liệu trình (NS01, DS02...)
+        if (low.matches("(?isU).*\\b[a-z]{2}\\s?\\d{2}\\b.*")
+                && low.matches("(?isU).*\\b(?:gói|mã|liệu\\s+trình|combo)\\b.*")) {
+            return true;
+        }
+        // 3. CTA đặt lịch / giữ chỗ / inbox / chốt gói
+        if (UNSOLICITED_BOOKING_OR_PACKAGE_CTA_PATTERN.matcher(low).find()) {
+            return true;
+        }
+        // 4. Câu giới thiệu/chào gói không được yêu cầu
+        if (UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN.matcher(low).find()) {
+            return true;
+        }
+        // 5. Câu hỏi chốt chi nhánh phục vụ báo giá / tư vấn gói
+        if (question && BRANCH_ROUTING_FOR_PITCH_QUESTION_PATTERN.matcher(low).find()) {
+            return true;
+        }
+        // 6. Câu hỏi chốt lựa chọn gói/buổi/thời lượng
+        if (question && PACKAGE_CHOICE_QUESTION_CUE_PATTERN.matcher(low).find()) {
+            return true;
+        }
+        return false;
     }
 
     public static boolean hasTrailingSalesOrBookingCtaOnStyleComplaint(String text, String customerMessage) {
