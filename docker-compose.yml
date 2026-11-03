@@ -96,6 +96,10 @@ services:
       - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-120}
       - LLM_REASONING_EFFORT=${LLM_REASONING_EFFORT:-}
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-0}
+      - LLM_FALLBACK_PROVIDER=${LLM_FALLBACK_PROVIDER:-deepseek}
+      - LLM_FALLBACK_MODEL=${LLM_FALLBACK_MODEL:-deepseek-v4.1-flash-1017}
+      - LLM_FALLBACK_BASE_URL=${LLM_FALLBACK_BASE_URL:-https://api.x-apikey.com/v1}
+      - LLM_FALLBACK_API_KEY=${LLM_FALLBACK_API_KEY:-}
       # Legacy & Ollama-specific tuning (reads from LLM_* first, falls back to OLLAMA_*)
       - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}

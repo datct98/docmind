@@ -134,14 +134,15 @@ WHERE id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'
 DELETE FROM agent_skills;
 
 -- ----------------------------------------------------------------------------
--- 2A. BỘ 6 KỸ NĂNG TÌNH HUỐNG GIÀU EQ — PAGE NÀNG SEN SPA (BEAUTY_SPA)
---     page_id = b23cd382-4f7a-4829-8c54-1d410da14bf8
+-- 2A & 2B. BỘ 6 KỸ NĂNG TÌNH HUỐNG GIÀU EQ — CHỈ CHÈN CHO PAGE ĐANG TỒN TẠI
+--          HOẶC KHỚP TÊN TRONG knowledge_pages (tránh lỗi FK trên DB dev/custom)
 -- ----------------------------------------------------------------------------
-INSERT INTO agent_skills (
+WITH raw_skills (
     id, code, name, category, description, trigger_signals,
     tactical_instructions, good_example, anti_pattern,
-    priority, active, page_id, confidence_score
-) VALUES
+    priority, active, target_page_id, confidence_score
+) AS (
+VALUES
 (
     '24000001-0000-4000-8000-000000000001',
     'discovery_empathy_and_scope',
@@ -290,4 +291,42 @@ INSERT INTO agent_skills (
     'Dạ vâng ạ, em đã lưu lại tình trạng răng cùng các phương án mình trao đổi hôm nay rồi, bất cứ khi nào mình thu xếp được thời gian hoặc cần hỏi thêm điều gì về răng miệng thì cứ nhắn em hỗ trợ ngay nhé. Chúc mình luôn thật nhiều sức khỏe và ăn nhai thật thoải mái mỗi ngày ạ!',
     'Hối thúc dọa răng hỏng nặng nếu không làm ngay để thúc ép đặt lịch, hoặc chào mời thêm dịch vụ mới khi khách đã xin tạm dừng.',
     93, true, 'd3000000-0000-0000-0000-000000000001', 0.96
-);
+)
+),
+resolved_pages AS (
+    SELECT
+        r.id::uuid AS id,
+        r.code,
+        r.name,
+        r.category,
+        r.description,
+        r.trigger_signals,
+        r.tactical_instructions,
+        r.good_example,
+        r.anti_pattern,
+        r.priority,
+        r.active,
+        COALESCE(
+            (SELECT kp.id FROM knowledge_pages kp WHERE kp.id = r.target_page_id::uuid LIMIT 1),
+            CASE
+                WHEN r.target_page_id = 'b23cd382-4f7a-4829-8c54-1d410da14bf8'
+                    THEN (SELECT kp.id FROM knowledge_pages kp WHERE kp.name ILIKE '%Nàng Sen%' LIMIT 1)
+                WHEN r.target_page_id = 'd3000000-0000-0000-0000-000000000001'
+                    THEN (SELECT kp.id FROM knowledge_pages kp WHERE kp.name ILIKE '%Nha Khoa%' LIMIT 1)
+                ELSE NULL
+            END
+        ) AS resolved_page_id,
+        r.confidence_score
+    FROM raw_skills r
+)
+INSERT INTO agent_skills (
+    id, code, name, category, description, trigger_signals,
+    tactical_instructions, good_example, anti_pattern,
+    priority, active, page_id, confidence_score
+)
+SELECT
+    id, code, name, category, description, trigger_signals,
+    tactical_instructions, good_example, anti_pattern,
+    priority, active, resolved_page_id, confidence_score
+FROM resolved_pages
+WHERE resolved_page_id IS NOT NULL;

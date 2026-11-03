@@ -254,6 +254,7 @@ public class CleanAgentOrchestratorService {
     private volatile AdaptiveConversationIntelligence.HandoffEventDispatcher handoffEventDispatcher;
     private volatile AdaptiveConversationIntelligence.AdaptiveCognitiveReflection lastAciReflection;
     private volatile AdaptiveConversationIntelligence.ConditionalHandoffDecision lastHandoffDecision;
+    private volatile AdaptiveConversationIntelligence.TurnContextSnapshot lastTurnContextSnapshot;
     private volatile ThinkingModePolicy.AciTurnTelemetry lastAciTurnTelemetry;
     private volatile String lastBuiltPrompt;
     private volatile ThinkingModePolicy.TurnTelemetry lastTurnTelemetry;
@@ -306,6 +307,10 @@ public class CleanAgentOrchestratorService {
 
     public AdaptiveConversationIntelligence.ConditionalHandoffDecision getLastHandoffDecision() {
         return lastHandoffDecision;
+    }
+
+    public AdaptiveConversationIntelligence.TurnContextSnapshot getLastTurnContextSnapshot() {
+        return lastTurnContextSnapshot;
     }
 
     public ThinkingModePolicy.AciTurnTelemetry getLastAciTurnTelemetry() {
@@ -4205,12 +4210,18 @@ public class CleanAgentOrchestratorService {
             agentBrainService.clearCustomerMemory(pageId, request.senderId());
         }
         String senderIdForPronoun = request != null ? request.senderId() : null;
-        String defaultCustomerPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
+        String rawDefaultCustomerPronoun = (pagePersona != null && pagePersona.resolvedConfig() != null)
                 ? effectivePersonaConfig.resolvedDefaultCustomerPronoun()
                 : ((honorific != null && !honorific.isBlank()) ? honorific.strip() : "mình");
         String priorInferredCustomerPronoun = (agentBrainService != null && pageId != null && senderIdForPronoun != null && !senderIdForPronoun.isBlank())
                 ? agentBrainService.getInferredCustomerPronoun(pageId, senderIdForPronoun)
                 : null;
+        // ACI V3 Pronoun Policy (§7.1): Khi chưa xác nhận giới tính khách (priorInferredCustomerPronoun == null),
+        // không mặc định gọi "Chị" hay "Anh/Chị" mà chuyển về đại từ trung tính "mình" (vẫn giữ "bạn" nếu Page cấu hình "bạn").
+        String defaultCustomerPronoun = ((priorInferredCustomerPronoun == null || priorInferredCustomerPronoun.isBlank())
+                && ("chị".equalsIgnoreCase(rawDefaultCustomerPronoun) || "anh/chị".equalsIgnoreCase(rawDefaultCustomerPronoun)))
+                ? "mình"
+                : rawDefaultCustomerPronoun;
         String safeHonorific = (priorInferredCustomerPronoun != null && !priorInferredCustomerPronoun.isBlank())
                 ? priorInferredCustomerPronoun.strip()
                 : defaultCustomerPronoun;
@@ -4276,13 +4287,17 @@ public class CleanAgentOrchestratorService {
         String originalVerbatim = !threeStreamInput.originalMessage().isBlank()
                 ? threeStreamInput.originalMessage()
                 : (legacyNormalizedMessage != null ? legacyNormalizedMessage : "");
-        if (priorInferredCustomerPronoun == null || priorInferredCustomerPronoun.isBlank()) {
-            String sameTurnSelfPronoun = AdaptiveConversationIntelligence
-                    .inferExplicitCustomerSelfPronounFromUtterance(originalVerbatim);
-            if (sameTurnSelfPronoun != null && !sameTurnSelfPronoun.isBlank()) {
-                priorInferredCustomerPronoun = sameTurnSelfPronoun;
-                safeHonorific = sameTurnSelfPronoun;
-            }
+        String sameTurnSelfPronoun = AdaptiveConversationIntelligence
+                .inferExplicitCustomerSelfPronounFromUtterance(originalVerbatim);
+        double priorPronounConfidence = (agentBrainService != null && pageId != null && senderIdForPronoun != null && !senderIdForPronoun.isBlank())
+                ? agentBrainService.getInferredPronounConfidence(pageId, senderIdForPronoun)
+                : 0.0;
+        boolean pronounLockedFromSelfReference = (sameTurnSelfPronoun != null && !sameTurnSelfPronoun.isBlank())
+                || (priorInferredCustomerPronoun != null && !priorInferredCustomerPronoun.isBlank() && priorPronounConfidence >= 0.95);
+        if (sameTurnSelfPronoun != null && !sameTurnSelfPronoun.isBlank()) {
+            priorInferredCustomerPronoun = sameTurnSelfPronoun;
+            safeHonorific = sameTurnSelfPronoun;
+            pronounLockedFromSelfReference = true;
         }
 
         // System Gate 2: Lệnh Opt-out hệ thống tường minh (STOP, UNSUBSCRIBE, HỦY ĐĂNG KÝ, ĐỪNG NHẮN NỮA).
@@ -4363,6 +4378,23 @@ public class CleanAgentOrchestratorService {
                 }
             }
         }
+        // ACI V3: giữ nguyên bối cảnh đa triệu chứng từ các lượt khách trước (không làm rơi triệu chứng cũ).
+        List<String> historySymptomKeys = List.of("đau đầu", "khó ngủ", "mất ngủ", "cổ vai gáy", "mỏi gối", "tê tay", "lưng");
+        for (FanpageBotRequest.ConversationTurn turn : safeHistory) {
+            if (turn == null || turn.content() == null || turn.role() == null
+                    || !("user".equalsIgnoreCase(turn.role()) || "customer".equalsIgnoreCase(turn.role()))) {
+                continue;
+            }
+            if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(turn.content())) {
+                continue;
+            }
+            String turnLower = turn.content().toLowerCase(Locale.ROOT);
+            for (String symptomKey : historySymptomKeys) {
+                if (turnLower.contains(symptomKey) && !shadowScopeCandidates.contains(symptomKey)) {
+                    shadowScopeCandidates.add(symptomKey);
+                }
+            }
+        }
         CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
                 CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                         allCatalog,
@@ -4437,14 +4469,20 @@ public class CleanAgentOrchestratorService {
         ConversationState.StructuredBookingState priorBookingState = ConversationState.StructuredBookingState.none();
         if (agentBrainService != null) {
             ConversationState.StructuredBookingState fromBrain = agentBrainService.recallBookingState(pageId, senderId);
-            if (fromBrain != null && fromBrain.status() != ConversationState.BookingStatus.NONE) {
+            if (fromBrain != null && (fromBrain.status() != ConversationState.BookingStatus.NONE
+                    || (fromBrain.selectedProductId() != null && !fromBrain.selectedProductId().isBlank()))) {
                 priorBookingState = fromBrain;
             }
         }
+        ConversationState.StructuredBookingState priorFromSession = safePrior.structuredBookingState();
+        boolean priorHasLockedSelection = priorBookingState.selectedProductId() != null
+                && !priorBookingState.selectedProductId().isBlank();
         if (priorBookingState.status() == ConversationState.BookingStatus.NONE
-                && safePrior.structuredBookingState() != null
-                && safePrior.structuredBookingState().status() != ConversationState.BookingStatus.NONE) {
-            priorBookingState = safePrior.structuredBookingState();
+                && !priorHasLockedSelection
+                && priorFromSession != null
+                && (priorFromSession.status() != ConversationState.BookingStatus.NONE
+                    || (priorFromSession.selectedProductId() != null && !priorFromSession.selectedProductId().isBlank()))) {
+            priorBookingState = priorFromSession;
         }
 
         List<AdaptiveConversationIntelligence.CustomerStatementRecord> tier1Statements =
@@ -4536,6 +4574,52 @@ public class CleanAgentOrchestratorService {
                 priorBookingState
         );
 
+        // ACI V3: Pre-resolve lựa chọn tương đối/đính chính của khách NGAY lượt này (trước Snapshot & Prompt)
+        // để LLM thấy selected_product_id đã khóa trong <SESSION_MEMORY_5_TIER>; loại gói có tóc nếu khách đã từ chối hair_care.
+        if (AdaptiveConversationIntelligence.isTrialOrRelativeOptionSelectionMessage(originalVerbatim)
+                || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(originalVerbatim)) {
+            boolean excludeHairCare = draft2Before != null
+                    && draft2Before.businessCommitment() != null
+                    && draft2Before.businessCommitment().negativePreferences() != null
+                    && draft2Before.businessCommitment().negativePreferences().stream()
+                        .anyMatch(e -> e != null && "hair_care".equalsIgnoreCase(e.targetKey()));
+            PackageCatalogService.PackageSummary preResolved =
+                    AdaptiveConversationIntelligence.resolveContextualOptionFromUtterance(
+                            originalVerbatim,
+                            prevBotTurnText,
+                            presentedPackagesInHistory,
+                            allCatalog,
+                            excludeHairCare
+                    );
+            if (preResolved != null && preResolved.productId() != null && !preResolved.productId().isBlank()) {
+                priorBookingState = new ConversationState.StructuredBookingState(
+                        preResolved.productId(),
+                        preResolved.canonicalLabel(),
+                        priorBookingState.bookingDate(),
+                        priorBookingState.resolvedIsoDate(),
+                        priorBookingState.bookingTime(),
+                        priorBookingState.timezoneId(),
+                        priorBookingState.status(),
+                        priorBookingState.candidateProductIds() != null ? priorBookingState.candidateProductIds() : List.of()
+                );
+            }
+        }
+
+        // ACI V3 Guardrail 2: Xây dựng Snapshot bất biến của lượt hiện tại đúng 1 lần, dùng chung cho Prompt Builder và Guard
+        String sequentialTurnId = CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(safeHistory);
+        AdaptiveConversationIntelligence.TurnContextSnapshot turnContextSnapshot =
+                AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                        sequentialTurnId,
+                        originalVerbatim,
+                        safeHonorific,
+                        pronounLockedFromSelfReference,
+                        priceObjectionCountBefore,
+                        safeHistory,
+                        draft2Before,
+                        priorBookingState
+                );
+        this.lastTurnContextSnapshot = turnContextSnapshot;
+
         // Xây dựng Single-Pass Cognitive Contract Prompt (và đo kích thước prompt cũ tương đương cho Telemetry Mục 7.1)
         long promptStartNs = System.nanoTime();
         String aciPrompt = CleanAgentCatalogAndPromptBuilder.buildAciSinglePassPrompt(
@@ -4560,7 +4644,8 @@ public class CleanAgentOrchestratorService {
                 safeHistory,
                 preSelectedTurnSkills,
                 turnRelevantRules,
-                draft2Before
+                draft2Before,
+                turnContextSnapshot.plan()
         );
         this.lastBuiltPrompt = aciPrompt;
         // Unit P1.1: Ngừng dựng ngầm Prompt V1 (~22.400 ký tự) trên hot-path LLM_COGNITIVE_V2
@@ -4574,6 +4659,8 @@ public class CleanAgentOrchestratorService {
 
         String rawReply = null;
         int llmRegenerationCount = 0;
+        int llmCallCount = 0;
+        final long turnDeadlineMs = 65_000L;
         String retryTriggerReason = "NONE";
         LlmTokenUsageSnapshot tokenUsage = LlmTokenUsageSnapshot.zero();
         long modelLatencyMs = 0L;
@@ -4581,6 +4668,7 @@ public class CleanAgentOrchestratorService {
         try {
             if (llmClient != null) {
                 FanpageBotService.markCurrentTurnLlmStarted();
+                llmCallCount++;
                 long callStartNs = System.nanoTime();
                 rawReply = llmClient.complete(aciPrompt, aciBudget);
                 if (rawReply == null) {
@@ -4590,27 +4678,36 @@ public class CleanAgentOrchestratorService {
                 tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                 if (isUpstreamLlmClientErrorPayload(rawReply)) {
                     initialUpstreamError = true;
+                    retryTriggerReason = "UPSTREAM_ERROR_OR_TIMEOUT";
                     log.warn("[ACI-V2] Upstream LLM network/gateway error on initial call (msg='{}') — skipping redundant JSON retry",
                             originalVerbatim);
                 } else if (rawReply == null || rawReply.isBlank()) {
-                    retryTriggerReason = "EMPTY_INITIAL_RESPONSE";
-                    log.warn("[ACI-V2] Triggering LLM retry #{}: retryTriggerReason={} (msg='{}')",
-                            llmRegenerationCount + 1, retryTriggerReason, originalVerbatim);
-                    llmRegenerationCount++;
-                    long fallbackStartNs = System.nanoTime();
-                    rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
-                    if (rawReply == null) {
-                        rawReply = llmClient.complete(aciPrompt);
-                    }
-                    modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
-                    tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
-                    if (rawReply == null || rawReply.isBlank() || isUpstreamLlmClientErrorPayload(rawReply)) {
+                    long elapsedBeforeRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
+                    if (elapsedBeforeRetryMs >= 65_000L) {
                         initialUpstreamError = true;
+                        retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
+                    } else {
+                        retryTriggerReason = "EMPTY_INITIAL_RESPONSE";
+                        log.warn("[ACI-V2] Triggering LLM retry #{}: retryTriggerReason={} (msg='{}')",
+                                llmRegenerationCount + 1, retryTriggerReason, originalVerbatim);
+                        llmRegenerationCount++;
+                        llmCallCount++;
+                        long fallbackStartNs = System.nanoTime();
+                        rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                        if (rawReply == null) {
+                            rawReply = llmClient.complete(aciPrompt);
+                        }
+                        modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
+                        tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                        if (rawReply == null || rawReply.isBlank() || isUpstreamLlmClientErrorPayload(rawReply)) {
+                            initialUpstreamError = true;
+                        }
                     }
                 }
             }
         } catch (Exception e) {
             initialUpstreamError = true;
+            retryTriggerReason = "UPSTREAM_ERROR_OR_TIMEOUT";
             log.warn("[ACI-V2] Exception calling llmClient {}: {}", llmClient != null ? llmClient.name() : "null", e.getMessage());
         }
 
@@ -4638,43 +4735,49 @@ public class CleanAgentOrchestratorService {
         if (!initialUpstreamError
                 && (structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
                 && llmRegenerationCount < 1) {
-            retryTriggerReason = (structured == null || !structured.parsedFromJson())
-                    ? "JSON_PARSE_FAILURE"
-                    : "EMPTY_BUBBLES_IN_JSON";
-            log.warn("[ACI-V2] Triggering LLM retry #{}: retryTriggerReason={} rawChars={} (msg='{}')",
-                    llmRegenerationCount + 1,
-                    retryTriggerReason,
-                    rawReply != null ? rawReply.length() : 0,
-                    originalVerbatim);
-            try {
-                if (llmClient != null) {
-                    llmRegenerationCount++;
-                    long retryStartNs = System.nanoTime();
-                    String retryRaw = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
-                    if (retryRaw == null) {
-                        retryRaw = llmClient.complete(aciPrompt);
+            long elapsedBeforeJsonRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
+            if (elapsedBeforeJsonRetryMs >= 65_000L) {
+                retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
+            } else {
+                retryTriggerReason = (structured == null || !structured.parsedFromJson())
+                        ? "JSON_PARSE_FAILURE"
+                        : "EMPTY_BUBBLES_IN_JSON";
+                log.warn("[ACI-V2] Triggering LLM retry #{}: retryTriggerReason={} rawChars={} (msg='{}')",
+                        llmRegenerationCount + 1,
+                        retryTriggerReason,
+                        rawReply != null ? rawReply.length() : 0,
+                        originalVerbatim);
+                try {
+                    if (llmClient != null) {
+                        llmRegenerationCount++;
+                        llmCallCount++;
+                        long retryStartNs = System.nanoTime();
+                        String retryRaw = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
+                        if (retryRaw == null) {
+                            retryRaw = llmClient.complete(aciPrompt);
+                        }
+                        modelLatencyMs += Math.max(1L, (System.nanoTime() - retryStartNs) / 1_000_000L);
+                        tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
+                        if (retryRaw != null && !retryRaw.isBlank() && !isUpstreamLlmClientErrorPayload(retryRaw)) {
+                            rawReply = retryRaw;
+                            CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput retryStructured =
+                                    CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(rawReply, 0);
+                            sanitizedReply = (retryStructured != null && retryStructured.parsedFromJson())
+                                    ? rawReply
+                                    : PromptSecurityGuard.sanitizeModelOutput(rawReply);
+                            effectiveStructuredOutputForProfiling = sanitizedReply;
+                            structured = retryStructured;
+                        }
                     }
-                    modelLatencyMs += Math.max(1L, (System.nanoTime() - retryStartNs) / 1_000_000L);
-                    tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
-                    if (retryRaw != null && !retryRaw.isBlank() && !isUpstreamLlmClientErrorPayload(retryRaw)) {
-                        rawReply = retryRaw;
-                        CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput retryStructured =
-                                CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(rawReply, 0);
-                        sanitizedReply = (retryStructured != null && retryStructured.parsedFromJson())
-                                ? rawReply
-                                : PromptSecurityGuard.sanitizeModelOutput(rawReply);
-                        effectiveStructuredOutputForProfiling = sanitizedReply;
-                        structured = retryStructured;
-                    }
+                } catch (Exception e) {
+                    log.warn("[ACI-V2] JSON retry exception: {}", e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("[ACI-V2] JSON retry exception: {}", e.getMessage());
-            }
-            if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
-                    request != null ? request.pageId() : null,
-                    request != null ? request.senderId() : null,
-                    SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
-                return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                        request != null ? request.pageId() : null,
+                        request != null ? request.senderId() : null,
+                        SenderEpochRegistry.Checkpoint.AFTER_LLM_BEFORE_REFEREE)) {
+                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
             }
         }
 
@@ -4683,7 +4786,7 @@ public class CleanAgentOrchestratorService {
                         ? structured.aciReflection()
                         : AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty())
                         .reconcileWithCurrentUtterance(originalVerbatim);
-        if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
+        if (!pronounLockedFromSelfReference && reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
             safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
         }
 
@@ -4691,6 +4794,10 @@ public class CleanAgentOrchestratorService {
                 (isUpstreamLlmClientErrorPayload(sanitizedReply) || isLeakedReasoningWithoutJsonContract(structured, sanitizedReply))
                         ? List.of()
                         : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, 0);
+        List<String> rawLlmBubbleTexts = candidateBubbles.stream()
+                .map(FanpageBotResponse.ReplyBubble::text)
+                .filter(java.util.Objects::nonNull)
+                .toList();
         boolean llmOutputUnavailable = candidateBubbles.isEmpty();
         boolean usedStructuredFallbackOnLlmFailure = false;
         if (candidateBubbles.isEmpty()) {
@@ -4758,26 +4865,44 @@ public class CleanAgentOrchestratorService {
                         pagePersona,
                         handoffEventDispatcher
                 );
-        if ("MEDICAL_SAFETY_HANDOFF".equals(handoffDecision.handoffCategory())
-                && handoffDecision.isHandoffCreated()) {
-            boolean isAcuteOrNeuro = FanpageBotService.isUniversalAcuteMedicalEmergency(originalVerbatim);
+        boolean isAcuteOrNeuro = FanpageBotService.isUniversalAcuteMedicalEmergency(originalVerbatim);
+        if (isAcuteOrNeuro || ("MEDICAL_SAFETY_HANDOFF".equals(handoffDecision.handoffCategory()) && handoffDecision.isHandoffCreated())) {
+            boolean customerAlsoRequestedStaff = AdaptiveConversationIntelligence.isExplicitHumanEscalationMessage(originalVerbatim);
             String combinedCandidateLower = candidateBubbles.stream()
                     .map(FanpageBotResponse.ReplyBubble::text)
                     .filter(java.util.Objects::nonNull)
                     .reduce("", (a, b) -> a + " " + b)
                     .toLowerCase(Locale.ROOT);
             if (isAcuteOrNeuro) {
-                boolean has115OrEmergency = combinedCandidateLower.matches("(?isU).*\\b(115|cấp\\s+cứu)\\b.*");
-                boolean hasSpaStaffHandoff = combinedCandidateLower.matches("(?isU).*\\b(kết\\s+nối\\s+chuyên\\s+viên|chuyên\\s+viên\\s+hỗ\\s+trợ|kỹ\\s+thuật\\s+viên)\\b.*");
-                if (!has115OrEmergency || hasSpaStaffHandoff) {
+                boolean hasNegatedEmergency = combinedCandidateLower.matches(
+                        "(?isU).*\\b(không\\s+cần|khỏi\\s+cần|chưa\\s+cần)\\s+(?:gọi\\s+)?(?:115|cấp\\s+cứu|đi\\s+bệnh\\s+viện|đến\\s+bệnh\\s+viện).*");
+                boolean has115OrEmergency = !hasNegatedEmergency
+                        && combinedCandidateLower.matches("(?isU).*\\b(115|cấp\\s+cứu|bệnh\\s+viện|cơ\\s+sở\\s+y\\s+tế)\\b.*");
+                boolean promisesSpaServiceForEmergency = combinedCandidateLower.matches(
+                        "(?isU).*\\b(đặt\\s+lịch|giữ\\s+lịch|qua\\s+cơ\\s+sở\\s+làm|ghé\\s+spa\\s+làm|kỹ\\s+thuật\\s+viên\\s+sẽ\\s+massage|bấm\\s+huyệt\\s+cho)\\b.*");
+                boolean mentionsStaffSupport = combinedCandidateLower.matches(
+                        "(?isU).*\\b(chuyên\\s+viên|quản\\s+lý|nhân\\s+viên|nhân\\s+sự|bộ\\s+phận\\s+hỗ\\s+trợ).*");
+                if (!has115OrEmergency || promisesSpaServiceForEmergency) {
                     String safeAcuteEmergencyText = "Dạ với các dấu hiệu cấp tính như vậy, để đảm bảo an toàn sức khỏe tuyệt đối, "
                             + safeHonorific + " hãy tạm dừng vận động, nằm nghỉ ngơi tại chỗ ngay và nhờ người thân gọi cấp cứu 115 hoặc đưa "
-                            + safeHonorific + " đến bệnh viện/cơ sở y tế gần nhất để bác sĩ kiểm tra khẩn cấp ngay nhé ạ.";
+                            + safeHonorific + " đến bệnh viện/cơ sở y tế gần nhất để bác sĩ kiểm tra khẩn cấp ngay nhé ạ."
+                            + (customerAlsoRequestedStaff
+                                ? (" Đồng thời " + selfPronoun + " đã chuyển thông tin khẩn tới quản lý/nhân viên phụ trách của cơ sở để nắm tình hình và phối hợp hỗ trợ " + safeHonorific + " ngay ạ.")
+                                : "");
                     candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeAcuteEmergencyText, 0));
+                } else if (customerAlsoRequestedStaff && !mentionsStaffSupport && !candidateBubbles.isEmpty()) {
+                    int lastIdx = candidateBubbles.size() - 1;
+                    FanpageBotResponse.ReplyBubble lastB = candidateBubbles.get(lastIdx);
+                    String augmented = lastB.text().strip()
+                            + " Đồng thời " + selfPronoun + " đã chuyển thông tin tới quản lý/nhân viên phụ trách của cơ sở để hỗ trợ "
+                            + safeHonorific + " ngay ạ.";
+                    List<FanpageBotResponse.ReplyBubble> updated = new ArrayList<>(candidateBubbles);
+                    updated.set(lastIdx, new FanpageBotResponse.ReplyBubble(augmented, lastB.typingDelayMs()));
+                    candidateBubbles = List.copyOf(updated);
                 }
             } else if (reflection.handoffRequest() == null || !reflection.handoffRequest().requested()) {
                 boolean alreadyMentionsInternalSpecialist = combinedCandidateLower.matches(
-                        "(?isU).*\\b(chuyên\\s+viên|quản\\s+lý|kỹ\\s+thuật\\s+viên|bộ\\s+phận\\s+chuyên\\s+môn|bác\\s+sĩ|nhân\\s+sự\\s+phụ\\s+trách).*");
+                        "(?isU).*\\b(chuyên\\s+viên|quản\\s+lý|bộ\\s+phận\\s+chuyên\\s+môn|bác\\s+sĩ|nhân\\s+sự\\s+phụ\\s+trách).*");
                 if (!alreadyMentionsInternalSpecialist) {
                     String safeMedicalText = "Dạ với trường hợp này, để đảm bảo an toàn tuyệt đối cho " + safeHonorific + ", "
                             + selfPronoun + " xin phép kết nối chuyên viên phụ trách kiểm tra và tư vấn trực tiếp cho "
@@ -4825,7 +4950,10 @@ public class CleanAgentOrchestratorService {
                     : (quotedReplyResolution.quotedPackage() != null
                         ? quotedReplyResolution.quotedPackage()
                         : (!unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null));
-            if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError) {
+            long elapsedBeforeRefereeRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
+            if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError && elapsedBeforeRefereeRetryMs >= 65_000L) {
+                retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
+            } else if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError) {
                 retryTriggerReason = "REFEREE_VIOLATION:" + refereeViolations.get(0);
                 log.warn("[ACI-V2] Triggering Referee targeted repair retry #{}: retryTriggerReason={} allViolations={} (msg='{}')",
                         llmRegenerationCount + 1, retryTriggerReason, refereeViolations, originalVerbatim);
@@ -4833,6 +4961,7 @@ public class CleanAgentOrchestratorService {
                         aciPrompt, refereeViolations, selfPronoun, safeHonorific, focusPkgForRepair);
                 try {
                     llmRegenerationCount++;
+                    llmCallCount++;
                     long repairCallStartNs = System.nanoTime();
                     String repairedRaw = llmClient.complete(repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
                     if (repairedRaw == null) {
@@ -4863,7 +4992,7 @@ public class CleanAgentOrchestratorService {
                             if (repairedStructured != null && repairedStructured.aciReflection() != null
                                     && repairedStructured.aciReflection().parsedFromV2Schema()) {
                                 reflection = repairedStructured.aciReflection().reconcileWithCurrentUtterance(originalVerbatim);
-                                if (reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
+                                if (!pronounLockedFromSelfReference && reflection.customerUnderstanding().hasHighConfidenceInferredPronoun()) {
                                     safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
                                 }
                                 candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
@@ -5083,7 +5212,8 @@ public class CleanAgentOrchestratorService {
                     unblindedEligibleCatalog,
                     selfPronoun,
                     safeHonorific,
-                    effectivePersonaConfig != null ? effectivePersonaConfig.resolvedCareActor() : "kỹ thuật viên"
+                    effectivePersonaConfig != null ? effectivePersonaConfig.resolvedCareActor() : "kỹ thuật viên",
+                    turnContextSnapshot.plan()
             );
         }
 
@@ -5160,8 +5290,6 @@ public class CleanAgentOrchestratorService {
                             draft2Before
                     )
                     : generatedSpeechAct);
-        String sequentialTurnId = CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(safeHistory);
-
         // Ghi nhận nguyên tử 5 tầng bộ nhớ, vòng đời Working Hypothesis, chiến thuật lượt trước & Session Commitments (Mục 4)
         if (agentBrainService != null) {
             agentBrainService.applyAciTurnMemoryUpdates(
@@ -5276,6 +5404,11 @@ public class CleanAgentOrchestratorService {
                 totalTurnMs
         );
 
+        List<String> finalBubbleTexts = finalBubbles.stream()
+                .map(FanpageBotResponse.ReplyBubble::text)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        double sanitizerMutationRate = computeSanitizerMutationRate(rawLlmBubbleTexts, finalBubbleTexts);
         ThinkingModePolicy.AciTurnTelemetry aciTelemetry = new ThinkingModePolicy.AciTurnTelemetry(
                 AdaptiveConversationIntelligence.CognitiveMode.LLM_COGNITIVE_V2,
                 selectedThinkingMode,
@@ -5298,7 +5431,12 @@ public class CleanAgentOrchestratorService {
                 reflectionTokens,
                 retrievalMs,
                 llmRegenerationCount,
-                retryTriggerReason
+                retryTriggerReason,
+                llmCallCount,
+                turnDeadlineMs,
+                rawLlmBubbleTexts,
+                finalBubbleTexts,
+                sanitizerMutationRate
         );
         this.lastAciTurnTelemetry = aciTelemetry;
         ThinkingModePolicy.recordAciTurnTelemetry(aciTelemetry);
@@ -5402,7 +5540,7 @@ public class CleanAgentOrchestratorService {
                         : (salesStage != null ? salesStage.code() : FanpageBotPromptBuilder.SalesStage.DISCOVERY.code())));
         List<Integer> delays = finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::typingDelayMs).toList();
 
-        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptBuildMs={} promptTokens={} completionTokens={} reasoningTokens={} reflectionTokens={} llmMs={} retrievalMs={} validationMs={} retryCount={} retryTriggerReason={} totalTurnMs={} selectedSpeechAct={} generatedSpeechAct={} refereeDecision={} fallbackReason={} actualSentSpeechAct={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
+        log.info("[ACI-V2] page_id={} sender_id={} turn={} thinkingMode={} promptChars={} legacyPromptChars={} promptBuildMs={} promptTokens={} completionTokens={} reasoningTokens={} reflectionTokens={} llmMs={} retrievalMs={} validationMs={} llmCallCount={} retryCount={} retryTriggerReason={} turnDeadlineMs={} sanitizerMutationRate={} totalTurnMs={} selectedSpeechAct={} generatedSpeechAct={} refereeDecision={} fallbackReason={} actualSentSpeechAct={} priority={} adaptation={} hypOp={} bookingStatus={} handoffStatus={} quoteBubbleIdx={} waitMs={} activatedSkills={} refereeViolations={}",
                 pageId,
                 senderId,
                 sequentialTurnId,
@@ -5417,8 +5555,11 @@ public class CleanAgentOrchestratorService {
                 llmElapsedMs,
                 retrievalMs,
                 validationMs,
+                llmCallCount,
                 llmRegenerationCount,
                 retryTriggerReason,
+                turnDeadlineMs,
+                String.format(Locale.ROOT, "%.3f", sanitizerMutationRate),
                 totalTurnMs,
                 selectedSpeechAct,
                 generatedSpeechAct,
@@ -5563,6 +5704,11 @@ public class CleanAgentOrchestratorService {
         if (availableSkills == null || availableSkills.isEmpty()) {
             return List.of();
         }
+        if (reflection != null && reflection.customerUnderstanding() != null
+                && ("SELF_IDENTIFY_GENDER".equalsIgnoreCase(reflection.customerUnderstanding().detectedIntent())
+                    || "HUMAN_HANDOFF".equalsIgnoreCase(reflection.customerUnderstanding().detectedIntent()))) {
+            return List.of();
+        }
         String prio = (reflection != null && reflection.priority() != null && reflection.priority().primary() != null)
                 ? reflection.priority().primary().toUpperCase(Locale.ROOT)
                 : "";
@@ -5674,7 +5820,10 @@ public class CleanAgentOrchestratorService {
         }
         String msg = currentMessage != null ? currentMessage.strip() : "";
         if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
-                || PromptSecurityGuard.isDirectJailbreakAttempt(msg)) {
+                || PromptSecurityGuard.isDirectJailbreakAttempt(msg)
+                || (AdaptiveConversationIntelligence.isExplicitGenderOrPronounCorrectionMessage(msg)
+                    && AdaptiveConversationIntelligence.classifyPriceIntentSubMode(msg) == AdaptiveConversationIntelligence.PriceIntentSubMode.NONE
+                    && !AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(msg))) {
             return List.of();
         }
         String normLower = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
@@ -5686,6 +5835,7 @@ public class CleanAgentOrchestratorService {
         ));
         boolean deferOrBareClose = explicitStopRefusal
                 || (!competitorPriceComparison && (isHesitationOrDeferralMessage(msg)
+                    || AdaptiveConversationIntelligence.isCustomerDeferralMessage(msg)
                     || (!bookingActive && (isBareAcknowledgmentMessage(msg)
                         || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(msg)))));
         boolean priceObjection = !explicitStopRefusal && isConfirmedCustomerPriceObjection(msg, true);
@@ -5852,7 +6002,7 @@ public class CleanAgentOrchestratorService {
         }
         LlmClient target = client;
         if (target instanceof com.example.docmind.service.llm.ResilientFallbackLlmClient resilient) {
-            target = resilient.getPrimary();
+            target = resilient.getLastUsedClient();
         }
         if (target instanceof com.example.docmind.service.llm.OpenAiCompatibleLlmClient openAi) {
             com.example.docmind.service.llm.OpenAiCompatibleLlmClient.OpenAiCallTelemetry tel = openAi.getLastCallTelemetry();
@@ -5967,6 +6117,34 @@ public class CleanAgentOrchestratorService {
             buyerArchetype = "EXPLORING_CONSULTATION";
             archetypeLabel = "Đang tìm hiểu dịch vụ";
         }
+
+        // ACI V3: ánh xạ buyerArchetype sang BehaviorBuyingState dựa trên tín hiệu quan sát được của lượt hiện tại.
+        boolean hasDisclosedNeed = draft2After != null
+                && draft2After.consultativeProfile() != null
+                && draft2After.consultativeProfile().selfReportedSymptoms() != null
+                && !draft2After.consultativeProfile().selfReportedSymptoms().isEmpty();
+        AdaptiveConversationIntelligence.BehaviorBuyingState behaviorBuyingState;
+        if (stopOrClosure) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.DEFERRAL;
+        } else if ("SKEPTICAL".equals(buyerArchetype)) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.CUSTOMER_CORRECTION;
+        } else if ("PRICE_CONSCIOUS".equals(buyerArchetype)) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.OBJECTION_HESITATION;
+        } else if (bookingActive
+                || readiness == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
+                || signal == AdaptiveConversationIntelligence.BuyingSignal.ACTION) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.BOOKING_INTENT;
+        } else if (signal == AdaptiveConversationIntelligence.BuyingSignal.STRONG) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.TRIAL_PREFERENCE;
+        } else if (readiness == AdaptiveConversationIntelligence.BookingReadiness.CONSIDERING
+                || "VALUE_CONSCIOUS".equals(buyerArchetype)) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.SOLUTION_EVALUATION;
+        } else if (hasDisclosedNeed || "SAFETY_CONSCIOUS".equals(buyerArchetype)) {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.NEED_DISCLOSURE;
+        } else {
+            behaviorBuyingState = AdaptiveConversationIntelligence.BehaviorBuyingState.EXPLORATION;
+        }
+        log.debug("[ACI-V3] buyerArchetype={} -> behaviorBuyingState={}", buyerArchetype, behaviorBuyingState);
 
         Integer prevTemp = previousTemperatureInput;
         int buyingTemp;
@@ -6103,6 +6281,34 @@ public class CleanAgentOrchestratorService {
                 costConcern,
                 hasDownsell
         );
+    }
+
+    public static double computeSanitizerMutationRate(List<String> rawBubbles, List<String> finalBubbles) {
+        String rawJoined = rawBubbles == null ? "" : String.join(" ", rawBubbles).replaceAll("\\s+", " ").strip();
+        String finalJoined = finalBubbles == null ? "" : String.join(" ", finalBubbles).replaceAll("\\s+", " ").strip();
+        if (rawJoined.isEmpty() && finalJoined.isEmpty()) {
+            return 0.0;
+        }
+        if (rawJoined.equals(finalJoined)) {
+            return 0.0;
+        }
+        int maxLen = Math.max(rawJoined.length(), finalJoined.length());
+        if (maxLen == 0) {
+            return 0.0;
+        }
+        int commonPrefix = 0;
+        int minLen = Math.min(rawJoined.length(), finalJoined.length());
+        while (commonPrefix < minLen && rawJoined.charAt(commonPrefix) == finalJoined.charAt(commonPrefix)) {
+            commonPrefix++;
+        }
+        int commonSuffix = 0;
+        while (commonSuffix < (minLen - commonPrefix)
+                && rawJoined.charAt(rawJoined.length() - 1 - commonSuffix) == finalJoined.charAt(finalJoined.length() - 1 - commonSuffix)) {
+            commonSuffix++;
+        }
+        int unchangedChars = commonPrefix + commonSuffix;
+        double rate = 1.0 - ((double) unchangedChars / (double) maxLen);
+        return Math.max(0.0, Math.min(1.0, rate));
     }
 
     private static List<FanpageBotResponse.ReplyBubble> buildSafeAciAuthorityFallbackBubbles(

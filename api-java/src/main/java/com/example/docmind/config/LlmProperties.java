@@ -93,7 +93,7 @@ public class LlmProperties {
      * Kiểm tra xem có cấu hình nhà cung cấp LLM dự phòng hợp lệ hay không.
      */
     public boolean hasFallbackProvider() {
-        return fallbackProvider != null && !fallbackProvider.isBlank();
+        return (fallbackProvider != null && !fallbackProvider.isBlank()) || ((fallbackBaseUrl != null && !fallbackBaseUrl.isBlank()) && (fallbackApiKey != null && !fallbackApiKey.isBlank()));
     }
 
     /**
@@ -101,7 +101,8 @@ public class LlmProperties {
      */
     public LlmProperties toFallbackProperties() {
         LlmProperties fb = new LlmProperties();
-        fb.setProvider(this.fallbackProvider);
+        String effectiveFbProvider = (this.fallbackProvider != null && !this.fallbackProvider.isBlank()) ? this.fallbackProvider : ((this.fallbackModel != null && this.fallbackModel.toLowerCase().contains("deepseek")) ? "deepseek" : this.provider);
+        fb.setProvider(effectiveFbProvider);
         fb.setBaseUrl(this.fallbackBaseUrl);
         fb.setApiKey(this.fallbackApiKey);
         fb.setModel(this.fallbackModel);

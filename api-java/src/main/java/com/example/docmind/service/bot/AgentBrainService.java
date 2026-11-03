@@ -443,6 +443,14 @@ public class AgentBrainService {
         private AdaptiveConversationIntelligence.AdaptiveResponsePlan draft2LastResponsePlan =
                 AdaptiveConversationIntelligence.AdaptiveResponsePlan.empty();
 
+        // === ACI V3: Commitment Ledger & Negative Preferences ===
+        private String draft2CommittedSelectedPackageId = null;
+        private AdaptiveConversationIntelligence.CommitmentLevel draft2CommitmentLevel =
+                AdaptiveConversationIntelligence.CommitmentLevel.NONE;
+        private String draft2CommitmentEvidence = null;
+        private final List<AdaptiveConversationIntelligence.NegativePreferenceEntry> draft2NegativePreferences = new ArrayList<>();
+        private final List<String> draft2LastOfferedPackageIds = new ArrayList<>();
+
         // === Unit P2.4 (V35): Optimistic Version & Turn Monotonicity Tracking ===
         private UUID lastSyncedSessionId = null;
         private Long lastSyncedDbVersion = null;
@@ -831,7 +839,11 @@ public class AgentBrainService {
             String bookingStatusStr = structuredBookingState != null
                     ? structuredBookingState.status().name()
                     : ConversationState.BookingStatus.NONE.name();
-            String committedPkg = structuredBookingState != null ? structuredBookingState.selectedProductId() : null;
+            String committedPkg = (structuredBookingState != null
+                    && structuredBookingState.selectedProductId() != null
+                    && !structuredBookingState.selectedProductId().isBlank())
+                    ? structuredBookingState.selectedProductId()
+                    : draft2CommittedSelectedPackageId;
             int pendingCmts = 0;
             for (AdaptiveConversationIntelligence.CommitmentRecord c : sessionCommitments) {
                 if (c != null && c.commitmentStatus() == AdaptiveConversationIntelligence.CommitmentStatus.pending) {
@@ -868,7 +880,13 @@ public class AgentBrainService {
                             committedPkg,
                             bookingStatusStr,
                             operationalState != null ? operationalState.handoffStatus() : AdaptiveConversationIntelligence.HandoffLifecycleStatus.NONE,
-                            pendingCmts
+                            pendingCmts,
+                            draft2CommitmentLevel != null
+                                    ? draft2CommitmentLevel
+                                    : AdaptiveConversationIntelligence.CommitmentLevel.NONE,
+                            draft2CommitmentEvidence,
+                            List.copyOf(draft2LastOfferedPackageIds),
+                            List.copyOf(draft2NegativePreferences)
                     );
             return new AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot(
                     layer1,
@@ -1480,26 +1498,36 @@ public class AgentBrainService {
             // Adaptive Strategy Selection, Speaker Pronoun Inference & LLM-Verified Price Objection Tracking
             if (reflection != null) {
                 AdaptiveConversationIntelligence.CustomerUnderstanding cu = reflection.customerUnderstanding();
-                if (cu.hasHighConfidenceInferredPronoun()) {
+                String explicitUtterancePronoun =
+                        AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance(originalCustomerMessage);
+                if (explicitUtterancePronoun != null) {
+                    // ACI V3: Khi khách tự xưng tường minh ("anh"/"chị") trong phát ngôn, khóa cứng đại từ theo phát ngôn gốc
+                    mem.inferredCustomerPronoun = explicitUtterancePronoun;
+                    mem.inferredPronounConfidence = Math.max(0.95, cu.pronounConfidence());
+                    mem.inferredPronounEvidenceTurnId = safeTurnId;
+                } else if (cu.hasHighConfidenceInferredPronoun()
+                        && (mem.inferredCustomerPronoun == null || mem.inferredPronounConfidence < 0.92)) {
                     mem.inferredCustomerPronoun = cu.inferredCustomerPronoun();
                     mem.inferredPronounConfidence = cu.pronounConfidence();
                     mem.inferredPronounEvidenceTurnId = safeTurnId;
-                } else if (mem.inferredCustomerPronoun == null) {
-                    String explicitUtterancePronoun =
-                            AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance(originalCustomerMessage);
-                    if (explicitUtterancePronoun != null) {
-                        mem.inferredCustomerPronoun = explicitUtterancePronoun;
-                        mem.inferredPronounConfidence = 0.92;
-                        mem.inferredPronounEvidenceTurnId = safeTurnId;
-                    }
                 }
                 if (cu.verifiedSymptomDuration() != null && !cu.verifiedSymptomDuration().isBlank()) {
                     mem.verifiedSymptomDuration = cu.verifiedSymptomDuration().strip();
                 }
-                boolean isMetaStyleComplaint = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalCustomerMessage);
-                boolean llmCostConcern = !isMetaStyleComplaint && (Boolean.TRUE.equals(cu.costConcernExpressed())
-                        || (cu.costConcernExpressed() == null
-                            && "BUDGET_FIT".equalsIgnoreCase(reflection.priority().primary())));
+                boolean isMetaStyleComplaint = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalCustomerMessage)
+                        || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(originalCustomerMessage);
+                boolean isNonObjectionTurnIntent = CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(originalCustomerMessage)
+                        || AdaptiveConversationIntelligence.isPrivacyConcernMessage(originalCustomerMessage)
+                        || AdaptiveConversationIntelligence.isCustomerDeferralMessage(originalCustomerMessage)
+                        || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(originalCustomerMessage)
+                        || AdaptiveConversationIntelligence.isExplicitGenderOrPronounCorrectionMessage(originalCustomerMessage)
+                        || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(originalCustomerMessage)
+                        || CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(originalCustomerMessage)
+                        || (CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(originalCustomerMessage)
+                            && !AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(originalCustomerMessage));
+                boolean llmCostConcern = !isMetaStyleComplaint
+                        && !isNonObjectionTurnIntent
+                        && AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(originalCustomerMessage);
                 if (llmCostConcern) {
                     mem.priceObjectionCount = mem.priceObjectionCount + 1;
                     mem.inPriceObjectionContext = true;
@@ -2107,7 +2135,22 @@ public class AgentBrainService {
 
         String effectiveBarrier = reflection.barrierType();
         if (llmCostConcern && ("NONE".equalsIgnoreCase(effectiveBarrier) || effectiveBarrier == null)) {
-            effectiveBarrier = "UNCLEAR_VALUE";
+            effectiveBarrier = "VALUE_PERCEPTION_GAP";
+        }
+        String currentHypContent = mem.aciWorkingHypothesis.content();
+        if ((currentHypContent == null || currentHypContent.isBlank()
+                || currentHypContent.toLowerCase(Locale.ROOT).contains("chưa rõ nhu cầu"))
+                && (!mem.draft2SelfReportedSymptoms.isEmpty()
+                    || (originalCustomerMessage != null && looksLikeConcretePainOrSymptomClause(originalCustomerMessage)))) {
+            String cleanSymptomSummary = originalCustomerMessage != null ? originalCustomerMessage.strip() : "triệu chứng mỏi";
+            mem.aciWorkingHypothesis = new AdaptiveConversationIntelligence.WorkingHypothesisRecord(
+                    "Khách chia sẻ tình trạng: " + cleanSymptomSummary + ", cần liệu trình chăm sóc phù hợp",
+                    AdaptiveConversationIntelligence.HypothesisLifecycleOp.ADJUST,
+                    Math.max(0.80, mem.aciWorkingHypothesis.confidence()),
+                    mem.aciWorkingHypothesis.evidenceTurnIds(),
+                    Instant.now()
+            );
+            mem.workingHypothesis = mem.aciWorkingHypothesis.content();
         }
         mem.draft2BarrierHypothesis = new AdaptiveConversationIntelligence.BarrierHypothesis(
                 effectiveBarrier,
@@ -2130,6 +2173,96 @@ public class AgentBrainService {
         }
         if (mem.draft2InterestedPackageId != null && mem.draft2PendingReferences.isEmpty()) {
             mem.draft2PendingReferences.add(mem.draft2InterestedPackageId);
+        }
+
+        // 4. ACI V3: Commitment Ledger & Negative Preferences (CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION)
+        String safeOriginalMsg = originalCustomerMessage != null ? originalCustomerMessage.strip() : "";
+        String releasedPackageId = null;
+        if (AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(safeOriginalMsg)) {
+            String corrLow = java.text.Normalizer.normalize(safeOriginalMsg, java.text.Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            boolean rejectsHair = corrLow.matches("(?isU).*(?:tóc|gội|chỉ\\s+(?:muốn\\s+|cần\\s+)?(?:massage|mát\\s*xa)|chủ\\s+yếu\\s+(?:là\\s+)?(?:massage|mát\\s*xa)|không\\s+có\\s+phần\\s+đó).*");
+            boolean rejectsWholePackage = corrLow.matches("(?isU).*(?:gói\\s+(?:đó|này|kia)|cái\\s+(?:đó|này)|đổi\\s+(?:sang\\s+)?gói\\s+khác).*");
+            AdaptiveConversationIntelligence.NegativePreferenceEntry entry;
+            if (rejectsHair) {
+                entry = new AdaptiveConversationIntelligence.NegativePreferenceEntry(
+                        "hair_care",
+                        AdaptiveConversationIntelligence.RejectionScope.COMPONENT,
+                        safeOriginalMsg,
+                        safeTurnId,
+                        true);
+            } else if (rejectsWholePackage && mem.draft2CommittedSelectedPackageId != null) {
+                entry = new AdaptiveConversationIntelligence.NegativePreferenceEntry(
+                        mem.draft2CommittedSelectedPackageId,
+                        AdaptiveConversationIntelligence.RejectionScope.PACKAGE,
+                        safeOriginalMsg,
+                        safeTurnId,
+                        true);
+            } else {
+                entry = new AdaptiveConversationIntelligence.NegativePreferenceEntry(
+                        "current_focus",
+                        AdaptiveConversationIntelligence.RejectionScope.FOCUS,
+                        safeOriginalMsg,
+                        safeTurnId,
+                        true);
+            }
+            final String entryKey = entry.targetKey();
+            mem.draft2NegativePreferences.removeIf(e -> e != null && entryKey.equalsIgnoreCase(e.targetKey()));
+            mem.draft2NegativePreferences.add(entry);
+
+            // Giải phóng gói đã cam kết nếu thuộc nhóm bị từ chối
+            String committedId = mem.draft2CommittedSelectedPackageId;
+            if (committedId != null && !committedId.isBlank()) {
+                String committedLabelLow = (mem.structuredBookingState != null
+                        && committedId.equals(mem.structuredBookingState.selectedProductId())
+                        && mem.structuredBookingState.selectedProductLabel() != null)
+                        ? mem.structuredBookingState.selectedProductLabel().toLowerCase(Locale.ROOT)
+                        : "";
+                String committedIdUpper = committedId.strip().toUpperCase(Locale.ROOT);
+                boolean committedHasHair = committedIdUpper.matches("(?:.*[^A-Z0-9])?DS0?[123](?:[^0-9].*)?")
+                        || committedLabelLow.contains("tóc")
+                        || committedLabelLow.contains("gội");
+                if ((rejectsHair && committedHasHair) || (rejectsWholePackage && !rejectsHair)) {
+                    releasedPackageId = committedId;
+                    mem.draft2CommittedSelectedPackageId = null;
+                    mem.draft2CommitmentLevel = AdaptiveConversationIntelligence.CommitmentLevel.NONE;
+                    mem.draft2CommitmentEvidence = safeOriginalMsg;
+                    if (releasedPackageId.equals(mem.draft2InterestedPackageId)) {
+                        mem.draft2InterestedPackageId = null;
+                    }
+                    mem.draft2PendingReferences.remove(releasedPackageId);
+                }
+            }
+        }
+
+        String authoritativeSelectedId = authoritativeBookingState != null
+                ? authoritativeBookingState.selectedProductId()
+                : null;
+        if (authoritativeSelectedId != null && !authoritativeSelectedId.isBlank()
+                && !authoritativeSelectedId.equals(releasedPackageId)) {
+            mem.draft2CommittedSelectedPackageId = authoritativeSelectedId;
+            boolean hasDateOrTime = (authoritativeBookingState.bookingDate() != null && !authoritativeBookingState.bookingDate().isBlank())
+                    || (authoritativeBookingState.bookingTime() != null && !authoritativeBookingState.bookingTime().isBlank());
+            if (hasDateOrTime) {
+                boolean hasTime = authoritativeBookingState.bookingTime() != null && !authoritativeBookingState.bookingTime().isBlank();
+                mem.draft2CommitmentLevel = hasTime
+                        ? AdaptiveConversationIntelligence.CommitmentLevel.BOOKING_REQUEST
+                        : AdaptiveConversationIntelligence.CommitmentLevel.BOOKING_INTENT;
+            } else if (AdaptiveConversationIntelligence.isTrialOrRelativeOptionSelectionMessage(safeOriginalMsg)) {
+                mem.draft2CommitmentLevel = AdaptiveConversationIntelligence.CommitmentLevel.TRIAL_COMMITMENT;
+            } else {
+                mem.draft2CommitmentLevel = AdaptiveConversationIntelligence.CommitmentLevel.PREFERENCE;
+            }
+            if (!safeOriginalMsg.isEmpty()) {
+                mem.draft2CommitmentEvidence = safeOriginalMsg;
+            }
+        }
+
+        // Ghi nhận danh sách gói vừa được giới thiệu (ứng viên) để phân giải lựa chọn tương đối lượt sau
+        if (authoritativeBookingState != null && authoritativeBookingState.candidateProductIds() != null
+                && !authoritativeBookingState.candidateProductIds().isEmpty()) {
+            mem.draft2LastOfferedPackageIds.clear();
+            mem.draft2LastOfferedPackageIds.addAll(authoritativeBookingState.candidateProductIds());
         }
     }
 

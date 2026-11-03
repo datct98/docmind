@@ -95,6 +95,13 @@ public class LlmHealthController {
         res.put("num_ctx", "ollama".equals(provider) ? ollamaProps.getNumCtx() : 4096);
         res.put("num_predict", "ollama".equals(provider) ? ollamaProps.getNumPredict() : (llmProps.getMaxTokens() > 0 ? llmProps.getMaxTokens() : 600));
         res.put("fallback_model", "ollama".equals(provider) ? ollamaProps.getFallbackModel() : llmProps.getFallbackModel());
+        if (llmProps.hasFallbackProvider()) {
+            LlmProperties fb = llmProps.toFallbackProperties();
+            res.put("fallback_provider", fb.getNormalizedProvider());
+            res.put("fallback_base_url", fb.resolveBaseUrl());
+            res.put("fallback_endpoint", resolveEndpoint(fb.getNormalizedProvider(), fb.resolveBaseUrl()));
+            res.put("fallback_api_key_masked", maskApiKey(fb.getApiKey()));
+        }
         res.put("timeout_seconds", llmProps.getTimeoutSeconds());
 
         boolean needsApiKey = !"ollama".equals(provider) && !"stub".equals(provider);
@@ -151,6 +158,13 @@ public class LlmHealthController {
         res.put("num_ctx", "ollama".equals(provider) ? ollamaProps.getNumCtx() : 4096);
         res.put("num_predict", "ollama".equals(provider) ? ollamaProps.getNumPredict() : (llmProps.getMaxTokens() > 0 ? llmProps.getMaxTokens() : 600));
         res.put("fallback_model", "ollama".equals(provider) ? ollamaProps.getFallbackModel() : llmProps.getFallbackModel());
+        if (llmProps.hasFallbackProvider()) {
+            LlmProperties fb = llmProps.toFallbackProperties();
+            res.put("fallback_provider", fb.getNormalizedProvider());
+            res.put("fallback_base_url", fb.resolveBaseUrl());
+            res.put("fallback_endpoint", resolveEndpoint(fb.getNormalizedProvider(), fb.resolveBaseUrl()));
+            res.put("fallback_api_key_masked", maskApiKey(fb.getApiKey()));
+        }
         res.put("timeout_seconds", llmProps.getTimeoutSeconds());
         res.put("checked_at", Instant.now().toString());
 
@@ -239,6 +253,7 @@ public class LlmHealthController {
                         Map.of("role", "user", "content", "Reply with one word: OK")
                 ));
                 body.put("temperature", 0.0);
+                body.put("stream", false);
                 body.put("max_tokens", 16);
                 if (reasoningEffort != null && !reasoningEffort.isBlank()) {
                     body.put("reasoning_effort", reasoningEffort);

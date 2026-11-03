@@ -16,11 +16,12 @@ public class ResilientFallbackLlmClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(ResilientFallbackLlmClient.class);
 
     private static final Pattern ERROR_OR_OFFLINE_MARKER = Pattern.compile(
-            "(?s)^\\[[a-z0-9\\-]+-(?:error|offline|unavailable)\\].*"
+            "(?s)^\\[[a-z0-9_\\-]+-(?:error|offline|unavailable)\\].*"
     );
 
     private final LlmClient primary;
     private final LlmClient fallback;
+    private volatile LlmClient lastUsedClient;
 
     public ResilientFallbackLlmClient(LlmClient primary, LlmClient fallback) {
         if (primary == null) {
@@ -28,6 +29,7 @@ public class ResilientFallbackLlmClient implements LlmClient {
         }
         this.primary = primary;
         this.fallback = fallback;
+        this.lastUsedClient = primary;
     }
 
     public LlmClient getPrimary() {
@@ -36,6 +38,10 @@ public class ResilientFallbackLlmClient implements LlmClient {
 
     public LlmClient getFallback() {
         return fallback;
+    }
+
+    public LlmClient getLastUsedClient() {
+        return lastUsedClient != null ? lastUsedClient : primary;
     }
 
     @Override
@@ -56,10 +62,12 @@ public class ResilientFallbackLlmClient implements LlmClient {
         }
 
         if (!isFailureResult(primaryResult, primaryException)) {
+            this.lastUsedClient = primary;
             return primaryResult;
         }
 
         if (fallback == null) {
+            this.lastUsedClient = primary;
             if (primaryException != null) {
                 log.warn("[LLM-Fallback] Primary engine={} threw exception and no fallback configured: {}",
                         primary.name(), primaryException.getMessage());
@@ -78,7 +86,8 @@ public class ResilientFallbackLlmClient implements LlmClient {
             String fallbackResult = budget != null
                     ? fallback.complete(prompt, budget)
                     : fallback.complete(prompt);
-            if (fallbackResult != null && !fallbackResult.isBlank()) {
+            if (fallbackResult != null && !fallbackResult.isBlank() && !isFailureResult(fallbackResult, null)) {
+                this.lastUsedClient = fallback;
                 return fallbackResult;
             }
         } catch (Exception fallbackEx) {
@@ -86,6 +95,7 @@ public class ResilientFallbackLlmClient implements LlmClient {
                     fallback.name(), fallbackEx.getMessage());
         }
 
+        this.lastUsedClient = primary;
         return primaryResult != null ? primaryResult : "[llm-unavailable] Both primary and fallback LLM failed.";
     }
 

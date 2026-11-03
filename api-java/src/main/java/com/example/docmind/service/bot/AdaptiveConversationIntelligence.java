@@ -14,6 +14,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -138,7 +140,10 @@ public final class AdaptiveConversationIntelligence {
     );
 
     private static final Pattern EXPLICIT_HUMAN_ESCALATION_PATTERN = Pattern.compile(
-            "(?isU).*\\b(gặp\\s+(?:nhân\\s+viên\\s+thật|người\\s+thật|quản\\s+lý|chủ\\s+spa|bác\\s+sĩ)|chuyển\\s+(?:cho\\s+)?(?:quản\\s+lý|người\\s+thật|nhân\\s+viên\\s+trực))\\b.*"
+            "(?isU).*\\b(gặp\\s+(?:nhân\\s+viên(?:\\s+thật|\\s+trực)?|người\\s+thật|quản\\s+lý|chủ\\s+spa|bác\\s+sĩ)|"
+                    + "chuyển\\s+(?:cho\\s+)?(?:quản\\s+lý|người\\s+thật|nhân\\s+viên(?:\\s+trực)?)|"
+                    + "cho\\s+(?:nhân\\s+viên|quản\\s+lý|người\\s+thật)\\s+(?:hỗ\\s+trợ|tư\\s+vấn|gọi|liên\\s+hệ)|"
+                    + "cần\\s+(?:nhân\\s+viên|quản\\s+lý|người\\s+thật)\\s+hỗ\\s+trợ)\\b.*"
     );
 
     private static final Pattern EXPLICIT_BOOKING_CANCEL_PATTERN = Pattern.compile(
@@ -494,37 +499,72 @@ public final class AdaptiveConversationIntelligence {
             + "bác\\s+(?:sĩ|sỹ|học|ấy|đó|kia))\\b"
     );
 
+    private static final Pattern EXPLICIT_PRONOUN_CORRECTION_TO_ANH_PATTERN = Pattern.compile(
+            "(?isU)(?:^|[\\s,;.!?])(?:"
+            + "gọi\\s+(?:tôi|mình|anh|em|t|tui|mk|mik)\\s+là\\s+anh|"
+            + "(?:tôi|mình|t|tui|mk|mik|em|anh|a)\\s+là\\s+(?:anh|nam|nam\\s+giới|con\\s+trai|đàn\\s+ông)|"
+            + "(?:không|ko|k)\\s+phải\\s+chị(?:\\s+đâu)?(?:[,;\\s]+(?:gọi\\s+là\\s+anh|(?:mình|tôi|t|tui|em)\\s+là\\s+(?:anh|nam|con\\s+trai)|anh\\s+nhé|gọi\\s+anh))?|"
+            + "đừng\\s+gọi\\s+(?:là\\s+)?chị[,;\\s]+gọi\\s+(?:là\\s+)?anh|"
+            + "(?:tôi|mình|t|tui)\\s+là\\s+chồng\\s+(?:của\\s+)?chị"
+            + ")(?:$|[\\s,;.!?])"
+    );
+
+    private static final Pattern EXPLICIT_PRONOUN_CORRECTION_TO_CHI_PATTERN = Pattern.compile(
+            "(?isU)(?:^|[\\s,;.!?])(?:"
+            + "gọi\\s+(?:tôi|mình|chị|em|t|tui|mk|mik)\\s+là\\s+chị|"
+            + "(?:tôi|mình|t|tui|mk|mik|em|chị)\\s+là\\s+(?:chị|nữ|nữ\\s+giới|con\\s+gái|phụ\\s+nữ)|"
+            + "(?:không|ko|k)\\s+phải\\s+anh(?:\\s+đâu)?(?:[,;\\s]+(?:gọi\\s+là\\s+chị|(?:mình|tôi|t|tui|em)\\s+là\\s+(?:chị|nữ|con\\s+gái)|chị\\s+nhé|gọi\\s+chị))?|"
+            + "đừng\\s+gọi\\s+(?:là\\s+)?anh[,;\\s]+gọi\\s+(?:là\\s+)?chị|"
+            + "(?:tôi|mình|t|tui)\\s+là\\s+vợ\\s+(?:của\\s+)?anh"
+            + ")(?:$|[\\s,;.!?])"
+    );
+
+    public static boolean isExplicitGenderOrPronounCorrectionMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        return EXPLICIT_PRONOUN_CORRECTION_TO_ANH_PATTERN.matcher(norm).find()
+                || EXPLICIT_PRONOUN_CORRECTION_TO_CHI_PATTERN.matcher(norm).find();
+    }
+
     private static final Pattern FIRST_PERSON_ANH_SELF_REF_PATTERN = Pattern.compile(
             "(?iu)(?:^|[\\s,;.!?])(?:"
-            + "nếu\\s+(?:anh|a)\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy)\\s+cho\\s+(?:anh|a)\\b|"
+            + "nếu\\s+(?:anh|a)\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy|hỗ\\s+trợ)\\s+cho\\s+(?:anh|a)\\b|"
             + "cho\\s+(?:anh|a)\\s+(?:hỏi|xin|đặt|đăng\\s+ký|chốt|xem|biết|thử|làm)|"
             + "rồi\\s+(?:anh|a)\\s+(?:đăng\\s+ký|đặt|qua|ghé|chốt|làm)|"
-            + "(?:thôi\\s+|vậy\\s+|thế\\s+)?anh\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|thấy|ngại|đăng\\s+ký|đặt)\\b|"
+            + "(?:thôi\\s+|vậy\\s+|thế\\s+|tự\\s+nhiên\\s+)?anh\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|thấy|tức\\s+ngực|tê|đau|mỏi|ngại|đăng\\s+ký|đặt|qua|ghé|đến|sang|chốt|chọn|thử)\\b|"
             + "để\\s+anh\\s+(?:xem|nghĩ|suy\\s+nghĩ|tính|hỏi|cân\\s+nhắc|qua|đặt)\\b|"
-            + "(?:của|với|giúp)\\s+anh\\b"
+            + "(?:của|với|giúp|hỗ\\s+trợ)\\s+anh\\b"
             + ")"
     );
 
     private static final Pattern FIRST_PERSON_CHI_SELF_REF_PATTERN = Pattern.compile(
             "(?iu)(?:^|[\\s,;.!?])(?:"
-            + "nếu\\s+chị\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy)\\s+cho\\s+chị\\b|"
+            + "nếu\\s+chị\\b|(?:kể|tư\\s+vấn|báo|gửi|đặt|giữ|xem|chốt|lấy|hỗ\\s+trợ)\\s+cho\\s+chị\\b|"
             + "cho\\s+chị\\s+(?:hỏi|xin|đặt|đăng\\s+ký|chốt|xem|biết|thử|làm)|"
             + "rồi\\s+chị\\s+(?:đăng\\s+ký|đặt|qua|ghé|chốt|làm)|"
-            + "(?:thôi\\s+|vậy\\s+|thế\\s+)?chị\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|thấy|ngại|đăng\\s+ký|đặt)\\b|"
-            + "để\\s+chị\\s+(?:xem|nghĩ|suy\\s+nghĩ|tính|hỏi|cân\\s+nhắc|qua|đặt)\\b|"
-            + "(?:của|với|giúp)\\s+chị\\b"
+            + "(?:thôi\\s+|vậy\\s+|thế\\s+|dạo\\s+này\\s+)?chị\\s+(?:không|ko|chưa|đang|muốn|cần|định|sẽ|vừa|mới|bị|hay|làm\\s+việc|thấy|hơi|ngại|đăng\\s+ký|đặt|qua|ghé|đến|sang|chốt|chọn|thử)\\b|"
+            + "để\\s+chị\\s+(?:xem|nghĩ|suy\\s+nghĩ|tính|hỏi|cân\\s+nhắc|tham\\s+khảo|qua|đặt)\\b|"
+            + "(?:của|với|giúp|hỗ\\s+trợ)\\s+chị\\b"
             + ")"
     );
 
     /**
-     * Phát hiện đại từ khách tự xưng rõ ràng ngay trong lượt hiện tại ("nếu anh...", "kể cho a...", "thôi anh không...")
-     * khi phiên chưa có {@code priorInferredCustomerPronoun}, giúp Single-Pass LLM xưng hô đúng ngay trong cùng lượt.
+     * Phát hiện đại từ khách tự xưng hoặc chủ động yêu cầu đính chính ngay trong lượt hiện tại
+     * ("gọi tôi là anh", "mình là nam", "nếu anh...", "để chị xem thêm"), cho phép cập nhật đại từ an toàn.
      */
     public static String inferExplicitCustomerSelfPronounFromUtterance(String rawMessage) {
         if (rawMessage == null || rawMessage.isBlank()) {
             return null;
         }
         String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        if (EXPLICIT_PRONOUN_CORRECTION_TO_ANH_PATTERN.matcher(norm).find()) {
+            return "Anh";
+        }
+        if (EXPLICIT_PRONOUN_CORRECTION_TO_CHI_PATTERN.matcher(norm).find()) {
+            return "Chị";
+        }
         String scrubbed = THIRD_PERSON_FAMILY_OR_ROLE_EXCLUSION_PATTERN.matcher(norm).replaceAll(" ");
         boolean hasAnh = FIRST_PERSON_ANH_SELF_REF_PATTERN.matcher(scrubbed).find();
         boolean hasChi = FIRST_PERSON_CHI_SELF_REF_PATTERN.matcher(scrubbed).find();
@@ -1132,13 +1172,64 @@ public final class AdaptiveConversationIntelligence {
         }
     }
 
+    /** ACI V3: Mức độ cam kết mua hàng của khách (tăng dần). */
+    public enum CommitmentLevel {
+        NONE,
+        INTEREST,
+        PREFERENCE,
+        TRIAL_COMMITMENT,
+        BOOKING_INTENT,
+        BOOKING_REQUEST,
+        CUSTOMER_CONFIRMATION,
+        BOOKING_SUCCESS
+    }
+
+    /** ACI V3: Phạm vi từ chối của khách (thành phần trong gói / cả gói / cả hướng tư vấn). */
+    public enum RejectionScope {
+        COMPONENT,
+        PACKAGE,
+        FOCUS
+    }
+
+    /** ACI V3: Một mục sở thích tiêu cực (khách đã từ chối) kèm bằng chứng nguyên văn. */
+    public record NegativePreferenceEntry(
+            String targetKey,
+            RejectionScope scope,
+            String evidenceSpan,
+            String turnId,
+            boolean active
+    ) {
+        public NegativePreferenceEntry {
+            targetKey = targetKey != null ? targetKey.strip() : "";
+            scope = scope != null ? scope : RejectionScope.COMPONENT;
+            evidenceSpan = evidenceSpan != null ? evidenceSpan.strip() : "";
+            turnId = turnId != null ? turnId.strip() : "";
+        }
+    }
+
+    /** ACI V3: Trạng thái hành vi mua hàng của khách trong hội thoại. */
+    public enum BehaviorBuyingState {
+        EXPLORATION,
+        NEED_DISCLOSURE,
+        SOLUTION_EVALUATION,
+        TRIAL_PREFERENCE,
+        BOOKING_INTENT,
+        OBJECTION_HESITATION,
+        CUSTOMER_CORRECTION,
+        DEFERRAL
+    }
+
     /** Tầng 3 — Business &amp; Commitment State (Tách biệt interested_package vs selected_package). */
     public record BusinessCommitmentLayer(
             String interestedPackageId,
             String selectedPackageId,
             String bookingStatus,
             HandoffLifecycleStatus handoffStatus,
-            int pendingCommitmentCount
+            int pendingCommitmentCount,
+            CommitmentLevel commitmentLevel,
+            String commitmentEvidence,
+            List<String> lastOfferedPackageIds,
+            List<NegativePreferenceEntry> negativePreferences
     ) {
         public BusinessCommitmentLayer {
             interestedPackageId = cleanNullable(interestedPackageId);
@@ -1146,10 +1237,34 @@ public final class AdaptiveConversationIntelligence {
             bookingStatus = (bookingStatus != null && !bookingStatus.isBlank()) ? bookingStatus.strip() : "NONE";
             handoffStatus = handoffStatus != null ? handoffStatus : HandoffLifecycleStatus.NONE;
             pendingCommitmentCount = Math.max(0, pendingCommitmentCount);
+            commitmentLevel = commitmentLevel != null ? commitmentLevel : CommitmentLevel.NONE;
+            commitmentEvidence = cleanNullable(commitmentEvidence);
+            lastOfferedPackageIds = lastOfferedPackageIds != null
+                    ? lastOfferedPackageIds.stream().filter(Objects::nonNull).toList()
+                    : List.of();
+            negativePreferences = negativePreferences != null
+                    ? negativePreferences.stream().filter(Objects::nonNull).toList()
+                    : List.of();
+        }
+
+        /** Constructor tương thích ngược 5 tham số cho mọi chỗ gọi hiện hữu. */
+        public BusinessCommitmentLayer(
+                String interestedPackageId,
+                String selectedPackageId,
+                String bookingStatus,
+                HandoffLifecycleStatus handoffStatus,
+                int pendingCommitmentCount
+        ) {
+            this(interestedPackageId, selectedPackageId, bookingStatus, handoffStatus, pendingCommitmentCount,
+                    CommitmentLevel.NONE, null, List.of(), List.of());
         }
 
         public static BusinessCommitmentLayer initial() {
             return new BusinessCommitmentLayer(null, null, "NONE", HandoffLifecycleStatus.NONE, 0);
+        }
+
+        public List<NegativePreferenceEntry> activeNegativePreferences() {
+            return negativePreferences.stream().filter(NegativePreferenceEntry::active).toList();
         }
 
         public String bookingReadiness() {
@@ -1293,6 +1408,7 @@ public final class AdaptiveConversationIntelligence {
     public static String normalizeBarrierType(String rawType, String hypothesisText) {
         if (rawType != null && !rawType.isBlank() && !"null".equalsIgnoreCase(rawType.strip())) {
             String u = rawType.strip().toUpperCase(Locale.ROOT);
+            if (u.contains("PERCEPTION_GAP") || "VALUE_PERCEPTION_GAP".equals(u)) return "VALUE_PERCEPTION_GAP";
             if (u.contains("UNCLEAR") || u.contains("VALUE")) return "UNCLEAR_VALUE";
             if (u.contains("COMPETITOR") || u.contains("COMPARE")) return "COMPETITOR_COMPARISON";
             if (u.contains("BUDGET")) return "BUDGET_LIMIT";
@@ -1860,6 +1976,37 @@ public final class AdaptiveConversationIntelligence {
                         || (proposedBookingPatch.proposedDate() == null
                             && proposedBookingPatch.proposedTime() == null
                             && proposedBookingPatch.selectedProductId() == null));
+            boolean customerDeferral = !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !affirmativeBookingCue
+                    && !explicitFullPriceListRequest
+                    && !competitorComparison
+                    && !barePauseOrAck
+                    && (isCustomerDeferralMessage(rawUserMessage)
+                        || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(rawUserMessage)
+                        || CleanAgentOrchestratorService.isPureBusyOrStopDeferralMessage(rawUserMessage))
+                    && !hasGenuinePriceObjectionCue(rawUserMessage);
+            boolean explicitGenderCorrection = !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !competitorComparison
+                    && !affirmativeBookingCue
+                    && !explicitFullPriceListRequest
+                    && !customerDeferral
+                    && isExplicitGenderOrPronounCorrectionMessage(rawUserMessage)
+                    && !hasGenuinePriceObjectionCue(rawUserMessage)
+                    && classifyPriceIntentSubMode(rawUserMessage) == PriceIntentSubMode.NONE;
+            boolean firstGenuinePriceObjection = !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !competitorComparison
+                    && !pureBudgetBoundedInquiry
+                    && !explicitFullPriceListRequest
+                    && hasGenuinePriceObjectionCue(rawUserMessage);
+            boolean explicitHumanEscalation = !explicitStop
+                    && isExplicitHumanEscalationMessage(rawUserMessage)
+                    && !FanpageBotService.isUniversalAcuteMedicalEmergency(rawUserMessage);
             if (!explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
@@ -1867,13 +2014,19 @@ public final class AdaptiveConversationIntelligence {
                     && !competitorComparison
                     && !affirmativeBookingCue
                     && !barePauseOrAck
-                    && !explicitFullPriceListRequest) {
+                    && !customerDeferral
+                    && !explicitFullPriceListRequest
+                    && !explicitGenderCorrection
+                    && !firstGenuinePriceObjection
+                    && !explicitHumanEscalation) {
                 return this;
             }
 
             CustomerUnderstanding cu = customerUnderstanding;
             String detIntent = cu.detectedIntent();
             EmotionalState emoState = cu.emotionalState();
+            String reconciledInferredPronoun = cu.inferredCustomerPronoun();
+            double reconciledPronounConf = cu.pronounConfidence();
             List<String> secIntents = new ArrayList<>(cu.secondaryIntents());
             String convState = cu.conversationState();
             Boolean costConcern = cu.costConcernExpressed();
@@ -1887,6 +2040,7 @@ public final class AdaptiveConversationIntelligence {
             List<String> reconciledSkills = new ArrayList<>(activatedSkillCodes);
             List<FactDeltaProposal> reconciledFactsDelta = new ArrayList<>(confirmedFactsDelta);
             ProposedBookingPatch reconciledBookingPatch = proposedBookingPatch;
+            HandoffRequestReflection reconciledHandoff = handoffRequest;
 
             if (explicitStop) {
                 detIntent = "EXPLICIT_REFUSAL";
@@ -1912,6 +2066,7 @@ public final class AdaptiveConversationIntelligence {
             } else if (barePauseOrAck) {
                 detIntent = "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT";
                 convState = "PAUSED_BY_CUSTOMER";
+                costConcern = Boolean.FALSE;
                 perm = InteractionPermission.CONCISE_PREFERRED;
                 buySig = BuyingSignal.NONE;
                 prio = new PriorityFocus("RESPECTFUL_PAUSE", List.of());
@@ -1928,6 +2083,33 @@ public final class AdaptiveConversationIntelligence {
                 );
                 strat = new StrategyReflection(
                         "Warm Acknowledgment",
+                        StrategyAdaptationMode.STOP,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (customerDeferral) {
+                detIntent = "CUSTOMER_DEFERRAL";
+                secIntents.removeIf(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel);
+                convState = "PAUSED_BY_CUSTOMER";
+                costConcern = Boolean.FALSE;
+                perm = InteractionPermission.CONCISE_PREFERRED;
+                if (buySig == BuyingSignal.STRONG || buySig == BuyingSignal.ACTION) {
+                    buySig = BuyingSignal.WEAK;
+                }
+                prio = new PriorityFocus("POLITE_CLOSURE", List.of());
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+                plan = new AdaptiveResponsePlan(
+                        "Respect customer deferral warmly without sales push or trailing questions",
+                        "Respectful Pause",
+                        plan.tone(),
+                        "CONCISE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.STOP,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Respectful Pause",
                         StrategyAdaptationMode.STOP,
                         strat.previousOutcome(),
                         strat.evidence()
@@ -2066,15 +2248,18 @@ public final class AdaptiveConversationIntelligence {
                 if (secIntents.stream().noneMatch(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel)) {
                     secIntents.add("COMPETITOR_COMPARISON");
                 }
+                boolean alsoHasGenuineObjection = hasGenuinePriceObjectionCue(rawUserMessage);
                 if ("POLITE_DEFERRAL".equalsIgnoreCase(detIntent)
                         || "HESITATION".equalsIgnoreCase(detIntent)
                         || isExplicitStopOrRefusalIntentLabel(detIntent)) {
-                    if (secIntents.stream().noneMatch(s -> s.toUpperCase(Locale.ROOT).contains("EXASPERATION"))) {
+                    if (alsoHasGenuineObjection && secIntents.stream().noneMatch(s -> s.toUpperCase(Locale.ROOT).contains("EXASPERATION"))) {
                         secIntents.add("EXASPERATION_REMARK");
                     }
-                    detIntent = "COMPETITOR_PRICE_OBJECTION";
+                    detIntent = alsoHasGenuineObjection ? "COMPETITOR_PRICE_OBJECTION" : "COMPETITOR_COMPARISON";
+                } else if (!alsoHasGenuineObjection && "PRICE_OBJECTION".equalsIgnoreCase(detIntent)) {
+                    detIntent = "COMPETITOR_COMPARISON";
                 }
-                costConcern = Boolean.TRUE;
+                costConcern = alsoHasGenuineObjection ? Boolean.TRUE : Boolean.FALSE;
                 convState = "OBJECTION_NEGOTIATION";
                 effBarrier = "COMPETITOR_COMPARISON";
                 if (perm == InteractionPermission.PAUSED) {
@@ -2164,13 +2349,109 @@ public final class AdaptiveConversationIntelligence {
                         strat.previousOutcome(),
                         strat.evidence()
                 );
+            } else if (explicitGenderCorrection) {
+                String selfPronounTarget = inferExplicitCustomerSelfPronounFromUtterance(rawUserMessage);
+                if (selfPronounTarget != null && !selfPronounTarget.isBlank()) {
+                    reconciledInferredPronoun = selfPronounTarget;
+                    reconciledPronounConf = 0.99;
+                    reconciledFactsDelta.add(new FactDeltaProposal(
+                            "customer_gender_pronoun",
+                            selfPronounTarget,
+                            FactMutationOp.REVISE,
+                            "HIGH"
+                    ));
+                }
+                detIntent = "SELF_IDENTIFY_GENDER";
+                secIntents.removeIf(AdaptiveConversationIntelligence::isPriceOrCompetitorObjectionIntentLabel);
+                convState = "ACTIVE_CONSULTATION";
+                costConcern = Boolean.FALSE;
+                effBarrier = "NONE";
+                if (perm == InteractionPermission.PAUSED) {
+                    perm = InteractionPermission.OPEN;
+                }
+                prio = new PriorityFocus("TRUST_ASSURANCE", List.of());
+                reconciledSkills.clear();
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+                plan = new AdaptiveResponsePlan(
+                        "Acknowledge customer gender/pronoun correction warmly and switch pronoun immediately without sales push",
+                        "Warm Acknowledgment",
+                        plan.tone(),
+                        "CONCISE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.PIVOT,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Warm Acknowledgment",
+                        StrategyAdaptationMode.PIVOT,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (explicitHumanEscalation) {
+                detIntent = "HUMAN_HANDOFF";
+                convState = "ACTIVE_CONSULTATION";
+                costConcern = Boolean.FALSE;
+                prio = new PriorityFocus("SERVICE_RECOVERY", List.of("TRUST_ASSURANCE"));
+                reconciledSkills.clear();
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+                reconciledHandoff = new HandoffRequestReflection(
+                        true,
+                        reconciledHandoff != null && reconciledHandoff.reason() != null && !reconciledHandoff.reason().isBlank()
+                                ? reconciledHandoff.reason()
+                                : "Khách hàng chủ động yêu cầu gặp nhân viên hỗ trợ trực tiếp."
+                );
+                plan = new AdaptiveResponsePlan(
+                        "Connect customer with human staff politely as requested",
+                        "Transaction Handoff",
+                        plan.tone(),
+                        "CONCISE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.TRANSACTION_HANDOFF,
+                        StrategyAdaptationMode.PRIORITY_SHIFT,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Transaction Handoff",
+                        StrategyAdaptationMode.PRIORITY_SHIFT,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+            } else if (firstGenuinePriceObjection) {
+                costConcern = Boolean.TRUE;
+        boolean explicitBudgetConstraintCue = normLower.matches(
+                "(?isU).*\\b(không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|vượt\\s+ngân\\s+sách|quá\\s+sức|đau\\s+ví|ví\\s+mỏng|rẻ\\s+hơn|mềm\\s+hơn|tiết\\s+kiệm\\s+hơn|bằng\\s+cả\\s+ngày|ngày\\s+công)\\b.*");
+        if ("VALUE_PERCEPTION_GAP".equalsIgnoreCase(effBarrier)) {
+            // Keep VALUE_PERCEPTION_GAP only when LLM did not explicitly specify UNCLEAR_VALUE / COMPETITOR_COMPARISON / etc.
+        }
+                if (!explicitBudgetConstraintCue
+                        && (effBarrier == null || effBarrier.isBlank()
+                            || "NONE".equalsIgnoreCase(effBarrier)
+                            || "BUDGET_LIMIT".equalsIgnoreCase(effBarrier)
+                            || "BUDGET_CONSTRAINT".equalsIgnoreCase(effBarrier))) {
+                    effBarrier = "VALUE_PERCEPTION_GAP";
+                }
+                if ("GENTLE_SCHEDULE_CHECK".equalsIgnoreCase(plan.nextAction())
+                        || plan.ctaLevel() == CtaLevel.DIRECT_CTA) {
+                    plan = new AdaptiveResponsePlan(
+                            plan.objective(),
+                            "Handle Objection",
+                            plan.tone(),
+                            plan.depth(),
+                            "SOFT_FEELING_CHECK",
+                            CtaLevel.SOFT_CTA,
+                            plan.adaptation(),
+                            plan.previousOutcome()
+                    );
+                }
+                // Do not auto-truncate verifiedSymptomDuration here; let AgentBrainService sanitize duration tokens if needed
             }
 
             CustomerUnderstanding reconciledCu = new CustomerUnderstanding(
                     detIntent,
                     emoState,
-                    cu.inferredCustomerPronoun(),
-                    cu.pronounConfidence(),
+                    reconciledInferredPronoun,
+                    reconciledPronounConf,
                     costConcern,
                     cu.verifiedSymptomDuration(),
                     readiness,
@@ -2188,7 +2469,7 @@ public final class AdaptiveConversationIntelligence {
                     uncertainties,
                     customerStatements,
                     commitmentDelta,
-                    handoffRequest,
+                    reconciledHandoff,
                     reconciledBookingPatch,
                     blockedUnauthorizedCompletionCount,
                     parsedFromV2Schema,
@@ -2482,8 +2763,9 @@ public final class AdaptiveConversationIntelligence {
         String barrierType = null;
         String hypothesisConfLevel = null;
         if (whNode != null && whNode.isObject()) {
-            String rawLifeOp = readTextOrDefault(whNode, "lifecycle_op", readTextOrDefault(whNode, "operation", "MAINTAIN"));
             String hypText = readTextOrDefault(whNode, "hypothesis", readTextOrDefault(whNode, "content", ""));
+            String defaultLifeOp = hypText.isBlank() ? "MAINTAIN" : "ADJUST";
+            String rawLifeOp = readTextOrDefault(whNode, "lifecycle_op", readTextOrDefault(whNode, "operation", defaultLifeOp));
             barrierType = readTextOrDefault(whNode, "barrier_type", null);
             hypothesisConfLevel = readTextOrDefault(whNode, "confidence_level", null);
             double confNum = readDoubleOrDefault(whNode, "confidence", -1.0);
@@ -3128,7 +3410,7 @@ public final class AdaptiveConversationIntelligence {
 
         return switch (op) {
             case MAINTAIN -> {
-                String keptContent = !safePrior.content().isEmpty() ? safePrior.content() : newContent;
+                String keptContent = !newContent.isEmpty() ? newContent : safePrior.content();
                 double conf = !keptContent.isEmpty() ? Math.max(0.50, proposedConf) : 0.0;
                 yield new WorkingHypothesisRecord(keptContent, HypothesisLifecycleOp.MAINTAIN, conf, List.copyOf(mergedEvidence), Instant.now());
             }
@@ -3265,6 +3547,48 @@ public final class AdaptiveConversationIntelligence {
         );
     }
 
+    /** ACI V3: Câu hỏi trực tiếp "tình trạng của tôi có làm dịch vụ/massage được không" (khác với chỉ chia sẻ triệu chứng). */
+    private static final Pattern HEALTH_SUITABILITY_QUESTION_CUE_PATTERN = Pattern.compile(
+            "(?isU).*(?:"
+                    + "(?:có\\s+)?(?:làm|massage|mát\\s*xa|gội|đi\\s+làm|sử\\s+dụng)(?:\\s+(?:massage|mát\\s*xa|dịch\\s+vụ|gói(?:\\s+(?:này|đó|kia))?|liệu\\s+trình))?\\s+(?:được|đc|dc)\\s+(?:không|ko|k|hông|hok|chứ|ạ)"
+                    + "|có\\s+ảnh\\s+hưởng\\s+(?:gì\\s+)?(?:không|ko|hông)"
+                    + "|có\\s+nên\\s+(?:làm|đi|massage|mát\\s*xa|gội)[^?？]{0,30}(?:không|ko|hông)"
+                    + "|có\\s+(?:sao|nguy\\s+hiểm|an\\s+toàn|phù\\s+hợp)\\s+(?:gì\\s+)?(?:không|ko|hông)"
+                    + ").*"
+    );
+
+    private static final Pattern HEALTH_CONDITION_CONTEXT_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:tình\\s+trạng|bị\\s+(?:như\\s+)?(?:vậy|thế)|như\\s+vậy|như\\s+thế|đau|nhức|chóng\\s+mặt|choáng|hoa\\s+mắt|"
+                    + "tê|mỏi|huyết\\s+áp|tiền\\s+đình|bệnh|mất\\s+ngủ|khó\\s+ngủ|mệt|thoát\\s+vị|có\\s+bầu|mang\\s+thai|sức\\s+khỏe|sức\\s+khoẻ)\\b.*"
+    );
+
+    private static final Pattern BOOKING_TIME_SLOT_QUESTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:\\d{1,2}\\s*(?:h|giờ|g)(?:\\s*\\d{1,2})?|chiều\\s+nay|tối\\s+nay|sáng\\s+mai|ngày\\s+mai|cuối\\s+tuần|khung\\s+giờ|đặt\\s+lịch)\\b.*"
+    );
+
+    /**
+     * ACI V3: Nhận diện khi khách hỏi TRỰC TIẾP xem tình trạng sức khỏe của mình có làm dịch vụ/massage được không.
+     * Chỉ chia sẻ mệt mỏi/đau đầu/mất ngủ mà không hỏi câu phù hợp sức khỏe -> {@code false}.
+     */
+    public static boolean isHealthSuitabilityInquiryMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (!HEALTH_SUITABILITY_QUESTION_CUE_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        if (!HEALTH_CONDITION_CONTEXT_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        // "Chiều nay 17h làm được không" là câu hỏi lịch, không phải câu hỏi phù hợp sức khỏe
+        boolean explicitConditionRef = low.matches("(?isU).*\\b(?:tình\\s+trạng|bị\\s+(?:như\\s+)?(?:vậy|thế)|như\\s+vậy|như\\s+thế|sức\\s+kho[ẻẻ])\\b.*");
+        if (!explicitConditionRef && BOOKING_TIME_SLOT_QUESTION_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        return true;
+    }
+
     public static ConditionalHandoffDecision evaluateAndExecuteConditionalHandoff(
             UUID pageId,
             String senderId,
@@ -3291,16 +3615,33 @@ public final class AdaptiveConversationIntelligence {
         boolean staffPromise = isStaffPromiseClaimMessage(originalCustomerMessage);
         boolean concreteIncident = isConcreteServiceIncidentMessage(originalCustomerMessage);
         boolean explicitHuman = isExplicitHumanEscalationMessage(originalCustomerMessage);
+        // ACI V3: Khách hỏi trực tiếp tình trạng sức khỏe có làm dịch vụ được không -> chuyển chuyên viên Spa đánh giá.
+        // Chỉ chia sẻ mệt mỏi/đau đầu/mất ngủ thông thường (không hỏi câu phù hợp) -> KHÔNG tự động handoff.
+        boolean suitabilityInquiry = !safetyContraindication
+                && isHealthSuitabilityInquiryMessage(originalCustomerMessage);
 
         String category = null;
         String effectiveReason = llmReason;
         boolean mandatoryVerificationOrHandoff = false;
 
-        if (safetyContraindication) {
+        if (suitabilityInquiry) {
+            mandatoryVerificationOrHandoff = true;
+            category = "SUITABILITY_INQUIRY_HANDOFF";
+            effectiveReason = "Khách hàng hỏi về mức độ phù hợp của dịch vụ với tình trạng sức khỏe cá nhân (nguyên văn: \""
+                    + originalCustomerMessage.strip()
+                    + "\") — chuyển nhân viên/chuyên viên Spa tư vấn theo quy trình vận hành (DEMO_HANDOFF_PENDING).";
+            if (explicitHuman) {
+                effectiveReason = effectiveReason + " (Đồng thời khách yêu cầu nhân viên hỗ trợ trực tiếp).";
+            }
+        } else if (safetyContraindication) {
             mandatoryVerificationOrHandoff = true;
             category = "MEDICAL_SAFETY_HANDOFF";
             if (effectiveReason == null || effectiveReason.isBlank()) {
-                effectiveReason = "Khách hàng có dấu hiệu thai kỳ, triệu chứng thần kinh cấp tính hoặc cảnh báo an toàn chuyên ngành — chuyển chuyên viên hỗ trợ trực tiếp.";
+                effectiveReason = explicitHuman
+                        ? "Khách hàng có dấu hiệu cảnh báo an toàn y khoa (Cấp 3/Cấp 4) VÀ chủ động yêu cầu nhân sự hỗ trợ — ưu tiên an toàn y tế đồng thời kết nối chuyên viên/quản lý hỗ trợ trực tiếp."
+                        : "Khách hàng có dấu hiệu thai kỳ, triệu chứng thần kinh cấp tính hoặc cảnh báo an toàn chuyên ngành — chuyển chuyên viên hỗ trợ trực tiếp.";
+            } else if (explicitHuman && !effectiveReason.toLowerCase(Locale.ROOT).contains("nhân viên") && !effectiveReason.toLowerCase(Locale.ROOT).contains("chuyên viên")) {
+                effectiveReason = effectiveReason + " (Đồng thời khách yêu cầu nhân viên hỗ trợ trực tiếp).";
             }
         } else if (paymentClaim) {
             mandatoryVerificationOrHandoff = true;
@@ -3523,6 +3864,17 @@ public final class AdaptiveConversationIntelligence {
             return ConversationState.StructuredBookingState.none();
         }
 
+        // ACI V3 Guardrail 4: Ưu tiên an toàn y tế tuyệt đối (Cấp 3 hậu phẫu/chống chỉ định & Cấp 4 cấp cứu 115) —
+        // KHÔNG BAO GIỜ cho phép booking patch ghi đè hoặc đẩy trạng thái đặt lịch khi lượt hiện tại có cảnh báo an toàn y tế!
+        if (originalCustomerMessage != null) {
+            String msgLowForSafety = Normalizer.normalize(originalCustomerMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+            if ("SAFETY".equalsIgnoreCase(primaryPriority != null ? primaryPriority.strip() : "")
+                    || FanpageBotService.isUniversalAcuteMedicalEmergency(originalCustomerMessage)
+                    || CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(msgLowForSafety)) {
+                return safePrior;
+            }
+        }
+
         // Chặn lỗi tự hiểu nhầm "Ok" / "Ừ" / "Để xem đã" thành xác nhận đặt lịch:
         // Khi chưa có bookingState mở (status == NONE), nếu khách chỉ nhắn bare ack ("Ok", "Ừ", "Vâng") hoặc câu lưỡng lự/xin suy nghĩ thêm,
         // BẮT BUỘC giữ nguyên BookingStatus.NONE bất kể lượt bot liền trước có câu mời nhẹ hay không!
@@ -3532,23 +3884,66 @@ public final class AdaptiveConversationIntelligence {
             return safePrior;
         }
 
+        // ACI V3: Phân giải lựa chọn tương đối của khách ("vừa đủ để thử", "cái thứ hai", "chỉ muốn massage", "gói đó"...)
+        // dựa trên các gói THỰC SỰ vừa được giới thiệu — trước khi kiểm tra hasPatch để không đánh rơi lựa chọn.
+        boolean isRelativeOrCorrectionSelection = isTrialOrRelativeOptionSelectionMessage(originalCustomerMessage)
+                || isCustomerCorrectionOrComponentRejectionMessage(originalCustomerMessage);
+        PackageCatalogService.PackageSummary contextualResolvedPkg = isRelativeOrCorrectionSelection
+                ? resolveContextualOptionFromUtterance(originalCustomerMessage, precedingBotText, presentedPackagesInHistory, allCatalog)
+                : null;
+        if (contextualResolvedPkg == null && isRelativeOrCorrectionSelection
+                && safePrior.selectedProductId() != null && !safePrior.selectedProductId().isBlank()
+                && originalCustomerMessage != null
+                && Normalizer.normalize(originalCustomerMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+                        .matches("(?isU).*\\b(?:gói\\s+đó|cái\\s+đó|gói\\s+này|cái\\s+(?:em|bạn|shop)\\s+vừa\\s+nói)\\b.*")) {
+            contextualResolvedPkg = resolveCatalogProductByFlexibleIdentifier(
+                    safePrior.selectedProductId(), presentedPackagesInHistory, allCatalog);
+        }
+
         boolean hasPatch = patch != null && patch.hasAnyProposal();
-        if (!hasPatch) {
+        if (!hasPatch && contextualResolvedPkg == null) {
             return safePrior;
+        }
+
+        // Gói đã được phân giải ở lượt này (ưu tiên lựa chọn ngữ cảnh của khách hơn đề xuất của LLM để tránh upsell).
+        PackageCatalogService.PackageSummary resolvedSelectionPkg = contextualResolvedPkg;
+        if (resolvedSelectionPkg == null && patch != null && patch.selectedProductId() != null) {
+            resolvedSelectionPkg = resolveCatalogProductByFlexibleIdentifier(
+                    patch.selectedProductId(), presentedPackagesInHistory, allCatalog);
         }
 
         // Chặn nhảy cóc sang AWAITING_DATE_OR_TIME khi khách mới EXPLORING / CONSIDERING (ví dụ: "Mình muốn hỏi gói dưỡng sinh 239k"):
         // Khi chưa có lịch mở (status == NONE) và khách chưa nêu bất kỳ ngày/giờ hẹn nào, chỉ cho phép mở AWAITING_DATE_OR_TIME
         // khi khách thực sự ở trạng thái READY_TO_BOOK (hoặc ưu tiên chính là BOOKING_COMPLETION).
-        boolean hasDateOrTimeProposal = patch.proposedDate() != null || patch.proposedTime() != null;
+        boolean hasDateOrTimeProposal = patch != null && (patch.proposedDate() != null || patch.proposedTime() != null);
         if (safePrior.status() == ConversationState.BookingStatus.NONE && !hasDateOrTimeProposal) {
-            if (bookingReadiness != null && bookingReadiness != BookingReadiness.READY_TO_BOOK) {
-                return safePrior;
-            }
-            if (bookingReadiness == null
-                    && primaryPriority != null
-                    && !primaryPriority.isBlank()
-                    && !"BOOKING_COMPLETION".equalsIgnoreCase(primaryPriority.strip())) {
+            boolean notReadyToBook = (bookingReadiness != null && bookingReadiness != BookingReadiness.READY_TO_BOOK)
+                    || (bookingReadiness == null
+                        && primaryPriority != null
+                        && !primaryPriority.isBlank()
+                        && !"BOOKING_COMPLETION".equalsIgnoreCase(primaryPriority.strip()));
+            if (notReadyToBook || (!hasPatch && contextualResolvedPkg != null)) {
+                if (resolvedSelectionPkg != null) {
+                    // TUYỆT ĐỐI không vứt bỏ lựa chọn của khách: lưu selectedProductId nhưng giữ nguyên trạng thái lịch.
+                    List<String> earlyCandidateIds = new ArrayList<>();
+                    if (presentedPackagesInHistory != null) {
+                        for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
+                            if (p != null && p.productId() != null && !earlyCandidateIds.contains(p.productId())) {
+                                earlyCandidateIds.add(p.productId());
+                            }
+                        }
+                    }
+                    return new ConversationState.StructuredBookingState(
+                            resolvedSelectionPkg.productId(),
+                            resolvedSelectionPkg.canonicalLabel(),
+                            safePrior.bookingDate(),
+                            safePrior.resolvedIsoDate(),
+                            safePrior.bookingTime(),
+                            safeZone.getId(),
+                            safePrior.status(),
+                            List.copyOf(earlyCandidateIds)
+                    );
+                }
                 return safePrior;
             }
         }
@@ -3556,15 +3951,10 @@ public final class AdaptiveConversationIntelligence {
         // Nếu lịch đã CONFIRMED thực sự từ nguồn có thẩm quyền và khách không đổi sản phẩm/ngày/giờ -> giữ nguyên CONFIRMED
         String nextProductId = safePrior.selectedProductId();
         String nextProductLabel = safePrior.selectedProductLabel();
-        if (patch.selectedProductId() != null) {
-            PackageCatalogService.PackageSummary resolvedPkg = resolveCatalogProductByFlexibleIdentifier(
-                    patch.selectedProductId(), presentedPackagesInHistory, allCatalog);
-            if (resolvedPkg != null) {
-                nextProductId = resolvedPkg.productId();
-                nextProductLabel = resolvedPkg.canonicalLabel();
-            }
-        } else if ((nextProductId == null || nextProductId.isBlank())
-                && (patch.proposedDate() != null || patch.proposedTime() != null)) {
+        if (resolvedSelectionPkg != null) {
+            nextProductId = resolvedSelectionPkg.productId();
+            nextProductLabel = resolvedSelectionPkg.canonicalLabel();
+        } else if ((nextProductId == null || nextProductId.isBlank()) && hasDateOrTimeProposal) {
             // Nếu khách chỉ định rõ gói ngay trong câu đặt lịch hoặc lịch sử chỉ đang trao đổi đúng 1 gói duy nhất
             // (không mơ hồ giữa >= 2 sản phẩm), kế thừa gói đó một cách xác định.
             PackageCatalogService.PackageSummary explicitInMsg = resolveCatalogProductByFlexibleIdentifier(
@@ -3584,7 +3974,7 @@ public final class AdaptiveConversationIntelligence {
         String nextIsoDate = safePrior.resolvedIsoDate();
         String nextTime = safePrior.bookingTime();
 
-        if (patch.proposedDate() != null || patch.proposedTime() != null) {
+        if (hasDateOrTimeProposal) {
             String combinedTimeInput = ((patch.proposedDate() != null ? patch.proposedDate() : "")
                     + " " + (patch.proposedTime() != null ? patch.proposedTime() : "")).strip();
             ConversationState.ParsedBookingDateTime parsedFromPatch = ConversationState.parseBookingDateTime(
@@ -3673,6 +4063,210 @@ public final class AdaptiveConversationIntelligence {
                 nextStatus,
                 List.copyOf(candidateIds)
         );
+    }
+
+    private static final Pattern RELATIVE_SECOND_OPTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:cái|gói|loại|lựa\\s+chọn|phương\\s+án)\\s+(?:thứ\\s+(?:hai|2)|sau)\\b.*");
+    private static final Pattern RELATIVE_FIRST_OPTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:cái|gói|loại|lựa\\s+chọn|phương\\s+án)\\s+(?:đầu(?:\\s+tiên)?|thứ\\s+(?:nhất|1)|trước)\\b.*");
+    private static final Pattern TRIAL_OR_BASIC_OPTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:vừa\\s+đủ|nhẹ\\s+nhàng\\s+hơn|gói\\s+cơ\\s+bản|cái\\s+cơ\\s+bản|cơ\\s+bản\\s+để\\s+thử|thử\\s+gói\\s+nhỏ|gói\\s+nhỏ|trải\\s+nghiệm\\s+thử|làm\\s+thử|để\\s+thử).*");
+    private static final Pattern HAIR_COMPONENT_REJECTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:(?:không|ko|khỏi|bỏ|chẳng)\\s+(?:muốn\\s+|cần\\s+|thích\\s+)?(?:phần\\s+)?(?:chăm\\s+sóc\\s+tóc|phục\\s+hồi\\s+tóc|tóc|gội)"
+                    + "|(?:sao|ủa)[^?？]{0,25}phục\\s+hồi\\s+tóc|loại\\s+không\\s+có\\s+phần\\s+đó|chỉ\\s+(?:muốn\\s+)?massage|chủ\\s+yếu\\s+(?:là\\s+)?massage).*");
+    private static final Pattern REFERENCE_LAST_MENTIONED_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:cái|gói)\\s+(?:(?:em|bạn|shop)\\s+vừa\\s+nói|đó|này)\\b.*");
+
+    private static String packageSearchTextLower(PackageCatalogService.PackageSummary p) {
+        StringBuilder sb = new StringBuilder();
+        if (p.displayName() != null) sb.append(p.displayName()).append(' ');
+        sb.append(p.canonicalName()).append(' ');
+        if (p.serviceFamily() != null) sb.append(p.serviceFamily()).append(' ');
+        if (p.includesSummary() != null) sb.append(p.includesSummary()).append(' ');
+        return Normalizer.normalize(sb.toString(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean packageHasHairComponent(PackageCatalogService.PackageSummary p) {
+        return packageSearchTextLower(p).matches("(?isU).*\\b(?:tóc|gội)\\b.*");
+    }
+
+    private static boolean packageIsEarCare(PackageCatalogService.PackageSummary p) {
+        return packageSearchTextLower(p).matches("(?isU).*\\b(?:ráy\\s+tai|lấy\\s+ráy)\\b.*");
+    }
+
+    /** Các gói được nhắc trong lượt bot liền trước, theo thứ tự xuất hiện trong văn bản. */
+    private static List<PackageCatalogService.PackageSummary> packagesMentionedInBotText(
+            String precedingBotText,
+            List<PackageCatalogService.PackageSummary> presented,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (precedingBotText == null || precedingBotText.isBlank()) {
+            return List.of();
+        }
+        String botLow = Normalizer.normalize(precedingBotText, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        Map<String, Integer> firstIndexById = new HashMap<>();
+        Map<String, PackageCatalogService.PackageSummary> byId = new LinkedHashMap<>();
+        List<PackageCatalogService.PackageSummary> pool = new ArrayList<>();
+        if (presented != null) pool.addAll(presented);
+        if (allCatalog != null) pool.addAll(allCatalog);
+        for (PackageCatalogService.PackageSummary p : pool) {
+            if (p == null || p.productId() == null || p.productId().isBlank() || byId.containsKey(p.productId())) continue;
+            int idx = -1;
+            String name = p.canonicalName().toLowerCase(Locale.ROOT).strip();
+            if (name.length() >= 4) idx = botLow.indexOf(name);
+            if (idx < 0 && p.code() != null && p.code().strip().length() >= 3) {
+                idx = botLow.indexOf(p.code().strip().toLowerCase(Locale.ROOT));
+            }
+            if (idx >= 0) {
+                byId.put(p.productId(), p);
+                firstIndexById.put(p.productId(), idx);
+            }
+        }
+        List<PackageCatalogService.PackageSummary> ordered = new ArrayList<>(byId.values());
+        ordered.sort(Comparator.comparingInt(p -> firstIndexById.getOrDefault(p.productId(), Integer.MAX_VALUE)));
+        return ordered;
+    }
+
+    /**
+     * ACI V3: Phân giải câu lựa chọn tương đối của khách ("vừa đủ để thử", "cái thứ hai", "gói đầu",
+     * "loại không có phần đó", "chỉ muốn massage", "gói đó") dựa trên các gói THỰC SỰ vừa được giới thiệu.
+     * Trả về {@code null} nếu không phân giải được chắc chắn (caller tự giữ {@code safePrior.selectedProductId()}).
+     */
+    public static PackageCatalogService.PackageSummary resolveContextualOptionFromUtterance(
+            String originalCustomerMessage,
+            String precedingBotText,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        return resolveContextualOptionFromUtterance(
+                originalCustomerMessage, precedingBotText, presentedPackagesInHistory, allCatalog, false);
+    }
+
+    /**
+     * ACI V3: Overload có {@code excludeHairCare} — khi khách đã từ chối chăm sóc/phục hồi tóc (negative_preferences: hair_care),
+     * loại bỏ mọi gói có thành phần tóc/gội khỏi phân giải lựa chọn "vừa đủ để thử".
+     */
+    public static PackageCatalogService.PackageSummary resolveContextualOptionFromUtterance(
+            String originalCustomerMessage,
+            String precedingBotText,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            boolean excludeHairCare
+    ) {
+        if (originalCustomerMessage == null || originalCustomerMessage.isBlank()) {
+            return null;
+        }
+        String msgLow = Normalizer.normalize(originalCustomerMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+
+        List<PackageCatalogService.PackageSummary> offered = new ArrayList<>(
+                packagesMentionedInBotText(precedingBotText, presentedPackagesInHistory, allCatalog));
+        if (offered.isEmpty() && presentedPackagesInHistory != null) {
+            for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
+                if (p != null && p.productId() != null && !p.productId().isBlank()) offered.add(p);
+            }
+        }
+        List<PackageCatalogService.PackageSummary> safeCatalog = allCatalog != null
+                ? allCatalog.stream().filter(Objects::nonNull).toList()
+                : List.of();
+
+        // 1) Chọn theo thứ tự trong danh sách vừa giới thiệu
+        if (RELATIVE_SECOND_OPTION_PATTERN.matcher(msgLow).matches() && offered.size() >= 2) {
+            return offered.get(1);
+        }
+        if (RELATIVE_FIRST_OPTION_PATTERN.matcher(msgLow).matches() && !offered.isEmpty()) {
+            return offered.get(0);
+        }
+
+        boolean talksAboutEar = msgLow.matches("(?isU).*\\b(?:tai|ráy)\\b.*");
+        boolean rejectsHair = HAIR_COMPONENT_REJECTION_PATTERN.matcher(msgLow).matches();
+        boolean wantsTrialOrBasic = TRIAL_OR_BASIC_OPTION_PATTERN.matcher(msgLow).matches();
+
+        // 2) Từ chối thành phần tóc / chỉ muốn massage -> gói thuần massage
+        if (rejectsHair) {
+            boolean neckFocus = msgLow.matches("(?isU).*\\b(?:cổ|vai|gáy)\\b.*");
+            List<PackageCatalogService.PackageSummary> pool = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary p : offered) {
+                if (!p.isAddon() && !packageHasHairComponent(p) && !packageIsEarCare(p)) pool.add(p);
+            }
+            if (pool.isEmpty()) {
+                for (PackageCatalogService.PackageSummary p : safeCatalog) {
+                    if (!p.isAddon() && !packageHasHairComponent(p) && !packageIsEarCare(p)
+                            && packageSearchTextLower(p).matches("(?isU).*\\b(?:massage|mát\\s*xa)\\b.*")) {
+                        pool.add(p);
+                    }
+                }
+            }
+            if (pool.isEmpty()) {
+                return null;
+            }
+            Comparator<PackageCatalogService.PackageSummary> cmp = Comparator
+                    .comparingInt((PackageCatalogService.PackageSummary p) -> neckFocus
+                            && packageSearchTextLower(p).matches("(?isU).*\\b(?:cổ|vai|gáy)\\b.*") ? 0 : 1)
+                    .thenComparingInt(p -> p.durationMinutes() != null && p.durationMinutes() >= 45 ? 0 : 1)
+                    .thenComparingLong(PackageCatalogService.PackageSummary::priceAmountVnd);
+            return pool.stream().min(cmp).orElse(null);
+        }
+
+        // 3) Vừa đủ để thử / nhẹ nhàng hơn / cơ bản -> gói cơ bản vừa đủ trong các gói vừa giới thiệu
+        if (wantsTrialOrBasic) {
+            List<PackageCatalogService.PackageSummary> pool = new ArrayList<>();
+            for (PackageCatalogService.PackageSummary p : offered) {
+                if (!p.isAddon() && (talksAboutEar || !packageIsEarCare(p))
+                        && (!excludeHairCare || !packageHasHairComponent(p))) {
+                    pool.add(p);
+                }
+            }
+            if (pool.isEmpty() && excludeHairCare) {
+                boolean neckFocusTrial = msgLow.matches("(?isU).*\\b(?:cổ|vai|gáy)\\b.*");
+                for (PackageCatalogService.PackageSummary p : safeCatalog) {
+                    if (p.isAddon() || packageHasHairComponent(p) || packageIsEarCare(p)) continue;
+                    String searchLow = packageSearchTextLower(p);
+                    if (!searchLow.matches("(?isU).*\\b(?:massage|mát\\s*xa)\\b.*")) continue;
+                    if (neckFocusTrial && !searchLow.matches("(?isU).*\\b(?:cổ|vai|gáy)\\b.*")) continue;
+                    pool.add(p);
+                }
+                if (pool.isEmpty() && neckFocusTrial) {
+                    for (PackageCatalogService.PackageSummary p : safeCatalog) {
+                        if (!p.isAddon() && !packageHasHairComponent(p) && !packageIsEarCare(p)
+                                && packageSearchTextLower(p).matches("(?isU).*\\b(?:massage|mát\\s*xa)\\b.*")) {
+                            pool.add(p);
+                        }
+                    }
+                }
+            }
+            if (pool.isEmpty()) {
+                return null;
+            }
+            List<PackageCatalogService.PackageSummary> fullSessions = pool.stream()
+                    .filter(p -> p.durationMinutes() == null || p.durationMinutes() >= 45)
+                    .toList();
+            List<PackageCatalogService.PackageSummary> effective = fullSessions.isEmpty() ? pool : fullSessions;
+            return effective.stream()
+                    .min(Comparator.comparingLong(PackageCatalogService.PackageSummary::priceAmountVnd)
+                            .thenComparingInt(p -> p.durationMinutes() != null ? p.durationMinutes() : Integer.MAX_VALUE))
+                    .orElse(null);
+        }
+
+        // 4) "Gói đó" / "cái em vừa nói" -> gói được nhắc gần nhất trong lượt bot liền trước
+        if (REFERENCE_LAST_MENTIONED_PATTERN.matcher(msgLow).matches()) {
+            if (offered.size() == 1) {
+                return offered.get(0);
+            }
+            if (precedingBotText != null && offered.size() > 1) {
+                String botLow = Normalizer.normalize(precedingBotText, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+                PackageCatalogService.PackageSummary last = null;
+                int lastIdx = -1;
+                for (PackageCatalogService.PackageSummary p : offered) {
+                    int idx = botLow.lastIndexOf(p.canonicalName().toLowerCase(Locale.ROOT).strip());
+                    if (idx > lastIdx) {
+                        lastIdx = idx;
+                        last = p;
+                    }
+                }
+                return last;
+            }
+        }
+        return null;
     }
 
     public static PackageCatalogService.PackageSummary resolveCatalogProductByFlexibleIdentifier(
@@ -3871,9 +4465,72 @@ public final class AdaptiveConversationIntelligence {
         ALTERNATIVE_OFFER,
         RESPECTFUL_DEESCALATION,
         CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT,
+        CUSTOMER_DEFERRAL,
         CUSTOMER_EXIT,
         FEEDBACK_RECOVERY,
-        BOOKING_DISCUSSION
+        BOOKING_DISCUSSION,
+        SELF_IDENTIFY_GENDER,
+        CUSTOMER_CORRECTION_PIVOT,
+        TRIAL_COMMITMENT_LOCK,
+        SUITABILITY_INQUIRY_HANDOFF
+    }
+
+    /**
+     * ACI V3: Các ý định chính tắc của lượt (tách biệt rạch ròi {@code PRICE_OBJECTION},
+     * {@code COMPETITOR_COMPARISON}, {@code BUDGET_INQUIRY}, {@code PRIVACY_CONCERN},
+     * {@code CUSTOMER_DEFERRAL}, {@code EXPLICIT_REFUSAL}, {@code SELF_IDENTIFY_GENDER} để một câu có thể mang nhiều ý định
+     * mà không tự động biến tất cả thành phản đối giá).
+     */
+    public enum CanonicalTurnIntent {
+        PRICE_OBJECTION,
+        COMPETITOR_COMPARISON,
+        BUDGET_INQUIRY,
+        PRIVACY_CONCERN,
+        CUSTOMER_DEFERRAL,
+        EXPLICIT_REFUSAL,
+        CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT,
+        PROCESS_FEEDBACK,
+        BOOKING_DISCUSSION,
+        SCOPE_CONFIRMATION,
+        SYMPTOM_OR_NEED_SHARED,
+        SERVICE_OR_OPERATIONAL_INQUIRY,
+        GENERAL_CONSULTATION_OR_GREETING,
+        SELF_IDENTIFY_GENDER,
+        CUSTOMER_CORRECTION,
+        TRIAL_COMMITMENT_SELECTION,
+        SUITABILITY_INQUIRY
+    }
+
+    /**
+     * ACI V3: Snapshot bất biến của lượt hiện tại ({@code TurnContextSnapshot}).
+     * Xây dựng đúng 1 lần mỗi lượt trong Orchestrator và chia sẻ đồng nhất giữa Prompt Builder và Guard/Sanitizer.
+     */
+    public record TurnContextSnapshot(
+            String turnId,
+            String originalMessage,
+            String effectiveCustomerPronoun,
+            boolean pronounLockedFromSelfReference,
+            CanonicalTurnIntent primaryIntent,
+            Set<CanonicalTurnIntent> detectedIntents,
+            PriceIntentSubMode priceIntentSubMode,
+            int priorPriceObjectionCount,
+            int authoritativePriceObjectionCount,
+            boolean incrementsPriceObjection,
+            LightweightCustomerUnderstandingPlan plan,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot,
+            ConversationState.StructuredBookingState priorBookingState
+    ) {
+        public TurnContextSnapshot {
+            turnId = turnId != null ? turnId : "T1";
+            originalMessage = originalMessage != null ? originalMessage : "";
+            effectiveCustomerPronoun = (effectiveCustomerPronoun != null && !effectiveCustomerPronoun.isBlank())
+                    ? effectiveCustomerPronoun.strip()
+                    : "mình";
+            primaryIntent = primaryIntent != null ? primaryIntent : CanonicalTurnIntent.GENERAL_CONSULTATION_OR_GREETING;
+            detectedIntents = detectedIntents != null ? Collections.unmodifiableSet(new LinkedHashSet<>(detectedIntents)) : Set.of(primaryIntent);
+            priceIntentSubMode = priceIntentSubMode != null ? priceIntentSubMode : PriceIntentSubMode.NONE;
+            priorBookingState = priorBookingState != null ? priorBookingState : ConversationState.StructuredBookingState.none();
+        }
     }
 
     /**
@@ -3945,6 +4602,27 @@ public final class AdaptiveConversationIntelligence {
                     + "có\\s+gì\\s+(?:mình|chị|anh|tôi|em)\\s+(?:báo|nhắn)(?:\\s+lại|\\s+sau)?(?:\\s+nhé|\\s+ạ)*)\\s*[.!~]*\\s*$"
     );
 
+    private static final Pattern CUSTOMER_DEFERRAL_MESSAGE_PATTERN = Pattern.compile(
+            "(?iU)^\\s*(?:dạ\\s+|vâng\\s+|ừ\\s+|ờ\\s+|uh\\s+|ok\\s+|thôi\\s+)?(?:"
+                    + "để\\s+(?:mình|chị|anh|tôi|t|tui|em)\\s+(?:xem|tham\\s+khảo|suy\\s+nghĩ|nghĩ|tính|cân\\s+nhắc|hỏi\\s+ý\\s+kiến|sắp\\s+xếp)[^?？]*|"
+                    + "(?:để\\s+)?(?:xem|tham\\s+khảo|suy\\s+nghĩ|nghĩ|cân\\s+nhắc)(?:\\s+thêm)?\\s+(?:đã|chút|tí|xíu|sau)(?:\\s+nhé|\\s+nha|\\s+ạ|\\s+em|\\s+shop)*|"
+                    + "(?:để\\s+)?tính\\s+sau(?:\\s+nhé|\\s+nha|\\s+ạ)*|"
+                    + "có\\s+gì\\s+(?:mình|chị|anh|tôi|t|tui|em)\\s+(?:báo|nhắn|liên\\s+hệ)(?:\\s+lại|\\s+sau)?[^?？]*|"
+                    + "khi\\s+nào\\s+(?:rảnh|tiện|sắp\\s+xếp\\s+được|cần)\\s+(?:mình|chị|anh|tôi|t|tui|em)\\s+(?:báo|nhắn|ghé)[^?？]*|"
+                    + "(?:mình|chị|anh|tôi|t|tui|em)\\s+(?:xem|tham\\s+khảo|suy\\s+nghĩ|nghĩ|cân\\s+nhắc)(?:\\s+thêm)?(?:\\s+đã|\\s+chút|\\s+nhé|\\s+nha|\\s+ạ)+"
+                    + ")\\s*[.!~]*\\s*$"
+    );
+
+    private static final Pattern PRIVACY_CONCERN_MESSAGE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(ngại\\s+chung\\s+phòng|phòng\\s+chung|giường\\s+chung|rèm\\s+che|vách\\s+ngăn|riêng\\s+tư|kín\\s+đáo|đông\\s+người|ồn\\s+ào|phòng\\s+riêng)\\b.*"
+    );
+
+    private static final Pattern GENUINE_PRICE_OBJECTION_CUE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|hơi\\s+cao|giá\\s+cao|căng\\s+quá|hơi\\s+căng|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|"
+                    + "vượt\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|bằng\\s+cả\\s+ngày\\s+đi\\s+làm|"
+                    + "thôi\\s+chịu(?:\\s+đấy|\\s+thôi|\\s+luôn)?|chịu\\s+đấy|rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+tiền\\s+hơn|tiết\\s+kiệm\\s+hơn)\\b.*"
+    );
+
     private static final Pattern EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN = Pattern.compile(
             "(?iU).*(?:bảng\\s+giá(?:\\s+đầy\\s+đủ|\\s+chi\\s+tiết)?|danh\\s+sách\\s+(?:giá|gói|dịch\\s+vụ)|"
                     + "tất\\s+cả\\s+các\\s+gói|đừng\\s+tư\\s+vấn\\s+dài[^.!?\\n]{0,30}giá|cho\\s+(?:tôi|mình|chị|anh)\\s+bảng\\s+giá).*"
@@ -3968,12 +4646,241 @@ public final class AdaptiveConversationIntelligence {
                     + "(?:buổi\\s+vừa\\s+đủ|chăm\\s+sóc\\s+kỹ\\s+hơn|nhanh\\s+gọn|chuyên\\s+sâu\\s+hơn))\\s*[.!]*\\s*$"
     );
 
+    private static final Pattern CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:"
+                    + "(?:ủa|sao)[^?？]{0,25}(?:lại\\s+)?(?:phục\\s+hồi\\s+tóc|chăm\\s+sóc\\s+tóc|gội|tóc)"
+                    + "|kêu\\s+(?:đi\\s+)?làm\\s+(?:phục\\s+hồi\\s+tóc|chăm\\s+sóc\\s+tóc|tóc)"
+                    + "|(?:không|ko|chẳng|chả)\\s+(?:muốn|cần|thích)\\s+(?:làm\\s+)?(?:phần\\s+)?(?:chăm\\s+sóc\\s+tóc|phục\\s+hồi\\s+tóc|tóc|gội(?:\\s+đầu)?|gói\\s+(?:đó|này|kia)|cái\\s+(?:đó|này))"
+                    + "|(?:khỏi|bỏ)\\s+(?:phần\\s+|cái\\s+)?(?:chăm\\s+sóc\\s+tóc|phục\\s+hồi\\s+tóc|tóc|gội)"
+                    + "|chỉ\\s+(?:muốn\\s+|cần\\s+)?(?:massage|mát\\s*xa)"
+                    + "|chủ\\s+yếu\\s+(?:là\\s+)?(?:massage|mát\\s*xa)"
+                    + "|đổi\\s+(?:sang\\s+)?gói\\s+khác"
+                    + "|loại\\s+không\\s+có\\s+phần\\s+đó"
+                    + ").*"
+    );
+
+    private static final Pattern TRIAL_OR_RELATIVE_OPTION_SELECTION_PATTERN = Pattern.compile(
+            "(?isU).*(?:"
+                    + "vừa\\s+đủ(?:\\s+để\\s+thử)?"
+                    + "|nhẹ\\s+nhàng\\s+hơn"
+                    + "|(?:gói|cái)\\s+cơ\\s+bản"
+                    + "|thử\\s+gói\\s+nhỏ"
+                    + "|trải\\s+nghiệm\\s+thử"
+                    + "|(?:cái|gói|loại)\\s+(?:thứ\\s+(?:hai|2|nhất|1)|sau|đầu(?:\\s+tiên)?)"
+                    + "|(?:cái|gói)\\s+(?:em|bạn|shop)\\s+vừa\\s+nói"
+                    + "|(?:làm|lấy|chọn)\\s+(?:gói|cái)\\s+(?:đó|này)"
+                    + ").*"
+    );
+
+    /**
+     * ACI V3: Khách đính chính hoặc từ chối một thành phần/hướng tư vấn
+     * (VD: "ủa sao lại phục hồi tóc", "khỏi phần tóc", "chỉ muốn massage", "đổi sang gói khác").
+     */
+    public static boolean isCustomerCorrectionOrComponentRejectionMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION_PATTERN.matcher(low).matches();
+    }
+
+    /**
+     * ACI V3: Khách chọn phương án thử / lựa chọn tương đối
+     * (VD: "tôi muốn vừa đủ để thử", "gói nhẹ nhàng hơn", "cái thứ hai", "cái em vừa nói").
+     * Câu hỏi giá hoặc câu hỏi phù hợp sức khỏe KHÔNG được tính là chốt lựa chọn.
+     */
+    public static boolean isTrialOrRelativeOptionSelectionMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (!TRIAL_OR_RELATIVE_OPTION_SELECTION_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        if (low.matches("(?isU).*\\b(?:giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí)\\b.*")) {
+            return false;
+        }
+        return !isHealthSuitabilityInquiryMessage(rawMessage);
+    }
+
     public static boolean isBarePauseOrAcknowledgementMessage(String rawMessage) {
         if (rawMessage == null || rawMessage.isBlank()) {
             return false;
         }
         String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
         return BARE_PAUSE_OR_ACK_MESSAGE_PATTERN.matcher(norm).matches();
+    }
+
+    public static boolean isCustomerDeferralMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        if (CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(norm)) {
+            return false;
+        }
+        return CUSTOMER_DEFERRAL_MESSAGE_PATTERN.matcher(norm).matches()
+                || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(norm)
+                || CleanAgentOrchestratorService.isPureBusyOrStopDeferralMessage(norm);
+    }
+
+    public static boolean isPrivacyConcernMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return PRIVACY_CONCERN_MESSAGE_PATTERN.matcher(norm).matches();
+    }
+
+    /**
+     * ACI V3 Guardrail 3: Kiểm tra xem phát ngôn có thực sự mang ý phản đối giá / chê đắt / quá sức ngân sách hay không
+     * (tách biệt với câu chỉ so sánh giá đối thủ bên ngoài hoặc hỏi gói theo ngân sách).
+     */
+    public static boolean hasGenuinePriceObjectionCue(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(norm)
+                || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(norm)
+                || CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(norm)
+                || isPrivacyConcernMessage(norm)) {
+            return false;
+        }
+        String low = norm.toLowerCase(Locale.ROOT);
+        boolean isComp = CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(norm);
+        if (isComp) {
+            // Khi khách đang so sánh giá đối thủ ("chỗ khác rẻ hơn", "tiệm kia mềm hơn"), chỉ tính là phản đối giá
+            // nếu khách đồng thời chê đắt/mắc/chát/quá sức/chịu đấy đối với cơ sở mình.
+            return low.matches("(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|giá\\s+cao|căng\\s+quá|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|vượt\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|thôi\\s+chịu|chịu\\s+đấy)\\b.*");
+        }
+        if (GENUINE_PRICE_OBJECTION_CUE_PATTERN.matcher(low).matches()) {
+            return true;
+        }
+        if (isCustomerDeferralMessage(norm) || isBarePauseOrAcknowledgementMessage(norm)) {
+            return false;
+        }
+        return CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(norm, true);
+    }
+
+    /**
+     * ACI V3 Guardrail 3: Trích xuất tập hợp các ý định chính tắc từ phát ngôn hiện tại.
+     * Một câu có thể mang nhiều ý định (VD: vừa {@code COMPETITOR_COMPARISON} vừa {@code PRICE_OBJECTION},
+     * hoặc vừa {@code PRIVACY_CONCERN} vừa {@code SERVICE_OR_OPERATIONAL_INQUIRY}), nhưng KHÔNG tự động biến
+     * {@code COMPETITOR_COMPARISON}, {@code BUDGET_INQUIRY}, {@code PRIVACY_CONCERN}, {@code CUSTOMER_DEFERRAL}
+     * hay {@code EXPLICIT_REFUSAL} thành {@code PRICE_OBJECTION}.
+     */
+    public static Set<CanonicalTurnIntent> detectCanonicalTurnIntents(
+            String rawUserMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        String msg = rawUserMessage != null ? Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC) : "";
+        if (msg.isEmpty()) {
+            return Set.of(CanonicalTurnIntent.GENERAL_CONSULTATION_OR_GREETING);
+        }
+        String msgLow = msg.toLowerCase(Locale.ROOT);
+        Set<CanonicalTurnIntent> intents = new LinkedHashSet<>();
+
+        // ACI V3: Câu hỏi phù hợp sức khỏe -> ưu tiên tuyệt đối, chuyển chuyên viên Spa đánh giá.
+        if (isHealthSuitabilityInquiryMessage(msg)) {
+            intents.add(CanonicalTurnIntent.SUITABILITY_INQUIRY);
+            return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
+        }
+
+        // ACI V3: CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION (thêm trước để trở thành primary intent).
+        boolean isCustomerCorrection = isCustomerCorrectionOrComponentRejectionMessage(msg);
+        boolean isTrialSelection = !isCustomerCorrection && isTrialOrRelativeOptionSelectionMessage(msg);
+        if (isCustomerCorrection) {
+            intents.add(CanonicalTurnIntent.CUSTOMER_CORRECTION);
+        } else if (isTrialSelection) {
+            intents.add(CanonicalTurnIntent.TRIAL_COMMITMENT_SELECTION);
+        }
+
+        boolean isStyleOrProcessFeedback = !isCustomerCorrection
+                && (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                    || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg));
+        if (isStyleOrProcessFeedback) {
+            intents.add(CanonicalTurnIntent.PROCESS_FEEDBACK);
+            return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
+        }
+
+        boolean explicitFullPriceList = EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN.matcher(msgLow).matches();
+        boolean isExplicitRefusal = !explicitFullPriceList
+                && !isCustomerCorrection
+                && !isTrialSelection
+                && (CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(msg)
+                    || CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(msg));
+        if (isExplicitRefusal) {
+            intents.add(CanonicalTurnIntent.EXPLICIT_REFUSAL);
+            return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
+        }
+
+        boolean hasBookingCue = (bookingState != null && bookingState.status() != ConversationState.BookingStatus.NONE)
+                || msgLow.matches("(?isU).*\\b(đặt\\s+lịch|book\\s+lịch|giữ\\s+lịch|khung\\s+giờ|mấy\\s+giờ|chiều\\s+nay|tối\\s+nay|ngày\\s+mai)\\b.*");
+        if (hasBookingCue) {
+            intents.add(CanonicalTurnIntent.BOOKING_DISCUSSION);
+        }
+
+        boolean isCompComparison = CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(msg);
+        if (isCompComparison) {
+            intents.add(CanonicalTurnIntent.COMPETITOR_COMPARISON);
+        }
+
+        boolean isBudgetInquiry = !isCompComparison
+                && (CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(msg)
+                    || BUDGET_OR_LOWEST_PRICE_INQUIRY_PATTERN.matcher(msgLow).matches());
+        if (isBudgetInquiry) {
+            intents.add(CanonicalTurnIntent.BUDGET_INQUIRY);
+        }
+
+        boolean isPrivacy = isPrivacyConcernMessage(msg);
+        if (isPrivacy) {
+            intents.add(CanonicalTurnIntent.PRIVACY_CONCERN);
+        }
+
+        boolean hasPriceObjection = !isBudgetInquiry && hasGenuinePriceObjectionCue(msg);
+        if (hasPriceObjection) {
+            intents.add(CanonicalTurnIntent.PRICE_OBJECTION);
+        }
+
+        boolean isDeferral = !hasBookingCue && !isCompComparison && !hasPriceObjection && isCustomerDeferralMessage(msg);
+        boolean isBarePause = !hasBookingCue && !isCompComparison && !hasPriceObjection && !isDeferral
+                && isBarePauseOrAcknowledgementMessage(msg);
+        if (isDeferral) {
+            intents.add(CanonicalTurnIntent.CUSTOMER_DEFERRAL);
+        } else if (isBarePause) {
+            intents.add(CanonicalTurnIntent.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT);
+        }
+
+        boolean isGenderSelfId = !hasBookingCue
+                && !isCompComparison
+                && !hasPriceObjection
+                && !isDeferral
+                && !isBarePause
+                && classifyPriceIntentSubMode(msg) == PriceIntentSubMode.NONE
+                && isExplicitGenderOrPronounCorrectionMessage(msg);
+        if (isGenderSelfId) {
+            intents.add(CanonicalTurnIntent.SELF_IDENTIFY_GENDER);
+        }
+
+        boolean priorNeedsEstablished = hasCustomerSharedNeedsOrSymptomsInHistory(history, draft2Snapshot);
+        if (priorNeedsEstablished && SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(msg).matches()) {
+            intents.add(CanonicalTurnIntent.SCOPE_CONFIRMATION);
+        }
+
+        if (intents.isEmpty()) {
+            if (CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(msg) && !priorNeedsEstablished) {
+                intents.add(CanonicalTurnIntent.GENERAL_CONSULTATION_OR_GREETING);
+            } else if (CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(msg, List.of())
+                    || isConfirmedNeedOrSymptomUtteranceForLightweightState(msg)) {
+                intents.add(CanonicalTurnIntent.SYMPTOM_OR_NEED_SHARED);
+            } else {
+                intents.add(CanonicalTurnIntent.SERVICE_OR_OPERATIONAL_INQUIRY);
+            }
+        }
+        return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
     }
 
     public static PriceIntentSubMode classifyPriceIntentSubMode(String rawMessage) {
@@ -3996,7 +4903,7 @@ public final class AdaptiveConversationIntelligence {
             return PriceIntentSubMode.GENERAL_PRICE_INQUIRY;
         }
         boolean hasPriceCue = norm.matches("(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|báo\\s+giá|hết\\s+bao\\s+nhiêu)\\b.*");
-        if (hasPriceCue && !CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(rawMessage, true)) {
+        if (hasPriceCue && !hasGenuinePriceObjectionCue(rawMessage)) {
             return PriceIntentSubMode.SPECIFIC_PRICE_INQUIRY;
         }
         return PriceIntentSubMode.NONE;
@@ -4011,8 +4918,7 @@ public final class AdaptiveConversationIntelligence {
             if (h == null || h.content() == null || h.content().isBlank()) continue;
             String role = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
             if ("user".equals(role) || "customer".equals(role)) {
-                if (CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(h.content(), true)
-                        || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(h.content())) {
+                if (hasGenuinePriceObjectionCue(h.content())) {
                     count++;
                 }
             }
@@ -4040,6 +4946,9 @@ public final class AdaptiveConversationIntelligence {
             String txt = h.content().strip();
             if (!CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(txt)
                     && classifyPriceIntentSubMode(txt) != PriceIntentSubMode.GENERAL_PRICE_INQUIRY
+                    && !isBarePauseOrAcknowledgementMessage(txt)
+                    && !isCustomerDeferralMessage(txt)
+                    && !CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(txt)
                     && txt.split("\\s+").length >= 3) {
                 return true;
             }
@@ -4047,9 +4956,145 @@ public final class AdaptiveConversationIntelligence {
         return false;
     }
 
+    public static boolean hasPriorPriceInquiryInHistory(
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot
+    ) {
+        if (draft2Snapshot != null && draft2Snapshot.conversationalContext() != null
+                && draft2Snapshot.conversationalContext().unresolvedRequests() != null) {
+            for (UnresolvedRequestItem u : draft2Snapshot.conversationalContext().unresolvedRequests()) {
+                if (u != null && u.item() != null) {
+                    String rLow = u.item().toLowerCase(Locale.ROOT);
+                    if (rLow.contains("price") || rLow.contains("giá") || rLow.contains("chi phí")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (FanpageBotRequest.ConversationTurn h : history) {
+            if (h == null || h.content() == null || h.content().isBlank()) continue;
+            String role = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
+            if ("user".equals(role) || "customer".equals(role)) {
+                if (classifyPriceIntentSubMode(h.content()) != PriceIntentSubMode.NONE) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isConfirmedNeedOrSymptomUtteranceForLightweightState(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawText.strip(), Normalizer.Form.NFC);
+        if (CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(norm)
+                || CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(norm)
+                || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(norm)
+                || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(norm)
+                || CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(norm)
+                || isBarePauseOrAcknowledgementMessage(norm)
+                || isCustomerDeferralMessage(norm)
+                || isPrivacyConcernMessage(norm)
+                || isExplicitGenderOrPronounCorrectionMessage(norm)
+                || CleanAgentOrchestratorService.isOperationalOrLogisticsQuestion(norm)
+                || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(norm)
+                || hasGenuinePriceObjectionCue(norm)
+                || classifyPriceIntentSubMode(norm) != PriceIntentSubMode.NONE) {
+            return false;
+        }
+        if (SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(norm).matches()
+                || CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(norm, List.of())) {
+            return true;
+        }
+        String low = norm.toLowerCase(Locale.ROOT);
+        return low.matches("(?isU).*\\b(đau|mỏi|nhức|căng|tê|mất\\s+ngủ|khó\\s+ngủ|chóng\\s+mặt|hoa\\s+mắt|stress|mệt|"
+                + "cổ|vai|vau\\s+gáy|gáy|lưng|đầu|toàn\\s+thân|body|chân|tay|da\\s+mặt|nám|mụn|răng|nướu|"
+                + "gội\\s+đầu|dưỡng\\s+sinh|massage|chăm\\s+sóc|thư\\s+giãn|trị\\s+liệu)\\b.*");
+    }
+
+    private static boolean isIsolatedNeurologicalSymptomOnly(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawText.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        boolean hasDizzyOnly = low.matches("(?isU).*\\b(hoa\\s+mắt|chóng\\s+mặt|choáng\\s+váng|mất\\s+thăng\\s+bằng|huyết\\s+áp|tiền\\s+đình)\\b.*");
+        boolean hasMusculoskeletalOrCareContext = low.matches("(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu|mỏi|cổ|vai|vau\\s+gáy|gáy|lưng|ngồi\\s+lâu|máy\\s+tính|văn\\s+phòng|làm\\s+việc|mất\\s+ngủ|khó\\s+ngủ|gói|dịch\\s+vụ|liệu\\s+trình|thư\\s+giãn|dưỡng\\s+sinh|massage)\\b.*");
+        return hasDizzyOnly && !hasMusculoskeletalOrCareContext;
+    }
+
     /**
-     * P3.7-B.2: Xây dựng {@code LightweightCustomerUnderstandingPlan} (tách bạch rõ {@code Fact} / {@code Inference} / {@code Unknown}
-     * và chọn đúng 1 {@link TurnAction} chính cho lượt hiện tại mà không suy diễn quá mức).
+     * ACI V3: Xây dựng {@link TurnContextSnapshot} bất biến một lần duy nhất cho mỗi lượt,
+     * dùng chung cho cả Prompt Builder và Guard/Sanitizer.
+     */
+    public static TurnContextSnapshot buildTurnContextSnapshot(
+            String turnId,
+            String rawUserMessage,
+            String effectiveCustomerPronoun,
+            boolean pronounLockedFromSelfReference,
+            int memoryPriceObjectionCountBefore,
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        List<FanpageBotRequest.ConversationTurn> safeHist = history != null ? history : List.of();
+        String sameTurnSelfPronoun = inferExplicitCustomerSelfPronounFromUtterance(rawUserMessage);
+        if (sameTurnSelfPronoun != null && !sameTurnSelfPronoun.isBlank()) {
+            effectiveCustomerPronoun = sameTurnSelfPronoun;
+            pronounLockedFromSelfReference = true;
+        }
+        LightweightCustomerUnderstandingPlan plan = buildLightweightCustomerUnderstandingPlan(
+                rawUserMessage, safeHist, draft2Snapshot, bookingState);
+        Set<CanonicalTurnIntent> intents = detectCanonicalTurnIntents(
+                rawUserMessage, safeHist, draft2Snapshot, bookingState);
+        CanonicalTurnIntent primary = intents.iterator().next();
+        boolean incrementsObjection = intents.contains(CanonicalTurnIntent.PRICE_OBJECTION);
+        int historyPriorObjections = countPriorCustomerPriceObjections(safeHist);
+        int priorCount = Math.max(memoryPriceObjectionCountBefore, historyPriorObjections);
+        int authoritativeCount = priorCount + (incrementsObjection ? 1 : 0);
+        if (authoritativeCount != plan.consecutivePriceObjectionCount()) {
+            TurnAction adjustedAction = plan.recommendedAction();
+            String adjustedDirective = plan.actionExecutionDirective();
+            if (incrementsObjection && priorCount >= 1
+                    && (adjustedAction == TurnAction.ALTERNATIVE_OFFER || adjustedAction == TurnAction.PRICE_OBJECTION_HANDLING)) {
+                adjustedAction = TurnAction.RESPECTFUL_DEESCALATION;
+                adjustedDirective = "RESPECTFUL_DEESCALATION (LƯỢT PHẢN ĐỐI GIÁ LIÊN TIẾP THỨ " + authoritativeCount
+                        + "): Hạ nhiệt tôn trọng cảm nhận ngân sách của khách, tuyệt đối KHÔNG ép chốt, KHÔNG chào mua gói nhiều buổi/combo giảm giá, KHÔNG lặp lại tiện ích phụ đã nói, và kết thúc mở nhẹ nhàng KHÔNG đặt câu hỏi ('?' = 0).";
+            }
+            plan = new LightweightCustomerUnderstandingPlan(
+                    plan.customerState(),
+                    plan.inferences(),
+                    plan.unknowns(),
+                    adjustedAction,
+                    plan.priceIntentSubMode(),
+                    adjustedDirective,
+                    authoritativeCount
+            );
+        }
+        return new TurnContextSnapshot(
+                turnId,
+                rawUserMessage,
+                effectiveCustomerPronoun,
+                pronounLockedFromSelfReference,
+                primary,
+                intents,
+                plan.priceIntentSubMode(),
+                priorCount,
+                authoritativeCount,
+                incrementsObjection,
+                plan,
+                draft2Snapshot,
+                bookingState
+        );
+    }
+
+    /**
+     * P3.7-B.2 &amp; ACI V3: Xây dựng {@code LightweightCustomerUnderstandingPlan} (tách bạch rõ {@code Fact} / {@code Inference} / {@code Unknown},
+     * phân tách rạch ròi 6 nhóm ý định mà không biến so sánh đối thủ / hỏi ngân sách / riêng tư / tạm hoãn thành phản đối giá,
+     * và không nhét phát ngôn không phải nhu cầu vào {@code needs}).
      */
     public static LightweightCustomerUnderstandingPlan buildLightweightCustomerUnderstandingPlan(
             String rawUserMessage,
@@ -4097,10 +5142,7 @@ public final class AdaptiveConversationIntelligence {
                 if (h == null || h.content() == null || h.content().isBlank()) continue;
                 String r = h.role() != null ? h.role().strip().toLowerCase(Locale.ROOT) : "";
                 if (("user".equals(r) || "customer".equals(r))
-                        && !CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(h.content())
-                        && !CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(h.content(), true)
-                        && !CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(h.content())
-                        && !isBarePauseOrAcknowledgementMessage(h.content())
+                        && isConfirmedNeedOrSymptomUtteranceForLightweightState(h.content())
                         && h.content().strip().split("\\s+").length >= 3) {
                     String hNorm = Normalizer.normalize(h.content().strip(), Normalizer.Form.NFC);
                     if (!needs.contains(hNorm) && needs.size() < 3) {
@@ -4120,28 +5162,66 @@ public final class AdaptiveConversationIntelligence {
             ));
         }
 
-        boolean isStyleOrProcessFeedback = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
-                || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg);
-        boolean isExplicitRefusal = CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(msg);
-        boolean isPoliteClosing = !isExplicitRefusal && CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(msg);
-        boolean isBarePauseAck = !isExplicitRefusal && !isPoliteClosing && isBarePauseOrAcknowledgementMessage(msg);
-        boolean isExternalComparison = !isStyleOrProcessFeedback
-                && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(msg);
-        boolean isPriceObjection = !isStyleOrProcessFeedback
-                && !isExternalComparison
-                && CleanAgentOrchestratorService.isConfirmedCustomerPriceObjection(msg, true)
-                && !CleanAgentOrchestratorService.isPureBudgetBoundedServiceInquiry(msg);
+        Set<CanonicalTurnIntent> detectedIntents = detectCanonicalTurnIntents(msg, history, draft2Snapshot, bookingState);
+        boolean isStyleOrProcessFeedback = detectedIntents.contains(CanonicalTurnIntent.PROCESS_FEEDBACK);
+        boolean isExplicitRefusal = detectedIntents.contains(CanonicalTurnIntent.EXPLICIT_REFUSAL);
+        boolean isBarePauseAck = detectedIntents.contains(CanonicalTurnIntent.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT);
+        boolean isCustomerDeferral = detectedIntents.contains(CanonicalTurnIntent.CUSTOMER_DEFERRAL);
+        boolean isExternalComparison = detectedIntents.contains(CanonicalTurnIntent.COMPETITOR_COMPARISON);
+        boolean isGenuinePriceObjection = detectedIntents.contains(CanonicalTurnIntent.PRICE_OBJECTION);
+        boolean isPrivacyConcern = detectedIntents.contains(CanonicalTurnIntent.PRIVACY_CONCERN);
+        boolean isGenderSelfId = detectedIntents.contains(CanonicalTurnIntent.SELF_IDENTIFY_GENDER);
+        boolean hasPriorPriceAsk = hasPriorPriceInquiryInHistory(history, draft2Snapshot);
         PriceIntentSubMode priceSubMode = classifyPriceIntentSubMode(msg);
-        boolean hasBookingCue = (bookingState != null && bookingState.status() != ConversationState.BookingStatus.NONE)
-                || msgLow.matches("(?isU).*\\b(đặt\\s+lịch|book\\s+lịch|giữ\\s+lịch|khung\\s+giờ|mấy\\s+giờ|chiều\\s+nay|tối\\s+nay|ngày\\s+mai)\\b.*");
-        boolean isScopeConfirmation = priorNeedsEstablished
-                && SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(msg).matches();
+        boolean hasBookingCue = detectedIntents.contains(CanonicalTurnIntent.BOOKING_DISCUSSION);
+        boolean isScopeConfirmation = detectedIntents.contains(CanonicalTurnIntent.SCOPE_CONFIRMATION);
+        boolean isSuitabilityInquiry = detectedIntents.contains(CanonicalTurnIntent.SUITABILITY_INQUIRY);
+        boolean isCustomerCorrection = detectedIntents.contains(CanonicalTurnIntent.CUSTOMER_CORRECTION);
+        boolean isTrialCommitmentSelection = detectedIntents.contains(CanonicalTurnIntent.TRIAL_COMMITMENT_SELECTION);
+
+        if (isPrivacyConcern) {
+            concerns.add("PRIVACY_OR_SHARED_SPACE_CONCERN");
+        }
 
         TurnAction recommendedAction;
         String directive;
-        int totalPriceObjections = priorPriceObjections + ((isPriceObjection || isExternalComparison) ? 1 : 0);
+        // Guardrail 3: Only genuine price objection increments totalPriceObjections; pure competitor comparison / budget inquiry / privacy / deferral never do.
+        int totalPriceObjections = priorPriceObjections + (isGenuinePriceObjection ? 1 : 0);
 
-        if (isStyleOrProcessFeedback) {
+        if (isSuitabilityInquiry) {
+            concerns.add("HEALTH_SUITABILITY_INQUIRY");
+            communicationSignals.add("DEMO_HANDOFF_PENDING");
+            recommendedAction = TurnAction.SUITABILITY_INQUIRY_HANDOFF;
+            directive = "SUITABILITY_INQUIRY_HANDOFF: Khách hỏi trực tiếp tình trạng sức khỏe có phù hợp làm dịch vụ không ('" + msg + "'). "
+                    + "BẮT BUỘC: (1) Ghi nhận nguyên văn tình trạng khách vừa chia sẻ một cách đồng cảm, tự nhiên; "
+                    + "(2) Giải thích rõ phần đánh giá mức độ phù hợp với tình trạng sức khỏe sẽ do nhân viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa (trạng thái demo: DEMO_HANDOFF_PENDING); "
+                    + "(3) TUYỆT ĐỐI KHÔNG tự kết luận 'làm được bình thường', KHÔNG tự phân loại cấp độ y tế, KHÔNG báo giá/chốt lịch trong lượt này; 0 xuất mã enum nội bộ.";
+        } else if (isCustomerCorrection) {
+            frictionHistory.add("CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION");
+            communicationSignals.add("PRIORITY: CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION");
+            recommendedAction = TurnAction.CUSTOMER_CORRECTION_PIVOT;
+            directive = "CUSTOMER_CORRECTION_PIVOT (ƯU TIÊN CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION): Khách vừa đính chính/từ chối ('" + msg + "'). "
+                    + "BẮT BUỘC: (1) Thừa nhận thẳng thắn điều chỉnh của khách ngay câu đầu (không bảo vệ gói cũ, không gọi thành phần bị từ chối là 'tặng kèm'); "
+                    + "(2) Loại bỏ hoàn toàn thành phần/gói khách không muốn — nếu khách từ chối chăm sóc/phục hồi tóc mà chỉ muốn massage giúp dễ ngủ thì chuyển thẳng sang đề xuất gói thuần massage trong <VERIFIED_BUSINESS_CATALOG> (ví dụ Massage Body tinh dầu Nàng Sen 399k 60p hoặc Massage cổ vai gáy chuyên sâu 350k 60p); "
+                    + "(3) Bảo toàn các nhu cầu đã biết (đau đầu, khó ngủ, mỏi...) và KHÔNG hỏi lại câu thừa 'Anh/chị có muốn tìm lựa chọn tập trung massage không?'.";
+        } else if (isTrialCommitmentSelection) {
+            buyingSignals.add("TRIAL_COMMITMENT");
+            recommendedAction = TurnAction.TRIAL_COMMITMENT_LOCK;
+            directive = "TRIAL_COMMITMENT_LOCK: Khách vừa chọn phương án vừa đủ/trải nghiệm thử ('" + msg + "'). "
+                    + "BẮT BUỘC: (1) Khóa ngay lựa chọn này (TRIAL_COMMITMENT) và xác nhận đúng gói đó một cách tự nhiên (tên + giá + thời lượng theo <VERIFIED_BUSINESS_CATALOG>); "
+                    + "(2) TUYỆT ĐỐI KHÔNG upsell sang gói đắt hơn (như 339k), KHÔNG nhắc thành phần không liên quan hoặc đã bị khách từ chối; "
+                    + "(3) Có thể hỏi nhẹ 1 câu về thời điểm khách tiện ghé, không ép chốt.";
+            boolean priorHairCareRejection = draft2Snapshot != null
+                    && draft2Snapshot.businessCommitment() != null
+                    && draft2Snapshot.businessCommitment().negativePreferences() != null
+                    && draft2Snapshot.businessCommitment().negativePreferences().stream()
+                        .anyMatch(e -> e != null && e.targetKey() != null && e.targetKey().equalsIgnoreCase("hair_care"));
+            boolean massageFocusAfterHairRejection = priorHairCareRejection
+                    && msgLow.matches("(?isU).*(cổ\\s*vai\\s*gáy|massage|mát\\s*xa).*");
+            if (priorHairCareRejection || massageFocusAfterHairRejection) {
+                directive = directive + " LƯU Ý QUAN TRỌNG: Khách ĐÃ TỪ CHỐI chăm sóc/phục hồi tóc (negative_preferences: hair_care) -> TUYỆT ĐỐI KHÔNG chọn gói Gội đầu dưỡng sinh 239k/339k; BẮT BUỘC khóa đúng gói thuần Massage vừa trao đổi (ví dụ Massage cổ vai gáy chuyên sâu hoặc Massage cơ bản 60p 399k)!";
+            }
+        } else if (isStyleOrProcessFeedback) {
             emotions.add("FRUSTRATED_BY_CONSULTATION_STYLE");
             frictionHistory.add("PROCESS_OR_COMMUNICATION_FEEDBACK");
             recommendedAction = TurnAction.FEEDBACK_RECOVERY;
@@ -4149,10 +5229,19 @@ public final class AdaptiveConversationIntelligence {
             directive = allowDiscoveryQ
                     ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
                     : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá).";
-        } else if (isExplicitRefusal || isPoliteClosing) {
+        } else if (isExplicitRefusal) {
             communicationSignals.add("EXPLICIT_CONVERSATION_CLOSURE");
             recommendedAction = TurnAction.CUSTOMER_EXIT;
             directive = "CUSTOMER_EXIT: Tôn trọng quyết định dừng/tạm nghỉ của khách bằng 1 bong bóng ngắn gọn ấm áp, 0 câu hỏi '?', 0 chèo kéo.";
+        } else if (isGenderSelfId) {
+            String targetPronoun = inferExplicitCustomerSelfPronounFromUtterance(msg);
+            String safeTarget = (targetPronoun != null && !targetPronoun.isBlank()) ? targetPronoun : "Anh";
+            communicationSignals.add("EXPLICIT_GENDER_OR_PRONOUN_CORRECTION:" + safeTarget);
+            recommendedAction = TurnAction.SELF_IDENTIFY_GENDER;
+            directive = "SELF_IDENTIFY_GENDER: Khách vừa xác nhận giới tính hoặc chỉnh đại từ ('" + msg + "' -> gọi khách là '" + safeTarget + "'). "
+                    + "BẮT BUỘC: (1) Xin lỗi ngắn gọn 1 câu tự nhiên vì sơ suất xưng hô và đổi ngay sang '" + safeTarget + "' trong toàn bộ câu trả lời; "
+                    + "(2) Khẳng định nhẹ nhàng dịch vụ chăm sóc tại cơ sở hoàn toàn phù hợp để '" + safeTarget + "' thư giãn giải tỏa vùng đang mỏi (CẤM câu chụp mũ giới tính kiểu 'các anh thường...'); "
+                    + "(3) Giữ đúng 1 bong bóng ngắn gọn ấm áp, cta_level = NO_CTA, next_action = NO_ADDITIONAL_ACTION, 0 câu hỏi ('?' = 0), 0 báo giá lại, 0 kích hoạt skill giá/chốt lịch.";
         } else if (isBarePauseAck && (bookingState == null || bookingState.status() == ConversationState.BookingStatus.NONE)) {
             communicationSignals.add("BARE_PAUSE_OR_ACKNOWLEDGEMENT");
             inferences.add(new LightweightInferenceItem(
@@ -4161,22 +5250,38 @@ public final class AdaptiveConversationIntelligence {
                     List.of(msg)
             ));
             recommendedAction = TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT;
-            directive = "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT: Khách phản hồi cực ngắn ('" + msg + "') để ghi nhận/tạm dừng nhịp — KHÔNG mặc định khách thoát hẳn (CUSTOMER_EXIT). Trả lời đúng 1 bong bóng ngắn ấm áp (1-2 câu, ví dụ: 'Dạ vâng ạ, mình cứ tham khảo thoải mái nhé. Khi nào cần hỗ trợ thêm em vẫn ở đây ạ.'), 0 câu hỏi '?', 0 chào tạm biệt đóng cửa, 0 nhắc lại gói/giá.";
+            directive = "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT: Khách phản hồi ngắn ('" + msg + "') để ghi nhận/tạm dừng nhịp — giữ nguyên giọng ấm áp tự nhiên, 1 bong bóng gọn, 0 câu hỏi '?', 0 chào tạm biệt đóng cửa, 0 nhắc lại gói/giá.";
+        } else if (isCustomerDeferral && (bookingState == null || bookingState.status() == ConversationState.BookingStatus.NONE)) {
+            communicationSignals.add("CUSTOMER_DEFERRAL_RESPECT_PAUSE");
+            inferences.add(new LightweightInferenceItem(
+                    "CUSTOMER_DEFERRING_DECISION_NEEDS_SPACE_WITHOUT_PRESSURE",
+                    0.80,
+                    List.of(msg)
+            ));
+            recommendedAction = TurnAction.CUSTOMER_DEFERRAL;
+            directive = "CUSTOMER_DEFERRAL: Khách xin tạm hoãn để cân nhắc/tham khảo thêm ('" + msg + "') — tôn trọng nhịp của khách bằng 1 bong bóng ấm áp, 0 câu hỏi '?', 0 ép chốt hay chào thêm gói.";
         } else if (hasBookingCue) {
             buyingSignals.add("BOOKING_OR_SCHEDULE_DISCUSSION");
             recommendedAction = TurnAction.BOOKING_DISCUSSION;
-            directive = "BOOKING_DISCUSSION: Hỗ trợ thông tin khung giờ/cơ sở hoặc giữ lịch chờ xác nhận (AWAITING_AVAILABILITY_CHECK); không tự tuyên bố đã chốt lịch thành công.";
+            directive = "BOOKING_DISCUSSION: Hỗ trợ thông tin khung giờ/cơ sở hoặc giữ lịch tạm chờ kiểm tra lịch trống thực tế; tuyệt đối không tự tuyên bố đã chốt lịch thành công và không xuất mã enum nội bộ.";
         } else if (isExternalComparison) {
             concerns.add("EXTERNAL_PRICE_COMPARISON");
-            frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
+            if (isGenuinePriceObjection) {
+                concerns.add("PRICE_CONCERN_EXPRESSED");
+                frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
+            }
             inferences.add(new LightweightInferenceItem(
                     "CUSTOMER_COMPARING_WITH_EXTERNAL_SERVICE_NEEDS_GROUNDED_INTRINSIC_DIFFERENTIATION",
                     0.75,
                     List.of(msg)
             ));
             recommendedAction = TurnAction.VALUE_EXPLANATION;
-            directive = "VALUE_EXPLANATION (EXTERNAL_COMPARISON): Tôn trọng mức giá tham chiếu khách nêu; chỉ giải thích giá trị nội tại đã xác minh của cơ sở mình (thời lượng, quy trình kỹ thuật cốt lõi). CẤM TUYỆT ĐỐI suy diễn, phán xét hoặc hạ thấp dịch vụ bên ngoài ('bên ngoài chỉ gội nhanh', 'mỹ phẩm công nghiệp', 'ồn ào'). Không lặp lại các tiện ích phụ đã nêu ở các lượt trước; không ép mua.";
-        } else if (isPriceObjection) {
+            directive = "VALUE_EXPLANATION (COMPETITOR_COMPARISON - 4 BƯỚC EMOTIONAL VALUE REFRAMING): "
+                    + "(1) Công nhận tự nhiên mức giá tham chiếu bên ngoài khách nêu là hợp lý cho nhu cầu gội nhanh thông thường (CẤM chê bai hay hạ thấp dịch vụ bên ngoài); "
+                    + "(2) Làm rõ điềm tĩnh sự khác biệt nội tại đã xác minh của cơ sở trong <VERIFIED_BUSINESS_CATALOG> về thời lượng và phạm vi quy trình kỹ thuật cốt lõi; "
+                    + "(3) Kết nối trực tiếp vào triệu chứng/tình trạng khách đã chia sẻ (như đau đầu, mỏi cổ vai gáy, khó ngủ) để khách cảm nhận vì sao buổi chăm sóc kỹ giúp thả lỏng vùng căng mỏi hiệu quả hơn; "
+                    + "(4) Gợi ý nhẹ nhàng gói cơ bản dễ tiếp cận nhất trong Catalog và để quyền lựa chọn thoải mái cho khách, không ép mua.";
+        } else if (isGenuinePriceObjection) {
             concerns.add("PRICE_CONCERN_EXPRESSED");
             frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
             if (priorPriceObjections >= 1) {
@@ -4187,7 +5292,7 @@ public final class AdaptiveConversationIntelligence {
                         List.of(msg)
                 ));
                 recommendedAction = TurnAction.RESPECTFUL_DEESCALATION;
-                directive = "RESPECTFUL_DEESCALATION (LƯỢT PHẢN ĐỐI GIÁ LIÊN TIẾP THỨ " + totalPriceObjections + "): Hạ nhiệt tôn trọng cảm nhận ngân sách của khách, tuyệt đối KHÔNG ép chốt, KHÔNG chào mua gói nhiều buổi/combo giảm giá (cấm nhắc mua 5 buổi giảm 10%), KHÔNG lặp lại rèm che/ăn nhẹ đã nói, và kết thúc mở nhẹ nhàng KHÔNG đặt câu hỏi ('?' = 0).";
+                directive = "RESPECTFUL_DEESCALATION (LƯỢT PHẢN ĐỐI GIÁ LIÊN TIẾP THỨ " + totalPriceObjections + "): Hạ nhiệt tôn trọng cảm nhận ngân sách của khách, tuyệt đối KHÔNG ép chốt, KHÔNG chào mua gói nhiều buổi/combo giảm giá, KHÔNG lặp lại tiện ích phụ đã nói, và kết thúc mở nhẹ nhàng KHÔNG đặt câu hỏi ('?' = 0).";
             } else {
                 inferences.add(new LightweightInferenceItem(
                         "CUSTOMER_MAY_HAVE_PRICE_CONCERN_SINGLE_TURN_DO_NOT_OVERGENERALIZE",
@@ -4195,14 +5300,22 @@ public final class AdaptiveConversationIntelligence {
                         List.of(msg)
                 ));
                 recommendedAction = TurnAction.ALTERNATIVE_OFFER;
-                directive = "ALTERNATIVE_OFFER / PRICE_OBJECTION_HANDLING (LƯỢT PHẢN ĐỐI GIÁ ĐẦU TIÊN): Đồng cảm ngắn gọn, làm rõ giá trị cốt lõi của gói và chủ động lùi xuống gợi ý phương án tiết kiệm/nhẹ nhàng nhất phù hợp nhu cầu trong Catalog (không upsell lên gói đắt hơn, không chào combo nhiều buổi).";
+                directive = "ALTERNATIVE_OFFER / PRICE_OBJECTION_HANDLING (LƯỢT PHẢN ĐỐI GIÁ ĐẦU TIÊN - FEEL FIRST, SELL SECOND): "
+                        + "(1) Đồng cảm tự nhiên với cảm nhận chi phí của khách (VALUE_PERCEPTION_GAP); "
+                        + "(2) Làm rõ giá trị thực tế gắn với triệu chứng khách đang gặp và gợi ý nhẹ nhàng phương án cơ bản dễ tiếp cận nhất trong <VERIFIED_BUSINESS_CATALOG> (0 upsell, 0 combo nhiều buổi, next_action = SOFT_FEELING_CHECK).";
             }
         } else if (priceSubMode != PriceIntentSubMode.NONE) {
             switch (priceSubMode) {
                 case GENERAL_PRICE_INQUIRY -> {
-                    unknowns.add("specific_service_or_symptom_need");
-                    recommendedAction = !hasCustomerHistory ? TurnAction.GREETING_AND_DISCOVERY : TurnAction.SPECIFIC_PRICE_ANSWER;
-                    directive = "PRICE_INTENT_A (GENERAL_PRICE_INQUIRY): Trả lời ngắn gọn bằng khoảng giá tổng quan từ Catalog (từ gói cơ bản đến gói chuyên sâu), sau đó hỏi đúng 1 câu khám phá nhu cầu ngắn gọn. Cấm xả bảng giá dài nhiều gói kèm thời lượng chi tiết.";
+                    if (priorNeedsEstablished) {
+                        buyingSignals.add("CONTEXTUAL_PRICE_INQUIRY_AFTER_NEED_SHARED");
+                        recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+                        directive = "PRICE_INTENT_B_CONTEXTUAL (HỎI GIÁ SAU KHI ĐÃ CHIA SẺ TRIỆU CHỨNG): Khách hỏi giá sau khi đã chia sẻ tình trạng mỏi — báo giá trực tiếp, minh bạch 1–2 gói phù hợp nhất với triệu chứng của khách từ <VERIFIED_BUSINESS_CATALOG> (kèm thời lượng và điểm khác biệt cốt lõi), kết thúc bằng 1 câu hỏi nhẹ nhàng xem khách nghiêng về gói nào, KHÔNG hỏi lại câu khám phá triệu chứng từ đầu.";
+                    } else {
+                        unknowns.add("specific_service_or_symptom_need");
+                        recommendedAction = !hasCustomerHistory ? TurnAction.GREETING_AND_DISCOVERY : TurnAction.SPECIFIC_PRICE_ANSWER;
+                        directive = "PRICE_INTENT_A (GENERAL_PRICE_INQUIRY): Trả lời ngắn gọn bằng khoảng giá tổng quan từ Catalog (từ gói cơ bản đến gói chuyên sâu), sau đó hỏi đúng 1 câu khám phá nhu cầu ngắn gọn. Cấm xả bảng giá dài nhiều gói kèm thời lượng chi tiết.";
+                    }
                 }
                 case SPECIFIC_PRICE_INQUIRY -> {
                     buyingSignals.add("SPECIFIC_SERVICE_PRICE_INTEREST");
@@ -4235,20 +5348,32 @@ public final class AdaptiveConversationIntelligence {
             }
             unknowns.add("preferred_session_duration_or_experience_depth");
             recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
-            directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH XÁC NHẬN PHẠM VI '" + msg + "'): Đề xuất trực tiếp gói phù hợp từ <VERIFIED_BUSINESS_CATALOG> (nêu tự nhiên giá + thời lượng + hạng mục chính, dùng từ 'chăm sóc chuyên sâu' thay vì 'massage điều trị', tuyệt đối cấm cụm 'mình thấy hợp với tình trạng hiện tại'). Câu hỏi cuối ở Bubble 2 BẮT BUỘC hỏi về thời lượng/trải nghiệm gói (ví dụ muốn trải nghiệm gói cơ bản vừa đủ hay gói chuyên sâu dài hơn), CẤM quay lại hỏi thời điểm/tần suất xuất hiện triệu chứng.";
-        } else if (!priorNeedsEstablished
-                && CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(msg, List.of())) {
+            directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH XÁC NHẬN PHẠM VI '" + msg + "'): Đề xuất trực tiếp gói phù hợp từ <VERIFIED_BUSINESS_CATALOG> (nêu tự nhiên giá + thời lượng + hạng mục chính, dùng từ 'chăm sóc chuyên sâu' thay vì 'massage điều trị'). Câu hỏi cuối ở Bubble 2 hỏi về thời lượng/trải nghiệm gói, không quay lại hỏi thời điểm/tần suất xuất hiện triệu chứng.";
+        } else if (!priorNeedsEstablished && isConfirmedNeedOrSymptomUtteranceForLightweightState(msg)) {
             needs.add(msg);
             emotions.add("PHYSICAL_FATIGUE_OR_DISCOMFORT");
-            unknowns.add("preferred_focus_area_or_session_intensity");
-            recommendedAction = TurnAction.NEED_DISCOVERY;
-            directive = "NEED_DISCOVERY (CHIA SẺ TRIỆU CHỨNG LẦN ĐẦU CHƯA HỎI GÓI/GIÁ): Đồng cảm tự nhiên (1 câu gọn) và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn phù hợp, sau đó hỏi xem khách muốn ưu tiên vùng nào hoặc muốn trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn. CẤM đưa ngay tên/giá 2 gói cụ thể kèm rèm che/ăn nhẹ khi khách chưa hỏi gói/giá; CẤM dùng cụm 'massage điều trị' hay cam kết cải thiện mất ngủ/nhức đầu.";
+            if (hasPriorPriceAsk
+                    && !CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(msg, history)
+                    && !isIsolatedNeurologicalSymptomOnly(msg)) {
+                recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
+                directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH ĐÃ HỎI GIÁ & VỪA CHIA SẺ TRIỆU CHỨNG '" + msg + "'): "
+                        + "(1) Đồng cảm tinh tế Cấp độ 3 với đầy đủ triệu chứng khách nêu (kể cả khi khách gõ tắt/sai chính tả như 'vau gáy' -> 'vai gáy'); "
+                        + "(2) Giải thích ngắn gọn vì sao nhóm chăm sóc dưỡng sinh/cổ vai gáy phù hợp với tình trạng này; "
+                        + "(3) Gợi ý 1–2 gói phù hợp nhất từ <VERIFIED_BUSINESS_CATALOG> kèm thời lượng, điểm khác biệt rõ ràng và mức giá minh bạch để trả lời trọn vẹn câu hỏi giá trước đó; "
+                        + "(4) Hỏi 1 câu nhẹ nhàng xem khách nghiêng về buổi thư giãn vừa đủ hay chăm sóc chuyên sâu hơn.";
+            } else {
+                unknowns.add("preferred_focus_area_or_session_intensity");
+                recommendedAction = TurnAction.NEED_DISCOVERY;
+                directive = "NEED_DISCOVERY (CHIA SẺ TRIỆU CHỨNG LẦN ĐẦU CHƯA HỎI GÓI/GIÁ): Đồng cảm tinh tế Cấp độ 3 với đầy đủ triệu chứng khách chia sẻ (1-2 câu tự nhiên, không sáo rỗng) và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn phù hợp, sau đó hỏi xem khách muốn ưu tiên vùng nào hoặc muốn trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn (chưa xả bảng giá chi tiết khi khách chưa hỏi giá).";
+            }
         } else {
-            if (!msg.isBlank() && !needs.contains(msg)) {
+            if (!msg.isBlank() && isConfirmedNeedOrSymptomUtteranceForLightweightState(msg) && !needs.contains(msg)) {
                 needs.add(msg);
             }
             recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
-            directive = "SERVICE_RECOMMENDATION: Tư vấn gói dịch vụ sát nhu cầu đã xác nhận từ <VERIFIED_BUSINESS_CATALOG>, tách ý tự nhiên 1-2 bong bóng (~20-40 từ/bong bóng), kết thúc bằng tối đa 1 câu hỏi hướng về trải nghiệm/thời lượng.";
+            directive = isPrivacyConcern
+                    ? "SERVICE_RECOMMENDATION (PRIVACY_CONCERN): Giải đáp trung thực điều kiện không gian/rèm che riêng từng giường của gói đang tư vấn theo đúng <VERIFIED_BUSINESS_CATALOG>, giữ đúng service_group và hỏi nhẹ nhàng xem khách đã yên tâm hơn chưa."
+                    : "SERVICE_RECOMMENDATION: Tư vấn gói dịch vụ sát nhu cầu đã xác nhận từ <VERIFIED_BUSINESS_CATALOG>, tách ý tự nhiên 1-2 bong bóng (~20-40 từ/bong bóng), kết thúc bằng tối đa 1 câu hỏi hướng về trải nghiệm/thời lượng.";
         }
 
         return new LightweightCustomerUnderstandingPlan(

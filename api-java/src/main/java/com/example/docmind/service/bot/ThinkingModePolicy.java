@@ -610,7 +610,12 @@ public final class ThinkingModePolicy {
             int reflectionTokens,
             long retrievalLatencyMs,
             int retryCount,
-            String retryTriggerReason
+            String retryTriggerReason,
+            int llmCallCount,
+            long turnDeadlineMs,
+            List<String> rawLlmBubbles,
+            List<String> finalBubbles,
+            double sanitizerMutationRate
     ) {
         public AciTurnTelemetry {
             cognitiveMode = cognitiveMode != null
@@ -621,6 +626,68 @@ public final class ThinkingModePolicy {
             retryTriggerReason = (retryTriggerReason == null || retryTriggerReason.isBlank())
                     ? (retryCount > 0 ? "UNSPECIFIED_RETRY" : "NONE")
                     : retryTriggerReason.strip();
+            llmCallCount = Math.max(0, llmCallCount);
+            turnDeadlineMs = turnDeadlineMs > 0L ? turnDeadlineMs : 65_000L;
+            rawLlmBubbles = rawLlmBubbles != null ? List.copyOf(rawLlmBubbles) : List.of();
+            finalBubbles = finalBubbles != null ? List.copyOf(finalBubbles) : List.of();
+            sanitizerMutationRate = Double.isNaN(sanitizerMutationRate)
+                    ? 0.0
+                    : Math.max(0.0, Math.min(1.0, sanitizerMutationRate));
+        }
+
+        public AciTurnTelemetry(
+                AdaptiveConversationIntelligence.CognitiveMode cognitiveMode,
+                ThinkingMode thinkingMode,
+                int promptChars,
+                int legacyEquivalentPromptChars,
+                int promptTokens,
+                int completionTokens,
+                int reasoningTokens,
+                long llmLatencyMs,
+                int quoteBubbleIndex,
+                long actualWaitMs,
+                long totalTurnLatencyMs,
+                boolean repairApplied,
+                List<String> refereeViolations,
+                String priorityPrimary,
+                String strategyChosen,
+                String strategyAdaptation,
+                String handoffStatus,
+                String bookingStatus,
+                int reflectionTokens,
+                long retrievalLatencyMs,
+                int retryCount,
+                String retryTriggerReason
+        ) {
+            this(
+                    cognitiveMode,
+                    thinkingMode,
+                    promptChars,
+                    legacyEquivalentPromptChars,
+                    promptTokens,
+                    completionTokens,
+                    reasoningTokens,
+                    llmLatencyMs,
+                    quoteBubbleIndex,
+                    actualWaitMs,
+                    totalTurnLatencyMs,
+                    repairApplied,
+                    refereeViolations,
+                    priorityPrimary,
+                    strategyChosen,
+                    strategyAdaptation,
+                    handoffStatus,
+                    bookingStatus,
+                    reflectionTokens,
+                    retrievalLatencyMs,
+                    retryCount,
+                    retryTriggerReason,
+                    1 + Math.max(0, retryCount),
+                    65_000L,
+                    List.of(),
+                    List.of(),
+                    0.0
+            );
         }
 
         public AciTurnTelemetry(

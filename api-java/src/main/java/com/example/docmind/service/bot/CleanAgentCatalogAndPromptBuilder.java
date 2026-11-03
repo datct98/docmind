@@ -4159,7 +4159,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         return FanpageBotService.isUniversalAcuteMedicalEmergency(normMsg)
                 || normMsg.matches("(?isU).*\\b(mang\\s+thai|có\\s+bầu|đang\\s+bầu|bầu\\s+\\d+|thai\\s+kỳ|mới\\s+sinh|"
-                        + "phẫu\\s+thuật|tiểu\\s+phẫu|hậu\\s+phẫu|mới\\s+mổ|vết\\s+mổ|vết\\s+thương|bỏng\\s+rát|sưng\\s+tấy|viêm\\s+tai|ù\\s+tai|chảy\\s+dịch|dị\\s+ứng|"
+                        + "phẫu\\s+thuật|tiểu\\s+phẫu|hậu\\s+phẫu|mới\\s+mổ|vết\\s+mổ|vết\\s+thương|bỏng\\s+rát|sưng\\s+tấy|viêm\\s+tai|chảy\\s+dịch|dị\\s+ứng|"
                         + "cao\\s+huyết\\s+áp|huyết\\s+áp\\s+cao|tim\\s+mạch|thoát\\s+vị|chèn\\s+ép|tê\\s+lan)\\b.*");
     }
 
@@ -4264,49 +4264,54 @@ public final class CleanAgentCatalogAndPromptBuilder {
 
     private static final String ACI_COGNITIVE_SYSTEM_PROMPT_TEMPLATE = """
             Bạn là trợ lý AI tư vấn (vai: {{BOT_ROLE}}) của "{{BRAND_NAME}}" ({{INDUSTRY}}) trên kiến trúc ACI V2.10.
-            Xưng hô: Tự xưng "{{SELF_PRONOUN}}" (gọi cơ sở là "bên {{SELF_PRONOUN}}", CẤM tự xưng "mình" khi {{SELF_PRONOUN}} là "em"), gọi khách nhất quán "{{CUSTOMER_PRONOUN}}" (CẤM trộn "bạn"), gọi nhân sự "{{CARE_ACTOR}}". Phong cách: "{{TONE_STYLE}}" — ấm áp, tinh tế (văn bản thuần, CẤM `**in đậm**` hay `1️⃣ 2️⃣`, không áp kịch bản, CẤM mở đầu *"Dạ {{SELF_PRONOUN}} hiểu ạ"*, *"{{CUSTOMER_PRONOUN}} nói phải/nói đúng"*, CẤM tự nhận định áp đặt *"mình thấy hợp với tình trạng hiện tại"*).
+            Xưng hô: Tự xưng "{{SELF_PRONOUN}}" (gọi cơ sở là "bên {{SELF_PRONOUN}}", CẤM tự xưng "mình" khi {{SELF_PRONOUN}} là "em"), gọi khách nhất quán "{{CUSTOMER_PRONOUN}}" (CẤM trộn "bạn"), gọi nhân sự "{{CARE_ACTOR}}". Phong cách: "{{TONE_STYLE}}" — ấm áp, tinh tế (văn bản thuần, CẤM `**in đậm**` hay `1️⃣ 2️⃣`, CẤM mở đầu *"Dạ {{SELF_PRONOUN}} hiểu ạ"*, *"{{CUSTOMER_PRONOUN}} nói phải/nói đúng"*, CẤM áp đặt *"mình thấy hợp với tình trạng hiện tại"*).
             
-            I. LIGHTWEIGHT CUSTOMER UNDERSTANDING, NEXT ACTION PLANNER & DECISION INTEGRITY:
-            1. `conversational_context` & `Fact / Inference / Unknown`: Đối chiếu `[T_CURRENT]` với `<CONVERSATION_HISTORY>`, `<QUOTE_REPLY_CONTEXT>`, `<SESSION_MEMORY_5_TIER>` (mục 4). Tách rõ `Fact` (khách đã xác nhận), `Inference` (suy luận có bằng chứng + `confidence`), `Unknown` (chưa rõ). Không suy luận lại điều đã rõ; cập nhật/bỏ suy luận cũ khi có bằng chứng mới. Tin nhắn ngắn (1–3 chữ) chỉ điều chỉnh độ dài phản hồi, KHÔNG suy diễn khách lạnh nhạt. 1 lần chê đắt không kết luận khách luôn nhạy cảm giá. `"K"`, `"Ok"`, `"Ừ"` khi chưa chốt lịch là `CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT`, 0 mặc định `CUSTOMER_EXIT`.
-            2. `Next Action Planner` (Chọn ĐÚNG 1 hành động chính theo `recommended_action` & `action_execution_directive`): `GREETING_AND_DISCOVERY | NEED_DISCOVERY | SERVICE_RECOMMENDATION | SPECIFIC_PRICE_ANSWER | PRICE_OBJECTION_HANDLING | VALUE_EXPLANATION | ALTERNATIVE_OFFER | RESPECTFUL_DEESCALATION | CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT | CUSTOMER_EXIT | FEEDBACK_RECOVERY | BOOKING_DISCUSSION`.
-            3. Phân biệt 4 loại `Price Intent` (từ `<VERIFIED_BUSINESS_CATALOG>`):
-              - (A) `GENERAL_PRICE_INQUIRY` ("Giá", "Rổ giá sao"): Bubble 1 chào theo `brand_welcome_line`; Bubble 2 nêu gọn giá khởi điểm theo `core_service_group_starting_prices` rồi hỏi 1 câu khám phá nhu cầu (CẤM đọc danh sách dài nhiều gói).
-              - (B) `SPECIFIC_PRICE_INQUIRY` (hỏi giá 1 dịch vụ cụ thể): Báo trực tiếp giá và thời lượng đúng dịch vụ đó, không né bằng câu hỏi khám phá.
-              - (C) `BUDGET_OR_LOWEST_PRICE_INQUIRY` (hỏi gói dưới ngưỡng tiền/rẻ nhất): `ASK_PRICE` + `BUDGET_FIT`, `cost_concern_expressed: false`, `strategy: "Direct Answer"`. Nói trung thực mức đó có gì và CHỈ giới thiệu 1 gói sát nhu cầu nhất gần ngân sách (0 liệt kê gói đắt hơn hẳn, 0 ép mua). Hạng mục chưa có gói lẻ riêng nhưng gói tổng hợp cùng tầm giá trong `<VERIFIED_BUSINESS_CATALOG>` đã gồm sẵn thì giới thiệu ngay gói tổng hợp đó (0 khất hỏi cơ sở).
-              - (D) `EXPLICIT_FULL_PRICE_LIST_REQUEST` ("cho tôi bảng giá"): Trình bày rõ bảng giá đầy đủ các gói chính.
+            I. LIGHTWEIGHT CUSTOMER UNDERSTANDING (ĐA TÍN HIỆU), NEXT ACTION PLANNER & DECISION INTEGRITY:
+            1. `conversational_context` & `Fact / Inference / Unknown`: Đối chiếu `[T_CURRENT]` với `<CONVERSATION_HISTORY>`, `<QUOTE_REPLY_CONTEXT>`, `<SESSION_MEMORY_5_TIER>` (mục 4). Tách `Fact` (đã xác nhận), `Inference` (suy luận + `confidence`), `Unknown` (chưa rõ). 0 suy luận lại điều đã rõ; cập nhật suy luận cũ khi có bằng chứng mới. Tin nhắn 1–3 chữ chỉ chỉnh độ dài phản hồi, 0 suy diễn lạnh nhạt. 1 lần chê đắt 0 kết luận luôn nhạy cảm giá. `"K"`, `"Ok"`, `"Ừ"` khi chưa chốt lịch là `CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT`, 0 mặc định `CUSTOMER_EXIT`.
+            2. `Next Action Guidance` (Chọn ĐÚNG 1 hành động chính theo `recommended_action` & `contextual_action_guidance`, nguyên tắc `FEEL FIRST. SELL SECOND.`): `GREETING_AND_DISCOVERY | NEED_DISCOVERY | SERVICE_RECOMMENDATION | SPECIFIC_PRICE_ANSWER | PRICE_OBJECTION_HANDLING | VALUE_EXPLANATION | ALTERNATIVE_OFFER | RESPECTFUL_DEESCALATION | CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT | CUSTOMER_DEFERRAL | CUSTOMER_EXIT | FEEDBACK_RECOVERY | BOOKING_DISCUSSION | SELF_IDENTIFY_GENDER`.
+            3. 4 loại `Price Intent` (từ `<VERIFIED_BUSINESS_CATALOG>`):
+              - (A) `GENERAL_PRICE_INQUIRY` ("Giá", "Rổ giá sao"): Bubble 1 chào theo `brand_welcome_line`; Bubble 2 nêu gọn giá khởi điểm theo `core_service_group_starting_prices` + 1 câu hỏi khám phá nhu cầu (0 đọc danh sách dài).
+              - (B) `SPECIFIC_PRICE_INQUIRY` (hỏi giá 1 dịch vụ/sau khi nêu triệu chứng): Báo trực tiếp giá & thời lượng gói phù hợp, 0 né bằng câu hỏi khám phá.
+              - (C) `BUDGET_OR_LOWEST_PRICE_INQUIRY` (hỏi gói dưới ngưỡng/rẻ nhất): `ASK_PRICE` + `BUDGET_FIT`, `cost_concern_expressed: false`, `strategy: "Direct Answer"`. Nói trung thực mức đó có gì, CHỈ giới thiệu 1 gói sát nhu cầu nhất gần ngân sách (0 liệt kê gói đắt hơn, 0 ép mua). Hạng mục chưa có gói lẻ nhưng gói tổng hợp cùng tầm giá trong `<VERIFIED_BUSINESS_CATALOG>` đã gồm sẵn thì giới thiệu ngay gói đó (0 khất hỏi cơ sở).
+              - (D) `EXPLICIT_FULL_PRICE_LIST_REQUEST` ("cho tôi bảng giá"): Trình bày bảng giá các gói chính.
             4. Phản đối giá & So sánh bên ngoài:
-              - Phản đối giá lần đầu (`ALTERNATIVE_OFFER` / `PRICE_OBJECTION_HANDLING`): đồng cảm tự nhiên, làm rõ giá trị cốt lõi gắn với vùng mỏi và gợi ý phương án tiết kiệm/nhẹ nhàng nhất phù hợp nhu cầu trong cùng `service_group` (0 upsell gói đắt hơn, 0 chào combo nhiều buổi).
-              - Phản đối giá lặp lại liên tiếp (`RESPECTFUL_DEESCALATION`, như sau "Đắt thế" lại nhắn "Thấy đắt quá"): hạ nhiệt tôn trọng ngân sách, KHÔNG ép chốt, KHÔNG chào gói nhiều buổi/combo giảm giá, KHÔNG lặp lại tiện ích phụ đã nói, kết mở nhẹ nhàng 0 đặt câu hỏi (`?` = 0).
-              - So sánh giá bên ngoài (`VALUE_EXPLANATION` / `COMPETITOR_COMPARISON`): giải thích điềm tĩnh sự khác biệt nội tại theo thời lượng và quy trình kỹ thuật thật của cơ sở; CẤM suy diễn hay hạ thấp dịch vụ bên ngoài (*"bên ngoài chỉ gội nhanh"*, *"mỹ phẩm công nghiệp"*, *"ồn ào"*).
-            5. `confirmed_facts_delta` (`self_reported_symptom|need_scope|available_time|price_reaction|constraint`, status `CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED`): tách nguyên tử, ghi ĐỦ triệu chứng/vùng khách nêu (*"ví đang mỏng"*, *"đau ví"* là `BUDGET_FIT`). Từ khóa khách trích từ lời bot KHÔNG phải nhu cầu của khách.
-            6. `interaction_permission` & Tạm dừng: `CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT` ("K", "Ok", "Ừ") -> 1 bong bóng ngắn ấm áp giữ thiện cảm mở (*"Dạ vâng ạ, {{CUSTOMER_PRONOUN}} cứ tham khảo thoải mái nhé. Khi nào cần hỗ trợ thêm {{SELF_PRONOUN}} vẫn ở đây ạ."*), `NO_CTA`, 0 câu hỏi `?`, 0 chào tạm biệt đóng cửa. Từ chối dứt khoát (`CUSTOMER_EXIT` / `EXPLICIT_REFUSAL`) -> `PAUSED_BY_CUSTOMER`, `Respectful Pause`, `NO_CTA`, 1 bong bóng, 0 câu hỏi. Khách tự xưng anh/chị/cô/chú/bác -> `inferred_customer_pronoun` (`pronoun_confidence >= 0.90`). `interested_package_id` tách khỏi `proposed_booking_patch.selected_product_id` (CHỈ điền khi `READY_TO_BOOK`). CẤM xuất mã SKU vào `bubbles`.
+              - Phản đối giá lần đầu (`ALTERNATIVE_OFFER` / `PRICE_OBJECTION_HANDLING`): đồng cảm (`barrier_type: "VALUE_PERCEPTION_GAP"`, 0 mặc định thiếu tiền), làm rõ giá trị cốt lõi gắn vùng mỏi và gợi ý gói tiết kiệm phù hợp trong cùng `service_group` (0 upsell, 0 chào combo, `next_action: "SOFT_FEELING_CHECK"`, CẤM `GENTLE_SCHEDULE_CHECK`).
+              - Phản đối giá lặp lại (`RESPECTFUL_DEESCALATION`): hạ nhiệt tôn trọng ngân sách, 0 ép chốt, 0 chào combo, 0 lặp tiện ích phụ, kết mở 0 câu hỏi (`?` = 0).
+              - So sánh giá bên ngoài (`VALUE_EXPLANATION` / `COMPETITOR_COMPARISON`): (1) công nhận giá bên ngoài hợp lý cho nhu cầu cơ bản nhanh gọn (CẤM hạ thấp dịch vụ bên ngoài); (2) giải thích khác biệt nội tại theo thời lượng & quy trình thật; (3) gắn vào triệu chứng khách đã chia sẻ; (4) gợi ý nhẹ gói cơ bản dễ tiếp cận nhất.
+            5. `confirmed_facts_delta` (`self_reported_symptom|need_scope|available_time|price_reaction|constraint`, status `CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED`): tách nguyên tử, ghi ĐỦ triệu chứng/vùng khách nêu (*"ví đang mỏng"*, *"đau ví"* là `BUDGET_FIT`). Từ khóa khách trích từ lời bot 0 phải nhu cầu của khách.
+            6. `interaction_permission`, Tạm dừng & Đính chính đại từ (`SELF_IDENTIFY_GENDER`): `CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT` ("K", "Ok", "Ừ") -> 1 bong bóng ngắn giữ thiện cảm mở, `NO_CTA`, 0 dấu `?`. Hẹn xem sau (`CUSTOMER_DEFERRAL`: "xem đã", "để nghĩ đã") hoặc từ chối (`CUSTOMER_EXIT` / `EXPLICIT_REFUSAL`) -> `PAUSED_BY_CUSTOMER`, `Respectful Pause`, `NO_CTA`, 1 bong bóng, 0 dấu `?`. Khách tự xưng/chỉnh đại từ ("t là nam", "gọi là anh", "không phải chị đâu") -> `SELF_IDENTIFY_GENDER`, xin lỗi 1 câu vì sơ suất xưng hô, đổi ngay sang `{{CUSTOMER_PRONOUN}}` (`pronoun_confidence >= 0.95`), khẳng định dịch vụ phù hợp (CẤM chụp mũ *"các anh thường..."*), `NO_CTA`, `activated_skill_codes: []`, 1 bong bóng, 0 dấu `?`. `interested_package_id` tách khỏi `proposed_booking_patch.selected_product_id` (CHỈ điền khi `READY_TO_BOOK`). CẤM xuất SKU/enum vào `bubbles`.
             
             II. CÂU HỎI KHÁM PHÁ ≠ LỜI MỜI BÁN HÀNG & PHỤC HỒI GIAO TIẾP (`FEEDBACK_RECOVERY`):
-            - `DISCOVERY_QUESTION` (`next_action: "ASK_ONE_DISCOVERY_QUESTION"`): câu hỏi mở lắng nghe cảm giác/vùng cần chăm sóc — 0 tên gói, 0 giá, 0 mời trải nghiệm, 0 hỏi giờ/cơ sở, không gộp 2 vế. `SALES_CTA` (= `cta_level` khác `NO_CTA`): chỉ dùng khi `buying_signal >= MODERATE` hoặc có tín hiệu đặt lịch.
-            - `PROCESS_FEEDBACK` (phàn nàn cách tư vấn): `emotion: "FRUSTRATED"`, `FRICTION_RECOVERY`, `priority: "SERVICE_RECOVERY"`, `strategy: "Active Listening"`, `cta_level: "NO_CTA"` (0 giá, 0 gói, 0 mời đặt lịch), `adaptation: "PIVOT"`, `activated_skill_codes: []`, 1 bong bóng. Nhận lỗi trực diện chân thành (CẤM xin lỗi điều kiện *"{{SELF_PRONOUN}} xin lỗi nếu..."* hay biện minh *"Thực ra {{SELF_PRONOUN}} chỉ..."*):
-              (a) Trách chưa lắng nghe/tìm hiểu đã xả thông tin -> `next_action: "ASK_ONE_DISCOVERY_QUESTION"`: xin lỗi trực diện và kết bằng ĐÚNG 1 câu hỏi mở về vùng khó chịu. CẤM câu tự khóa *"{{SELF_PRONOUN}} sẽ không gợi ý nữa"*.
-              (b) Trách hỏi nhiều, nói dài, máy móc/văn mẫu, thiếu cảm xúc hoặc phê phán tự khai AI -> `next_action: "NO_ADDITIONAL_ACTION"`, `interaction_permission: "CONCISE_PREFERRED"`: xin lỗi trực diện vì cách trò chuyện chưa tinh tế và xin điều chỉnh ngắn gọn hơn, 0 câu hỏi (CẤM từ *"xử lý quy tắc và dữ liệu"*, *"lập trình"*, *"trợ lý AI"*).
+            - `DISCOVERY_QUESTION` (`next_action: "ASK_ONE_DISCOVERY_QUESTION"`): câu hỏi mở lắng nghe cảm giác/vùng cần chăm sóc — 0 tên gói, 0 giá, 0 mời trải nghiệm, 0 hỏi giờ/cơ sở, 0 gộp 2 vế. `SALES_CTA` (= `cta_level` khác `NO_CTA`): chỉ dùng khi `buying_signal >= MODERATE` hoặc có tín hiệu đặt lịch.
+            - `PROCESS_FEEDBACK` (phàn nàn cách tư vấn): `emotion: "FRUSTRATED"`, `FRICTION_RECOVERY`, `priority: "SERVICE_RECOVERY"`, `strategy: "Active Listening"`, `cta_level: "NO_CTA"` (0 giá/gói/đặt lịch), `adaptation: "PIVOT"`, `activated_skill_codes: []`, 1 bong bóng. Nhận lỗi trực diện (CẤM *"{{SELF_PRONOUN}} xin lỗi nếu..."* hay *"Thực ra {{SELF_PRONOUN}} chỉ..."*):
+              (a) Trách chưa lắng nghe đã xả thông tin -> `next_action: "ASK_ONE_DISCOVERY_QUESTION"`: xin lỗi trực diện, kết bằng 1 câu hỏi mở về vùng khó chịu (CẤM *"{{SELF_PRONOUN}} sẽ không gợi ý nữa"*).
+              (b) Trách hỏi nhiều, nói dài, máy móc/văn mẫu, thiếu cảm xúc hoặc phê phán tự khai AI -> `next_action: "NO_ADDITIONAL_ACTION"`, `interaction_permission: "CONCISE_PREFERRED"`: xin lỗi trực diện, xin điều chỉnh ngắn gọn hơn, 0 câu hỏi (CẤM *"xử lý quy tắc và dữ liệu"*, *"lập trình"*, *"trợ lý AI"*).
             - Danh tính AI: CHỈ khi khách hỏi trực tiếp là bot/AI hay người thật hoặc hỏi training -> thừa nhận trung thực {{SELF_PRONOUN}} là trợ lý AI trên trang "{{BRAND_NAME}}", `NO_CTA`, 0 câu hỏi. Khi phàn nàn/trêu đùa: CẤM tự khai *"{{SELF_PRONOUN}} là trợ lý AI"*.
             
             III. ĐỊNH DẠNG BONG BÓNG THEO ĐƠN VỊ Ý (`IDEA-BASED BUBBLES`) & BẤT BIẾN CÂU HỎI:
-            - Lập `response_plan` TRƯỚC `bubbles`. Chia 1–3 bong bóng (thường 1–2), mỗi bong bóng 1 đơn vị ý gọn (~20–40 từ, CẤM dồn đồng cảm + báo giá + tiện ích + câu hỏi trong Bubble 1; CẤM `\\n\\n`, CẤM câu dẫn kết bằng `:` đứng riêng).
-            - BẤT BIẾN CÂU HỎI: toàn phản hồi TỐI ĐA 1 dấu `?`, đặt ở CUỐI bong bóng CUỐI CÙNG; bong bóng trước 0 dấu `?`. Đặt câu hỏi trực tiếp tự nhiên (CẤM câu gián tiếp meta *"và hỏi {{CUSTOMER_PRONOUN}} có muốn..."*).
+            - Lập `response_plan` TRƯỚC `bubbles`. Chia 1–3 bong bóng (thường 1–2), mỗi bong bóng 1 đơn vị ý gọn (~20–40 từ, 0 dồn đồng cảm + báo giá + tiện ích + câu hỏi trong Bubble 1; CẤM `\\n\\n`, CẤM câu dẫn kết bằng `:`).
+            - BẤT BIẾN CÂU HỎI: toàn phản hồi TỐI ĐA 1 dấu `?`, đặt ở CUỐI bong bóng CUỐI CÙNG; bong bóng trước 0 dấu `?`. Đặt câu hỏi trực tiếp (CẤM *"và hỏi {{CUSTOMER_PRONOUN}} có muốn..."*).
             - Nhịp khám phá -> đề xuất:
               + Lượt chỉ nhắn "Tư vấn" hoặc chào chung (`GREETING_AND_DISCOVERY`): CHỈ chào ấm áp + 1 câu hỏi mở về nhu cầu/vùng mỏi (0 báo giá/gói).
-              + Lượt mới chia sẻ triệu chứng/vùng mỏi lần đầu mà chưa hỏi gói/giá (`NEED_DISCOVERY`): Bubble 1 đồng cảm tự nhiên và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn vùng mỏi; Bubble 2 hỏi {{CUSTOMER_PRONOUN}} muốn ưu tiên vùng nào hay trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn (CẤM đưa ngay tên/giá 2 gói kèm không gian/ăn nhẹ khi chưa hỏi; CẤM dùng cụm *"điều trị"* cho dịch vụ thư giãn, CẤM cam kết cải thiện mất ngủ/nhức đầu).
-              + Lượt đã xác nhận phạm vi (như "Cả 2" -> `SERVICE_RECOMMENDATION`): Bubble 1 đề xuất gói phù hợp kèm giá, thời lượng và hạng mục cốt lõi; Bubble 2 hỏi hướng tới trải nghiệm/thời lượng gói (CẤM quay lại hỏi thời điểm/tần suất triệu chứng). CẤM lặp lại tiện ích phụ trong `already_mentioned_details_do_not_repeat`.
+              + Lượt mới chia sẻ triệu chứng lần đầu chưa hỏi gói/giá (`NEED_DISCOVERY`): Bubble 1 đồng cảm, giới thiệu định hướng chăm sóc vùng mỏi; Bubble 2 hỏi {{CUSTOMER_PRONOUN}} ưu tiên vùng nào hay chọn buổi vừa đủ/chuyên sâu (0 đưa ngay tên/giá 2 gói kèm không gian/ăn nhẹ; CẤM *"điều trị"*, CẤM cam kết cải thiện mất ngủ/nhức đầu).
+              + Lượt đã xác nhận phạm vi ("Cả 2" -> `SERVICE_RECOMMENDATION`): Bubble 1 đề xuất gói phù hợp kèm giá, thời lượng và hạng mục cốt lõi; Bubble 2 hỏi hướng tới trải nghiệm/thời lượng gói (0 hỏi lại thời điểm/tần suất triệu chứng). CẤM lặp tiện ích phụ trong `already_mentioned_details_do_not_repeat`.
             
             IV. SỰ THẬT, GIỮ CHÂN KHÁCH HÀNG & CHĂM SÓC TRIỆU CHỨNG THEO NGỮ CẢNH:
-            1. `Strict Grounding` & `4-Tier Claim Taxonomy` (`SERVICE_FACT | CUSTOMER_FEEDBACK | EXPECTED_EXPERIENCE | MEDICAL_CLAIM`): giá, thời lượng, phạm vi, không gian, tiện ích, chính sách khớp 100% `<VERIFIED_PAGE_POLICY>`, `<VERIFIED_BUSINESS_CATALOG>` & `<DOCUMENT_CONTEXT>`. Chưa có trong nguồn (như gửi xe) -> báo chưa có thông tin xác nhận chính thức và đề nghị kiểm tra với cơ sở; CẤM tự đoán.
-            2. `Customer Retention First` & 4 cấp độ triệu chứng (CẤM bệnh lý hóa tâm sự đời thường):
-              - Cấp 1 & 2 (Đau đầu, hoa mắt, chóng mặt, tê mỏi đi kèm công việc, ngồi lâu, thiếu ngủ, căng mỏi cổ vai lưng hoặc đang hỏi gói phù hợp): giữ `ACTIVE_CONSULTATION`, đồng cảm tự nhiên -> giới thiệu gói phù hợp trong đúng `service_group` (CẤM hứa chữa khỏi hay cam kết "không đau"/1 lần hết). Với hoa mắt khi đứng dậy/chóng mặt nhẹ, lưu ý khi ghé cơ sở {{CARE_ACTOR}} sẽ chăm sóc lực êm dịu và hỗ trợ nằm nghỉ, ngồi dậy từ từ; hỏi 1 câu trực tiếp về thời lượng ngắn/dài. CẤM khuyên đi khám bên ngoài, CẤM đóng phiên!
-              - Cấp 3 (Hậu phẫu/tiểu phẫu, thai kỳ, vết thương/viêm cấp, bệnh nền nặng): trân trọng đón tiếp, đặt an toàn lên đầu, đề xuất kết nối {{CARE_ACTOR}}/chuyên viên nội bộ kiểm tra trực tiếp trước (`handoff_request.requested = true`). CẤM tự hứa cách thao tác/tư thế nằm/tránh vùng mổ trước khi chuyên viên đánh giá, CẤM đẩy khách đi nơi khác!
-              - Cấp 4 (Cấp cứu: tức ngực khó thở, yếu liệt/tê nửa người, méo miệng, ngất xỉu, đau đầu/chóng mặt dữ dội đột ngột): khuyên gọi 115 hoặc đến cơ sở y tế gần nhất ngay và nằm nghỉ chờ y tế (0 chào bán, 0 hẹn {{CARE_ACTOR}}).
+            1. `Strict Grounding` & `4-Tier Claim Taxonomy` (`SERVICE_FACT | CUSTOMER_FEEDBACK | EXPECTED_EXPERIENCE | MEDICAL_CLAIM`): giá, thời lượng, phạm vi, không gian, tiện ích, chính sách khớp 100% `<VERIFIED_PAGE_POLICY>`, `<VERIFIED_BUSINESS_CATALOG>` & `<DOCUMENT_CONTEXT>`. Chưa có trong nguồn (như gửi xe) -> báo chưa có thông tin chính thức và đề nghị kiểm tra với cơ sở; CẤM tự đoán.
+            2. PHẦN VIII — HEALTH BOUNDARY & HUMAN RESPONSIBILITY (CẤM bệnh lý hóa tâm sự đời thường): {{SELF_PRONOUN}} TUYỆT ĐỐI KHÔNG chẩn đoán bệnh, KHÔNG phân loại mức độ nghiêm trọng của triệu chứng, KHÔNG tự kết luận {{CUSTOMER_PRONOUN}} có đủ điều kiện sử dụng dịch vụ hay không.
+              - (A) `NEED_DISCOVERY` (khách chỉ chia sẻ mệt mỏi/đau đầu/mất ngủ/tê mỏi cá nhân): lắng nghe đồng cảm tự nhiên, 0 giảng giải y khoa, 0 lời khuyên tư thế/y khoa, 0 tự động handoff, 0 vội ép bán/xả gói khi khách chưa hỏi. CẤM hứa chữa khỏi hay cam kết "không đau"/1 lần hết.
+              - (B) `SUITABILITY_INQUIRY_HANDOFF` (khách trực tiếp hỏi dịch vụ có phù hợp với tình trạng sức khỏe của mình không, vd *"Tình trạng của tôi như vậy có làm massage được không?"*): ghi nhận nguyên văn điều khách chia sẻ và báo chuyển {{CARE_ACTOR}}/chuyên viên của cơ sở tư vấn trực tiếp theo quy trình (`handoff_request.requested = true`). CẤM tự khẳng định *"làm được bình thường"*, *"hoàn toàn làm được"*, *"rất an toàn"*; CẤM tự hứa cách thao tác/tư thế nằm/tránh vùng nào; CẤM đẩy khách đi nơi khác.
+              - (C) Cấp cứu nguy kịch (tức ngực khó thở, yếu liệt/tê nửa người, méo miệng, ngất xỉu, đau đầu/chóng mặt dữ dội đột ngột): khuyên gọi 115 hoặc đến cơ sở y tế gần nhất ngay (0 chào bán/hẹn dịch vụ; nếu cần nhân viên thì báo chuyển hỗ trợ).
+            2b. Pain-Matched Benefit Filtering, Buying Signal Lock & Direct Pivot on Correction:
+              - `NEED_MATCHED_RECOMMENDATION`: chỉ nêu thành phần gói liên quan trực tiếp đến nhu cầu hiện tại (CẤM tự đọc hết thành phần phụ như *"phục hồi tóc"*, ăn nhẹ khi khách đang đau đầu/mỏi gối/tê tay/khó ngủ). Chỉ liệt kê đầy đủ 100% thành phần khi khách hỏi trực tiếp gói gồm những gì (`FULL_DISCLOSURE`, vd *"Gói 339k gồm những gì? Có phục hồi tóc à?"*).
+              - CẤM tự tạo thông tin ngoài `<VERIFIED_BUSINESS_CATALOG>`: 0 suy diễn thời lượng từng bước nhỏ (vd nói phần chênh lệch 20 phút là thêm massage cổ vai gáy), 0 gọi thành phần chính là *"tặng kèm"* khi Catalog không xác nhận.
+              - `TRIAL_COMMITMENT_LOCK` (*"Tôi muốn vừa đủ để thử"*): khóa & xác nhận đúng gói cơ bản/vừa đủ vừa giới thiệu (xem `commitment_level`, `last_offered_package_ids`), CẤM upsell sang gói đắt hơn.
+              - `CUSTOMER_CORRECTION_PIVOT` (*"Ủa sao lại phục hồi tóc..."*, *"Tôi không muốn chăm sóc tóc, chỉ muốn massage"*): thừa nhận ngay 1 câu và chuyển thẳng sang gói thuần massage phù hợp trong Catalog (vd `NS01` 399k 60p / `NS02` 350k 60p), tôn trọng `negative_preferences`; 0 bảo vệ gói cũ, CẤM hỏi lại câu thừa *"{{CUSTOMER_PRONOUN}} có muốn tìm lựa chọn tập trung massage không?"*.
             3. `ZERO_SCOPE_DRIFT` & Riêng tư (`PRIVACY_CONCERN`): giữ đề xuất trong đúng `service_group`. Khi ngại riêng tư/tiếng ồn -> trấn an sự tĩnh lặng và điều kiện riêng tư thực tế của gói + 1 câu hỏi xem đã yên tâm chưa.
-            4. Vận hành & Cô lập Đa Tenant: hỏi địa chỉ 1 cơ sở -> chỉ báo cơ sở đó. Có cơ sở + giờ -> kiểm tra giờ nhận khách cuối, điền `proposed_booking_patch`, báo `AWAITING_AVAILABILITY_CHECK` (CẤM báo `CONFIRMED`). Chuyển khoản -> `customer_statements` + `commitment_delta(CREATE, CASHIER)` + `requested=true`.
+            4. Vận hành, Bảo mật Nội bộ & Cô lập Đa Tenant: hỏi địa chỉ 1 cơ sở -> chỉ báo cơ sở đó. Có cơ sở + giờ -> kiểm tra giờ nhận khách cuối, điền `proposed_booking_patch`, báo giữ lịch tạm chờ kiểm tra lịch trống (`AWAITING_AVAILABILITY_CHECK`; CẤM báo `CONFIRMED` và CẤM in mã enum vào `bubbles`). Chuyển khoản -> `customer_statements` + `commitment_delta(CREATE, CASHIER)` + `requested=true`.
             
             V. ĐẦU RA BẮT BUỘC (1 JSON HỢP LỆ, KHÔNG MARKDOWN; `brain_reflection` THU GỌN TRƯỚC `bubbles`, TRƯỜNG TEXT <= 6 TỪ, CHỈ GHI DELTA MỚI):
-            {"brain_reflection":{"conversational_context":{"current_topic":"<=5 từ","unresolved_requests":[{"request":"<=6 từ","status":"OPEN|ANSWERED|CANCELLED|SUPERSEDED"}]},"customer_understanding":{"turn_intent":"MÃ_Ý_ĐỊNH_CHÍNH","secondary_intents":[],"conversation_state":"ACTIVE_CONSULTATION|OBJECTION_NEGOTIATION|BOOKING_READY|FRICTION_RECOVERY|META_PLAYFUL|PAUSED_BY_CUSTOMER","conversation_goal":"MỤC_TIÊU_PHIÊN","need_revision":false,"interaction_permission":"OPEN|CONCISE_PREFERRED|BOUNDED_INFO_ONLY|PAUSED","buying_signal":"NONE|WEAK|MODERATE|STRONG|ACTION","confirmed_facts_delta":[{"key":"self_reported_symptom|need_scope|available_time|price_reaction|constraint","value":"<=6 từ nguyên tử","op":"ADD|REVISE","status":"CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED"}],"interested_package_id":null,"emotion":"UNKNOWN|NEUTRAL|CALM|HESITANT|SKEPTICAL|FRUSTRATED|IMPATIENT|TIRED|DECISIVE|POLITE_DECLINE","inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING|CONSIDERING|READY_TO_BOOK","communication_style_preference":null},"priority":"SAFETY|SERVICE_RECOVERY|TRUST_ASSURANCE|CLARIFICATION|VALUE_ALIGNMENT|BUDGET_FIT|PRICE_INFORMATION|BOOKING_COMPLETION|POLITE_CLOSURE","working_hypothesis":{"hypothesis":"<=6 từ","barrier_type":"NONE|UNCLEAR_VALUE|COMPETITOR_COMPARISON|BUDGET_LIMIT|COMMUNICATION_FRICTION","confidence":0.8,"lifecycle_op":"MAINTAIN|REINFORCE|ADJUST|DOWNGRADE|REJECT"},"response_plan":{"strategy":"Direct Answer|Warm Acknowledgment|Active Listening|Clarify Gently|Explain Value|Handle Objection|Reassure Honestly|Soft Recommendation|Respectful Pause|Transaction Handoff","tone":"LEVEL_1_NATURAL|LEVEL_2_REFLECTIVE|LEVEL_3_SENSORY","depth":"CONCISE|STANDARD|DETAILED_ON_DEMAND","cta_level":"NO_CTA|SOFT_CTA|DIRECT_CTA|TRANSACTION_HANDOFF","next_action":"NO_ADDITIONAL_ACTION|ASK_ONE_DISCOVERY_QUESTION|ASK_ONE_CLARIFYING_QUESTION|SOFT_FEELING_CHECK|GENTLE_SCHEDULE_CHECK","adaptation":"CONTINUATION|REFINEMENT|PIVOT|PRIORITY_SHIFT|STOP","previous_outcome":"ACCEPTED|REJECTED|PARTIALLY_ACCEPTED|UNCLEAR|NOT_APPLICABLE"},"activated_skill_codes":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Bong bóng 1"]}
+            {"brain_reflection":{"conversational_context":{"current_topic":"<=5 từ","unresolved_requests":[{"request":"<=6 từ","status":"OPEN|ANSWERED|CANCELLED|SUPERSEDED"}]},"customer_understanding":{"turn_intent":"MÃ_Ý_ĐỊNH_CHÍNH","secondary_intents":[],"conversation_state":"ACTIVE_CONSULTATION|OBJECTION_NEGOTIATION|BOOKING_READY|FRICTION_RECOVERY|META_PLAYFUL|PAUSED_BY_CUSTOMER","conversation_goal":"MỤC_TIÊU_PHIÊN","need_revision":false,"interaction_permission":"OPEN|CONCISE_PREFERRED|BOUNDED_INFO_ONLY|PAUSED","buying_signal":"NONE|WEAK|MODERATE|STRONG|ACTION","confirmed_facts_delta":[{"key":"self_reported_symptom|need_scope|available_time|price_reaction|constraint","value":"<=6 từ nguyên tử","op":"ADD|REVISE","status":"CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED"}],"interested_package_id":null,"emotion":"UNKNOWN|NEUTRAL|CALM|HESITANT|SKEPTICAL|FRUSTRATED|IMPATIENT|TIRED|DECISIVE|POLITE_DECLINE","inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING|CONSIDERING|READY_TO_BOOK","communication_style_preference":null},"priority":"SAFETY|SERVICE_RECOVERY|TRUST_ASSURANCE|CLARIFICATION|VALUE_ALIGNMENT|BUDGET_FIT|PRICE_INFORMATION|BOOKING_COMPLETION|POLITE_CLOSURE","working_hypothesis":{"hypothesis":"<=6 từ","barrier_type":"NONE|VALUE_PERCEPTION_GAP|UNCLEAR_VALUE|COMPETITOR_COMPARISON|BUDGET_LIMIT|COMMUNICATION_FRICTION","confidence":0.8,"lifecycle_op":"MAINTAIN|REINFORCE|ADJUST|DOWNGRADE|REJECT"},"response_plan":{"strategy":"Direct Answer|Warm Acknowledgment|Active Listening|Clarify Gently|Explain Value|Handle Objection|Reassure Honestly|Soft Recommendation|Respectful Pause|Transaction Handoff","tone":"LEVEL_1_NATURAL|LEVEL_2_REFLECTIVE|LEVEL_3_SENSORY","depth":"CONCISE|STANDARD|DETAILED_ON_DEMAND","cta_level":"NO_CTA|SOFT_CTA|DIRECT_CTA|TRANSACTION_HANDOFF","next_action":"NO_ADDITIONAL_ACTION|ASK_ONE_DISCOVERY_QUESTION|ASK_ONE_CLARIFYING_QUESTION|SOFT_FEELING_CHECK|GENTLE_SCHEDULE_CHECK","adaptation":"CONTINUATION|REFINEMENT|PIVOT|PRIORITY_SHIFT|STOP","previous_outcome":"ACCEPTED|REJECTED|PARTIALLY_ACCEPTED|UNCLEAR|NOT_APPLICABLE"},"activated_skill_codes":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Bong bóng 1"]}
             (Chỉ thêm `"customer_statements":["..."]` và `"commitment_delta":[{"operation":"CREATE|UPDATE_CONTENT|REMIND|CANCEL_BY_CUSTOMER","content":"...","owner":"BOT|MANAGER|CASHIER|STAFF","verified_timeframe":null}]` khi phát sinh báo chuyển khoản, tranh chấp lời hứa hoặc cam kết treo.)
             """;
 
@@ -4627,6 +4632,58 @@ public final class CleanAgentCatalogAndPromptBuilder {
             List<LearnedRuleDto> activeLearnedRules,
             AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Snapshot
     ) {
+        return buildAciSinglePassPrompt(
+                pagePersona,
+                defaultCustomerPronoun,
+                inferredCustomerPronoun,
+                effectiveCustomerPronoun,
+                threeStreamInput,
+                primaryPackages,
+                economicalPackages,
+                quotedReplyResolution,
+                tier1CustomerStatements,
+                tier2WorkingHypothesis,
+                tier4VerifiedBusinessFacts,
+                authoritativeBookingState,
+                tier5OperationalState,
+                previousStrategyRecord,
+                sessionCommitments,
+                verifiedPageSlaPolicy,
+                hasAuthoritativePaymentVerification,
+                fusedChunks,
+                history,
+                enabledPageSkills,
+                activeLearnedRules,
+                draft2Snapshot,
+                null
+        );
+    }
+
+    public static String buildAciSinglePassPrompt(
+            PromptBuilder.PagePersona pagePersona,
+            String defaultCustomerPronoun,
+            String inferredCustomerPronoun,
+            String effectiveCustomerPronoun,
+            AdaptiveConversationIntelligence.ThreeStreamTurnInput threeStreamInput,
+            List<PackageCatalogService.PackageSummary> primaryPackages,
+            List<PackageCatalogService.PackageSummary> economicalPackages,
+            QuotedReplyResolution quotedReplyResolution,
+            List<AdaptiveConversationIntelligence.CustomerStatementRecord> tier1CustomerStatements,
+            AdaptiveConversationIntelligence.WorkingHypothesisRecord tier2WorkingHypothesis,
+            List<AdaptiveConversationIntelligence.VerifiedBusinessFact> tier4VerifiedBusinessFacts,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            AdaptiveConversationIntelligence.OperationalStateSnapshot tier5OperationalState,
+            AdaptiveConversationIntelligence.PreviousStrategyRecord previousStrategyRecord,
+            List<AdaptiveConversationIntelligence.CommitmentRecord> sessionCommitments,
+            String verifiedPageSlaPolicy,
+            boolean hasAuthoritativePaymentVerification,
+            List<ReciprocalRankFusion.FusedChunk> fusedChunks,
+            List<FanpageBotRequest.ConversationTurn> history,
+            List<AgentSkillDto> enabledPageSkills,
+            List<LearnedRuleDto> activeLearnedRules,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2Snapshot,
+            AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan prebuiltTurnPlan
+    ) {
         PagePersonaConfig resolvedCfg = pagePersona != null ? pagePersona.resolvedConfig() : PagePersonaConfig.empty();
         String brandName = (pagePersona != null && pagePersona.name() != null && !pagePersona.name().isBlank())
                 ? pagePersona.name().strip()
@@ -4696,11 +4753,23 @@ public final class CleanAgentCatalogAndPromptBuilder {
         if (isOpeningTurn
                 && resolvedCfg.openingBubbles() != null
                 && !resolvedCfg.openingBubbles().isEmpty()) {
-            List<String> resolvedOpening = resolvedCfg.resolvedOpeningBubbles(
+            List<String> rawResolvedOpening = resolvedCfg.resolvedOpeningBubbles(
                     brandName,
                     pagePersona != null ? pagePersona.description() : null,
                     custPronoun
             );
+            List<String> resolvedOpening = new ArrayList<>(rawResolvedOpening.size());
+            boolean neutralizeUnconfirmedPronounInOpening = (inferredPronoun == null || inferredPronoun.isBlank())
+                    && ("mình".equalsIgnoreCase(custPronoun) || "bạn".equalsIgnoreCase(custPronoun));
+            for (String ro : rawResolvedOpening) {
+                if (ro == null) continue;
+                String line = ro;
+                if (neutralizeUnconfirmedPronounInOpening) {
+                    line = line.replaceAll("(?iU)\\banh/chị\\b", custPronoun)
+                               .replaceAll("(?iU)(?<![\\p{L}\\p{M}])chị(?!\\s+(?:gái|dâu|họ|ruột|ấy|đó|kia))(?![\\p{L}\\p{M}])", custPronoun);
+                }
+                resolvedOpening.add(line);
+            }
             if (!resolvedOpening.isEmpty()) {
                 if (!isDirectTurnOnePriceOrOperationalQuestion(verbatimOriginal)) {
                     boolean isBareGeneralConsult = isBareTurnOneGreetingOrConsultationRequest(verbatimOriginal);
@@ -4745,7 +4814,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         sb.append("    human_consultation_and_retention_policy: { customer_retention_priority: \"HIGH\", external_medical_referral_policy: \"ACUTE_RED_FLAG_ONLY\", internal_consultation_actor: \"")
           .append(compactSingleLine(careActor, 60))
-          .append("/chuyên viên tư vấn/quản lý ca/bác sĩ chuyên môn của cơ sở\", handoff_tone: \"WARM_REASSURING_NON_DISMISSIVE\", preserve_booking_opportunity: true, allow_custom_service_adaptation_note: true, unverified_policy_handling: \"ADMIT_UNVERIFIED_AND_OFFER_INTERNAL_CHECK\" }\n");
+          .append("/chuyên viên/bác sĩ cơ sở\", handoff_tone: \"WARM_REASSURING_NON_DISMISSIVE\", preserve_booking_opportunity: true, allow_custom_service_adaptation_note: true, unverified_policy_handling: \"ADMIT_UNVERIFIED_AND_OFFER_INTERNAL_CHECK\" }\n");
         appendVerifiedOperationalPoliciesFromSourceChunks(sb, fusedChunks, verbatimOriginal, primaryPackages, economicalPackages);
         sb.append("    verified_sla_policy: ").append(verifiedPageSlaPolicy != null && !verifiedPageSlaPolicy.isBlank()
                 ? ("\"" + verifiedPageSlaPolicy.strip() + "\"")
@@ -4761,17 +4830,21 @@ public final class CleanAgentCatalogAndPromptBuilder {
 
         // 2. VERIFIED BUSINESS CATALOG (EPISTEMIC UNBLINDING + CANONICAL BRANCH DEDUPLICATION + SERVICE GROUP LOCK)
         sb.append("  <VERIFIED_BUSINESS_CATALOG>\n")
-          .append("    sku_visibility_policy: \"id/code trong [...] chỉ dùng nội bộ trong brain_reflection; TUYỆT ĐỐI CẤM xuất mã SKU nội bộ vào bubbles gửi khách\"\n")
-          .append("    space_privacy_policy: \"Các gói tiêu chuẩn (Phòng chung có rèm riêng từng giường, KHÔNG phòng VIP riêng): khi khách hỏi phòng riêng hoặc ngại nằm chung/ngại chỗ đông người ồn ào, hãy đồng cảm và trấn an rõ cả 2 ý: (1) không gian luôn giữ sự tĩnh lặng, yên tĩnh, nhẹ nhàng (không ồn ào) và (2) tuy là phòng chung (chưa phải phòng riêng độc lập) nhưng mỗi giường đều có rèm che riêng kín đáo; KHÔNG tự chào gói phòng VIP riêng ngay lượt đầu trừ khi khách phản hồi vẫn cần phòng riêng hoàn toàn\"\n")
-          .append("    service_scope_continuity_policy: \"ZERO_SCOPE_DRIFT: Khi khách đã xác nhận nhóm dịch vụ (service_group), mọi đề xuất và xử lý chê đắt BẮT BUỘC giữ trong đúng service_group đó; CẤM tự ý bẻ lái hạ sang service_group khác trừ khi khách chủ động hỏi hoặc đồng ý đổi nhóm dịch vụ\"\n");
+          .append("    sku_visibility_policy: \"id/code trong [...] chỉ dùng nội bộ; CẤM xuất mã SKU vào bubbles\"\n")
+          .append("    space_privacy_policy: \"Gói tiêu chuẩn (Phòng chung có rèm riêng từng giường, KHÔNG phòng VIP riêng): khi ngại chung/ồn, trấn an rõ (1) không gian tĩnh lặng, yên tĩnh và (2) mỗi giường đều có rèm che riêng kín đáo; chỉ chào gói phòng VIP riêng khi khách cần phòng riêng hoàn toàn\"\n")
+          .append("    service_scope_continuity_policy: \"ZERO_SCOPE_DRIFT: Khi đã xác nhận service_group, mọi đề xuất và xử lý chê đắt BẮT BUỘC giữ trong đúng service_group đó; CẤM tự bẻ sang service_group khác\"\n");
         List<PackageCatalogService.PackageSummary> dedupPrimaries = deduplicateCatalogByCanonicalSignature(primaryPackages);
         List<PackageCatalogService.PackageSummary> dedupEconomicals = deduplicateCatalogByCanonicalSignature(economicalPackages);
         String coreGroupPricesSummary = buildCoreServiceGroupStartingPriceSummary(dedupPrimaries, dedupEconomicals);
         if (!coreGroupPricesSummary.isEmpty()) {
-            sb.append("    core_service_group_starting_prices (BẮT BUỘC dùng khi khách hỏi giá chung/rổ giá/bảng giá mà chưa nêu nhu cầu cụ thể): \"")
+            sb.append("    core_service_group_starting_prices: \"")
               .append(coreGroupPricesSummary)
               .append("\"\n");
         }
+        CatalogViewMode viewMode = resolveCatalogViewMode(verbatimOriginal);
+        boolean allowHairDetail = viewMode != CatalogViewMode.NEED_MATCHED_RECOMMENDATION
+                || (verbatimOriginal != null && verbatimOriginal.toLowerCase(Locale.ROOT)
+                    .matches("(?isU).*\\b(tóc|gội|da\\s+đầu)\\b.*"));
         Set<String> renderedPkgIds = new LinkedHashSet<>();
         Set<String> renderedCanonicalSigs = new LinkedHashSet<>();
         int pkgIndex = 0;
@@ -4781,7 +4854,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 continue;
             }
             pkgIndex++;
-            appendAciUnblindedCatalogLine(sb, pkgIndex, "PRIMARY", p);
+            appendAciUnblindedCatalogLine(sb, pkgIndex, "PRIMARY", p, viewMode, allowHairDetail);
         }
         boolean hideShortNicheEconOnTurn1GeneralPrice = isOpeningTurn
                 && isDirectTurnOnePriceOrOperationalQuestion(verbatimOriginal)
@@ -4797,7 +4870,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 continue;
             }
             pkgIndex++;
-            appendAciUnblindedCatalogLine(sb, pkgIndex, "ECONOMICAL_OPTION", p);
+            appendAciUnblindedCatalogLine(sb, pkgIndex, "ECONOMICAL_OPTION", p, viewMode, allowHairDetail);
         }
         if (pkgIndex == 0) {
             sb.append("    (Chưa có gói dịch vụ cấu trúc — chỉ dựa trên <DOCUMENT_CONTEXT>, cấm tự bịa gói/giá)\n");
@@ -4851,7 +4924,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
 
         // Layer 1: Conversational Context
         sb.append("    1. layer_1_conversational_context:\n")
-          .append("       - current_turn_sequence_id: \"").append(sequentialTurnId).append("\" (tham chiếu lượt hiện tại bằng \"T_CURRENT\")\n")
+          .append("       - current_turn_sequence_id: \"").append(sequentialTurnId).append("\"\n")
           .append("       - topic_flow: { current_topic: \"").append(l1.currentTopic())
           .append("\", topic_history: ").append(l1.topicHistory())
           .append(", pending_references: ").append(l1.pendingReferences())
@@ -4876,7 +4949,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
             }
         }
         if (tier1CustomerStatements != null && !tier1CustomerStatements.isEmpty()) {
-            sb.append("       - recent_customer_statements [verified_business_fact=false]:\n");
+            sb.append("       - recent_customer_statements:\n");
             int stmtStart = Math.max(0, tier1CustomerStatements.size() - 5);
             for (int i = stmtStart; i < tier1CustomerStatements.size(); i++) {
                 AdaptiveConversationIntelligence.CustomerStatementRecord st = tier1CustomerStatements.get(i);
@@ -4932,13 +5005,28 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("\", recorded_outcome: \"").append(safePrevStrat.strategyOutcome().name()).append("\" }\n");
 
         // Layer 3: Business & Commitment State (Java Core Authority)
-        sb.append("    3. layer_3_business_and_commitment_state [authority=JAVA_CORE]:\n")
+        sb.append("    3. layer_3_business_and_commitment_state:\n")
           .append("       - package_progression: { interested_package_id: ")
           .append(l3.interestedPackageId() != null ? ("\"" + l3.interestedPackageId() + "\"") : "null")
           .append(", committed_selected_package_id: ")
           .append(l3.selectedPackageId() != null ? ("\"" + l3.selectedPackageId() + "\"") : "null")
           .append(", booking_readiness: \"").append(l3.bookingReadiness()).append("\" }\n")
-          .append("       - booking_state: { status: \"").append(safeBooking.status().name())
+          .append("       - commitment_state: { commitment_level: \"")
+          .append(l3.commitmentLevel() != null ? l3.commitmentLevel().name() : "NONE")
+          .append("\", commitment_evidence: ")
+          .append(l3.commitmentEvidence() != null ? ("\"" + l3.commitmentEvidence() + "\"") : "null")
+          .append(", last_offered_package_ids: ")
+          .append(l3.lastOfferedPackageIds() != null ? l3.lastOfferedPackageIds().toString() : "[]")
+          .append(" }\n");
+        if (l3.negativePreferences() != null && !l3.negativePreferences().isEmpty()) {
+            sb.append("       - negative_preferences:\n");
+            for (var entry : l3.negativePreferences()) {
+                sb.append("         * { targetKey: \"").append(entry.targetKey())
+                  .append("\", scope: \"").append(entry.scope())
+                  .append("\", evidenceSpan: \"").append(entry.evidenceSpan()).append("\" }\n");
+            }
+        }
+        sb.append("       - booking_state: { status: \"").append(safeBooking.status().name())
           .append("\", selected_product_id: ").append(safeBooking.selectedProductId() != null ? ("\"" + safeBooking.selectedProductId() + "\"") : "null")
           .append(", selected_product_label: ").append(safeBooking.selectedProductLabel() != null ? ("\"" + safeBooking.selectedProductLabel() + "\"") : "null")
           .append(", booking_date: ").append(safeBooking.bookingDate() != null ? ("\"" + safeBooking.bookingDate() + "\"") : "null")
@@ -4990,16 +5078,17 @@ public final class CleanAgentCatalogAndPromptBuilder {
                 }
             }
             if (botMentionedSpaceOrCurtain) {
-                alreadyMentionedDetails.add("không gian / rèm che riêng (ĐÃ NÓI ở lượt trước -> CẤM lặp lại trừ khi khách hỏi trực tiếp về không gian)");
+                alreadyMentionedDetails.add("không gian / rèm che riêng (ĐÃ NÓI -> CẤM lặp lại)");
             }
             if (botMentionedPostSessionSnack) {
-                alreadyMentionedDetails.add("ăn nhẹ / trái cây / trà sau buổi (ĐÃ NÓI ở lượt trước -> CẤM lặp lại ở các lượt sau)");
+                alreadyMentionedDetails.add("ăn nhẹ / trái cây / trà sau buổi (ĐÃ NÓI -> CẤM lặp lại)");
             }
         }
-        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan lwPlan =
-                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan lwPlan = prebuiltTurnPlan != null
+                ? prebuiltTurnPlan
+                : AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
                         verbatimOriginal, history != null ? history : List.of(), safeDraft2, safeBooking);
-        sb.append("    4. lightweight_customer_understanding_and_next_action_planner [P37B2_TURN_ORCHESTRATOR]:\n")
+        sb.append("    4. lightweight_customer_understanding_and_next_action_planner:\n")
           .append("       - customer_state: { needs: ").append(lwPlan.customerState().needs())
           .append(", emotions: ").append(lwPlan.customerState().emotions())
           .append(", concerns: ").append(lwPlan.customerState().concerns())
@@ -5019,7 +5108,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("       - unknowns: ").append(lwPlan.unknowns()).append('\n')
           .append("       - recommended_action: \"").append(lwPlan.recommendedAction().name()).append("\"\n")
           .append("       - price_intent_sub_mode: \"").append(lwPlan.priceIntentSubMode().name()).append("\"\n")
-          .append("       - action_execution_directive (BẮT BUỘC TUÂN THỦ): \"").append(lwPlan.actionExecutionDirective()).append("\"\n");
+          .append("       - contextual_action_guidance: \"").append(lwPlan.actionExecutionDirective()).append("\"\n");
         if (!alreadyMentionedDetails.isEmpty()) {
             sb.append("       - already_mentioned_details_do_not_repeat: ").append(alreadyMentionedDetails).append('\n');
         }
@@ -5105,11 +5194,36 @@ public final class CleanAgentCatalogAndPromptBuilder {
         return sb.toString();
     }
 
+    public enum CatalogViewMode { NEED_MATCHED_RECOMMENDATION, FULL_DISCLOSURE, PACKAGE_COMPARISON }
+
+    public static CatalogViewMode resolveCatalogViewMode(String verbatimOriginal) {
+        String query = verbatimOriginal != null ? verbatimOriginal.toLowerCase(Locale.ROOT) : "";
+        if (List.of("gồm những gì", "bao gồm gì", "chi tiết gói", "có phục hồi tóc",
+                "có chăm sóc tóc", "bảng giá đầy đủ", "những bước nào").stream().anyMatch(query::contains)) {
+            return CatalogViewMode.FULL_DISCLOSURE;
+        }
+        if (List.of("khác nhau", "so sánh", "gói nào hơn", "2 gói này").stream().anyMatch(query::contains)) {
+            return CatalogViewMode.PACKAGE_COMPARISON;
+        }
+        return CatalogViewMode.NEED_MATCHED_RECOMMENDATION;
+    }
+
     private static void appendAciUnblindedCatalogLine(
             StringBuilder sb,
             int index,
             String role,
             PackageCatalogService.PackageSummary pkg
+    ) {
+        appendAciUnblindedCatalogLine(sb, index, role, pkg, CatalogViewMode.NEED_MATCHED_RECOMMENDATION, false);
+    }
+
+    private static void appendAciUnblindedCatalogLine(
+            StringBuilder sb,
+            int index,
+            String role,
+            PackageCatalogService.PackageSummary pkg,
+            CatalogViewMode viewMode,
+            boolean allowHairDetail
     ) {
         String serviceGroup = resolveCatalogServiceGroup(pkg);
         sb.append("    ").append(index).append(". [role=").append(role)
@@ -5126,7 +5240,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                     || !pkg.canonicalLabel().toLowerCase(Locale.ROOT).contains(pkg.durationLabel().toLowerCase(Locale.ROOT)))) {
             sb.append(" (").append(pkg.durationLabel()).append(')');
         }
-        String genericMetaNote = buildGenericVerifiedCatalogMetadataSummary(pkg);
+        String genericMetaNote = buildGenericVerifiedCatalogMetadataSummary(pkg, viewMode, allowHairDetail);
         if (!genericMetaNote.isEmpty()) {
             sb.append(" | ").append(genericMetaNote);
         }
@@ -5181,6 +5295,15 @@ public final class CleanAgentCatalogAndPromptBuilder {
     }
 
     private static String buildGenericVerifiedCatalogMetadataSummary(PackageCatalogService.PackageSummary pkg) {
+        return buildGenericVerifiedCatalogMetadataSummary(
+                pkg, CatalogViewMode.NEED_MATCHED_RECOMMENDATION, false);
+    }
+
+    private static String buildGenericVerifiedCatalogMetadataSummary(
+            PackageCatalogService.PackageSummary pkg,
+            CatalogViewMode viewMode,
+            boolean allowHairDetail
+    ) {
         if (pkg == null) {
             return "";
         }
@@ -5199,12 +5322,18 @@ public final class CleanAgentCatalogAndPromptBuilder {
         if (!compactScope.isEmpty()) {
             parts.add("Vùng: " + compactScope);
         }
-        String inc = pkg.includesSummary() != null
-                ? pkg.includesSummary().strip().replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu")
-                : "";
+        String rawIncludes = pkg.includesSummary() != null ? pkg.includesSummary().strip() : "";
+        boolean suppressUnmatchedAddons = viewMode == CatalogViewMode.NEED_MATCHED_RECOMMENDATION && !allowHairDetail;
+        String inc = rawIncludes.replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu");
         String proc = pkg.processSummary() != null
                 ? pkg.processSummary().strip().replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu")
                 : "";
+        if (suppressUnmatchedAddons) {
+            inc = inc.replaceAll("(?iU)(?:\\s*[,;+&/]\\s*)?(?:chăm sóc\\s+)?phục hồi tóc", "")
+                    .replaceAll("(?iU)(?:\\s*[,;+&/]\\s*)?ăn nhẹ\\s*&\\s*trái cây theo mùa", "").strip();
+            proc = proc.replaceAll("(?iU)(?:\\s*[,;+&/]\\s*)?(?:chăm sóc\\s+)?phục hồi tóc", "")
+                    .replaceAll("(?iU)(?:\\s*[,;+&/]\\s*)?ăn nhẹ\\s*&\\s*trái cây theo mùa", "").strip();
+        }
         if (!inc.isEmpty()) {
             Integer dur = pkg.durationMinutes();
             String dispName = pkg.displayName() != null ? pkg.displayName().strip() : "";
@@ -5220,6 +5349,9 @@ public final class CleanAgentCatalogAndPromptBuilder {
             }
         } else if (!proc.isEmpty()) {
             parts.add("Quy trình: " + compactSingleLine(proc, 115));
+        }
+        if (suppressUnmatchedAddons && rawIncludes.toLowerCase(Locale.ROOT).contains("tóc")) {
+            parts.add("[pain_matched_filter: KHÔNG tự nhắc phục hồi tóc/ăn nhẹ khi khách chưa hỏi]");
         }
         return String.join(" | ", parts);
     }

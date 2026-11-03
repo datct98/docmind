@@ -288,4 +288,377 @@ class P37BConsultativeJourneyTest {
         assertThat(closingOut).hasSize(1);
         assertThat(countQ(closingOut.get(0).text())).isZero();
     }
+
+    @Test
+    @DisplayName("ACI V3 — Guardrail 1: Sanitizer bảo toàn câu trả lời tự nhiên của LLM ở Pause/Deferral/Level 3 hợp lệ và không ép nối bubble mẫu ở Respectful Deescalation")
+    void aciV3Guardrail1SanitizerPreservesNaturalProseAndDoesNotInjectTemplates() {
+        // 1. CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT ("Ok"): giữ nguyên câu tự nhiên của LLM (chỉ bỏ câu hỏi ở bubble phụ nếu có)
+        String naturalAckBubble = "Dạ vâng ạ, chị cứ thong thả xem qua các liệu trình bên em nhé, khi nào cần tư vấn thêm em luôn sẵn sàng hỗ trợ chị ạ.";
+        List<FanpageBotResponse.ReplyBubble> pauseOut = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                bubbles(naturalAckBubble, "Chị có muốn em giữ lịch trước không ạ?"),
+                "Ok",
+                List.of(),
+                null,
+                null,
+                "em",
+                "chị",
+                "chuyên viên"
+        );
+        assertThat(pauseOut).hasSize(1);
+        assertThat(pauseOut.get(0).text()).isEqualTo(naturalAckBubble);
+        assertThat(countQ(pauseOut.get(0).text())).isZero();
+
+        // 2. CUSTOMER_DEFERRAL ("Để chị xem thêm nhé"): giữ nguyên câu tự nhiên của LLM, không ghi đè văn mẫu
+        String naturalDeferralBubble = "Dạ chị cứ thoải mái cân nhắc thêm nhé ạ, lúc nào chị thu xếp được thời gian ghé thư giãn thì nhắn em hỗ trợ chị nha.";
+        List<FanpageBotResponse.ReplyBubble> deferralOut = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                bubbles(naturalDeferralBubble),
+                "Để chị xem thêm nhé",
+                List.of(),
+                null,
+                null,
+                "em",
+                "chị",
+                "chuyên viên"
+        );
+        assertThat(deferralOut).hasSize(1);
+        assertThat(deferralOut.get(0).text()).isEqualTo(naturalDeferralBubble);
+
+        // 3. Level 3 Post-Surgery hợp lệ (đã có kết nối chuyên viên/quản lý và không hứa thao tác bừa): giữ nguyên văn phong tự nhiên của LLM
+        String naturalLevel3Bubble = "Dạ vì anh mới phẫu thuật khớp vai được 2 tuần và vết mổ còn hơi sưng, để an toàn nhất thì em xin phép kết nối chuyên viên phụ trách kiểm tra trực tiếp tình trạng của anh trước khi tư vấn thao tác phù hợp nhé ạ.";
+        List<FanpageBotResponse.ReplyBubble> level3Out = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                bubbles(naturalLevel3Bubble),
+                "Anh mới phẫu thuật khớp vai được 2 tuần, vết mổ vẫn hơi sưng nhưng mỏi lưng quá muốn qua làm nhẹ có được không?",
+                List.of(),
+                null,
+                null,
+                "em",
+                "anh",
+                "chuyên viên"
+        );
+        assertThat(level3Out).hasSize(1);
+        assertThat(level3Out.get(0).text()).isEqualTo(naturalLevel3Bubble);
+
+        // 4. RESPECTFUL_DEESCALATION (phản đối giá liên tiếp lần 2): không tự động nhét thêm Bubble 2 mẫu ("Dạ mình cứ thong thả cân nhắc thêm theo ngân sách...")
+        List<com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn> histWithPriorObjection = List.of(
+                new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("user", "Giá 399k đắt thế shop"),
+                new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em có gói cơ bản 239k nhẹ nhàng hơn ạ.")
+        );
+        String naturalDeescalation = "Dạ em rất hiểu cảm nhận của chị về mức chi phí ạ, bên em luôn tôn trọng ngân sách của chị để mình thoải mái cân nhắc khi thật sự phù hợp nhé ạ.";
+        List<FanpageBotResponse.ReplyBubble> deescalateOut = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                bubbles(naturalDeescalation),
+                "Vẫn thấy đắt quá em ơi",
+                histWithPriorObjection,
+                null,
+                null,
+                "em",
+                "chị",
+                "chuyên viên"
+        );
+        assertThat(deescalateOut).hasSize(1);
+        assertThat(deescalateOut.get(0).text()).isEqualTo(naturalDeescalation);
+    }
+
+    @Test
+    @DisplayName("ACI V3 — Guardrail 2 & 3: TurnContextSnapshot bất biến và phân tách rạch ròi 6 nhóm ý định (PRICE_OBJECTION, COMPETITOR_COMPARISON, BUDGET_INQUIRY, PRIVACY_CONCERN, CUSTOMER_DEFERRAL, EXPLICIT_REFUSAL)")
+    void aciV3Guardrail2And3TurnContextSnapshotAndSemanticIntentSeparation() {
+        // 1. Pure COMPETITOR_COMPARISON: KHÔNG tự biến thành PRICE_OBJECTION, KHÔNG tăng priceObjectionCount
+        var compSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T2",
+                "Chỗ khác gội có 90k thôi",
+                "chị",
+                true,
+                0,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(compSnapshot.detectedIntents())
+                .contains(AdaptiveConversationIntelligence.CanonicalTurnIntent.COMPETITOR_COMPARISON)
+                .doesNotContain(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION);
+        assertThat(compSnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(compSnapshot.authoritativePriceObjectionCount()).isZero();
+        assertThat(compSnapshot.plan().recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.VALUE_EXPLANATION);
+        assertThat(compSnapshot.plan().customerState().needs()).isEmpty();
+
+        // 2. Multi-intent COMPETITOR_COMPARISON + PRICE_OBJECTION: mang cả 2 ý định và chỉ tăng bộ đếm khi thực sự chê đắt/quá sức
+        var multiIntentSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T3",
+                "Thôi chịu đấy, ở ngoài kia gội đầu có 50k mà bên em đắt quá",
+                "chị",
+                true,
+                0,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(multiIntentSnapshot.detectedIntents())
+                .contains(
+                        AdaptiveConversationIntelligence.CanonicalTurnIntent.COMPETITOR_COMPARISON,
+                        AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION
+                );
+        assertThat(multiIntentSnapshot.incrementsPriceObjection()).isTrue();
+        assertThat(multiIntentSnapshot.authoritativePriceObjectionCount()).isEqualTo(1);
+
+        // 3. BUDGET_INQUIRY: hỏi gói theo ngân sách KHÔNG tăng priceObjectionCount
+        var budgetSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T2",
+                "Bên mình có gói nào tầm 100k đổ lại không shop?",
+                "chị",
+                false,
+                0,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(budgetSnapshot.detectedIntents())
+                .contains(AdaptiveConversationIntelligence.CanonicalTurnIntent.BUDGET_INQUIRY)
+                .doesNotContain(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION);
+        assertThat(budgetSnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(budgetSnapshot.authoritativePriceObjectionCount()).isZero();
+
+        // 4. PRIVACY_CONCERN: hỏi sự riêng tư/ngại chung phòng KHÔNG tăng priceObjectionCount và KHÔNG làm bẩn needs
+        var privacySnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T2",
+                "Chị hơi ngại chung phòng đông người, bên em có rèm che riêng tư không?",
+                "chị",
+                true,
+                0,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(privacySnapshot.detectedIntents())
+                .contains(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRIVACY_CONCERN)
+                .doesNotContain(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION);
+        assertThat(privacySnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(privacySnapshot.authoritativePriceObjectionCount()).isZero();
+        assertThat(privacySnapshot.plan().customerState().needs()).isEmpty();
+
+        // 5. CUSTOMER_DEFERRAL: khách hẹn xem thêm KHÔNG tăng priceObjectionCount
+        var deferralSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T3",
+                "Để chị tham khảo thêm rồi có gì chị nhắn lại sau nhé",
+                "chị",
+                true,
+                1,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(deferralSnapshot.detectedIntents())
+                .contains(AdaptiveConversationIntelligence.CanonicalTurnIntent.CUSTOMER_DEFERRAL)
+                .doesNotContain(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION);
+        assertThat(deferralSnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(deferralSnapshot.authoritativePriceObjectionCount()).isEqualTo(1);
+        assertThat(deferralSnapshot.plan().recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.CUSTOMER_DEFERRAL);
+
+        // 6. EXPLICIT_REFUSAL: khách từ chối dứt khoát -> EXPLICIT_REFUSAL + CUSTOMER_EXIT, KHÔNG tăng priceObjectionCount
+        var refusalSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T4",
+                "Thôi chị không làm nữa đâu, cảm ơn em",
+                "chị",
+                true,
+                1,
+                List.of(),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(refusalSnapshot.detectedIntents())
+                .contains(AdaptiveConversationIntelligence.CanonicalTurnIntent.EXPLICIT_REFUSAL)
+                .doesNotContain(AdaptiveConversationIntelligence.CanonicalTurnIntent.PRICE_OBJECTION);
+        assertThat(refusalSnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(refusalSnapshot.authoritativePriceObjectionCount()).isEqualTo(1);
+        assertThat(refusalSnapshot.plan().recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT);
+    }
+
+    @Test
+    @DisplayName("ACI V3 — Guardrail 4: Bảo toàn an toàn y tế Cấp 4 (115) VÀ hỗ trợ đồng thời yêu cầu chuyển nhân viên xử lý")
+    void aciV3Guardrail4ConcurrentAcuteMedicalEmergencyAndHumanHandoff() throws Exception {
+        String dualEmergencyAndStaffMsg = "Tự nhiên anh tức ngực khó thở và tê nửa người bên trái quá, cho nhân viên hỗ trợ anh gấp với";
+        assertThat(FanpageBotService.isUniversalAcuteMedicalEmergency(dualEmergencyAndStaffMsg)).isTrue();
+        assertThat(AdaptiveConversationIntelligence.isExplicitHumanEscalationMessage(dualEmergencyAndStaffMsg)).isTrue();
+
+        String reflectionJson = "{"
+                + "\"customer_understanding\":{\"turn_intent\":\"SAFETY_PRECAUTION\",\"secondary_intents\":[\"HUMAN_HANDOFF\"],\"emotion\":\"IMPATIENT\","
+                + "\"interaction_permission\":\"OPEN\",\"buying_signal\":\"NONE\"},"
+                + "\"priority\":\"SAFETY\","
+                + "\"response_plan\":{\"strategy\":\"Transaction Handoff\",\"tone\":\"LEVEL_1_NATURAL\",\"depth\":\"CONCISE\","
+                + "\"cta_level\":\"TRANSACTION_HANDOFF\",\"next_action\":\"NO_ADDITIONAL_ACTION\",\"adaptation\":\"PRIORITY_SHIFT\"},"
+                + "\"handoff_request\":{\"requested\":true,\"reason\":\"Khách tức ngực khó thở tê nửa người cần cấp cứu 115\"}"
+                + "}";
+        var reflection = AdaptiveConversationIntelligence.parseAndReconcileAdaptiveCognitiveReflection(
+                objectMapper.readTree(reflectionJson), dualEmergencyAndStaffMsg);
+
+        var handoffDecision = AdaptiveConversationIntelligence.evaluateAndExecuteConditionalHandoff(
+                java.util.UUID.randomUUID(),
+                "sender-emergency-1",
+                dualEmergencyAndStaffMsg,
+                reflection,
+                (pageId, senderId, category, reason) -> AdaptiveConversationIntelligence.HandoffDispatchResult.success("TICKET-115-STAFF")
+        );
+        assertThat(handoffDecision.isHandoffCreated()).isTrue();
+        assertThat(handoffDecision.handoffCategory()).isEqualTo("MEDICAL_SAFETY_HANDOFF");
+        assertThat(handoffDecision.handoffReason()).contains("nhân viên");
+    }
+
+    @Test
+    @DisplayName("ACI V3 — Post-Audit Verification: Đính chính đại từ, Khóa an toàn BookingPatch và Đo lường SanitizerMutationRate")
+    void aciV3PostAuditPronounCorrectionSafetyBookingLockAndTelemetry() {
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance("Gọi tôi là anh nhé"))
+                .isEqualTo("Anh");
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance("Mình là nam bạn ơi"))
+                .isEqualTo("Anh");
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance("Không phải chị đâu, gọi là anh"))
+                .isEqualTo("Anh");
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance("Gọi mình là chị nhé"))
+                .isEqualTo("Chị");
+
+        assertThat(AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue("Sao bên em 480k mà chỗ khác rẻ hơn có 300k vậy?"))
+                .isFalse();
+        assertThat(AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue("Sao bên em đắt thế, chỗ khác rẻ hơn có 300k thôi"))
+                .isTrue();
+
+        var proposedPatch = new AdaptiveConversationIntelligence.ProposedBookingPatch(
+                "pkg-neck-60",
+                "hôm nay",
+                "19:00"
+        );
+        var bookingAfterLevel3 = AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                ConversationState.StructuredBookingState.none(),
+                proposedPatch,
+                "Chị mới mổ nội soi vùng bụng tuần trước, đặt cho chị lúc 19h hôm nay nhé",
+                "Dạ chị muốn đặt khung giờ nào ạ?",
+                List.of(),
+                List.of(),
+                java.time.ZoneId.of("Asia/Ho_Chi_Minh"),
+                AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK,
+                "BOOKING_PROGRESSION"
+        );
+        assertThat(bookingAfterLevel3.status()).isEqualTo(ConversationState.BookingStatus.NONE);
+
+        List<String> rawClean = List.of("Dạ gói Cổ Vai Gáy 60 phút bên em có giá 480.000đ ạ.");
+        assertThat(CleanAgentOrchestratorService.computeSanitizerMutationRate(rawClean, rawClean)).isEqualTo(0.0);
+        List<String> mutated = List.of("Dạ gói Cổ Vai Gáy 60 phút bên em có giá 480.000đ, hiện có ưu đãi 380.000đ ạ.");
+        assertThat(CleanAgentOrchestratorService.computeSanitizerMutationRate(rawClean, mutated)).isGreaterThan(0.0);
+    }
+
+    @Test
+    @DisplayName("ACI V3 — Relationship Intelligence (FEEL FIRST. SELL SECOND.): SELF_IDENTIFY_GENDER, CUSTOMER_DEFERRAL, Contextual Price+Symptom, VALUE_PERCEPTION_GAP & Enum Leak Guard")
+    void aciV3RelationshipIntelligenceFeelFirstSellSecondVerification() throws Exception {
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance("t là nam")).isEqualTo("Anh");
+        var genderSnapshot = AdaptiveConversationIntelligence.buildTurnContextSnapshot(
+                "T4",
+                "t là nam",
+                "chị",
+                true,
+                1,
+                List.of(
+                        new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("user", "đắt"),
+                        new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("assistant", "Dạ chị tham khảo gói dưỡng sinh cơ bản 239k ạ.")
+                ),
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(genderSnapshot.effectiveCustomerPronoun()).isEqualTo("Anh");
+        assertThat(genderSnapshot.detectedIntents())
+                .containsExactly(AdaptiveConversationIntelligence.CanonicalTurnIntent.SELF_IDENTIFY_GENDER);
+        assertThat(genderSnapshot.incrementsPriceObjection()).isFalse();
+        assertThat(genderSnapshot.authoritativePriceObjectionCount()).isEqualTo(1);
+        assertThat(genderSnapshot.plan().recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.SELF_IDENTIFY_GENDER);
+
+        String genderJson = "{"
+                + "\"customer_understanding\":{\"turn_intent\":\"PRICE_OBJECTION\",\"conversation_state\":\"OBJECTION_NEGOTIATION\","
+                + "\"inferred_customer_pronoun\":\"Chị\",\"pronoun_confidence\":0.60,\"cost_concern_expressed\":true},"
+                + "\"priority\":\"BUDGET_FIT\","
+                + "\"response_plan\":{\"strategy\":\"Handle Objection\",\"cta_level\":\"SOFT_CTA\",\"next_action\":\"GENTLE_SCHEDULE_CHECK\"},"
+                + "\"activated_skill_codes\":[\"price_objection_sensory_value\"]"
+                + "}";
+        var reconciledGender = AdaptiveConversationIntelligence.parseAndReconcileAdaptiveCognitiveReflection(
+                objectMapper.readTree(genderJson), "t là nam");
+        assertThat(reconciledGender.customerUnderstanding().detectedIntent()).isEqualTo("SELF_IDENTIFY_GENDER");
+        assertThat(reconciledGender.customerUnderstanding().inferredCustomerPronoun()).isEqualTo("Anh");
+        assertThat(reconciledGender.customerUnderstanding().pronounConfidence()).isGreaterThanOrEqualTo(0.99);
+        assertThat(reconciledGender.customerUnderstanding().costConcernExpressed()).isFalse();
+        assertThat(reconciledGender.responsePlan().ctaLevel()).isEqualTo(AdaptiveConversationIntelligence.CtaLevel.NO_CTA);
+        assertThat(reconciledGender.responsePlan().nextAction()).isEqualTo("NO_ADDITIONAL_ACTION");
+        assertThat(reconciledGender.activatedSkillCodes()).isEmpty();
+
+        List<FanpageBotResponse.ReplyBubble> genderBubbles = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                bubbles("Dạ em xin lỗi Chị vì sơ suất xưng hô lúc nãy ạ, vì các anh thường mỏi vai gáy nhiều hơn. Anh có muốn đặt lịch tối nay không ạ?"),
+                "t là nam",
+                List.of(),
+                ConversationState.StructuredBookingState.none(),
+                List.of(),
+                "em",
+                "Anh",
+                "kỹ thuật viên",
+                genderSnapshot.plan()
+        );
+        assertThat(genderBubbles).hasSize(1);
+        assertThat(genderBubbles.get(0).text())
+                .contains("Anh")
+                .doesNotContain("Chị")
+                .doesNotContain("các anh thường")
+                .doesNotContain("?");
+
+        List<com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn> histAfterPriceAsk = List.of(
+                new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("user", "giá"),
+                new com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn("assistant", "Dạ bên em có các gói từ 129k - 399k ạ. Mình đang mỏi vùng nào ạ?")
+        );
+        var symptomAfterPricePlan = AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                "tôi đau đầu mỏi vau gáy",
+                histAfterPriceAsk,
+                null,
+                ConversationState.StructuredBookingState.none()
+        );
+        assertThat(symptomAfterPricePlan.recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.SERVICE_RECOMMENDATION);
+        assertThat(symptomAfterPricePlan.customerState().needs())
+                .anyMatch(n -> n.contains("vai gáy") || n.contains("đầu"));
+
+        String firstObjJson = "{"
+                + "\"customer_understanding\":{\"turn_intent\":\"PRICE_OBJECTION\",\"conversation_state\":\"OBJECTION_NEGOTIATION\",\"cost_concern_expressed\":true},"
+                + "\"priority\":\"VALUE_ALIGNMENT\","
+                + "\"working_hypothesis\":{\"hypothesis\":\"Khách đang cân nhắc tương quan giá trị\",\"barrier_type\":\"BUDGET_LIMIT\",\"confidence\":0.80,\"lifecycle_op\":\"ADJUST\"},"
+                + "\"response_plan\":{\"strategy\":\"Handle Objection\",\"cta_level\":\"SOFT_CTA\",\"next_action\":\"GENTLE_SCHEDULE_CHECK\"}"
+                + "}";
+        var reconciledObj = AdaptiveConversationIntelligence.parseAndReconcileAdaptiveCognitiveReflection(
+                objectMapper.readTree(firstObjJson), "đắt");
+        assertThat(reconciledObj.barrierType()).isEqualTo("VALUE_PERCEPTION_GAP");
+        assertThat(reconciledObj.responsePlan().nextAction()).isEqualTo("SOFT_FEELING_CHECK");
+
+        String deferralJson = "{"
+                + "\"customer_understanding\":{\"turn_intent\":\"PRICE_OBJECTION\",\"conversation_state\":\"OBJECTION_NEGOTIATION\",\"interaction_permission\":\"OPEN\"},"
+                + "\"priority\":\"BUDGET_FIT\","
+                + "\"response_plan\":{\"strategy\":\"Handle Objection\",\"cta_level\":\"SOFT_CTA\",\"next_action\":\"ASK_ONE_CLARIFYING_QUESTION\"}"
+                + "}";
+        var reconciledDeferral = AdaptiveConversationIntelligence.parseAndReconcileAdaptiveCognitiveReflection(
+                objectMapper.readTree(deferralJson), "xem đã");
+        assertThat(reconciledDeferral.customerUnderstanding().detectedIntent()).isEqualTo("CUSTOMER_DEFERRAL");
+        assertThat(reconciledDeferral.customerUnderstanding().conversationState()).isEqualTo("PAUSED_BY_CUSTOMER");
+        assertThat(reconciledDeferral.customerUnderstanding().interactionPermission())
+                .isEqualTo(AdaptiveConversationIntelligence.InteractionPermission.CONCISE_PREFERRED);
+        assertThat(reconciledDeferral.responsePlan().ctaLevel()).isEqualTo(AdaptiveConversationIntelligence.CtaLevel.NO_CTA);
+        assertThat(reconciledDeferral.responsePlan().nextAction()).isEqualTo("NO_ADDITIONAL_ACTION");
+
+        List<FanpageBotResponse.ReplyBubble> strippedEnum = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
+                bubbles("Dạ em xin ghi nhận lịch tạm lúc 19h tối nay tại cơ sở Bích Câu để kiểm tra lịch trống thực tế (AWAITING_AVAILABILITY_CHECK) cho Anh nhé ạ."),
+                List.of()
+        );
+        assertThat(strippedEnum).hasSize(1);
+        assertThat(strippedEnum.get(0).text()).doesNotContain("AWAITING_AVAILABILITY_CHECK");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenerInPlace(
+                "Với đau đầu mỏi vai gáy thì phần massage cổ vai gáy đủ lâu mới giúp chị dễ chịu thật sự.", "em", "Anh"
+        )).contains("giúp Anh dễ chịu").doesNotContain("dễ Anhu");
+        String journeyBTurn1 = "Mấy hôm nay tôi đau đầu, hoa mắt, ù tai, người cứ mệt mỏi.";
+        assertThat(CleanAgentCatalogAndPromptBuilder.hasHighRiskOrContraindicationCue(journeyBTurn1.toLowerCase())).isFalse();
+        assertThat(FanpageBotService.shouldTriggerSafetyContraindicationHandoff(journeyBTurn1, null)).isFalse();
+        assertThat(AdaptiveConversationIntelligence.inferExplicitCustomerSelfPronounFromUtterance(
+                "Chiều tối nay tầm 6h anh qua được không?"
+        )).isEqualTo("Anh");
+    }
 }
