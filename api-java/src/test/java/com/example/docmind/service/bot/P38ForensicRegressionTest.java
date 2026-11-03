@@ -498,6 +498,437 @@ class P38ForensicRegressionTest {
                 .noneMatch(s -> s.code() != null && s.code().contains("warm_nod_to_gentle_scheduling"));
     }
 
+    // =========================================================================
+    // ======================= STAGE P2 (Directive §4.1–4.8) ====================
+    // =========================================================================
+
+    private PagePersonaConfig personaNangSen() throws Exception {
+        return objectMapper.readValue("""
+                {
+                  "botName": "Nàng Sen",
+                  "selfPronoun": "em",
+                  "customerPronoun": "mình"
+                }
+                """, PagePersonaConfig.class);
+    }
+
+    /** Catalog đa chi nhánh theo số liệu thật Page Nàng Sen: NS01 (HN 399k/60p, SG 570k/70p), NS04 (HN 670k/120p, SG 970k/120p). */
+    private static List<PackageCatalogService.PackageSummary> buildMultiBranchCatalog() {
+        return List.of(
+                new PackageCatalogService.PackageSummary(
+                        "HN:NS01:399000", "NS01", "HN", "Massage body tinh dầu", "MASSAGE",
+                        List.of("toàn thân"), 60, "60 phút", 399_000L, "399k", "Phòng chung",
+                        "Massage toàn thân thư giãn", "Đau mỏi cơ bản", "Quy trình 60 phút", false),
+                new PackageCatalogService.PackageSummary(
+                        "SG:NS01:570000", "NS01", "SG", "Massage body tinh dầu", "MASSAGE",
+                        List.of("toàn thân"), 70, "70 phút", 570_000L, "570k", "Phòng chung",
+                        "Massage toàn thân thư giãn", "Đau mỏi cơ bản", "Quy trình 70 phút", false),
+                new PackageCatalogService.PackageSummary(
+                        "HN:NS04:670000", "NS04", "HN", "Massage chuyên sâu kết hợp gội đầu", "MASSAGE",
+                        List.of("toàn thân"), 120, "120 phút", 670_000L, "670k", "Phòng chung",
+                        "Ngâm bồn + massage + gội đầu", "Đau mỏi nặng", "Quy trình 120 phút", false),
+                new PackageCatalogService.PackageSummary(
+                        "SG:NS04:970000", "NS04", "SG", "Massage chuyên sâu kết hợp gội đầu", "MASSAGE",
+                        List.of("toàn thân"), 120, "120 phút", 970_000L, "970k", "Phòng chung",
+                        "Ngâm bồn + massage + gội đầu", "Đau mỏi nặng", "Quy trình 120 phút", false)
+        );
+    }
+
+    private static String joinBubbleTexts(List<FanpageBotResponse.ReplyBubble> bubbles) {
+        return bubbles.stream().map(FanpageBotResponse.ReplyBubble::text)
+                .reduce("", (a, b) -> a + "\n" + b);
+    }
+
+    // =========================================================================
+    // TEST 19 (§4.1): Phân loại 4 tiểu loại phản ứng tiêu cực — tuyệt đối không
+    // sụp mọi COMMUNICATION_FRICTION thành CONCISE_PREFERRED.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T19 §4.1: phân loại đúng 4 tiểu loại negative reaction (correction/complaint/over-intrusion/concise-request)")
+    void test19_negativeReactionSubtypeFourWayClassification() {
+        // CUSTOMER_CORRECTION — khách đính chính fact bot nói sai
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "ơ bị dở à sao lại cổ vai gáy", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.CUSTOMER_CORRECTION);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "em có nói đau lưng đâu", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.CUSTOMER_CORRECTION);
+
+        // COMMUNICATION_COMPLAINT — phàn nàn phong cách/phản hồi (KHÔNG khóa CONCISE dài hạn)
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "nói chuyện máy móc quá", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.COMMUNICATION_COMPLAINT);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "tư vấn lòng vòng thế", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.COMMUNICATION_COMPLAINT);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "đừng nói vòng vo nữa, báo giá đi", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.COMMUNICATION_COMPLAINT);
+
+        // OVER_INTRUSION — phàn nàn bị hỏi dồn/ép chốt (dừng hỏi sâu, dừng chốt)
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "hỏi lắm thế", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.OVER_INTRUSION);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "đừng ép chốt nữa", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.OVER_INTRUSION);
+
+        // EXPLICIT_CONCISE_REQUEST — CHỈ loại này mới được set CONCISE_PREFERRED
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "nói ngắn thôi", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.EXPLICIT_CONCISE_REQUEST);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "viết ngắn gọn giúp mình", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.EXPLICIT_CONCISE_REQUEST);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "trả lời thẳng vào ý chính giúp mình", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.EXPLICIT_CONCISE_REQUEST);
+
+        // NONE — câu hỏi giá bình thường không phải phản ứng tiêu cực
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "giá bao nhiêu vậy", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.NONE);
+        assertThat(CleanAgentOutputRefereeAndSanitizer.classifyNegativeReactionSubtype(
+                "cho mình hỏi gói massage", NANG_SEN_TAXONOMY))
+                .isEqualTo(CleanAgentOutputRefereeAndSanitizer.NegativeReactionSubtype.NONE);
+    }
+
+    // =========================================================================
+    // TEST 20 (§4.2): Lượt friction KHÔNG kèm hỏi giá -> fallback xin lỗi gọn,
+    // 0 gói mới, 0 giá, 0 CTA đặt lịch/xin SĐT.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T20 §4.2: lượt phàn nàn thuần (không hỏi giá) -> 0 giá/0 gói/0 CTA trong fallback")
+    void test20_pureFrictionFallbackApologyWithoutPriceOrCta() throws Exception {
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        PagePersonaConfig persona = personaNangSen();
+
+        List<FanpageBotResponse.ReplyBubble> bubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                "ACI_COGNITIVE_V2", null, catalog, catalog, persona,
+                "nói chuyện máy móc quá", "em", "mình", null, List.of());
+        String joined = joinBubbleTexts(bubbles);
+        assertThat(joined).containsIgnoringCase("xin lỗi");
+        assertThat(joined)
+                .doesNotContain("399").doesNotContain("570").doesNotContain("670").doesNotContain("970");
+        assertThat(joined).doesNotContainIgnoringCase("đặt lịch");
+        assertThat(joined).doesNotContain("NS01").doesNotContain("NS04");
+        assertThat(CleanAgentOutputRefereeAndSanitizer.resolveFallbackActualSentSpeechAct(
+                "nói chuyện máy móc quá", ConversationState.StructuredBookingState.none(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(), null))
+                .isEqualTo("FALLBACK_SERVICE_RECOVERY");
+
+        // Lượt đính chính fact (không hỏi giá) cũng không được xả gói/giá/CTA
+        List<FanpageBotResponse.ReplyBubble> correctionBubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                "ACI_COGNITIVE_V2", null, catalog, catalog, persona,
+                "em có nói đau lưng đâu", "em", "mình", null, List.of());
+        String correctionJoined = joinBubbleTexts(correctionBubbles);
+        assertThat(correctionJoined)
+                .doesNotContain("399").doesNotContain("570").doesNotContain("670").doesNotContain("970");
+        assertThat(correctionJoined).doesNotContainIgnoringCase("đặt lịch");
+        assertThat(correctionJoined).doesNotContain("NS01").doesNotContain("NS04");
+    }
+
+    // =========================================================================
+    // TEST 21 (§4.2 NGOẠI LỆ BẮT BUỘC): "Đừng nói vòng vo nữa, báo giá đi" —
+    // phàn nàn + hỏi giá trong CÙNG lượt -> PHẢI trả lời đúng giá grounded.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T21 §4.2: friction + yêu cầu giá tường minh -> PHẢI trả giá grounded, không bị chặn")
+    void test21_frictionWithExplicitPriceDemandMustAnswerGroundedPrice() throws Exception {
+        String msg = "đừng nói vòng vo nữa, báo giá đi";
+        String msg2 = "không phải, tôi đang hỏi giá gói đó cơ";
+
+        assertThat(CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(msg)).isTrue();
+        assertThat(CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(msg2)).isTrue();
+        // Guard âm: "đừng báo giá nữa" là YÊU CẦU NGỪNG báo giá, không phải yêu cầu giá
+        assertThat(CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage("đừng báo giá nữa")).isFalse();
+
+        // Tầng price sub-mode không được trả NONE khi khách đang đòi giá
+        assertThat(AdaptiveConversationIntelligence.classifyPriceIntentSubMode(msg))
+                .as("phàn nàn vòng vo KÈM 'báo giá đi' vẫn phải nhận diện price intent")
+                .isNotEqualTo(AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+        assertThat(AdaptiveConversationIntelligence.classifyPriceIntentSubMode(msg2))
+                .isNotEqualTo(AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+        // Phàn nàn thuần vẫn NONE
+        assertThat(AdaptiveConversationIntelligence.classifyPriceIntentSubMode("nói chuyện máy móc quá"))
+                .isEqualTo(AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+
+        // Tầng fallback: speech act phải là PRICE_INFO, bong bóng chứa giá grounded từ catalog
+        assertThat(CleanAgentOutputRefereeAndSanitizer.resolveFallbackActualSentSpeechAct(
+                msg, ConversationState.StructuredBookingState.none(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(), null))
+                .isEqualTo("FALLBACK_PRICE_INFO");
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        List<FanpageBotResponse.ReplyBubble> bubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                "ACI_COGNITIVE_V2", null, catalog, catalog, personaNangSen(),
+                msg, "em", "mình", null, List.of());
+        assertThat(joinBubbleTexts(bubbles))
+                .as("khách đòi giá trong lượt phàn nàn -> fallback phải chứa giá grounded từ Catalog")
+                .contains("399");
+
+        // Planner: directive FEEDBACK_RECOVERY kèm giá phải CHO PHÉP báo giá
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan plan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        msg, List.of(
+                                new FanpageBotRequest.ConversationTurn("user", "em bị đau mỏi cổ vai gáy"),
+                                new FanpageBotRequest.ConversationTurn("assistant", "Dạ em xin phép chia sẻ chi tiết liệu trình ạ...")
+                        ), null, ConversationState.StructuredBookingState.none());
+        assertThat(plan.priceIntentSubMode())
+                .isNotEqualTo(AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+        assertThat(plan.actionExecutionDirective())
+                .as("directive lượt friction+hỏi giá phải CHO PHÉP trả lời giá, không ghi '0 báo giá' mù")
+                .containsIgnoringCase("giá");
+    }
+
+    // =========================================================================
+    // TEST 22 (§5.2-20): previous_outcome=REJECTED / friction trước đó KHÔNG được
+    // khóa vĩnh viễn các lượt sau — lượt hỏi giá mới vẫn được trả lời giá.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T22 §5.2-20: lượt hỏi giá SAU lượt bị phản bác vẫn được planner trả lời giá (0 khóa vĩnh viễn)")
+    void test22_rejectedPriorTurnDoesNotLockLaterPriceTurn() {
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "dạo này em hay bị tê chân"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ với tình trạng của mình thì em nghĩ gói massage cổ vai gáy sẽ hợp ạ."),
+                new FanpageBotRequest.ConversationTurn("user", "ơ bị dở à sao lại cổ vai gáy"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ em xin lỗi mình vì hiểu nhầm ạ.")
+        );
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan plan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        "gói massage toàn thân giá bao nhiêu", history, null,
+                        ConversationState.StructuredBookingState.none());
+        assertThat(plan.priceIntentSubMode())
+                .as("lượt hỏi giá sau khi correction không được bị khóa về NONE")
+                .isNotEqualTo(AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+        assertThat(plan.recommendedAction())
+                .as("hành động phải là trả lời giá, không phải FEEDBACK_RECOVERY/DEESCALATION từ lượt trước")
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.SPECIFIC_PRICE_ANSWER);
+    }
+
+    // =========================================================================
+    // TEST 23 (§4.7, cấm #6): KHÔNG mặc định preferredRegion="HN" khi khách
+    // chưa nêu chi nhánh — phải trả null (UNSPECIFIED) để giữ cả 2 miền giá.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T23 §4.7: detectPreferredRegion trả null khi khách chưa nêu chi nhánh (0 default HN)")
+    void test23_noDefaultHanoiRegionWhenCustomerNeverStatedBranch() {
+        assertThat(ConversationState.detectPreferredRegion("giá bao nhiêu vậy", null))
+                .as("không có cue chi nhánh + chưa có vùng hiện tại -> null, KHÔNG default HN")
+                .isNull();
+        assertThat(ConversationState.detectPreferredRegion("", null)).isNull();
+        assertThat(ConversationState.detectPreferredRegion(null, null)).isNull();
+        assertThat(ConversationState.detectPreferredRegion("em ở hà nội", null)).isEqualTo("HN");
+        assertThat(ConversationState.detectPreferredRegion("mình ở quận 1", null)).isEqualTo("SG");
+        assertThat(ConversationState.detectPreferredRegion("ok em", "SG"))
+                .as("đã có vùng từ trước -> giữ nguyên")
+                .isEqualTo("SG");
+
+        // Helper phân giải vùng cho prompt: tin nhắn -> lịch sử (user) -> vùng hiện tại -> null
+        assertThat(ConversationState.resolveExplicitRegionAcrossTurns("giá bao nhiêu", List.of(), null)).isNull();
+        assertThat(ConversationState.resolveExplicitRegionAcrossTurns("em ở quận 1", List.of(), null)).isEqualTo("SG");
+        assertThat(ConversationState.resolveExplicitRegionAcrossTurns(
+                "ok em", List.of(new FanpageBotRequest.ConversationTurn("user", "em ở hà nội")), null))
+                .isEqualTo("HN");
+        assertThat(ConversationState.resolveExplicitRegionAcrossTurns("ok em", List.of(), "SG")).isEqualTo("SG");
+    }
+
+    // =========================================================================
+    // TEST 24 (§4.7, §5.2-21/22): Catalog đa chi nhánh — không lọc mất biến thể
+    // khi chưa biết chi nhánh; dedup KHÔNG được gộp mất biến thể cùng mã/thời
+    // lượng nhưng khác chi nhánh (NS04 670k HN vs 970k SG).
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T24 §4.7: filterForRegion(null) giữ đủ biến thể; dedup region-aware giữ cả NS04 HN 670k lẫn SG 970k")
+    void test24_multiBranchVariantsPreservedAndDedupRegionAware() {
+        List<PackageCatalogService.PackageSummary> all = buildMultiBranchCatalog();
+
+        assertThat(PackageCatalogService.filterForRegion(all, null))
+                .as("chưa biết chi nhánh -> giữ đủ 4 biến thể, không mặc định HN")
+                .hasSize(4);
+        assertThat(PackageCatalogService.filterForRegion(all, "")).hasSize(4);
+
+        List<PackageCatalogService.PackageSummary> sg = PackageCatalogService.filterForRegion(all, "SG");
+        assertThat(sg).hasSize(2);
+        assertThat(sg).allMatch(p -> "SG".equals(p.region()));
+        assertThat(sg).anySatisfy(p -> {
+            assertThat(p.code()).isEqualTo("NS04");
+            assertThat(p.priceAmountVnd()).isEqualTo(970_000L);
+        });
+
+        List<PackageCatalogService.PackageSummary> dedup =
+                CleanAgentCatalogAndPromptBuilder.deduplicateCatalogByCanonicalSignature(all);
+        assertThat(dedup)
+                .as("dedup phải region-aware: NS04 HN 670k/120p và NS04 SG 970k/120p là 2 biến thể khác nhau")
+                .hasSize(4);
+        assertThat(dedup).anySatisfy(p -> {
+            assertThat(p.code()).isEqualTo("NS04");
+            assertThat(p.priceAmountVnd()).isEqualTo(670_000L);
+        });
+        assertThat(dedup).anySatisfy(p -> {
+            assertThat(p.code()).isEqualTo("NS04");
+            assertThat(p.priceAmountVnd()).isEqualTo(970_000L);
+        });
+    }
+
+    // =========================================================================
+    // TEST 25 (§4.7): Dòng catalog trong prompt phải gắn nhãn chi nhánh cho gói
+    // BRANCH_SPECIFIC để Brain báo đúng giá theo chi nhánh.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T25 §4.7: catalog line mang nhãn branch cho gói BRANCH_SPECIFIC")
+    void test25_catalogLineCarriesBranchLabelForBranchSpecificPackages() {
+        List<PackageCatalogService.PackageSummary> all = buildMultiBranchCatalog();
+        StringBuilder sbHn = new StringBuilder();
+        CleanAgentCatalogAndPromptBuilder.appendAciUnblindedCatalogLine(
+                sbHn, 1, "PRIMARY", all.get(0),
+                CleanAgentCatalogAndPromptBuilder.CatalogViewMode.NEED_MATCHED_RECOMMENDATION, false);
+        assertThat(sbHn.toString()).contains("branch=\"HN\"");
+
+        StringBuilder sbSg = new StringBuilder();
+        CleanAgentCatalogAndPromptBuilder.appendAciUnblindedCatalogLine(
+                sbSg, 2, "PRIMARY", all.get(1),
+                CleanAgentCatalogAndPromptBuilder.CatalogViewMode.NEED_MATCHED_RECOMMENDATION, false);
+        assertThat(sbSg.toString()).contains("branch=\"SG\"");
+    }
+
+    // =========================================================================
+    // TEST 26 (§4.5/§4.6, §5.2-24): TRIAL_COMMITMENT_LOCK — khóa đúng gói khách
+    // chọn, CẤM upsell, và directive KHÔNG được hardcode giá lịch sử.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T26 §4.6: trial lock giữ gói khách chọn, 0 upsell, 0 giá hardcode trong directive")
+    void test26_trialCommitmentLockNoUpsellNoHardcodedPrice() {
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "em bị đau đầu khó ngủ"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ bên em có gói massage thư giãn cơ bản giúp dễ ngủ ạ.")
+        );
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan plan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        "tôi muốn vừa đủ để thử", history, null, ConversationState.StructuredBookingState.none());
+        assertThat(plan.recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.TRIAL_COMMITMENT_LOCK);
+        assertThat(plan.actionExecutionDirective())
+                .as("directive trial lock phải cấm upsell")
+                .containsIgnoringCase("upsell");
+        assertThat(plan.actionExecutionDirective())
+                .as("directive không được hardcode mức giá lịch sử (cấm #8)")
+                .doesNotMatch("(?is).*\\d{2,4}\\s*k\\b.*");
+    }
+
+    // =========================================================================
+    // TEST 27 (§4.5): CUSTOMER_CORRECTION_PIVOT — chuyển thẳng theo yêu cầu
+    // khách, 0 hỏi lại vòng vo, 0 giá hardcode trong directive.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T27 §4.5: correction pivot đi thẳng theo yêu cầu khách, directive 0 hardcode giá")
+    void test27_correctionPivotDirectiveHasNoHardcodedPrice() {
+        List<FanpageBotRequest.ConversationTurn> history = List.of(
+                new FanpageBotRequest.ConversationTurn("user", "em bị đau đầu khó ngủ"),
+                new FanpageBotRequest.ConversationTurn("assistant",
+                        "Dạ bên em có gói gội đầu dưỡng sinh phục hồi tóc ạ.")
+        );
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan plan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        "tôi không muốn chăm sóc tóc, chỉ muốn massage", history, null,
+                        ConversationState.StructuredBookingState.none());
+        assertThat(plan.recommendedAction())
+                .isEqualTo(AdaptiveConversationIntelligence.TurnAction.CUSTOMER_CORRECTION_PIVOT);
+        assertThat(plan.actionExecutionDirective())
+                .doesNotMatch("(?is).*\\d{2,4}\\s*k\\b.*");
+    }
+
+    // =========================================================================
+    // TEST 28 (§5.2-26): Hỏi khuyến mãi/ưu đãi -> KHÔNG bị xử lý như phản đối
+    // giá, KHÔNG tự bịa voucher/giảm giá ngoài dữ liệu.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T28 §5.2-26: hỏi khuyến mãi không phải price objection, fallback không bịa voucher/giảm giá")
+    void test28_promoInquiryNotPriceObjectionAndNoFabricatedVoucher() throws Exception {
+        AdaptiveConversationIntelligence.LightweightCustomerUnderstandingPlan plan =
+                AdaptiveConversationIntelligence.buildLightweightCustomerUnderstandingPlan(
+                        "hiện có khuyến mãi gì không", List.of(), null,
+                        ConversationState.StructuredBookingState.none());
+        assertThat(plan.recommendedAction())
+                .as("hỏi khuyến mãi không được xếp thành xử lý phản đối giá")
+                .isNotIn(AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION,
+                        AdaptiveConversationIntelligence.TurnAction.ALTERNATIVE_OFFER);
+
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        List<FanpageBotResponse.ReplyBubble> bubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                "ACI_COGNITIVE_V2", null, catalog, catalog, personaNangSen(),
+                "hiện có khuyến mãi gì không", "em", "mình", null, List.of());
+        String joined = joinBubbleTexts(bubbles);
+        assertThat(joined)
+                .as("catalog không có khuyến mãi -> tuyệt đối không bịa voucher/%/giảm giá")
+                .doesNotContainIgnoringCase("voucher")
+                .doesNotMatch("(?is).*giảm\\s*\\d+.*")
+                .doesNotMatch("(?is).*\\d+\\s*%.*");
+    }
+
+    // =========================================================================
+    // TEST 29 (§5.2-28): "Để xem đã" — tôn trọng tạm dừng, 0 hỏi vặn, 0 giá,
+    // 0 ép đặt lịch.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T29 §5.2-28: 'để xem đã' -> respectful pause, 0 câu hỏi, 0 giá, 0 ép lịch")
+    void test29_deferralRespectfulPauseNoQuestionNoPrice() throws Exception {
+        String msg = "để xem đã";
+        assertThat(CleanAgentOutputRefereeAndSanitizer.isExplicitConversationClosingDeferral(msg)).isTrue();
+        assertThat(CleanAgentOutputRefereeAndSanitizer.resolveFallbackActualSentSpeechAct(
+                msg, ConversationState.StructuredBookingState.none(),
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(), null))
+                .isEqualTo("FALLBACK_RESPECTED_PAUSE");
+
+        List<PackageCatalogService.PackageSummary> catalog = buildMultiBranchCatalog();
+        List<FanpageBotResponse.ReplyBubble> bubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                CleanAgentCatalogAndPromptBuilder.QuotedReplyResolution.empty(),
+                ConversationState.StructuredBookingState.none(),
+                "ACI_COGNITIVE_V2", null, catalog, catalog, personaNangSen(),
+                msg, "em", "mình", null, List.of());
+        String joined = joinBubbleTexts(bubbles);
+        assertThat(joined).doesNotContain("?");
+        assertThat(joined)
+                .doesNotContain("399").doesNotContain("570").doesNotContain("670").doesNotContain("970");
+        assertThat(joined).doesNotContainIgnoringCase("đặt lịch");
+    }
+
+    // =========================================================================
+    // TEST 30 (§4.8): Prompt (file ngoài + template in-code) không còn hardcode
+    // giá lịch sử; quy tắc subtype §4.1 / ngoại lệ giá §4.2 / nhãn chi nhánh
+    // §4.7 phải hiện diện.
+    // =========================================================================
+    @Test
+    @DisplayName("P2-T30 §4.8: prompt 0 hardcode giá lịch sử + có quy tắc subtype/ngoại lệ giá/đa chi nhánh")
+    void test30_promptHasNoHardcodedHistoricalPricesAndCarriesP2Rules() throws Exception {
+        String md = java.nio.file.Files.readString(
+                java.nio.file.Path.of("..", "config", "aci_v2_system_prompt.md"));
+        String template = CleanAgentCatalogAndPromptBuilder.getInCodeAciPromptTemplate();
+        for (String hardcode : new String[]{"239k", "339k", "399k", "350k", "530k", "570k", "580k", "670k", "970k", "990k"}) {
+            assertThat(md).as("prompt md không được hardcode " + hardcode).doesNotContain(hardcode);
+            assertThat(template).as("template in-code không được hardcode " + hardcode).doesNotContain(hardcode);
+        }
+        // §4.1: CONCISE_PREFERRED chỉ khi khách yêu cầu ngắn gọn tường minh
+        assertThat(md).contains("chỉ khi khách yêu cầu ngắn gọn");
+        assertThat(template).contains("chỉ khi khách yêu cầu ngắn gọn");
+        // §4.2: ngoại lệ bắt buộc — khách vừa phàn nàn vừa đòi giá thì PHẢI báo giá
+        assertThat(md).containsIgnoringCase("báo giá đi");
+        assertThat(template).containsIgnoringCase("báo giá đi");
+        // §4.7: quy tắc đa chi nhánh trong prompt
+        assertThat(md).containsIgnoringCase("branch=");
+        assertThat(template).containsIgnoringCase("branch=");
+    }
+
     private static List<AgentSkillDto> buildNangSenSixSkills() {
         Instant now = Instant.now();
         String p = PAGE_ID.toString();

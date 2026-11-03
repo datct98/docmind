@@ -3589,15 +3589,19 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
 
         // 3. Khách đang phàn nàn về quy trình/cách tư vấn, bức xúc hoặc báo sự cố dịch vụ — tuyệt đối CẤM báo giá hay gạ gói!
+        // ACI V3 P2 (§4.2 NGOẠI LỆ BẮT BUỘC): nếu chính khách đang đòi giá trong lượt này
+        // ("đừng nói vòng vo nữa, báo giá đi") thì KHÔNG được chặn giá — để lượt chảy xuống nhánh giá (mục 6).
+        boolean explicitPriceDemandThisTurn = hasExplicitPriceDemandInMessage(normMsg);
         boolean draft2WasFrustrated = draft2Before != null
                 && draft2Before.consultativeProfile() != null
                 && draft2Before.consultativeProfile().emotion() != null
                 && ("FRUSTRATED".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary())
                     || "IMPATIENT".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary()));
-        boolean isComplaintOrFrustration = isCommunicationStyleComplaintMessage(normMsg)
+        boolean isComplaintOrFrustration = !explicitPriceDemandThisTurn
+                && (isCommunicationStyleComplaintMessage(normMsg)
                 || PrimaryActionRouter.isFrustrationMessage(normMsg)
                 || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(normMsg)
-                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before));
+                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before)));
         if (isComplaintOrFrustration) {
             return List.of(new FanpageBotResponse.ReplyBubble(
                     "Dạ " + sp + " thành thật xin lỗi " + cp
@@ -3779,10 +3783,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 && draft2Before.consultativeProfile().emotion() != null
                 && ("FRUSTRATED".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary())
                     || "IMPATIENT".equalsIgnoreCase(draft2Before.consultativeProfile().emotion().primary()));
-        if (isCommunicationStyleComplaintMessage(normMsg)
+        if ((isCommunicationStyleComplaintMessage(normMsg)
                 || PrimaryActionRouter.isFrustrationMessage(normMsg)
                 || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(normMsg)
-                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before))) {
+                || (draft2WasFrustrated && !isDirectPriceOrPackageInquiryForFallback(normMsg, draft2Before)))
+                // ACI V3 P2 (§4.2): khách vừa phàn nàn vừa ĐÒI GIÁ tường minh -> phải xếp PRICE_INFO, không SERVICE_RECOVERY
+                && !hasExplicitPriceDemandInMessage(normMsg)) {
             return "FALLBACK_SERVICE_RECOVERY";
         }
         if ((bookingState != null && bookingState.status() != null && bookingState.status() != ConversationState.BookingStatus.NONE)
@@ -3823,10 +3829,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (normMsg == null || normMsg.isBlank()) {
             return false;
         }
-        if (isCommunicationStyleComplaintMessage(normMsg)
-                || PrimaryActionRouter.isFrustrationMessage(normMsg)
-                || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
+        if (CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
                 || isExplicitConversationClosingDeferral(normMsg)) {
+            return false;
+        }
+        // ACI V3 P2 (§4.2): phàn nàn/bức xúc KHÔNG chặn nhận diện hỏi giá khi khách đang đòi giá tường minh
+        if ((isCommunicationStyleComplaintMessage(normMsg)
+                || PrimaryActionRouter.isFrustrationMessage(normMsg))
+                && !hasExplicitPriceDemandInMessage(normMsg)) {
             return false;
         }
         String lower = normMsg.toLowerCase(Locale.ROOT);
@@ -6164,7 +6174,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      * mọi COMMUNICATION_FRICTION thành CONCISE_PREFERRED.
      */
     private static final Pattern EXPLICIT_CONCISE_REPLY_REQUEST_PATTERN = Pattern.compile(
-            "(?isU).*\\b(?:viết\\s+dài|nói\\s+dài|dài\\s+(?:dòng|thế|quá|vậy|ngoằng|lắm)|đọc\\s+(?:mỏi|mệt|không\\s+hết|không\\s+nổi|thế\\s+quái)|ngắn\\s+gọn|nói\\s+ngắn|trả\\s+lời\\s+ngắn|tóm\\s+gọn|gọn\\s+(?:lại|thôi|giùm))\\b.*"
+            "(?isU).*\\b(?:viết\\s+dài|nói\\s+dài|dài\\s+(?:dòng|thế|quá|vậy|ngoằng|lắm)|đọc\\s+(?:mỏi|mệt|không\\s+hết|không\\s+nổi|thế\\s+quái)|ngắn\\s+gọn|nói\\s+ngắn|trả\\s+lời\\s+ngắn|tóm\\s+gọn|gọn\\s+(?:lại|thôi|giùm)"
+            + "|(?:nói|trả\\s+lời|đi)\\s+thẳng\\s+vào\\s+(?:ý\\s+chính|ý|vấn\\s+đề|trọng\\s+tâm))\\b.*"
     );
 
     public static boolean isExplicitConciseReplyRequest(String customerMessage) {
@@ -6173,6 +6184,113 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
         return EXPLICIT_CONCISE_REPLY_REQUEST_PATTERN.matcher(norm).find();
+    }
+
+    // =========================================================================
+    // ACI V3 P2 (§4.1): 4 tiểu loại phản ứng tiêu cực của khách — TUYỆT ĐỐI
+    // không sụp mọi COMMUNICATION_FRICTION thành CONCISE_PREFERRED.
+    // =========================================================================
+    public enum NegativeReactionSubtype {
+        /** Không phải phản ứng tiêu cực. */
+        NONE,
+        /** Khách đính chính fact bot nói sai ("Sao lại cổ vai gáy?", "Em có nói đau lưng đâu"). */
+        CUSTOMER_CORRECTION,
+        /** Phàn nàn phong cách/phản hồi ("Nói chuyện máy móc quá", "Tư vấn lòng vòng thế") — KHÔNG khóa CONCISE dài hạn. */
+        COMMUNICATION_COMPLAINT,
+        /** Phàn nàn bị hỏi dồn/ép chốt ("Hỏi lắm thế", "Đừng ép chốt nữa") — dừng hỏi sâu/chốt. */
+        OVER_INTRUSION,
+        /** Yêu cầu trả lời ngắn tường minh ("Nói ngắn thôi", "Viết ngắn gọn giúp mình") — CHỈ loại này set CONCISE_PREFERRED. */
+        EXPLICIT_CONCISE_REQUEST
+    }
+
+    public static NegativeReactionSubtype classifyNegativeReactionSubtype(String rawMessage, List<String> scopeTaxonomy) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return NegativeReactionSubtype.NONE;
+        }
+        String norm = java.text.Normalizer.normalize(rawMessage.strip(), java.text.Normalizer.Form.NFC);
+        String low = norm.toLowerCase(Locale.ROOT);
+        // 1. Yêu cầu ngắn gọn TƯỜNG MINH về độ dài — CHỈ loại này được phép ghi CONCISE_PREFERRED.
+        if (isExplicitConciseReplyRequest(norm)) {
+            return NegativeReactionSubtype.EXPLICIT_CONCISE_REQUEST;
+        }
+        // 2. Đính chính fact / phản bác giả định sai của bot (CUSTOMER_CORRECTION).
+        if (AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(norm)) {
+            return NegativeReactionSubtype.CUSTOMER_CORRECTION;
+        }
+        if (EXPLICIT_FACTUAL_DENIAL_CORRECTION_PATTERN.matcher(low).find()) {
+            return NegativeReactionSubtype.CUSTOMER_CORRECTION;
+        }
+        VietnameseScopeSignalExtractor.ScopeSignalResult scopeSignal = VietnameseScopeSignalExtractor.analyze(
+                norm, scopeTaxonomy != null ? scopeTaxonomy : List.of());
+        if (scopeSignal.possibleCorrection() || scopeSignal.explicitCorrectionGroupD()) {
+            return NegativeReactionSubtype.CUSTOMER_CORRECTION;
+        }
+        // 3. Phàn nàn bị hỏi dồn dập / ép chốt (OVER_INTRUSION) — dừng hỏi sâu, dừng chốt.
+        if (OVER_INTRUSION_EXPLICIT_PATTERN.matcher(low).find()) {
+            return NegativeReactionSubtype.OVER_INTRUSION;
+        }
+        // 4. Phàn nàn phong cách giao tiếp (máy móc/văn mẫu/vòng vo/lòng vòng...) — điều chỉnh giọng,
+        //    KHÔNG khóa CONCISE_PREFERRED dài hạn.
+        if (isCommunicationStyleComplaintMessage(norm)
+                || isProcessOrConsultationFeedbackComplaint(norm)
+                || VERBOSITY_AS_STYLE_COMPLAINT_PATTERN.matcher(low).find()) {
+            return NegativeReactionSubtype.COMMUNICATION_COMPLAINT;
+        }
+        // 5. Fallback: các cue "hỏi nhiều/nói dài" legacy không rơi vào nhóm nào trên.
+        if (isOverIntrusionFeedbackCue(norm)) {
+            return NegativeReactionSubtype.OVER_INTRUSION;
+        }
+        return NegativeReactionSubtype.NONE;
+    }
+
+    /** ACI V3 P2 (§4.1): Phủ định fact trực tiếp của khách ("em có nói đau lưng đâu", "đâu có đau cổ vai gáy"). */
+    private static final Pattern EXPLICIT_FACTUAL_DENIAL_CORRECTION_PATTERN = Pattern.compile(
+            "(?isU)(?:\\b(?:em|mình|tôi|tớ|anh|chị)\\s+(?:có|đâu\\s+có|đâu|chưa)\\s+(?:nói|bảo|kể|nhắc|chia\\s+sẻ)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
+            + "\\b(?:có|đâu\\s+có|đã)\\s+(?:nói|bảo|nhắc)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
+            + "\\bđâu\\s+có\\s+(?:nói|bảo|nhắc|đau|bị|mỏi)\\b)"
+    );
+
+    /** ACI V3 P2 (§4.1): Phàn nàn bị hỏi dồn/ép chốt (OVER_INTRUSION) — tách khỏi phàn nàn độ dài/phong cách. */
+    private static final Pattern OVER_INTRUSION_EXPLICIT_PATTERN = Pattern.compile(
+            "(?isU)(?:\\bhỏi\\s+(?:nhiều|dồn|lắm|mãi|hoài|liên\\s+tục)(?:\\s+(?:thế|quá|vậy|đi|nữa|hoài))*|"
+            + "\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:có\\s+)?(?:hỏi|vặn|hỏi\\s+han)\\b|"
+            + "\\b(?:ép|gạ|thúc|xúi)\\s+(?:chốt|đặt|mua|book|ký)\\b|"
+            + "\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:ép|gạ|thúc|chốt|chèo\\s+kéo)\\b|"
+            + "\\bhỏi\\s+han\\s+(?:nhiều|lắm|quá|dồn\\s+dập)\\b|"
+            + "\\b(?:chốt|gạ|ép)\\s+(?:lịch|đơn|gói)\\s+(?:nữa|hoài|mãi|quá)\\b)"
+    );
+
+    /** ACI V3 P2 (§4.1): Phàn nàn vòng vo/lan man là COMMUNICATION_COMPLAINT (không phải yêu cầu ngắn gọn). */
+    private static final Pattern VERBOSITY_AS_STYLE_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:lòng\\s+vòng|vòng\\s+vèo|vòng\\s+vo|lan\\s+man|lằng\\s+nhằng|rườm\\s+rà)\\b"
+    );
+
+    /** ACI V3 P2 (§4.2): Yêu cầu giá TƯỜNG MINH trong chính lượt ("báo giá đi", "đang hỏi giá gói đó cơ"). */
+    private static final Pattern EXPLICIT_PRICE_DEMAND_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:báo\\s+giá|bảng\\s+giá|cho\\s+(?:em|mình|tôi|tớ|anh|chị|shop|bên\\s+em)\\s+(?:xin\\s+)?(?:giá|bảng\\s+giá)|"
+            + "(?:đang|chỉ)\\s+hỏi\\s+giá|hỏi\\s+giá|giá\\s+(?:là\\s+)?bao\\s+nhiêu|giá\\s+gói|giá\\s+của\\s+gói)\\b"
+    );
+
+    /** ACI V3 P2 (§4.2): "đừng báo giá nữa" là yêu cầu NGỪNG báo giá — không phải yêu cầu giá. */
+    private static final Pattern PRICE_DEMAND_NEGATION_GUARD_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng|chưa\\s+cần|không\\s+cần)\\s+(?:báo\\s+giá|nói\\s+giá|nhắc\\s+giá|đọc\\s+giá|báo)\\b"
+    );
+
+    /**
+     * ACI V3 P2 (§4.2): Khách ĐANG đòi giá tường minh trong chính lượt này
+     * ("báo giá đi", "tôi đang hỏi giá gói đó cơ"). Lượt friction kèm yêu cầu giá
+     * BẮT BUỘC vẫn được trả lời giá grounded — không được chặn vì lý do phàn nàn.
+     */
+    public static boolean hasExplicitPriceDemandInMessage(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String low = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        if (PRICE_DEMAND_NEGATION_GUARD_PATTERN.matcher(low).find()) {
+            return false;
+        }
+        return EXPLICIT_PRICE_DEMAND_PATTERN.matcher(low).find();
     }
 
     /**

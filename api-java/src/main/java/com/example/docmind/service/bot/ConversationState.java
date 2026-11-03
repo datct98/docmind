@@ -640,7 +640,8 @@ public record ConversationState(
             List<String> domainKeywords
     ) {
         List<PackageCatalogService.PackageSummary> fullCatalog = PackageCatalogService.extractCatalog(fusedChunks, domainKeywords);
-        String reg = this.preferredRegion != null ? this.preferredRegion : "HN";
+        // ACI V3 P2 (§4.7, cấm #6): không mặc định "HN" — filterByRegion(null) giữ đủ biến thể đa chi nhánh
+        String reg = this.preferredRegion;
         List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
         if (regCat.isEmpty() && this.availablePackageCatalog != null && !this.availablePackageCatalog.isEmpty()) {
             regCat = this.availablePackageCatalog;
@@ -2205,7 +2206,7 @@ public record ConversationState(
                 true,
                 false,
                 false,
-                "HN",
+                null, // ACI V3 P2 (§4.7, cấm #6): preferredRegion ban đầu = null (UNSPECIFIED), KHÔNG default "HN"
                 List.of(),
                 List.of(),
                 null,
@@ -2302,7 +2303,7 @@ public record ConversationState(
             if (!resetSession && hasStableConversationId && sessionKey != null) {
                 ConversationState existingSession = SESSION_STORE.get(sessionKey);
                 if (existingSession != null) {
-                    String reg = existingSession.preferredRegion() != null ? existingSession.preferredRegion() : "HN";
+                    String reg = existingSession.preferredRegion();
                     List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
                     return existingSession
                             .withDocFlags(docsFeedback, docsRelaxation, docsPrivateRoom)
@@ -2325,7 +2326,7 @@ public record ConversationState(
             if (!resetSession && !hasStableConversationId && sessionKey != null) {
                 ConversationState existingSession = SESSION_STORE.get(sessionKey);
                 if (existingSession != null && existingSession.greetingSent()) {
-                    String reg = existingSession.preferredRegion() != null ? existingSession.preferredRegion() : "HN";
+                    String reg = existingSession.preferredRegion();
                     List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
                     return existingSession
                             .withDocFlags(docsFeedback, docsRelaxation, docsPrivateRoom)
@@ -2336,10 +2337,10 @@ public record ConversationState(
                 SESSION_STORE.remove(sessionKey);
                 LAST_TURN_PRE_STATE_STORE.remove(sessionKey);
             }
-            List<PackageCatalogService.PackageSummary> hnCatalog = PackageCatalogService.filterByRegion(fullCatalog, "HN");
+            // ACI V3 P2 (§4.7, cấm #6): phiên mới chưa có cue chi nhánh -> giữ đủ catalog đa chi nhánh (region null)
             return initial()
                     .withDocFlags(docsFeedback, docsRelaxation, docsPrivateRoom)
-                    .withCatalogAndRegion(hnCatalog, "HN");
+                    .withCatalogAndRegion(fullCatalog, null);
         }
 
         ConversationState cached = sessionKey != null ? SESSION_STORE.get(sessionKey) : null;
@@ -2455,7 +2456,7 @@ public record ConversationState(
         String telemetrySubtype = cached != null ? cached.telemetrySubtype() : null;
         boolean neurologicalRisk = cached != null && cached.neurologicalRisk();
 
-        String preferredRegion = cached != null && cached.preferredRegion() != null ? cached.preferredRegion() : "HN";
+        String preferredRegion = cached != null ? cached.preferredRegion() : null;
         Set<String> mentionedPackages = new LinkedHashSet<>();
         if (!hasAssistantTurnInHistory && cached != null && cached.mentionedPackages() != null) {
             mentionedPackages.addAll(cached.mentionedPackages());
@@ -3340,7 +3341,7 @@ public record ConversationState(
             }
         }
         List<PackageCatalogService.PackageSummary> fullCatalog = PackageCatalogService.extractCatalog(fusedChunks, domainKeywords);
-        String reg = this.preferredRegion != null ? this.preferredRegion : "HN";
+        String reg = this.preferredRegion;
         List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
         if (regCat.isEmpty() && this.availablePackageCatalog != null && !this.availablePackageCatalog.isEmpty()) {
             regCat = this.availablePackageCatalog;
@@ -4693,8 +4694,13 @@ public record ConversationState(
         };
     }
 
+    /**
+     * ACI V3 P2 (§4.7, cấm #6): nhận diện vùng/chi nhánh CHỈ từ cue tường minh trong lời khách.
+     * Khách chưa nêu chi nhánh và chưa có vùng đã lưu -> trả {@code null} (UNSPECIFIED),
+     * TUYỆT ĐỐI không mặc định "HN".
+     */
     public static String detectPreferredRegion(String lowerText, String currentRegion) {
-        String fallback = (currentRegion != null && !currentRegion.isBlank()) ? currentRegion : "HN";
+        String fallback = (currentRegion != null && !currentRegion.isBlank()) ? currentRegion : null;
         if (lowerText == null || lowerText.isBlank()) {
             return fallback;
         }
@@ -4705,6 +4711,41 @@ public record ConversationState(
             return "HN";
         }
         return fallback;
+    }
+
+    /**
+     * ACI V3 P2 (§4.7): Phân giải vùng/chi nhánh CHỈ từ bằng chứng tường minh
+     * (tin nhắn hiện tại -> lịch sử lượt user -> vùng đã lưu). Khách chưa nêu
+     * chi nhánh -> trả {@code null} (UNSPECIFIED), TUYỆT ĐỐI không default "HN".
+     */
+    public static String resolveExplicitRegionAcrossTurns(
+            String customerMessage,
+            List<com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn> history,
+            String currentRegion
+    ) {
+        if (customerMessage != null && !customerMessage.isBlank()) {
+            String fromMessage = detectPreferredRegion(customerMessage.toLowerCase(Locale.ROOT), null);
+            if (fromMessage != null) {
+                return fromMessage;
+            }
+        }
+        if (history != null) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                com.example.docmind.dto.bot.FanpageBotRequest.ConversationTurn turn = history.get(i);
+                if (turn == null || turn.content() == null || turn.content().isBlank()) {
+                    continue;
+                }
+                String role = turn.role() != null ? turn.role().strip() : "";
+                if (!"user".equalsIgnoreCase(role) && !"customer".equalsIgnoreCase(role)) {
+                    continue;
+                }
+                String fromHistory = detectPreferredRegion(turn.content().toLowerCase(Locale.ROOT), null);
+                if (fromHistory != null) {
+                    return fromHistory;
+                }
+            }
+        }
+        return (currentRegion != null && !currentRegion.isBlank()) ? currentRegion : null;
     }
 
     private static boolean hasAlternativePackageWithSameDuration(

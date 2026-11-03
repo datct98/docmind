@@ -5027,7 +5027,9 @@ public final class AdaptiveConversationIntelligence {
             return PriceIntentSubMode.NONE;
         }
         String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(rawMessage)
+        // ACI V3 P2 (§4.2): phàn nàn phong cách CHỈ chặn price sub-mode khi khách KHÔNG đòi giá tường minh.
+        if ((CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(rawMessage)
+                && !CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(rawMessage))
                 || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawMessage)) {
             return PriceIntentSubMode.NONE;
         }
@@ -5341,14 +5343,14 @@ public final class AdaptiveConversationIntelligence {
             recommendedAction = TurnAction.CUSTOMER_CORRECTION_PIVOT;
             directive = "CUSTOMER_CORRECTION_PIVOT (ƯU TIÊN CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION): Khách vừa đính chính/từ chối ('" + msg + "'). "
                     + "BẮT BUỘC: (1) Thừa nhận thẳng thắn điều chỉnh của khách ngay câu đầu (không bảo vệ gói cũ, không gọi thành phần bị từ chối là 'tặng kèm'); "
-                    + "(2) Loại bỏ hoàn toàn thành phần/gói khách không muốn — nếu khách từ chối chăm sóc/phục hồi tóc mà chỉ muốn massage giúp dễ ngủ thì chuyển thẳng sang đề xuất gói thuần massage trong <VERIFIED_BUSINESS_CATALOG> (ví dụ Massage Body tinh dầu Nàng Sen 399k 60p hoặc Massage cổ vai gáy chuyên sâu 350k 60p); "
+                    + "(2) Loại bỏ hoàn toàn thành phần/gói khách không muốn — nếu khách từ chối chăm sóc/phục hồi tóc mà chỉ muốn massage giúp dễ ngủ thì chuyển thẳng sang đề xuất gói thuần massage trong <VERIFIED_BUSINESS_CATALOG> (nêu đúng tên gói + giá + thời lượng theo Catalog, tuyệt đối không tự bịa mức giá); "
                     + "(3) Bảo toàn các nhu cầu đã biết (đau đầu, khó ngủ, mỏi...) và KHÔNG hỏi lại câu thừa 'Anh/chị có muốn tìm lựa chọn tập trung massage không?'.";
         } else if (isTrialCommitmentSelection) {
             buyingSignals.add("TRIAL_COMMITMENT");
             recommendedAction = TurnAction.TRIAL_COMMITMENT_LOCK;
             directive = "TRIAL_COMMITMENT_LOCK: Khách vừa chọn phương án vừa đủ/trải nghiệm thử ('" + msg + "'). "
                     + "BẮT BUỘC: (1) Khóa ngay lựa chọn này (TRIAL_COMMITMENT) và xác nhận đúng gói đó một cách tự nhiên (tên + giá + thời lượng theo <VERIFIED_BUSINESS_CATALOG>); "
-                    + "(2) TUYỆT ĐỐI KHÔNG upsell sang gói đắt hơn (như 339k), KHÔNG nhắc thành phần không liên quan hoặc đã bị khách từ chối; "
+                    + "(2) TUYỆT ĐỐI KHÔNG upsell sang gói đắt hơn, KHÔNG nhắc thành phần không liên quan hoặc đã bị khách từ chối; "
                     + "(3) Có thể hỏi nhẹ 1 câu về thời điểm khách tiện ghé, không ép chốt.";
             boolean priorHairCareRejection = draft2Snapshot != null
                     && draft2Snapshot.businessCommitment() != null
@@ -5358,16 +5360,27 @@ public final class AdaptiveConversationIntelligence {
             boolean massageFocusAfterHairRejection = priorHairCareRejection
                     && msgLow.matches("(?isU).*(cổ\\s*vai\\s*gáy|massage|mát\\s*xa).*");
             if (priorHairCareRejection || massageFocusAfterHairRejection) {
-                directive = directive + " LƯU Ý QUAN TRỌNG: Khách ĐÃ TỪ CHỐI chăm sóc/phục hồi tóc (negative_preferences: hair_care) -> TUYỆT ĐỐI KHÔNG chọn gói Gội đầu dưỡng sinh 239k/339k; BẮT BUỘC khóa đúng gói thuần Massage vừa trao đổi (ví dụ Massage cổ vai gáy chuyên sâu hoặc Massage cơ bản 60p 399k)!";
+                directive = directive + " LƯU Ý QUAN TRỌNG: Khách ĐÃ TỪ CHỐI chăm sóc/phục hồi tóc (negative_preferences: hair_care) -> TUYỆT ĐỐI KHÔNG chọn lại gói thuộc nhóm gội đầu dưỡng sinh/chăm sóc tóc; BẮT BUỘC khóa đúng gói thuần Massage vừa trao đổi với đúng tên, giá và thời lượng theo <VERIFIED_BUSINESS_CATALOG>!";
             }
         } else if (isStyleOrProcessFeedback) {
             emotions.add("FRUSTRATED_BY_CONSULTATION_STYLE");
             frictionHistory.add("PROCESS_OR_COMMUNICATION_FEEDBACK");
             recommendedAction = TurnAction.FEEDBACK_RECOVERY;
+            // ACI V3 P2 (§4.2 NGOẠI LỆ BẮT BUỘC): khách vừa phàn nàn vừa ĐÒI GIÁ trong cùng lượt
+            // ("đừng nói vòng vo nữa, báo giá đi") -> PHẢI trả lời giá grounded, không chặn vì friction.
+            boolean explicitPriceDemandThisTurn = priceSubMode != PriceIntentSubMode.NONE
+                    || CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(msg);
             boolean allowDiscoveryQ = CleanAgentOutputRefereeAndSanitizer.isDiscoveryQuestionAllowedOnProcessFeedback(msg);
-            directive = allowDiscoveryQ
-                    ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
-                    : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá).";
+            if (explicitPriceDemandThisTurn) {
+                directive = "FEEDBACK_RECOVERY (KÈM YÊU CẦU GIÁ TƯỜNG MINH TRONG CÙNG LƯỢT): Khách vừa phàn nàn cách trao đổi NHƯNG đồng thời yêu cầu báo giá ('" + msg + "'). "
+                        + "BẮT BUỘC: (1) Ghi nhận gọn 1 vế ngắn (xin lỗi trực diện vì trao đổi chưa đi thẳng vào ý, 0 vòng vo, 0 sáo rỗng); "
+                        + "(2) Trả lời NGAY yêu cầu giá bằng đúng tên gói + giá + thời lượng grounded từ <VERIFIED_BUSINESS_CATALOG> — TUYỆT ĐỐI KHÔNG chặn giá vì đây là lượt phàn nàn; "
+                        + "(3) cta_level = NO_CTA, 0 ép chốt, 0 câu hỏi thăm dò thêm.";
+            } else {
+                directive = allowDiscoveryQ
+                        ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
+                        : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá).";
+            }
         } else if (isExplicitRefusal) {
             communicationSignals.add("EXPLICIT_CONVERSATION_CLOSURE");
             recommendedAction = TurnAction.CUSTOMER_EXIT;

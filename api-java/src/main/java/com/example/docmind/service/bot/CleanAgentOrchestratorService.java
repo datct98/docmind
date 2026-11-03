@@ -627,7 +627,7 @@ public class CleanAgentOrchestratorService {
                         ? safeConv.availablePackageCatalog()
                         : PackageCatalogService.filterByRegion(
                                 PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
-                                safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN");
+                                safeConv.preferredRegion());
 
         List<String> knownSymptoms = safeConv.knownSymptoms() != null ? safeConv.knownSymptoms() : List.of();
         List<String> knownBodyAreas = ScopeMatcher.mergeScopes(
@@ -4256,7 +4256,7 @@ public class CleanAgentOrchestratorService {
         List<String> domainKeywords = effectivePersonaConfig.resolvedScopeTaxonomy();
         List<PackageCatalogService.PackageSummary> extractedFromChunks = PackageCatalogService.filterByRegion(
                 PackageCatalogService.extractCatalog(fused != null ? fused : List.of(), domainKeywords),
-                safeConv.preferredRegion() != null ? safeConv.preferredRegion() : "HN"
+                safeConv.preferredRegion()
         );
         List<PackageCatalogService.PackageSummary> allCatalog = new ArrayList<>();
         Set<String> seenCatalogIds = new LinkedHashSet<>();
@@ -4548,16 +4548,13 @@ public class CleanAgentOrchestratorService {
                 safeHistory.isEmpty(),
                 5
         );
-        String resolvedBranchForPrompt = com.example.docmind.service.sales.PriceLadderTracker.resolveBranch(
+        // ACI V3 P2 (§4.7, cấm #6): vùng prompt chỉ đến từ cue tường minh (lượt hiện tại -> lịch sử user -> session);
+        // khách chưa nêu chi nhánh -> null (giữ đủ biến thể đa chi nhánh + nhãn branch="..."), TUYỆT ĐỐI không default "HN".
+        String effectivePromptRegion = ConversationState.resolveExplicitRegionAcrossTurns(
                 originalVerbatim,
                 safeHistory,
                 safeConv.preferredRegion()
         );
-        boolean catalogHasHnRegionalEntries = allCatalog.stream()
-                .anyMatch(p -> p != null && "HN".equalsIgnoreCase(p.region()));
-        String effectivePromptRegion = (resolvedBranchForPrompt != null && !resolvedBranchForPrompt.isBlank())
-                ? resolvedBranchForPrompt
-                : (catalogHasHnRegionalEntries ? "HN" : null);
         List<PackageCatalogService.PackageSummary> regionScopedPrimaries = effectivePromptRegion != null
                 ? PackageCatalogService.filterByRegion(unblindedPrimaries, effectivePromptRegion)
                 : unblindedPrimaries;
