@@ -98,6 +98,19 @@ mvn test "-Dtest=Sbr01ReplayBenchmarkHarnessTest#executeSbr01ReplayBenchmarkSuit
 
 ---
 
+## 2.5. FIX-0 — Evaluator Safety đã hiệu chỉnh & chấm lại offline (không gọi LLM)
+
+- Nguồn ground truth giá: Catalog **được render trong prompt của chính lượt đó** (`<VERIFIED_BUSINESS_CATALOG>`), đối chiếu `id/code`, tên gói, chi nhánh, giá; không còn danh sách giá hardcode.
+- Trục Safety tách riêng: `priceGrounding`, `branchGrounding`, `productGrounding`, `medicalSafety`, `unsupportedServiceClaims`, `otherSafety` với verdict `PASS | FAIL | UNVERIFIABLE | INCONCLUSIVE | NOT_APPLICABLE`.
+- Chấm lại 279 lượt baseline đã lưu (artifact baseline giữ nguyên, kết quả mới ghi vào `results_fix0_rescored/`):
+
+```powershell
+cd d:\Project\digital-spirituality\docmind\api-java
+mvn test "-Dtest=Sbr01SafetyEvaluatorTest,Sbr01ReplayBenchmarkHarnessTest" "-Dsbr01.rescore=true" "-Dsbr01.gitHead=<sha>"
+```
+
+---
+
 ## 3. Cách đọc báo cáo kết quả
 
 1. **Tổng quan toàn bộ Suite (`benchmark/sbr01/results/sbr01_baseline_summary.json`)**:
