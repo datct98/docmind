@@ -1,0 +1,31 @@
+{
+  "before_baseline_results": {
+    "turns": 135,
+    "rawTurnsWithPipe": 29,
+    "postRefereeTurnsWithPipe": 29,
+    "finalTurnsWithPipe": 29,
+    "promptsWithHistoryPipeDelimiter": 81,
+    "historyPipeOccurrences": 87,
+    "promptsWithBotHistoryLines": 114
+  },
+  "after": {
+    "turns": 135,
+    "rawTurnsWithPipe": 0,
+    "postRefereeTurnsWithPipe": 0,
+    "finalTurnsWithPipe": 0,
+    "promptsWithHistoryPipeDelimiter": 0,
+    "historyPipeOccurrences": 0,
+    "promptsWithBotHistoryLines": 114
+  },
+  "afterDir": "d:\\Project\\digital-spirituality\\docmind\\benchmark\\sbr01\\results_fix2_targeted",
+  "cases": [
+    "CASE-01",
+    "CASE-04",
+    "CASE-06",
+    "CASE-09",
+    "CASE-11",
+    "CASE-13",
+    "CASE-19"
+  ],
+  "afterTurnsWithRawPipe": []
+}

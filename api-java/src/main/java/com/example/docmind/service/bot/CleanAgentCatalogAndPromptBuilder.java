@@ -5317,6 +5317,28 @@ public final class CleanAgentCatalogAndPromptBuilder {
             int estimatedTokens
     ) {}
 
+    /**
+     * SBR-01 FIX-2: serialize the bubbles of one historical bot turn for {@code <CONVERSATION_HISTORY>}.
+     * Bubbles (separated by blank lines in the stored transcript) are rendered as continuation lines
+     * (newline + 4-space indent) under the same {@code [Tn] Bot:} entry, instead of the former {@code " | "}
+     * delimiter that the LLM imitated inside a single output bubble. Order and content are preserved verbatim;
+     * a literal {@code |} written by a user/bot inside a bubble is left untouched.
+     */
+    static String renderBotBubblesForHistory(String content) {
+        if (content == null) {
+            return "";
+        }
+        String[] parts = content.strip().split("\\r?\\n\\s*\\r?\\n+");
+        List<String> bubbles = new ArrayList<>(parts.length);
+        for (String p : parts) {
+            String s = p.strip();
+            if (!s.isEmpty()) {
+                bubbles.add(s);
+            }
+        }
+        return String.join("\n    ", bubbles);
+    }
+
     public static void appendTokenBudgetedConversationHistory(
             StringBuilder sb,
             List<FanpageBotRequest.ConversationTurn> history,
@@ -5350,7 +5372,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
                     renderedText = t.content().strip().replaceAll("\\s+", " ");
                 } else {
                     renderedText = isBot
-                            ? t.content().strip().replaceAll("\\r?\\n\\s*\\r?\\n+", " | ")
+                            ? renderBotBubblesForHistory(t.content())
                             : t.content().strip();
                 }
                 String line = "[T" + turnCounter + "] " + roleLabel + ": " + renderedText + "\n";
