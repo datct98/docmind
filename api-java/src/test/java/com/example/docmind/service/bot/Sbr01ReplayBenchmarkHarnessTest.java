@@ -905,14 +905,14 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             List<FanpageBotResponse.ReplyBubble> afterNorm = new ArrayList<>();
             for (FanpageBotResponse.ReplyBubble b : cursor) {
                 if (b != null && b.text() != null && !b.text().isBlank()) {
-                    String txt = BubbleTextSanitizer.capitalizeFirstLetter(
-                            BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(b.text().strip()));
+                    // SBR-01 FIX-3: production now only capitalizes (no '?'<->'.' normalization)
+                    String txt = BubbleTextSanitizer.capitalizeFirstLetter(b.text().strip());
                     afterNorm.add(new FanpageBotResponse.ReplyBubble(txt, 0));
                 }
             }
             cursor = recordStepIfChanged(bubbleMutations, "POST_REFEREE_TO_FINAL",
-                    "BubbleTextSanitizer.normalizeDeclarativeQuestionMarks + capitalizeFirstLetter",
-                    "DECLARATIVE_QUESTION_MARK_OR_CAPITALIZATION_NORMALIZATION", cursor, afterNorm);
+                    "BubbleTextSanitizer.capitalizeFirstLetter",
+                    "CAPITALIZATION_NORMALIZATION", cursor, afterNorm);
 
             if (turnSnap != null && turnSnap.plan() != null) {
                 List<FanpageBotResponse.ReplyBubble> afterP37B2 =

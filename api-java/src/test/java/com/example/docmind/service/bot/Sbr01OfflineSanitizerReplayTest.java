@@ -1,6 +1,7 @@
 package com.example.docmind.service.bot;
 
 import com.example.docmind.dto.PagePersonaConfig;
+import com.example.docmind.dto.bot.FanpageBotRequest;
 import com.example.docmind.dto.bot.FanpageBotResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,7 +54,7 @@ class Sbr01OfflineSanitizerReplayTest {
 
     record StoredTurn(String caseId, int runIndex, String turnId, String customerMessage,
                       List<String> priorAssistantTexts, List<String> rawBubbles, List<String> postRefereeBubbles,
-                      List<String> oldFinalBubbles, JsonNode mutations) {
+                      List<String> oldFinalBubbles, JsonNode mutations, List<FanpageBotRequest.ConversationTurn> history) {
     }
 
     private List<StoredTurn> loadStoredTurns() throws Exception {
@@ -69,8 +70,10 @@ class Sbr01OfflineSanitizerReplayTest {
             for (JsonNode run : root.path("runs")) {
                 for (JsonNode t : run.path("turns")) {
                     List<String> prior = new ArrayList<>();
+                    List<FanpageBotRequest.ConversationTurn> hist = new ArrayList<>();
                     for (JsonNode h : t.path("inputAndContext").path("conversationHistory")) {
                         String role = h.path("role").asString();
+                        hist.add(new FanpageBotRequest.ConversationTurn(role, h.path("content").asString()));
                         if ("assistant".equalsIgnoreCase(role) || "bot".equalsIgnoreCase(role)) {
                             prior.add(h.path("content").asString());
                         }
@@ -81,7 +84,7 @@ class Sbr01OfflineSanitizerReplayTest {
                             texts(op.path("raw_llm_output").path("bubbles")),
                             texts(op.path("post_referee_output").path("bubbles")),
                             texts(op.path("final_sent_output").path("bubbles")),
-                            op.path("javaBubbleMutations")));
+                            op.path("javaBubbleMutations"), hist));
                 }
             }
         }
@@ -288,6 +291,146 @@ class Sbr01OfflineSanitizerReplayTest {
 
     private static double round(double v) {
         return Math.round(v * 1000.0) / 1000.0;
+    }
+
+    // ================================================================================================
+    // FIX-3: remove forced punctuation mutation
+    // ================================================================================================
+
+    private static final Pattern TERMINAL_PUNCT = Pattern.compile("[.?!？]+$");
+
+    /** Sentences whose text (without terminal punctuation) is identical before/after but whose terminal mark changed. */
+    static List<String> punctuationOnlyMutations(List<String> before, List<String> after) {
+        Map<String, String> beforeTerminal = new LinkedHashMap<>();
+        for (String b : before) {
+            for (String s : b.split("(?<=[.!?？])\\s+")) {
+                String st = s.strip();
+                if (st.isEmpty()) continue;
+                String key = normalizeSpaces(TERMINAL_PUNCT.matcher(st).replaceAll("")).toLowerCase(Locale.ROOT);
+                java.util.regex.Matcher tm = TERMINAL_PUNCT.matcher(st);
+                beforeTerminal.put(key, tm.find() ? tm.group() : "");
+            }
+        }
+        List<String> mutated = new ArrayList<>();
+        for (String a : after) {
+            for (String s : a.split("(?<=[.!?？])\\s+")) {
+                String st = s.strip();
+                if (st.isEmpty()) continue;
+                String key = normalizeSpaces(TERMINAL_PUNCT.matcher(st).replaceAll("")).toLowerCase(Locale.ROOT);
+                java.util.regex.Matcher tm = TERMINAL_PUNCT.matcher(st);
+                String term = tm.find() ? tm.group() : "";
+                if (beforeTerminal.containsKey(key) && !beforeTerminal.get(key).equals(term)) {
+                    mutated.add(beforeTerminal.get(key) + "->" + term + " :: " + st);
+                }
+            }
+        }
+        return mutated;
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "sbr01.offlineReplay", matches = "true")
+    @DisplayName("SBR-01 FIX-3: offline replay of capitalize/normalize step and P37B2 discipline over stored mutation inputs")
+    void offlineReplayFix3() throws Exception {
+        PagePersonaConfig persona = loadPersona();
+        String careActor = persona.resolvedCareActor();
+        List<StoredTurn> turns = loadStoredTurns();
+        assertThat(turns).hasSize(279);
+
+        int normalizeSteps = 0, normalizeOldPunct = 0, normalizeNewPunct = 0;
+        int p37Steps = 0, p37OldPunct = 0, p37NewPunct = 0;
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (StoredTurn t : turns) {
+            List<FanpageBotRequest.ConversationTurn> history = new ArrayList<>();
+            // rebuild history order-insensitively is not possible from assistant-only list; use stored conversationHistory
+            history.addAll(t.history());
+            for (JsonNode m : t.mutations()) {
+                String cm = m.path("classAndMethod").asString();
+                List<String> before = texts(m.path("beforeBubbles"));
+                List<String> oldAfter = texts(m.path("afterBubbles"));
+                List<String> oldPunct = punctuationOnlyMutations(before, oldAfter);
+                List<String> newAfter;
+                String step;
+                if (cm.contains("normalizeDeclarativeQuestionMarks")) {
+                    step = "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)";
+                    normalizeSteps++;
+                    newAfter = before.stream().map(x -> BubbleTextSanitizer.capitalizeFirstLetter(x.strip())).toList();
+                    List<String> newPunct = punctuationOnlyMutations(before, newAfter);
+                    normalizeOldPunct += oldPunct.isEmpty() ? 0 : 1;
+                    normalizeNewPunct += newPunct.isEmpty() ? 0 : 1;
+                    records.add(record(t, step, before, oldAfter, newAfter, oldPunct, newPunct));
+                } else if (cm.contains("enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace")) {
+                    step = "P37B2_TURN_ACTION_DISCIPLINE";
+                    p37Steps++;
+                    newAfter = texts(CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
+                            bubbles(before), t.customerMessage(), history, null, List.of(), "em", "mình", careActor));
+                    List<String> newPunct = punctuationOnlyMutations(before, newAfter);
+                    p37OldPunct += oldPunct.isEmpty() ? 0 : 1;
+                    p37NewPunct += newPunct.isEmpty() ? 0 : 1;
+                    records.add(record(t, step, before, oldAfter, newAfter, oldPunct, newPunct));
+                }
+            }
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("fixId", "FIX-3");
+        summary.put("gitHead", System.getProperty("sbr01.gitHead", "UNSPECIFIED"));
+        summary.put("llmCallsMade", 0);
+        summary.put("totalStoredTurns", turns.size());
+        summary.put("recordedNormalizeSteps", normalizeSteps);
+        summary.put("normalizeStepsWithPunctuationMutation_old", normalizeOldPunct);
+        summary.put("normalizeStepsWithPunctuationMutation_new", normalizeNewPunct);
+        summary.put("recordedP37B2Steps", p37Steps);
+        summary.put("p37B2StepsWithPunctuationMutation_old", p37OldPunct);
+        summary.put("p37B2StepsWithPunctuationMutation_new", p37NewPunct);
+        summary.put("limitations", List.of(
+                "Only turns where the baseline harness recorded a mutation for these steps carry a step input; other turns had no mutation from these steps.",
+                "P37B2 is replayed without live bookingState/eligibleCatalog/prebuilt plan (plan rebuilt from customer message + stored history); non-punctuation behaviour of P37B2 may differ from live.",
+                "Metric counts only sentences whose text is unchanged while the terminal mark changed (punctuation-only mutation)."));
+        summary.put("steps", records);
+        Path outDir = repoRoot().resolve("benchmark/sbr01/results_fix3_offline");
+        Files.createDirectories(outDir);
+        Files.writeString(outDir.resolve("sbr01_fix3_offline_replay.json"), om.writeValueAsString(summary), StandardCharsets.UTF_8);
+
+        StringBuilder md = new StringBuilder("# SBR-01 FIX-3 — Offline punctuation replay (generated)\n\n");
+        md.append("- Git HEAD: `").append(summary.get("gitHead")).append("` — LLM calls: 0\n");
+        md.append("- normalize step: recorded ").append(normalizeSteps).append(", with punctuation mutation old/new = ")
+                .append(normalizeOldPunct).append("/").append(normalizeNewPunct).append("\n");
+        md.append("- P37B2 step: recorded ").append(p37Steps).append(", with punctuation mutation old/new = ")
+                .append(p37OldPunct).append("/").append(p37NewPunct).append("\n\n");
+        md.append("| Case | Run | Turn | Step | Old punct mutations | New punct mutations | Old after | New after |\n|---|---:|---|---|---|---|---|---|\n");
+        for (Map<String, Object> r : records) {
+            md.append("| ").append(r.get("caseId")).append(" | ").append(r.get("runIndex")).append(" | ").append(r.get("turnId"))
+                    .append(" | ").append(r.get("step")).append(" | ").append(esc(r.get("oldPunctuationMutations")))
+                    .append(" | ").append(esc(r.get("newPunctuationMutations"))).append(" | ").append(esc(r.get("oldAfter")))
+                    .append(" | ").append(esc(r.get("newAfter"))).append(" |\n");
+        }
+        md.append("\n## Limitations\n\n");
+        for (Object l : (List<?>) summary.get("limitations")) {
+            md.append("- ").append(l).append("\n");
+        }
+        Files.writeString(outDir.resolve("SBR01_FIX3_OFFLINE_REPLAY.md"), md.toString(), StandardCharsets.UTF_8);
+
+        assertThat(normalizeNewPunct).isZero();
+        assertThat(p37NewPunct).isZero();
+    }
+
+    private static Map<String, Object> record(StoredTurn t, String step, List<String> before, List<String> oldAfter,
+                                              List<String> newAfter, List<String> oldPunct, List<String> newPunct) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("caseId", t.caseId());
+        r.put("runIndex", t.runIndex());
+        r.put("turnId", t.turnId());
+        r.put("customerMessage", t.customerMessage());
+        r.put("step", step);
+        r.put("raw_llm_output", t.rawBubbles());
+        r.put("post_referee_output", t.postRefereeBubbles());
+        r.put("final_sent_output_old", t.oldFinalBubbles());
+        r.put("before", before);
+        r.put("oldAfter", oldAfter);
+        r.put("newAfter", newAfter);
+        r.put("oldPunctuationMutations", oldPunct);
+        r.put("newPunctuationMutations", newPunct);
+        return r;
     }
 
     private static String removeTemplateSentences(String text) {

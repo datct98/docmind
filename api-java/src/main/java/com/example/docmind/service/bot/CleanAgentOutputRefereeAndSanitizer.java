@@ -7610,31 +7610,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
 
-        // Khôi phục dấu ? ở câu nghi vấn cuối cùng của bubble cuối nếu bị chuẩn hóa nhầm thành dấu chấm '.'
-        boolean allowsTrailingQuestion = action != AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION
-                && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT
-                && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_DEFERRAL
-                && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT
-                && action != AdaptiveConversationIntelligence.TurnAction.SELF_IDENTIFY_GENDER
-                && action != AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF
-                && !isOverIntrusionFeedbackCue(customerMessage);
-        if (allowsTrailingQuestion && !processed.isEmpty()) {
-            int totalQ = processed.stream().mapToInt(b -> countQuestionMarks(b.text())).sum();
-            if (totalQ == 0) {
-                int lastIdx = processed.size() - 1;
-                FanpageBotResponse.ReplyBubble lastBubble = processed.get(lastIdx);
-                String lastTxt = lastBubble.text().strip();
-                String[] lastSents = lastTxt.split("(?<=[.!?？])\\s+");
-                if (lastSents.length > 0) {
-                    String tailSent = lastSents[lastSents.length - 1].strip();
-                    if (tailSent.endsWith(".")
-                            && tailSent.matches("(?isU).*(?:\\bhay\\s+(?:muốn|cần|thích|nghiêng|chọn|dành|là|để|ưu\\s+tiên|sau\\s+khi|vào|tìm|làm|chuyên\\s+sâu|nhẹ\\s+nhàng)\\b|\\b(?:không|chưa|nhỉ|sao|nào)\\s+ạ|\\b(?:vùng|gói|buổi|khung\\s+giờ|chi\\s+nhánh|cơ\\s+sở|hướng)\\s+nào\\b|\\b(?:thế\\s+nào|ra\\s+sao)\\b)[^.!?？]*\\.$")) {
-                        lastSents[lastSents.length - 1] = tailSent.substring(0, tailSent.length() - 1) + "?";
-                        processed.set(lastIdx, new FanpageBotResponse.ReplyBubble(String.join(" ", lastSents), lastBubble.typingDelayMs()));
-                    }
-                }
-            }
-        }
+        // SBR-01 FIX-3: đã gỡ bước Java tự đổi dấu '.' cuối câu thành '?' (dấu câu của LLM được bảo toàn).
 
         processed = sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(processed, customerMessage, history);
         return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);

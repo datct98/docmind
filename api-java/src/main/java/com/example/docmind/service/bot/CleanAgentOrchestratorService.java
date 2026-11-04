@@ -1779,7 +1779,7 @@ public class CleanAgentOrchestratorService {
                             bookingFunnelStatus
                     );
             if (!usedSafeHandoffFallback) {
-                normText = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(normText);
+                // SBR-01 FIX-3: không tự đổi dấu '?'/'.' của LLM; chỉ viết hoa chữ cái đầu.
                 normText = BubbleTextSanitizer.capitalizeFirstLetter(normText);
             }
             int delay = (i == 0)
@@ -1797,7 +1797,6 @@ public class CleanAgentOrchestratorService {
                     heldPkgIsNull,
                     bookingFunnelStatus
             );
-            fallbackText = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(fallbackText);
             fallbackText = BubbleTextSanitizer.capitalizeFirstLetter(fallbackText);
             finalBubbles.add(new FanpageBotResponse.ReplyBubble(fallbackText, 0));
         }
@@ -5755,13 +5754,12 @@ public class CleanAgentOrchestratorService {
         long validationMs = Math.max(0L, (System.nanoTime() - validationStartNs) / 1_000_000L);
         long llmElapsedMs = Math.max(1L, modelLatencyMs);
 
-        // Chuẩn hóa nhẹ hình thức câu chữ (viết hoa chữ cái đầu & dấu chấm hỏi câu trần thuật — KHÔNG sửa ý định/chiến thuật LLM)
+        // Chuẩn hóa nhẹ hình thức câu chữ (chỉ viết hoa chữ cái đầu — SBR-01 FIX-3: KHÔNG đổi dấu '?'/'.' của LLM)
         List<FanpageBotResponse.ReplyBubble> formattedBubbles = new ArrayList<>(candidateBubbles.size());
         for (FanpageBotResponse.ReplyBubble b : candidateBubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = b.text().strip();
             if (!usedSafeHandoffFallback) {
-                txt = BubbleTextSanitizer.normalizeDeclarativeQuestionMarks(txt);
                 txt = BubbleTextSanitizer.capitalizeFirstLetter(txt);
             }
             formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0));
