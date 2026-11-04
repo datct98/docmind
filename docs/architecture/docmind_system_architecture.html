@@ -743,7 +743,7 @@
         </div>
 
         <div class="connector-arrow">
-          <span>&darr; Internal Microservice &amp; Multi-Provider LLM Calls (FastAPI :8000 &bull; Agent Brain :8095 &bull; Dynamic .env LLM Endpoint) &darr;</span>
+          <span>&darr; Internal Microservice &amp; Multi-Provider LLM Calls (FastAPI :8091 &bull; In-Process AgentBrainService &bull; Dynamic .env LLM Endpoint) &darr;</span>
         </div>
 
         <!-- LAYER 3: PYTHON AI MICROSERVICES & LLM -->
@@ -768,13 +768,13 @@
 
             <div class="comp-card" style="--card-accent: #c084fc;">
               <div class="comp-head">
-                <div class="comp-name">docmind-agent-brain (Long-Term Memory)</div>
-                <span class="comp-port">FastAPI :8095</span>
+                <div class="comp-name">AgentBrainService (In-Process Customer Memory)</div>
+                <span class="comp-port">Java In-Process</span>
               </div>
               <div class="comp-desc">Lưu trữ và truy hồi trí nhớ dài hạn của từng khách hàng theo <code>page_id + sender_id</code> (sở thích, lịch sử băn khoăn, nhiệt độ mua hàng) và tư vấn chiến thuật cho Java Engine.</div>
               <div class="code-tags">
-                <span class="code-tag">POST /brain/recall-and-advise</span>
-                <span class="code-tag">POST /brain/retain-turn</span>
+                <span class="code-tag">recallAndAdvise()</span>
+                <span class="code-tag">retainTurnWithReflection()</span>
                 <span class="code-tag">Episodic Memory</span>
               </div>
             </div>
@@ -1020,7 +1020,7 @@
           <div class="step-num">10</div>
           <div class="step-body">
             <h3>Cập Nhật Trạng Thái Phiên &amp; Ghi Nhận Học Tăng Cường (State Persistence &amp; Telemetry)</h3>
-            <p>Lưu trạng thái mới qua <code>ConversationState.advanceAndPersist()</code>, ghi nhận lượt áp dụng kỹ năng/quy tắc vào PostgreSQL và lưu trí nhớ dài hạn bất đồng bộ sang <code>docmind-agent-brain</code>.</p>
+            <p>Lưu trạng thái mới qua <code>ConversationState.advanceAndPersist()</code>, ghi nhận lượt áp dụng kỹ năng/quy tắc vào PostgreSQL và cập nhật trí nhớ khách hàng trực tiếp qua <code>AgentBrainService</code> nội trú.</p>
             <div class="code-tags">
               <span class="code-tag">ConversationState.advanceAndPersist()</span>
               <span class="code-tag">agentBrainService.retainTurnAsync()</span>

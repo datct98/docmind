@@ -5122,6 +5122,11 @@ class CleanAgentArchitectureVerificationTest {
         assertFalse(composeContent.contains("8095"), "docker-compose.yml MUST NOT expose or reference port 8095");
         assertFalse(composeContent.contains("AGENT_BRAIN_BASE_URL"), "docker-compose.yml MUST NOT set AGENT_BRAIN_BASE_URL");
         assertFalse(composeContent.contains("docmind-braindata"), "docker-compose.yml MUST NOT declare docmind-braindata volume");
+        java.nio.file.Path standaloneAgentBrainDir = composePath.getParent() != null
+                ? composePath.getParent().resolve("agent-brain")
+                : java.nio.file.Paths.get("../agent-brain");
+        assertFalse(java.nio.file.Files.exists(standaloneAgentBrainDir),
+                "Standalone Python agent-brain/ directory (8095) MUST be retired and removed");
         assertTrue(composeContent.contains("doc-service-py:") && composeContent.contains("8091:8091"),
                 "docker-compose.yml MUST preserve doc-service-py:8091 for Cold-Path Upload");
     }
