@@ -5715,6 +5715,50 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     /**
+     * Unit P2.4: Chuyển định dạng giá mơ-hỏ "X.XXXk" (ví dụ "1.270k" có thể hiểu nhầm là 1.270 thay vì 1.270.000)
+     * thành định dạng VNĐ đầy đủ "X.XXX.000đ" cho mọi giá ≥ 1.000.000 VNĐ. Đây là quy tắc định dạng hiển thị,
+     * KHÔNG phải dữ liệu kinh doanh cứng.
+     */
+    public static List<FanpageBotResponse.ReplyBubble> sanitizeAmbiguousPriceFormatsInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        // Mẫu: "\d+\.\d{3}k" đại diện cho giá ≥ 1.000.000 VNĐ viết theo dạng "X.XXXk" (ví dụ 1.270k).
+        Pattern ambiguousK = Pattern.compile("(\\d{1,3}(?:\\.\\d{3})+)k\\b", Pattern.CASE_INSENSITIVE);
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                out.add(b);
+                continue;
+            }
+            String txt = b.text();
+            java.util.regex.Matcher m = ambiguousK.matcher(txt);
+            StringBuilder sb = new StringBuilder();
+            while (m.find()) {
+                String raw = m.group(1); // e.g. "1.270"
+                long kVal = Long.parseLong(raw.replace(".", "")); // e.g. 1270
+                if (kVal >= 1_000L) {
+                    // 1.270k -> 1.270.000đ
+                    String full = String.format(Locale.ROOT, "%,dđ", kVal * 1_000L).replace(',', '.');
+                    m.appendReplacement(sb, Matcher.quoteReplacement(full));
+                } else {
+                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
+                }
+            }
+            m.appendTail(sb);
+            String newTxt = sb.toString();
+            if (!newTxt.equals(txt)) {
+                out.add(new FanpageBotResponse.ReplyBubble(newTxt, b.typingDelayMs()));
+            } else {
+                out.add(b);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Unit P2.3: Gộp bong bóng câu dẫn kết thúc bằng dấu {@code :} vào bong bóng kế tiếp, và đảm bảo lượt 1 hỏi giá
      * ngắn trực diện gọn trong {@code 1–2} bong bóng (gộp bong bóng chào ngắn không chứa giá vào bong bóng báo giá).
      */
@@ -6265,10 +6309,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             "(?isU)\\b(?:lòng\\s+vòng|vòng\\s+vèo|vòng\\s+vo|lan\\s+man|lằng\\s+nhằng|rườm\\s+rà)\\b"
     );
 
-    /** ACI V3 P2 (§4.2): Yêu cầu giá TƯỜNG MINH trong chính lượt ("báo giá đi", "đang hỏi giá gói đó cơ"). */
+    /** ACI V3 P2 (§4.2): Yêu cầu giá TƯỜNG MINH trong chính lượt ("báo giá đi", "đang hỏi giá gói đó cơ").
+     *  Đặt cả dấu (báo giá) và không dấu (bao gia) để khách gõ không dấu vẫn được nhận diện. */
     private static final Pattern EXPLICIT_PRICE_DEMAND_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:báo\\s+giá|bảng\\s+giá|cho\\s+(?:em|mình|tôi|tớ|anh|chị|shop|bên\\s+em)\\s+(?:xin\\s+)?(?:giá|bảng\\s+giá)|"
-            + "(?:đang|chỉ)\\s+hỏi\\s+giá|hỏi\\s+giá|giá\\s+(?:là\\s+)?bao\\s+nhiêu|giá\\s+gói|giá\\s+của\\s+gói)\\b"
+            "(?isU)\\b(?:báo\\s+giá|bao\\s+gia|bảng\\s+giá|cho\\s+(?:em|mình|tôi|tớ|anh|chị|shop|bên\\s+em)\\s+(?:xin\\s+)?(?:giá|bảng\\s+giá)|"
+            + "(?:đang|chỉ)\\s+hỏi\\s+giá|hỏi\\s+giá|giá\\s+(?:là\\s+)?bao\\s+nhiêu|giá\\s+(?:là\\s+)?bao\\s+nhieu|giá\\s+gói|giá\\s+goi|giá\\s+của\\s+gói|giá\\s+cua\\s+goi)\\b"
     );
 
     /** ACI V3 P2 (§4.2): "đừng báo giá nữa" là yêu cầu NGỪNG báo giá — không phải yêu cầu giá. */

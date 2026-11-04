@@ -780,7 +780,9 @@ public final class PackageCatalogService {
         if (priceVnd % 1_000L == 0L) {
             long kVal = priceVnd / 1_000L;
             if (kVal >= 1_000L) {
-                return String.format(Locale.ROOT, "%,dk", kVal).replace(',', '.');
+                // Tránh định dạng mơ-hoã "1.270k" (có thể hiểu nhầm là 1.270 thay vì 1.270.000).
+                // Các giá trị >= 1 triệu -> hiển thị đầy đủ đơn vị VNĐ.
+                return String.format(Locale.ROOT, "%,dđ", priceVnd).replace(',', '.');
             }
             return kVal + "k";
         }

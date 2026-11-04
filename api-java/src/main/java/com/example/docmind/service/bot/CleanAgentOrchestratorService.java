@@ -4876,6 +4876,8 @@ public class CleanAgentOrchestratorService {
             }
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
                     candidateBubbles, allCatalog);
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.sanitizeAmbiguousPriceFormatsInPlace(
+                    candidateBubbles);
             if (originalVerbatim == null
                     || !originalVerbatim.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(tip|tiền\\s+bo)\\b.*")) {
                 candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripUngroundedTipPolicyClaimsInPlace(
@@ -5237,6 +5239,8 @@ public class CleanAgentOrchestratorService {
                     candidateBubbles,
                     allCatalog
             );
+            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.sanitizeAmbiguousPriceFormatsInPlace(
+                    candidateBubbles);
             boolean isFirstSubstantiveTurn = safeHistory.isEmpty()
                     || safeHistory.stream()
                             .filter(t -> t != null && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role()))
