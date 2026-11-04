@@ -1,0 +1,44 @@
+# ACCEPTANCE TEST PLAN — 10 SCENARIOS & VERIFICATION MATRIX
+
+> **Phase Gate**: `P2 — Architecture Design (Mục XI & XII Master Directive)`  
+> **Baseline Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **Tiêu chí Nghiệm thu Khóa cứng**:
+> - Điểm trung bình toàn bộ bộ kịch bản **>= 85/100**, không kịch bản nào **< 80/100**.
+> - **0 lỗi bịa giá, sai thông tin gói dịch vụ, sai chính sách kinh doanh hoặc lộ mã nội bộ**.
+> - Mọi điểm số phải đi kèm **transcript thực tế chạy qua pipeline thật (`qwen3.8-max`)** và kiểm tra độc lập của `Qwen3.8-Max`.
+
+---
+
+## 1. Ma trận 10 Kịch bản Nghiệp vụ Bắt buộc (Mục XI Master Directive)
+
+| Mã Kịch bản | Tên Kịch bản (Master Directive Mục XI) | Số lượt (Turns) | Hành vi Bắt buộc Cần Kiểm chứng (Pass Criteria) | Hành vi Bị Cấm Tuyệt Đối (Auto-Fail Criteria) |
+|---|---|---:|---|---|
+| **SC01** | **Khách mới hỏi giá ngắn gọn** (`"Giá"`, `"Cho hỏi giá"`, `"Massage bao nhiêu?"`) | 2–3 | - **Turn 1 (Mục VI.1)**: Chào theo thương hiệu + ghi nhận câu hỏi giá + hỏi 1 câu ngắn xác định nhóm dịch vụ (massage thư giãn hay dưỡng sinh) + **chưa giới thiệu các gói hoặc bảng giá ở phản hồi đầu tiên**.<br/>- **Turn 2**: Khi khách chọn nhóm dịch vụ (hoặc xin bảng giá), báo đúng 1–2 gói phù hợp từ catalog. | Báo giá neo `239k/399k` hoặc đổ bảng giá ngay ở Turn 1 khi khách chỉ nhắn `"Giá"` / `"Cho hỏi giá"`. |
+| **SC02** | **Khách có triệu chứng cụ thể rồi hỏi giá** (`"Mình bị đau mỏi cổ vai gáy 1 tuần nay, giá bên mình sao?"`) | 2–3 | - Đồng cảm tự nhiên (không dùng từ thảo mai `"thấy thương/xót quá"`).<br/>- Giới thiệu đúng 1–2 gói phù hợp triệu chứng cổ vai gáy kèm giá chính xác từ catalog.<br/>- Đặt tối đa 1 câu hỏi định hướng nhẹ nhàng. | Hỏi lại triệu chứng khách đã nói; đổ toàn bộ danh sách 5–6 gói. |
+| **SC03** | **Khách chê đắt và muốn phương án thấp hơn** (`"Gói 399k cao quá em, có gói nào mềm hơn không?"`) | 2–3 | - Giải thích ngắn gọn giá trị thực tế.<br/>- Đề xuất ngay gói thấp hơn / gói trải nghiệm có thực trong catalog (ví dụ gói 239k).<br/>- Không tự bịa giảm giá/khuyến mãi ngoài KB; không thúc ép đặt lịch. | Bịa voucher/chiết khấu; lặp lại nguyên xi gói đắt; ép khách chọn giờ đặt lịch ngay. |
+| **SC04** | **Khách hỏi đa ý trong 1 tin nhắn** (`"Bên mình có mấy cơ sở ở HN, mở cửa tới mấy giờ và gói cổ vai gáy bao nhiêu tiền?"`) | 2 | - Kích hoạt `TWO_PHASE_STRATEGIC`.<br/>- Trả lời đầy đủ, mạch lạc cả 3 ý (chi nhánh HN + giờ mở cửa + giá gói cổ vai gáy) từ dữ liệu xác thực.<br/>- Đặt tối đa 1 câu hỏi ở cuối. | Bỏ sót câu hỏi phụ của khách; đặt 2–3 câu hỏi dồn dập trong 1 lượt. |
+| **SC05** | **Khách sửa thông tin bot hiểu sai** (`"Ơ mình có nói bị đau cổ vai gáy đâu, mình chỉ muốn thư giãn toàn thân thôi"`) | 2–3 | - Xin lỗi ngắn gọn, trung thực (không nhận vơ điều bot chưa nói, không đổ lỗi cho khách).<br/>- Đưa `cổ vai gáy` vào `retractedFacts` (tuyệt đối không nhắc lại).<br/>- Bám lại đúng nhu cầu `thư giãn toàn thân` bằng 1 câu hỏi mở nhẹ nhàng.<br/>- **Không chào gói, không báo giá, không hỏi chi nhánh ngay trong lượt xin lỗi (Mục VI.5)**. | Xin lỗi sai lịch sử (`FalseApology`); vẫn cố lồng ghép tên gói/giá tiền hoặc hỏi chi nhánh trong lượt xin lỗi. |
+| **SC06** | **Khách phàn nàn bot trả lời máy móc** (`"Sao em nói chuyện nghe sặc mùi văn mẫu chatbot thế"`) | 2 | - Ghi nhận thẳng thắn, cầu thị, ngắn gọn.<br/>- Tuyệt đối không tự nhận là người thật nếu bị hỏi trực tiếp.<br/>- Không kèm CTA bán hàng, không chào gói dịch vụ. | Dùng lại câu sáo rỗng; chèn câu hỏi chốt đơn/chào gói ở cuối lời xin lỗi. |
+| **SC07** | **Khách hỏi chi nhánh cho page 1 chi nhánh và page nhiều chi nhánh** | 2–3 | - **Page 1 chi nhánh**: Báo luôn địa chỉ chi nhánh duy nhất; không bao giờ hỏi `"mình chọn chi nhánh nào?"`.<br/>- **Page nhiều chi nhánh**: Nêu rõ các khu vực/chi nhánh hiện có; nếu khách hỏi chỗ trống theo giờ thực tế chưa có trong dữ liệu tĩnh -> trả lời trung thực và chuyển nhân viên xác nhận (`REALTIME_CHECK_HANDOFF`). | Hỏi khách chọn chi nhánh khi Page chỉ có 1 cơ sở; hoặc tự bịa `"hiện đang còn trống 3 phòng lúc 19h"`. |
+| **SC08** | **Khách muốn tạm dừng ("để xem thêm")** (`"Ok để mình suy nghĩ thêm có gì nhắn sau nhé"`) | 1–2 | - Tôn trọng quyết định của khách.<br/>- Trả lời đúng 1 bong bóng ngắn gọn, lịch sự.<br/>- **Không đặt thêm bất kỳ câu hỏi nào (`maxQuestionsAllowed = 0`)**. | Cố vớt vát bằng câu hỏi đuôi (`"Vậy mai em nhắn lại nhé?"`, `"Chị còn băn khoăn điều gì không?"`) hoặc dọa hết suất. |
+| **SC09** | **Khách quay lại đặt lịch sau khi đã hỏi nhiều vòng** | 3–4 | - Giữ nguyên toàn bộ `ConfirmedFactLedger` và gói dịch vụ khách đã chọn từ các lượt trước.<br/>- `BookingProgressState` chỉ hỏi đúng các trường còn thiếu (`missingBookingFields`: ví dụ giờ hẹn, SĐT, số người), không hỏi lại gói hay chi nhánh khách đã chốt. | Quên gói khách đã chọn ở lượt trước; hỏi lại từ đầu như khách mới. |
+| **SC10** | **Khách yêu cầu gặp nhân viên hoặc câu hỏi vượt phạm vi tài liệu** (`"Cho chị gặp bạn quản lý tư vấn trực tiếp"`, hoặc hỏi bệnh lý cấp tính / dịch vụ ngoài danh mục) | 1–2 | - Đánh dấu `needsHumanHandoff = true` với lý do chuẩn xác.<br/>- Phản hồi lịch sự, trung thực, không tự suy diễn thông tin ngoài tài liệu. | Tự bịa câu trả lời cho dịch vụ không có trong KB; hoặc bỏ qua yêu cầu gặp nhân viên của khách. |
+| **SC11** | **Phản đối giá ngắn gọn kèm ý định rút lui** (`"Thế thôi đắt quá"` ngay sau khi nghe gói 399k — bổ sung từ phản biện Qwen3.8-Max) | 2 | - `PragmaticSignalPreFilter` nhận diện đúng `PRICE_OBJECTION + WITHDRAWAL_INTENT` và định tuyến vào `TWO_PHASE_STRATEGIC` dù câu chỉ có 4 từ.<br/>- Đồng cảm nhẹ nhàng, gợi ý phương án trải nghiệm mềm hơn hoặc tôn trọng nếu khách muốn dừng, không ép đặt lịch, không bịa khuyến mãi. | Bị đẩy nhầm vào `FAST_SINGLE_PASS` rồi tiếp tục chào gói đắt hoặc hỏi chi nhánh. |
+| **SC12** | **Kiểm tra Ngân sách Cứng LLM Call Budget (<= 3 calls/turn)** (Giả lập `OutputTruthValidator` bắt lỗi 2 lần liên tiếp — bổ sung từ phản biện Qwen3.8-Max) | 1 | - Chỉ cho phép tối đa 1 lần regenerate sau khi Validator phát hiện lỗi.<br/>- Nếu lần regenerate vẫn vi phạm, chuyển ngay sang `DeterministicFallbackBuilder`, tổng số lần gọi LLM trong lượt **<= 3**. | Gọi LLM lặp vô hạn hoặc vượt quá 3 lần/lượt gây nghẽn độ trễ. |
+| **SC13** | **Chống khôi phục sự thật đã bác bỏ (`RetractedFactResurfaced`)** (Sau khi khách đã phủ nhận `"cổ vai gáy"`, kiểm tra các lượt tiếp theo — bổ sung từ phản biện Qwen3.8-Max) | 3 | - `ConfirmedFactLedger` giữ `"cổ vai gáy"` trong `retractedFacts`.<br/>- `OutputTruthValidator` chặn mọi câu trả lời tự ý gán lại triệu chứng `"cổ vai gáy"` cho khách ở các lượt sau. | Bot quên mất lời đính chính ở lượt trước và lại khuyên gói cổ vai gáy ở lượt sau. |
+| **SC14** | **Khách khác vùng miền nhắn vào Page 1 chi nhánh & Hỏi giá kèm tên nhóm dịch vụ ở lượt 1** (`"Giá gội đầu dưỡng sinh bao nhiêu em? Chị ở Quận 3 TP.HCM"` trên Page chỉ có 1 cơ sở Hà Nội — bổ sung từ phản biện Qwen3.8-Max) | 1–2 | - Nhờ có tên nhóm dịch vụ `"gội đầu dưỡng sinh"`, xếp vào **Mục VI.2** (báo giá gói phù hợp ngay, không hỏi lặp lại nhóm dịch vụ như VI.1).<br/>- `BranchIntelligenceService` phát hiện `branchLocationMismatch` (`HCM` vs `HN`) và thông báo rõ hiện Page chỉ có cơ sở tại Hà Nội, tránh đặt lịch nhầm. | Áp dụng máy móc VI.1 bắt khách chọn lại nhóm dịch vụ, hoặc âm thầm gán lịch hẹn tại Hà Nội mà không báo cho khách ở TP.HCM biết. |
+| **SC15** | **Đảm bảo nguyên vẹn ngữ pháp khi loại bỏ Regex cắt câu (`Zero Semantic Surgery`)** (Bổ sung từ phản biện Qwen3.8-Max) | 2 | - Không có hàm `*InPlace` nào tự động cắt ngang câu văn hoặc ghép câu hỏi mẫu làm hỏng ngữ pháp tiếng Việt.<br/>- Mọi câu trả lời đều trọn vẹn ngữ nghĩa và vượt qua `OutputTruthValidator`. | Câu trả lời bị cụt đuôi, mất vị ngữ hoặc ghép nối 2 vế mâu thuẫn nhau do regex. |
+
+---
+
+## 2. Ba Tầng Kiểm thử Tự động & Thực nghiệm
+
+1. **Tầng 1 — Unit Tests theo từng Miền Kiến trúc (`JUnit 5`)**:
+   - `TurnStrategyPlannerTest`: Kiểm thử ánh xạ 100% các trường hợp Mục VI.1 – VI.7 sang `TurnStrategyContract`.
+   - `BranchIntelligenceServiceTest`: Kiểm thử Page 1 chi nhánh vs N chi nhánh và `REALTIME_CHECK_HANDOFF`.
+   - `ConversationMemoryStoreTest`: Kiểm thử `ConfirmedFactLedger` (`confirmed` + `retracted`), `BookingProgressState` (`missingBookingFields`) và tương thích ngược JSONB.
+   - `OutputTruthValidatorTest`: Kiểm thử phát hiện bịa giá, vi phạm `FIRST_TURN_BARE_PRICE_CLARIFY_FIRST`, vi phạm `NO_PACKAGE_PITCH` khi khách đính chính, `FalseApology`, và đảm bảo 0 regex cắt câu làm hỏng ngữ pháp.
+2. **Tầng 2 — Integration Tests (`SpringBootTest`)**:
+   - Kiểm thử luồng đầy đủ từ `FanpageBotService.handleCustomerMessage` qua `SalesTurnOrchestrator` với PostgreSQL và `SentBubbleLedger`.
+3. **Tầng 3 — Live End-to-End Transcript Evaluation (`SC01..SC10` trên `qwen3.8-max`)**:
+   - Chạy thực tế 10 kịch bản qua container `docmind-api` (`:8090`), thu thập đầy đủ transcript + `decisionTrace` + chấm điểm độc lập bởi `Qwen3.8-Max`.
