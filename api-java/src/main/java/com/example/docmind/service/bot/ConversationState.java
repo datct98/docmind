@@ -672,11 +672,29 @@ public record ConversationState(
             List<String> domainKeywords
     ) {
         List<PackageCatalogService.PackageSummary> fullCatalog = PackageCatalogService.extractCatalog(fusedChunks, domainKeywords);
+        // Gộp danh mục đã phát hiện ở các lượt trước trong cùng phiên với danh mục mới từ chunk hiện tại
+        // để không bao giờ đánh rơi gói đã biết (VD: SG_NS01 ở T1 bị mất khi T2 chỉ hỏi địa chỉ "Quận 1").
+        Map<String, PackageCatalogService.PackageSummary> mergedByUid = new java.util.LinkedHashMap<>();
+        if (this.availablePackageCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : this.availablePackageCatalog) {
+                if (p != null && p.packageUid() != null) {
+                    mergedByUid.put(p.packageUid(), p);
+                }
+            }
+        }
+        if (fullCatalog != null) {
+            for (PackageCatalogService.PackageSummary p : fullCatalog) {
+                if (p != null && p.packageUid() != null) {
+                    mergedByUid.put(p.packageUid(), p);
+                }
+            }
+        }
+        List<PackageCatalogService.PackageSummary> mergedCatalog = new ArrayList<>(mergedByUid.values());
         // ACI V3 P2 (§4.7, cấm #6): không mặc định "HN" — filterByRegion(null) giữ đủ biến thể đa chi nhánh
         String reg = this.preferredRegion;
-        List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(fullCatalog, reg);
-        if (regCat.isEmpty() && this.availablePackageCatalog != null && !this.availablePackageCatalog.isEmpty()) {
-            regCat = this.availablePackageCatalog;
+        List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(mergedCatalog, reg);
+        if (regCat.isEmpty() && !mergedCatalog.isEmpty()) {
+            regCat = mergedCatalog;
         }
         return this.withCatalogAndRegion(regCat, reg);
     }

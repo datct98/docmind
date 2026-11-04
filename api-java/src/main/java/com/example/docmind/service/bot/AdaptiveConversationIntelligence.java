@@ -2558,8 +2558,15 @@ public final class AdaptiveConversationIntelligence {
                 );
             } else if (firstGenuinePriceObjection) {
                 costConcern = Boolean.TRUE;
+                if (detIntent == null || detIntent.isBlank()
+                        || "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT".equalsIgnoreCase(detIntent)
+                        || "POLITE_DEFERRAL".equalsIgnoreCase(detIntent)
+                        || "NEED_DISCOVERY".equalsIgnoreCase(detIntent)) {
+                    detIntent = "PRICE_OBJECTION";
+                    convState = "OBJECTION_NEGOTIATION";
+                }
         boolean explicitBudgetConstraintCue = normLower.matches(
-                "(?isU).*\\b(không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|vượt\\s+ngân\\s+sách|quá\\s+sức|đau\\s+ví|ví\\s+mỏng|rẻ\\s+hơn|mềm\\s+hơn|tiết\\s+kiệm\\s+hơn|bằng\\s+cả\\s+ngày|ngày\\s+công)\\b.*");
+                "(?isU).*\\b(không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|vượt\\s+ngân\\s+sách|quá\\s+ngân\\s+sách|quá\\s+sức|đau\\s+ví|ví\\s+mỏng|rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|tiết\\s+kiệm\\s+hơn|bằng\\s+cả\\s+ngày|ngày\\s+công)\\b.*");
         if ("VALUE_PERCEPTION_GAP".equalsIgnoreCase(effBarrier)) {
             // Keep VALUE_PERCEPTION_GAP only when LLM did not explicitly specify UNCLEAR_VALUE / COMPETITOR_COMPARISON / etc.
         }
@@ -4757,9 +4764,10 @@ public final class AdaptiveConversationIntelligence {
     );
 
     private static final Pattern GENUINE_PRICE_OBJECTION_CUE_PATTERN = Pattern.compile(
-            "(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|hơi\\s+cao|giá\\s+cao|căng\\s+quá|hơi\\s+căng|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|"
-                    + "vượt\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|bằng\\s+cả\\s+ngày\\s+đi\\s+làm|"
-                    + "thôi\\s+chịu(?:\\s+đấy|\\s+thôi|\\s+luôn)?|chịu\\s+đấy|rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+tiền\\s+hơn|tiết\\s+kiệm\\s+hơn)\\b.*"
+            "(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|hơi\\s+cao|giá\\s+cao|cao\\s+thế|cao\\s+vậy|đắt\\s+thế|mắc\\s+thế|căng\\s+quá|hơi\\s+căng|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|"
+                    + "vượt\\s+ngân\\s+sách|quá\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|bằng\\s+cả\\s+ngày\\s+đi\\s+làm|"
+                    + "thôi\\s+chịu(?:\\s+đấy|\\s+thôi|\\s+luôn)?|chịu\\s+đấy|chịu\\s+chết|chiu\\s+chet|chịu\\s+luôn|bó\\s+tay|lạy\\s+chúa|"
+                    + "rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|tiết\\s+kiệm\\s+hơn)\\b.*"
     );
 
     private static final Pattern EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN = Pattern.compile(
@@ -4791,7 +4799,7 @@ public final class AdaptiveConversationIntelligence {
                     + "|kêu\\s+(?:đi\\s+)?làm\\s+(?:phục\\s+hồi\\s+tóc|chăm\\s+sóc\\s+tóc|tóc)"
                     + "|(?:không|ko|chẳng|chả)\\s+(?:muốn|cần|thích)\\s+(?:làm\\s+)?(?:phần\\s+)?(?:chăm\\s+sóc\\s+tóc|phục\\s+hồi\\s+tóc|tóc|gội(?:\\s+đầu)?|gói\\s+(?:đó|này|kia)|cái\\s+(?:đó|này))"
                     + "|(?:khỏi|bỏ)\\s+(?:phần\\s+|cái\\s+)?(?:chăm\\s+sóc\\s+tóc|phục\\s+hồi\\s+tóc|tóc|gội)"
-                    + "|chỉ\\s+(?:muốn\\s+|cần\\s+)?(?:massage|mát\\s*xa)"
+                    + "|chỉ\\s+(?:muốn|cần|thích|làm|chọn)\\s+(?:massage|mát\\s*xa)"
                     + "|chủ\\s+yếu\\s+(?:là\\s+)?(?:massage|mát\\s*xa)"
                     + "|đổi\\s+(?:sang\\s+)?gói\\s+khác"
                     + "|loại\\s+không\\s+có\\s+phần\\s+đó"
@@ -4820,6 +4828,9 @@ public final class AdaptiveConversationIntelligence {
             return false;
         }
         String low = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        if (low.matches("(?isU).*\\bcó\\b[^?？]+\\b(?:không\\s+hay|hay\\s+chỉ|hay\\s+là)\\b.*")) {
+            return false;
+        }
         return CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION_PATTERN.matcher(low).matches();
     }
 
@@ -4891,7 +4902,7 @@ public final class AdaptiveConversationIntelligence {
         if (isComp) {
             // Khi khách đang so sánh giá đối thủ ("chỗ khác rẻ hơn", "tiệm kia mềm hơn"), chỉ tính là phản đối giá
             // nếu khách đồng thời chê đắt/mắc/chát/quá sức/chịu đấy đối với cơ sở mình.
-            return low.matches("(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|giá\\s+cao|căng\\s+quá|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|vượt\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|thôi\\s+chịu|chịu\\s+đấy)\\b.*");
+            return low.matches("(?isU).*\\b(đắt|mắc|chát|cao\\s+quá|giá\\s+cao|cao\\s+thế|cao\\s+vậy|đắt\\s+thế|căng\\s+quá|đau\\s+ví|ví\\s+mỏng|quá\\s+sức|vượt\\s+ngân\\s+sách|quá\\s+ngân\\s+sách|không\\s+đủ\\s+tiền|thôi\\s+chịu|chịu\\s+đấy|chịu\\s+chết|chiu\\s+chet)\\b.*");
         }
         if (GENUINE_PRICE_OBJECTION_CUE_PATTERN.matcher(low).matches()) {
             return true;
@@ -5199,7 +5210,11 @@ public final class AdaptiveConversationIntelligence {
         if (authoritativeCount != plan.consecutivePriceObjectionCount()) {
             TurnAction adjustedAction = plan.recommendedAction();
             String adjustedDirective = plan.actionExecutionDirective();
-            if (incrementsObjection && priorCount >= 1
+            String safeUserMsgForObj = rawUserMessage != null ? rawUserMessage : "";
+            String msgLowForObj = safeUserMsgForObj.toLowerCase(Locale.ROOT);
+            boolean isAskingWhyOrAlternative = safeUserMsgForObj.contains("?") || safeUserMsgForObj.contains("？")
+                    || msgLowForObj.matches("(?isU).*\\b(sao|tại\\s+sao|vì\\s+sao|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|rẻ\\s+hơn|mềm\\s+hơn|gói\\s+nào|lựa\\s+chọn\\s+nào)\\b.*");
+            if (incrementsObjection && priorCount >= 1 && !isAskingWhyOrAlternative
                     && (adjustedAction == TurnAction.ALTERNATIVE_OFFER || adjustedAction == TurnAction.PRICE_OBJECTION_HANDLING)) {
                 adjustedAction = TurnAction.RESPECTFUL_DEESCALATION;
                 adjustedDirective = "RESPECTFUL_DEESCALATION (LƯỢT PHẢN ĐỐI GIÁ LIÊN TIẾP THỨ " + authoritativeCount
@@ -5336,7 +5351,7 @@ public final class AdaptiveConversationIntelligence {
             directive = "SUITABILITY_INQUIRY_HANDOFF: Khách hỏi trực tiếp tình trạng sức khỏe có phù hợp làm dịch vụ không ('" + msg + "'). "
                     + "BẮT BUỘC: (1) Ghi nhận nguyên văn tình trạng khách vừa chia sẻ một cách đồng cảm, tự nhiên; "
                     + "(2) Giải thích rõ phần đánh giá mức độ phù hợp với tình trạng sức khỏe sẽ do nhân viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa (trạng thái demo: DEMO_HANDOFF_PENDING); "
-                    + "(3) TUYỆT ĐỐI KHÔNG tự kết luận 'làm được bình thường', KHÔNG tự phân loại cấp độ y tế, KHÔNG báo giá/chốt lịch trong lượt này; 0 xuất mã enum nội bộ.";
+                    + "(3) TUYỆT ĐỐI KHÔNG tự kết luận 'làm được bình thường', KHÔNG tự phân loại cấp độ y tế, KHÔNG đặt câu hỏi khai thác chỉ số huyết áp/bệnh lý ('?' = 0), KHÔNG báo giá/chốt lịch trong lượt này; 0 xuất mã enum nội bộ.";
         } else if (isCustomerCorrection) {
             frictionHistory.add("CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION");
             communicationSignals.add("PRIORITY: CUSTOMER_CORRECTION > CUSTOMER_COMMITMENT > BOT_RECOMMENDATION");
@@ -5373,9 +5388,8 @@ public final class AdaptiveConversationIntelligence {
             boolean allowDiscoveryQ = CleanAgentOutputRefereeAndSanitizer.isDiscoveryQuestionAllowedOnProcessFeedback(msg);
             if (explicitPriceDemandThisTurn) {
                 directive = "FEEDBACK_RECOVERY (KÈM YÊU CẦU GIÁ TƯỜNG MINH TRONG CÙNG LƯỢT): Khách vừa phàn nàn cách trao đổi NHƯNG đồng thời yêu cầu báo giá ('" + msg + "'). "
-                        + "BẮT BUỘC: (1) Ghi nhận gọn 1 vế ngắn (xin lỗi trực diện vì trao đổi chưa đi thẳng vào ý, 0 vòng vo, 0 sáo rỗng); "
-                        + "(2) Trả lời NGAY yêu cầu giá bằng đúng tên gói + giá + thời lượng grounded từ <VERIFIED_BUSINESS_CATALOG> — TUYỆT ĐỐI KHÔNG chặn giá vì đây là lượt phàn nàn; "
-                        + "(3) cta_level = NO_CTA, 0 ép chốt, 0 câu hỏi thăm dò thêm.";
+                        + "BẮT BUỘC: (1) Đi thẳng NGAY câu đầu tiên vào báo giá cụ thể bằng đúng tên gói + mức giá + thời lượng grounded từ <VERIFIED_BUSINESS_CATALOG> gắn với vùng khách đang mỏi (TUYỆT ĐỐI KHÔNG mở đầu bằng câu xin lỗi dài dòng hay giải thích vòng vo); "
+                        + "(2) Giữ đúng 1 bong bóng ngắn gọn súc tích, cta_level = NO_CTA, 0 ép chốt, 0 câu hỏi thăm dò thêm ('?' = 0).";
             } else {
                 directive = allowDiscoveryQ
                         ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
@@ -5436,7 +5450,9 @@ public final class AdaptiveConversationIntelligence {
         } else if (isGenuinePriceObjection) {
             concerns.add("PRICE_CONCERN_EXPRESSED");
             frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
-            if (priorPriceObjections >= 1) {
+            boolean isAskingWhyOrAlternative = msg.contains("?") || msg.contains("？")
+                    || msgLow.matches("(?isU).*\\b(sao|tại\\s+sao|vì\\s+sao|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|rẻ\\s+hơn|mềm\\s+hơn|gói\\s+nào|lựa\\s+chọn\\s+nào)\\b.*");
+            if (priorPriceObjections >= 1 && !isAskingWhyOrAlternative) {
                 emotions.add("HESITANT_UNDER_REPEATED_PRICE_FRICTION");
                 inferences.add(new LightweightInferenceItem(
                         "CUSTOMER_MAY_HAVE_PRICE_CONCERN",

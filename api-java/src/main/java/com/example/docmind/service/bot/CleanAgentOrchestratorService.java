@@ -5442,11 +5442,15 @@ public class CleanAgentOrchestratorService {
                     ? verifiedSymptomDurationAfterSync
                     : symptomDurationBefore;
             // Unit P1.1: Ghi nhận trạng thái phiên tối giản (0 V1 regex ensureTurnEnriched / updateAfterSend)
+            String authoritativeRegionForSession = (effectivePromptRegion != null && !effectivePromptRegion.isBlank())
+                    ? effectivePromptRegion
+                    : safeConv.preferredRegion();
+            ConversationState safeConvWithCatalogAndRegion = safeConv.withCatalogAndRegion(allCatalog, authoritativeRegionForSession);
             ConversationState.recordAciV2TurnMinimalState(
                     pageId,
                     senderId,
                     request != null ? request.conversationId() : null,
-                    safeConv,
+                    safeConvWithCatalogAndRegion,
                     finalBubbles,
                     replyHasPrice,
                     authoritativeBookingState,
@@ -5876,6 +5880,20 @@ public class CleanAgentOrchestratorService {
                 if (fs != null && !forbiddenBefore.contains(fs)) {
                     retractedBotAssumptions.add(fs);
                 }
+            }
+        }
+        VietnameseScopeSignalExtractor.ScopeSignalResult turnScopeSignal = VietnameseScopeSignalExtractor.analyze(
+                originalVerbatim,
+                scopeTaxonomy != null ? scopeTaxonomy : List.of()
+        );
+        if (turnScopeSignal != null) {
+            for (String fs : turnScopeSignal.forbiddenScopes()) {
+                if (fs != null && !forbiddenBefore.contains(fs) && !retractedBotAssumptions.contains(fs)) {
+                    retractedBotAssumptions.add(fs);
+                }
+            }
+            if (knownBodyAreasAfter.isEmpty() && !turnScopeSignal.confirmedScopes().isEmpty()) {
+                knownBodyAreasAfter = new ArrayList<>(turnScopeSignal.confirmedScopes());
             }
         }
         String preferredRegion = effectivePromptRegion != null ? effectivePromptRegion

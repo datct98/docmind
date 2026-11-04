@@ -56,9 +56,9 @@ public final class VietnameseScopeSignalExtractor {
         return analyze(rawMessage, tenantScopeTaxonomy);
     }
 
-    // Nhóm D - Mẫu 1: "<A> chứ (có phải | không phải | đâu phải)? <B> (đâu | gì)?"
+    // Nhóm D - Mẫu 1: "<A> chứ (có phải | không phải | đâu phải | có nói | đâu có nói | không nói)? <B> (đâu | gì)?"
     private static final Pattern GROUP_D_A_CHU_B_PATTERN = Pattern.compile(
-            "(?isU)^\\s*(?<clauseA>.+?)\\s+chứ\\s+(?:(?:có\\s+phải|không\\s+phải|đâu\\s+phải|phải)\\s+(?:là\\s+)?)?(?<clauseB>.+?)(?:\\s+(?:đâu|gì|bao\\s+giờ|nào))?\\s*[.!?]*\\s*$"
+            "(?isU)^\\s*(?<clauseA>.+?)\\s+chứ\\s+(?:(?:có\\s+phải|không\\s+phải|đâu\\s+phải|phải|có\\s+nói|đâu\\s+có\\s+nói|không\\s+nói|chẳng\\s+nói|có\\s+bảo|đâu\\s+có\\s+bảo|có\\s+kể|có\\s+nhắc|có\\s+bị|đâu\\s+có\\s+bị)\\s+(?:là\\s+)?)?(?<clauseB>.+?)(?:\\s+(?:đâu|gì|bao\\s+giờ|nào))?\\s*[.!?]*\\s*$"
     );
 
     // Nhóm D - Mẫu 2: "(Đâu phải | Không phải | Có phải ... đâu) <B> [, (mà | là | tôi ...)? <A>]"
@@ -203,8 +203,8 @@ public final class VietnameseScopeSignalExtractor {
         if (mD1.find()) {
             String clauseA = mD1.group("clauseA");
             String clauseB = mD1.group("clauseB");
-            // Đảm bảo vế B của "A chứ B..." thực sự là mệnh đề phủ định ("... đâu", "... gì", "không phải ...", "có phải ... đâu")
-            boolean hasExplicitNegationCueInB = lower.matches("(?isU).*\\bchứ\\s+(?:có\\s+phải|không\\s+phải|đâu\\s+phải|phải\\s+là).*")
+            // Đảm bảo vế B của "A chứ B..." thực sự là mệnh đề phủ định ("... đâu", "... gì", "không phải ...", "có phải ... đâu", "có nói ... đâu")
+            boolean hasExplicitNegationCueInB = lower.matches("(?isU).*\\bchứ\\s+(?:có\\s+phải|không\\s+phải|đâu\\s+phải|phải\\s+là|có\\s+nói|đâu\\s+có\\s+nói|không\\s+nói|chẳng\\s+nói|có\\s+bảo|đâu\\s+có\\s+bảo|có\\s+kể|có\\s+nhắc|có\\s+bị|đâu\\s+có\\s+bị)\\b.*")
                     || lower.matches("(?isU).*\\bchứ\\b.*\\b(?:đâu|gì)\\s*[.!?]*\\s*$");
             if (hasExplicitNegationCueInB) {
                 ScopeSignalResult r = buildGroupDResult(clauseA, clauseB, tenantScopeTaxonomy);
@@ -291,7 +291,13 @@ public final class VietnameseScopeSignalExtractor {
                     null
             );
         }
-        confirmed.removeAll(forbidden);
+        Set<String> nonOverlappingForbidden = new LinkedHashSet<>(forbidden);
+        nonOverlappingForbidden.removeAll(confirmed);
+        if (!nonOverlappingForbidden.isEmpty() && !confirmed.isEmpty()) {
+            forbidden = nonOverlappingForbidden;
+        } else {
+            confirmed.removeAll(forbidden);
+        }
         if (forbidden.contains("đầu gối")) {
             confirmed.remove("gối");
         }

@@ -5452,8 +5452,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "\\bhọc\\s+thuộc\\s+(?:bài|kịch\\s+bản|lòng)\\b|"
             + "\\b(?:bot|máy)\\s+(?:trả\\s+lời|nhắn|tự\\s+động)\\s*(?:à|hả|vậy|đấy\\s+à|phải\\s+không)\\b|"
             // ACI V3 P1 §5.2: phàn nàn vòng vo/lan man/dài dòng ("đừng nói vòng vo nữa, báo giá đi", "viết dài thế đọc thế quái nào được")
-            + "\\b(?:nói|viết|nhắn|trả\\s+lời)\\s+(?:vòng\\s+vo|lan\\s+man|dài\\s+(?:dòng|thế|quá|vậy|lắm))\\b|"
-            + "\\bđừng\\s+(?:nói|viết)\\s+(?:vòng\\s+vo|lan\\s+man|dài\\s+dòng)\\b|"
+            + "\\b(?:nói|viết|nhắn|trả\\s+lời|noi|viet|nhan|tra\\s+loi)\\s+(?:vòng\\s+vo|vong\\s+vo|lòng\\s+vòng|long\\s+vong|lan\\s+man|dài\\s+(?:dòng|thế|quá|vậy|lắm)|dai\\s+dong)\\b|"
+            + "\\b(?:đừng|dung)\\s+(?:nói|viết|noi|viet)\\s+(?:vòng\\s+vo|vong\\s+vo|lòng\\s+vòng|long\\s+vong|lan\\s+man|dài\\s+dòng|dai\\s+dong)\\b|"
             + "\\brập\\s+khuôn\\s+(?:thế|quá|vậy)\\b)"
     );
 
@@ -6291,7 +6291,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     private static final Pattern EXPLICIT_FACTUAL_DENIAL_CORRECTION_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:em|mình|tôi|tớ|anh|chị)\\s+(?:có|đâu\\s+có|đâu|chưa)\\s+(?:nói|bảo|kể|nhắc|chia\\s+sẻ)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
             + "\\b(?:có|đâu\\s+có|đã)\\s+(?:nói|bảo|nhắc)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
-            + "\\bđâu\\s+có\\s+(?:nói|bảo|nhắc|đau|bị|mỏi)\\b)"
+            + "\\bđâu\\s+có\\s+(?:nói|bảo|nhắc|đau|bị|mỏi)\\b|"
+            + "\\b(?:dở\\s+hơi|bị\\s+dở|ngáo)\\s+à\\b)"
     );
 
     /** ACI V3 P2 (§4.1): Phàn nàn bị hỏi dồn/ép chốt (OVER_INTRUSION) — tách khỏi phàn nàn độ dài/phong cách. */
@@ -6306,7 +6307,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
     /** ACI V3 P2 (§4.1): Phàn nàn vòng vo/lan man là COMMUNICATION_COMPLAINT (không phải yêu cầu ngắn gọn). */
     private static final Pattern VERBOSITY_AS_STYLE_COMPLAINT_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:lòng\\s+vòng|vòng\\s+vèo|vòng\\s+vo|lan\\s+man|lằng\\s+nhằng|rườm\\s+rà)\\b"
+            "(?isU)\\b(?:lòng\\s+vòng|long\\s+vong|vòng\\s+vèo|vòng\\s+vo|vong\\s+vo|lan\\s+man|lằng\\s+nhằng|rườm\\s+rà)\\b"
     );
 
     /** ACI V3 P2 (§4.2): Yêu cầu giá TƯỜNG MINH trong chính lượt ("báo giá đi", "đang hỏi giá gói đó cơ").
@@ -7036,13 +7037,24 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 boolean allowDiscovery = isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage);
                 boolean isMissedDiscovery = isMissedDiscoveryFeedbackCue(customerMessage);
                 boolean prevTurnActuallyHadPrices = previousAssistantMessage != null && hasQuotedPriceInText(previousAssistantMessage);
-                boolean customerAskedPrice = customerAskedPriceOrOperationalInfo(customerMessage);
+                boolean explicitPriceDemand = hasExplicitPriceDemandInMessage(customerMessage);
+                boolean customerAskedPrice = customerAskedPriceOrOperationalInfo(customerMessage) || explicitPriceDemand;
+                boolean hasAnyPriceSentence = empathyCleaned.stream().anyMatch(x -> x != null && hasQuotedPriceInText(x.text()));
                 String[] sentences = txt.split("(?<=[.!?？])\\s+");
                 List<String> kept = new ArrayList<>();
                 for (String s : sentences) {
                     String trimmed = s.strip();
                     if (trimmed.isEmpty()) continue;
                     String trimLow = trimmed.toLowerCase(Locale.ROOT);
+                    if (explicitPriceDemand && hasAnyPriceSentence) {
+                        if (!hasQuotedPriceInText(trimmed) && trimLow.contains("xin lỗi")) {
+                            continue;
+                        }
+                        if (hasQuotedPriceInText(trimmed) && trimLow.contains("xin lỗi")) {
+                            trimmed = trimmed.replaceFirst("(?isU)^\\s*(?:dạ\\s+)?(?:vâng\\s+)?(?:em|mình)\\s+(?:thành\\s+thật\\s+|rất\\s+)?xin\\s+lỗi[^,.;:!?]{0,90}[,.;:]\\s*", "Dạ ");
+                            trimLow = trimmed.toLowerCase(Locale.ROOT);
+                        }
+                    }
                     if (!isDirectBotIdentityOrTrainingQuestion(customerMessage)
                             && trimLow.matches("(?isU).*\\b(?:(?:em|mình)\\s+(?:chỉ\\s+|hiện\\s+)?là\\s+(?:trợ\\s+lý\\s+(?:ai|ảo)|chatbot|bot|ai)|xử\\s+lý\\s+(?:quy\\s+tắc|dữ\\s+liệu)|được\\s+lập\\s+trình|thuật\\s+toán|mô\\s+hình\\s+ngôn\\s+ngữ)\\b.*")) {
                         continue;
@@ -7630,7 +7642,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .reduce("", (a, b) -> a + " " + b)
                     .toLowerCase(Locale.ROOT);
             boolean mentionsStaffReview = combinedRawLower.matches(
-                    "(?isU).*(chuyên\\s+viên|nhân\\s+viên|quản\\s+lý|bộ\\s+phận\\s+chuyên\\s+môn|spa\\s+kiểm\\s+tra|tư\\s+vấn\\s+trực\\s+tiếp|xem\\s+xét\\s+trực\\s+tiếp).*");
+                    "(?isU).*(chuyên\\s+viên|nhân\\s+viên|kỹ\\s+thuật\\s+viên|quản\\s+lý|bộ\\s+phận\\s+chuyên\\s+môn|spa\\s+kiểm\\s+tra|tư\\s+vấn\\s+trực\\s+tiếp|xem\\s+xét\\s+trực\\s+tiếp).*");
             boolean selfConcludesSuitability = combinedRawLower.matches(
                     "(?isU).*(hoàn\\s+toàn\\s+làm\\s+được|làm\\s+được\\s+bình\\s+thường|an\\s+toàn\\s+tuyệt\\s+đối\\s+để\\s+massage\\s+ngay).*");
             if (!mentionsStaffReview || selfConcludesSuitability) {
@@ -7644,6 +7656,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
 
         boolean isSecondConsecutivePriceObjection = action == AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION;
+        boolean isSuitabilityHandoffTurn = action == AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF;
         boolean isExternalPriceComparison = action == AdaptiveConversationIntelligence.TurnAction.VALUE_EXPLANATION;
 
         List<FanpageBotResponse.ReplyBubble> processed = new ArrayList<>();
@@ -7667,8 +7680,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 if (st.isEmpty()) continue;
                 String stLow = st.toLowerCase(Locale.ROOT);
 
-                // Ở lượt phản đối giá liên tiếp (RESPECTFUL_DEESCALATION): gỡ câu chào mua combo nhiều buổi & gỡ câu hỏi đuôi ('?' = 0)
-                if (isSecondConsecutivePriceObjection) {
+                // Ở lượt phản đối giá liên tiếp (RESPECTFUL_DEESCALATION) hoặc SUITABILITY_INQUIRY_HANDOFF: gỡ câu hỏi đuôi ('?' = 0)
+                if (isSecondConsecutivePriceObjection || isSuitabilityHandoffTurn) {
                     if (stLow.matches("(?isU).*\\b(mua\\s+(?:gói\\s+)?từ\\s+\\d+\\s+buổi|\\d+\\s+buổi\\s+trở\\s+lên|giảm\\s+\\d+\\s*%).*")) {
                         continue;
                     }
@@ -7724,6 +7737,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_DEFERRAL
                 && action != AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT
                 && action != AdaptiveConversationIntelligence.TurnAction.SELF_IDENTIFY_GENDER
+                && action != AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF
                 && !isOverIntrusionFeedbackCue(customerMessage);
         if (allowsTrailingQuestion && !processed.isEmpty()) {
             int totalQ = processed.stream().mapToInt(b -> countQuestionMarks(b.text())).sum();
@@ -7735,7 +7749,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 if (lastSents.length > 0) {
                     String tailSent = lastSents[lastSents.length - 1].strip();
                     if (tailSent.endsWith(".")
-                            && tailSent.matches("(?isU).*(?:\\bhay\\s+(?:muốn|cần|thích|nghiêng|chọn|dành|là|để|ưu\\s+tiên|sau\\s+khi|vào|tìm|làm)\\b|\\b(?:không|chưa|nhỉ|sao|nào)\\s+ạ|\\b(?:vùng|gói|buổi|khung\\s+giờ|chi\\s+nhánh|cơ\\s+sở|hướng)\\s+nào\\b|\\b(?:thế\\s+nào|ra\\s+sao)\\b)[^.!?？]*\\.$")) {
+                            && tailSent.matches("(?isU).*(?:\\bhay\\s+(?:muốn|cần|thích|nghiêng|chọn|dành|là|để|ưu\\s+tiên|sau\\s+khi|vào|tìm|làm|chuyên\\s+sâu|nhẹ\\s+nhàng)\\b|\\b(?:không|chưa|nhỉ|sao|nào)\\s+ạ|\\b(?:vùng|gói|buổi|khung\\s+giờ|chi\\s+nhánh|cơ\\s+sở|hướng)\\s+nào\\b|\\b(?:thế\\s+nào|ra\\s+sao)\\b)[^.!?？]*\\.$")) {
                         lastSents[lastSents.length - 1] = tailSent.substring(0, tailSent.length() - 1) + "?";
                         processed.set(lastIdx, new FanpageBotResponse.ReplyBubble(String.join(" ", lastSents), lastBubble.typingDelayMs()));
                     }
@@ -7743,6 +7757,63 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
 
+        processed = sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(processed, customerMessage, history);
         return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
+    }
+
+    private static List<FanpageBotResponse.ReplyBubble> sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage,
+            List<FanpageBotRequest.ConversationTurn> history
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return bubbles;
+        }
+        StringBuilder userCorpus = new StringBuilder();
+        if (history != null) {
+            for (FanpageBotRequest.ConversationTurn t : history) {
+                if (t != null && "user".equalsIgnoreCase(t.role()) && t.content() != null) {
+                    userCorpus.append(' ').append(t.content());
+                }
+            }
+        }
+        if (customerMessage != null) {
+            userCorpus.append(' ').append(customerMessage);
+        }
+        String normCorpus = java.text.Normalizer.normalize(userCorpus.toString(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        String strippedNegatedNeck = normCorpus.replaceAll(
+                "(?isU)(?:chứ\\s+)?(?:có\\s+nói|không\\s+nói|ko\\s+nói|đâu\\s+có\\s+nói|chưa\\s+nói)\\s+cổ(?:\\s*,?\\s*vai\\s*,?\\s*gáy)?(?:\\s+đâu)?",
+                " "
+        );
+        boolean customerPositivelyMentionedNeck = strippedNegatedNeck.matches("(?isU).*\\bcổ\\b.*");
+        boolean customerMentionedHeadAndShoulder = strippedNegatedNeck.matches(
+                "(?isU).*\\bđầu\\s*(?:và|,)?\\s*vai\\s*gáy\\b.*"
+        );
+        if (customerPositivelyMentionedNeck || !customerMentionedHeadAndShoulder) {
+            return bubbles;
+        }
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                continue;
+            }
+            String txt = b.text();
+            txt = txt.replaceAll("(?iU)\\bđầu\\s*,\\s*cổ\\s*,\\s*vai\\s*,?\\s*gáy\\b", "đầu và vai gáy");
+            txt = txt.replaceAll("(?iU)\\bđầu\\s+cổ\\s+vai\\s+gáy\\b", "đầu và vai gáy");
+            txt = txt.replaceAll("(?iU)\\bcổ\\s*,\\s*vai\\s*,\\s*gáy\\b", "vai gáy");
+            String[] sents = txt.split("(?<=[.!?？])\\s+");
+            for (int i = 0; i < sents.length; i++) {
+                String s = sents[i];
+                if (s.toLowerCase(Locale.ROOT).matches("(?isU).*(?:tự\\s+thêm\\s+chữ\\s+cổ|nói\\s+thêm\\s+vùng\\s+cổ).*")) {
+                    continue;
+                }
+                boolean sentAlreadyHasHead = s.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(vùng\\s+đầu|mỏi\\s+đầu|đau\\s+đầu|gội\\s+đầu|đầu\\s+và)\\b.*");
+                String rep = sentAlreadyHasHead ? "vai gáy" : "đầu và vai gáy";
+                sents[i] = s.replaceAll("(?iU)\\bcổ\\s+vai\\s+gáy\\b", rep);
+            }
+            out.add(new FanpageBotResponse.ReplyBubble(String.join(" ", sents), b.typingDelayMs()));
+        }
+        return out;
     }
 }
