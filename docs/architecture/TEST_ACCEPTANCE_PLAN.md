@@ -22,8 +22,8 @@
 
 ## 2. Danh sách Đầy đủ 15 Kịch bản Bắt buộc Chạy trong `P7` (`SC01–SC15`)
 
-- **`SC01` (Core Business)**: Khách mới hỏi giá ngắn gọn/cộc lốc (`"Giá"`, `"Cho hỏi giá"`, `"Massage bao nhiêu?"`) — tuân thủ Mục VI.1 (`FIRST_TURN_BARE_PRICE_CLARIFY_FIRST`).
-- **`SC02` (Core Business)**: Khách đã nêu triệu chứng / nhóm dịch vụ cụ thể rồi hỏi giá — tuân thủ Mục VI.2 (`QUOTE_1_TO_2_MATCHING_PACKAGES`).
+- **`SC01` (Core Business)**: Phân biệt câu hỏi giá chưa xác định nhóm dịch vụ (`"Giá"`, `"Cho hỏi giá"` -> `FIRST_TURN_BARE_PRICE_CLARIFY_FIRST`: hỏi 1 câu ngắn xác định nhu cầu) và đã xác định nhóm dịch vụ (`"Massage bao nhiêu?"` -> `CATEGORY_PRICE_QUOTE_OR_MINIMAL_CLARIFY`: trả giá phù hợp trong catalog hoặc hỏi đúng 1 chi tiết tối thiểu nếu cần).
+- **`SC02` (Core Business)**: Dịch vụ cụ thể / triệu chứng đã rõ hoặc xin bảng giá trực tiếp -> báo giá trực tiếp (`DIRECT_SPECIFIC_PRICE_QUOTE` / `PROVIDE_VERIFIED_PRICE_RANGE_OR_REPRESENTATIVE_PACKAGES`).
 - **`SC03` (Core Business)**: Khách chê đắt và muốn phương án thấp hơn — tuân thủ Mục VI.4.
 - **`SC04` (Core Business)**: Khách hỏi đa ý trong 1 tin nhắn (chi nhánh + giờ mở cửa + giá gói) — định tuyến `TWO_PHASE_STRATEGIC`.
 - **`SC05` (Core Business)**: Khách sửa thông tin bot hiểu sai — xin lỗi trung thực, đưa vào `RETRACTED`, không chào gói/hỏi chi nhánh trong lượt xin lỗi (Mục VI.5).
@@ -36,6 +36,6 @@
 - **`SC12` (Architecture Guard — `R6`)**: Kiểm soát ngân sách xuyên tầng `TurnLlmBudgetTracker` (`logicalLlmCalls <= 3`, `actualHttpAttempts <= 4`, fallback tất định an toàn).
 - **`SC13` (Architecture Guard — `R3`)**: Kiểm chứng vòng đời `FACT` / `HYPOTHESIS` / `UNKNOWN`, chống tự xác nhận giả thuyết (`No Self-Confirming Hypothesis`) và chống hồi sinh thông tin đã bác bỏ (`RETRACTED`).
 - **`SC14` (Architecture Guard — `R7`)**: Tách biệt `customerLocation` vs `preferredBranchId` (`branchLocationMismatch`) và phân biệt `UNKNOWN_REALTIME` giữa tư vấn chung với luồng chốt lịch.
-- **`SC15` (Architecture Guard — `R2 & Guard`)**: Kiểm chứng `Zero Semantic Regex Surgery` (nguyên vẹn ngữ pháp) và tính nhất quán `ConversationMemoryStore` (OCC retry, `BookingPatch` idempotency, DB-First cache invalidation).
+- **`SC15` (Architecture Guard — `R2 & Guard`)**: Kiểm chứng `Zero Semantic Regex Surgery` (nguyên vẹn ngữ pháp), Transactional Outbox (`PENDING` -> `ACCEPTED_BY_CHANNEL` / `FAILED` / `UNKNOWN` / `DELIVERED`) và tính nhất quán `ConversationMemoryStore` trên topology `Single-Instance` v1 (OCC retry, `BookingPatch` idempotency, DB-First cache invalidation).
 
 Xem chi tiết từng cột `Expected Behavior`, `Forbidden Behavior` và yêu cầu bằng chứng tại [`ACCEPTANCE_TEST_PLAN.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/ACCEPTANCE_TEST_PLAN.md).

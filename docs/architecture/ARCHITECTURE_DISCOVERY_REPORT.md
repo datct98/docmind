@@ -134,7 +134,7 @@ Chi tiết đầy đủ nằm tại [`GOD_CLASSES_AUDIT.md`](file:///d:/Project/
 
 | Thành phần / Khối mã | Vị trí (File & Dòng) | Quy mô (LOC) | Bằng chứng xác minh (`git grep` / Call Graph) | Phân loại xử lý |
 |---|---|---:|---|---|
-| Standalone Python `agent-brain` `:8095` | `agent-brain/*` | 2,714 | Không có container `:8095`, `AgentBrainClient` đã xóa. | **Đã gỡ bỏ tại `P0` (`f091ba5`)** |
+| Standalone Python `agent-brain` `:8095` | `agent-brain/*` (21 files deleted) | 2,708 (2,714 total deletions across 23 files in commit `f091ba5`) | Không có container `:8095`, `AgentBrainClient` đã xóa. | **Đã gỡ bỏ tại `P0` (`f091ba5`: 21 files deleted, 2 files modified)** |
 | Legacy `CLEAN` Orchestrator (`executeCleanAgentTurn` + helpers) | `CleanAgentOrchestratorService.java` (`L367–L4214`) | ~3,840 | `git grep -n "executeCleanAgentTurn" -- "api-java/src/main"` chỉ trả về chính định nghĩa hàm đó; `FanpageBotService` (`L1278`) gọi thẳng `executeAciCognitiveTurn`. | **Legacy Test-Only Code** (cần cô lập/loại bỏ theo lộ trình `P3–P7`) |
 | Legacy V1 Deterministic Bot Methods | `FanpageBotService.java` (`L1743–L4290`) | ~2,550 | Không nằm trên đường đi của `handleCustomerMessageInternal` -> `executeAciCognitiveTurn`. | **Dead V1 Code** |
 | Legacy `CLEAN` Prompt Builder (`buildCleanAgentPrompt` + XML contract) | `CleanAgentCatalogAndPromptBuilder.java` (`L981–L2975`) | ~1,995 | Chỉ được gọi bởi `executeCleanAgentTurn` và các test cũ; hot-path gọi `buildAciSinglePassPrompt` (`L4660`). | **Legacy Test-Only Code** |
@@ -182,12 +182,14 @@ Chi tiết đầy đủ nằm tại [`GOD_CLASSES_AUDIT.md`](file:///d:/Project/
 > [!WARNING]
 > **Mâu thuẫn trực tiếp đã xác minh giữa code hiện tại (`244a2ec` / `f091ba5`) và Mục VI.1 của Master Directive**
 
-### 10.1. Nội dung quy định trong Master Directive (Mục VI.1 vs Mục VI.3)
-- **Mục VI.1 — Khách mới gửi tin nhắn cộc lốc chỉ hỏi giá (`"Giá"`, `"Cho hỏi giá"`, `"Massage bao nhiêu?"`)**:
+### 10.1. Nội dung quy định trong Master Directive (Mục VI.1 vs Mục VI.2 vs Mục VI.3)
+- **Mục VI.1 — Khách mới gửi tin nhắn cộc lốc chỉ hỏi giá, chưa xác định nhóm dịch vụ (`"Giá"`, `"Cho hỏi giá"`)**:
   - *"Hành vi bắt buộc: 1. Chào khách theo thương hiệu. 2. Ghi nhận câu hỏi về giá. 3. Đặt 1 câu hỏi ngắn để xác định nhóm dịch vụ khách quan tâm (ví dụ: massage thư giãn hay dưỡng sinh). 4. **Chưa giới thiệu các gói hoặc bảng giá trong phản hồi đầu tiên.**"*
   - *"Lưu ý: Đây là chính sách kinh doanh đặc thù của chủ dự án, **không được tự động thay bằng việc báo giá neo 239k/399k**."*
-- **Mục VI.3 — Khách xin bảng giá trực tiếp (`"Cho xin bảng giá"`, `"Gửi bảng giá giúp mình"`)**:
-  - *"Hành vi bắt buộc: Cung cấp khung giá hoặc các gói tiêu biểu từ catalog đã xác minh... Sau đó đặt 1 câu hỏi ngắn để thu hẹp nhu cầu."*
+- **Mục VI.2A — Khách hỏi giá đã xác định nhóm dịch vụ (`"Massage bao nhiêu?"`, `"Gội đầu dưỡng sinh giá sao?"`)**:
+  - Khách đã nêu nhóm dịch vụ -> Trả ngay mức giá / gói phù hợp trong catalog hoặc hỏi đúng 1 chi tiết tối thiểu nếu cần (không hỏi lại từ đầu như khách chưa nêu nhóm dịch vụ).
+- **Mục VI.2B & VI.3 — Dịch vụ cụ thể đã rõ (`"Gói cổ vai gáy 60p bao nhiêu?"`) hoặc khách xin bảng giá trực tiếp (`"Cho xin bảng giá"`, `"Gửi bảng giá giúp mình"`)**:
+  - *"Hành vi bắt buộc: Báo giá trực tiếp gói dịch vụ cụ thể hoặc cung cấp khung giá / các gói tiêu biểu từ catalog đã xác minh... Sau đó đặt tối đa 1 câu hỏi ngắn để thu hẹp nhu cầu."*
 
 ### 10.2. Bằng chứng trong code hiện tại (`CleanAgentCatalogAndPromptBuilder.java` & `config/aci_v2_system_prompt.md`)
 Trong đợt nâng cấp ngay trước đó (commit `244a2ec`), để đáp ứng kịch bản `SC01` của tài liệu cũ, code tại:
@@ -197,14 +199,17 @@ Trong đợt nâng cấp ngay trước đó (commit `244a2ec`), để đáp ứn
 
 đang chỉ thị cho LLM rằng khi gặp `GENERAL_BARE_PRICE_INQUIRY` (`"Giá bên mình thế nào em?"`, `"Giá sao shop?"`), bot **phải báo ngay 1–2 mốc gói tiêu biểu (ví dụ 239.000đ và 399.000đ)** ngay trong phản hồi đầu tiên!
 
-### 10.3. Đề xuất Phương án Giải quyết (Trình Chủ dự án phê duyệt tại Architecture Lock)
-Tuân thủ tuyệt đối nguyên tắc của chủ dự án (*"Nếu phát hiện mâu thuẫn giữa code hiện tại và Master Directive, hãy chỉ ra bằng chứng và đề xuất phương án. Không được tự ý chọn một phương án làm thay đổi chính sách kinh doanh"*), chúng tôi đề xuất tách bạch 2 chế độ chính sách giá trong `PricePolicyMode` của `TurnStrategyContract`:
-1. **`FIRST_TURN_BARE_PRICE_CLARIFY_FIRST` (Mục VI.1 Master Directive)**:
-   - Kích hoạt khi: Lượt đầu tiên (`turnIndex == 1`, chưa xác định nhóm dịch vụ/triệu chứng) và khách hỏi giá chung/cộc lốc (`"Giá"`, `"Cho hỏi giá"`, `"Giá sao?"`, `"Massage bao nhiêu?"`).
-   - Hành vi khóa cứng: Chào thương hiệu + ghi nhận câu hỏi giá + hỏi 1 câu ngắn xác định nhóm dịch vụ (thư giãn hay dưỡng sinh trị liệu) + **KHÔNG báo gói hay bảng giá ở lượt 1**. Ngay khi khách trả lời ở lượt 2 (hoặc nếu khách gặng hỏi giá lần 2), lập tức báo giá gói phù hợp.
-2. **`EXPLICIT_PRICE_TABLE_OR_SCOPED_QUOTE` (Mục VI.3 Master Directive)**:
-   - Kích hoạt khi: Khách chủ động yêu cầu xem bảng giá (`"Cho xin bảng giá"`, `"Gửi bảng giá giúp mình"`, `"Báo giá các gói"`) HOẶC khách đã nêu rõ dịch vụ/triệu chứng (`"Gói cổ vai gáy giá bao nhiêu?"`) HOẶC đã qua lượt 1.
-   - Hành vi khóa cứng: Báo ngay khung giá / gói tiêu biểu từ catalog xác thực + 1 câu hỏi ngắn thu hẹp nhu cầu.
+### 10.3. Đề xuất Phương án Giải quyết 3 Trường hợp Câu hỏi Giá (Trình Chủ dự án phê duyệt tại Architecture Lock — `ADR-08`)
+Tuân thủ tuyệt đối nguyên tắc của chủ dự án (*"Nếu phát hiện mâu thuẫn giữa code hiện tại và Master Directive, hãy chỉ ra bằng chứng và đề xuất phương án. Không được tự ý chọn một phương án làm thay đổi chính sách kinh doanh"*), chúng tôi đề xuất phân biệt rõ 3 trường hợp trong `PricePolicyMode` của `TurnStrategyContract`:
+1. **Trường hợp 1 — `FIRST_TURN_BARE_PRICE_CLARIFY_FIRST` (Khách chưa xác định nhóm dịch vụ: `"Giá"`, `"Cho hỏi giá"`, `"Giá sao?"`)**:
+   - Kích hoạt khi: Lượt đầu tiên (`turnIndex == 1`, `serviceCategory == UNKNOWN`) và khách hỏi giá cộc lốc chưa nêu nhóm dịch vụ.
+   - Hành vi khóa cứng: Chào thương hiệu + ghi nhận câu hỏi giá + hỏi 1 câu ngắn xác định nhu cầu/nhóm dịch vụ + **KHÔNG báo gói hay bảng giá ở lượt 1**. Ngay khi khách trả lời ở lượt 2, lập tức báo giá gói phù hợp.
+2. **Trường hợp 2 — `CATEGORY_PRICE_QUOTE_OR_MINIMAL_CLARIFY` (Khách đã xác định nhóm dịch vụ: `"Massage bao nhiêu?"`, `"Gội đầu dưỡng sinh giá sao?"`)**:
+   - Kích hoạt khi: Khách đã nêu nhóm dịch vụ (`serviceCategory == FACT`, `specificService == UNKNOWN`).
+   - Hành vi khóa cứng: Trả ngay mức giá / gói phù hợp của nhóm dịch vụ đó trong catalog hoặc hỏi đúng 1 chi tiết tối thiểu nếu cần (ví dụ thời lượng / thư giãn hay trị liệu).
+3. **Trường hợp 3 — `DIRECT_SPECIFIC_PRICE_QUOTE` / `PROVIDE_VERIFIED_PRICE_RANGE_OR_REPRESENTATIVE_PACKAGES` (Dịch vụ cụ thể đã rõ hoặc xin bảng giá trực tiếp: `"Gói cổ vai gáy 60p bao nhiêu?"`, `"Cho xin bảng giá"`)**:
+   - Kích hoạt khi: Khách đã nêu rõ dịch vụ cụ thể/triệu chứng (`specificService/symptom == FACT`) HOẶC chủ động xin bảng giá (`"Cho xin bảng giá"`).
+   - Hành vi khóa cứng: Báo giá trực tiếp từ catalog xác thực + tối đa 1 câu hỏi ngắn định hướng.
 
 ---
 

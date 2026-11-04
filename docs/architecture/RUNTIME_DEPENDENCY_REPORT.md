@@ -47,13 +47,14 @@ Kết quả kiểm tra thực tế trên Windows Docker Engine (`docker ps -a` &
    - Kết quả: Chỉ tồn tại 2 volume hợp lệ của hệ thống chính:
      - `docmind_docmind-pgdata` (dữ liệu PostgreSQL 16)
      - `docmind_docmind-inbound-wal` (Write-Ahead Log cho tin nhắn inbound tại `/var/lib/docmind/wal`)
-   - Không có volume `agent_brain_data` hay `docmind-braindata` tồn tại trên host. Trong thư mục `agent-brain/` trước khi xóa cũng không có bất kỳ file `.db`, `.sqlite`, `.jsonl` dữ liệu người dùng nào (chỉ có 21 file mã nguồn/test Python tổng cộng `2,714 LOC`).
-4. **Kiểm tra Dependency toàn Repo trước và sau khi xóa**:
-   - Lệnh: `git grep -n -i -E "8095|agent-brain|/v1/brain|AGENT_BRAIN|recall-and-advise|retain-turn"`
+   - Không có volume `agent_brain_data` hay `docmind-braindata` tồn tại trên host. Trong thư mục `agent-brain/` trước khi xóa cũng không có bất kỳ file `.db`, `.sqlite`, `.jsonl` dữ liệu người dùng nào (chỉ có **21 file** mã nguồn/cấu hình/test Python tổng cộng **`2,708 LOC`**).
+4. **Kiểm tra Dependency toàn Repo và Số liệu Git Diff Chính xác của Commit `P0` (`f091ba557a079da86c8ae14cd7ccc19fe8ece59d`)**:
+   - Lệnh: `git grep -n -i -E "8095|agent-brain|/v1/brain|AGENT_BRAIN|recall-and-advise|retain-turn"` và `git show --stat f091ba557a079da86c8ae14cd7ccc19fe8ece59d`
    - Xác minh:
      - `AgentBrainClient.java` đã được loại bỏ từ giai đoạn trước.
      - `docker-compose.yml` và `api-java/src/main/resources/application.yml` không còn bất kỳ biến môi trường hay cấu hình nào trỏ tới `:8095` hoặc `agent-brain`.
-     - Trong commit `f091ba557a079da86c8ae14cd7ccc19fe8ece59d` (`chore: retire standalone Python Agent Brain service (8095)`), toàn bộ thư mục `agent-brain/` (21 files) đã được gỡ khỏi Git, tài liệu `docs/architecture/docmind_system_architecture.html` được cập nhật đồng bộ, và bài test kiến trúc `CleanAgentArchitectureVerificationTest#testP31_AgentBrain8095AndAgentBrainClientCompletelyDecommissionedWhilePreservingInProcessAgentBrainService` đã bổ sung kiểm tra khẳng định thư mục `agent-brain` không còn tồn tại (**1/1 PASS**).
+     - Topology triển khai thực tế là **Single-Instance (`1` container `docmind-api` `:8090` duy nhất)**.
+     - Trong commit `f091ba557a079da86c8ae14cd7ccc19fe8ece59d` (`chore: retire standalone Python Agent Brain service (8095)`), số liệu Git diff chính xác là **`23 files changed, 11 insertions(+), 2,714 deletions(-)`**: gồm **21 file bị xóa (`D`)** trong thư mục `agent-brain/` (`2,708 dòng bị xóa`) và **2 file được cập nhật (`M`)** (`api-java/src/test/java/com/example/docmind/service/bot/CleanAgentArchitectureVerificationTest.java`: `+5 dòng`; `docs/architecture/docmind_system_architecture.html`: `+6/-6 dòng`). Bài test kiến trúc `CleanAgentArchitectureVerificationTest#testP31_AgentBrain8095AndAgentBrainClientCompletelyDecommissionedWhilePreservingInProcessAgentBrainService` đạt **1/1 PASS**.
 
 ---
 

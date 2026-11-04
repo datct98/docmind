@@ -34,12 +34,13 @@
 
 ## 1. Năm Nguyên tắc Kiến trúc Đích (`Adaptive Sales Intelligence System`)
 
-1. **Một Nguồn Sự Thật Duy Nhất kèm Giao thức Nhất quán Rõ ràng (`R2 & R3`)**:
+1. **Một Nguồn Sự Thật Duy Nhất kèm Giao thức Nhất quán Rõ ràng (`R2 & R3`, Cam kết `Single-Instance` v1)**:
    - Xóa bỏ hoàn toàn việc lưu trùng trạng thái giữa `ConversationState.SESSION_CACHE`, `AgentBrainService` và `Draft2Snapshot`.
    - `ConversationMemoryStore` quản lý tập trung `CustomerIntelligenceLedger` (phân biệt rõ **`FACT`**, **`HYPOTHESIS`**, **`UNKNOWN`** với luật chống tự xác nhận giả thuyết và chống hồi sinh fact đã bác bỏ) cùng `BookingProgressState` (cập nhật qua `BookingPatch` lũy đẳng và JPA `@Version` OCC + `Monotonic Merge`).
+   - Áp dụng mẫu **Transactional Outbox**: `Tx-Commit` ghi bản ghi outbound ở trạng thái **`PENDING`**; `OutboundDeliveryDispatcher` kiểm tra `Layer-2 Exit Fence` rồi mới gửi và cập nhật trạng thái (`ACCEPTED_BY_CHANNEL`, `FAILED`, `UNKNOWN`, hoặc `DELIVERED` khi có delivery receipt thực tế). Kiến trúc v1 cam kết concurrency và chặn stale outbound trên topology **Single-Instance (`1` container `docmind-api`)** hiện tại.
 2. **Ranh giới Cứng Giữa Gateway và `SalesTurnOrchestrator` (`R4`)**:
-   - Gateway (Miền A) sở hữu vòng đời Meta webhook, debounce, dedup `external_mid`, `SenderEpochRegistry`, WAL recovery, kiểm soát phiên (`HUMAN_TAKEOVER`, `OPT_OUT`) và `Layer-2 Outbound Exit Fence`.
-   - `SalesTurnOrchestrator` (Miền G, `<= 400 LOC`) chỉ điều phối vòng đời lượt tư vấn bán hàng sau khi sự kiện inbound đã hợp lệ; không tự quản lý webhook hay tự phát tin ra Messenger.
+   - Gateway (Miền A) sở hữu vòng đời Meta webhook, debounce, dedup `external_mid`, `SenderEpochRegistry`, WAL recovery, kiểm soát phiên (`HUMAN_TAKEOVER`, `OPT_OUT`), `Layer-2 Outbound Exit Fence` và `OutboundDeliveryDispatcher`.
+   - `SalesTurnOrchestrator` (Miền G) chỉ điều phối vòng đời lượt tư vấn bán hàng sau khi sự kiện inbound đã hợp lệ; không tự quản lý webhook hay tự phát tin ra Messenger. (Tiêu chí nghiệm thu dựa trên tính đơn nhiệm và không rò rỉ ranh giới, không dùng giới hạn cứng LOC của class làm cổng nghiệm thu).
 3. **Một Hợp đồng Chiến thuật Lượt Bất biến (`TurnStrategyContract` — `R5 & R6`)**:
    - Mọi lượt hội thoại (cả `FAST_SINGLE_PASS` lẫn `TWO_PHASE_STRATEGIC`) đều phải tạo và tuân thủ `TurnStrategyContract`.
    - Giải quyết dứt điểm bài toán đặt lịch (`R5`): phân biệt `bookingMissingFields` với `nextBookingQuestionTarget`, cho phép 1 câu hỏi tự nhiên gộp tối đa 2 trường đặt lịch liên quan (`BRANCH + TIME_SLOT` hoặc `PARTY_SIZE + PHONE`) để tránh hỏi lắt nhắt và tránh deadlock.
@@ -63,7 +64,7 @@ flowchart TB
         Ledger["SentBubbleLedger"]
     end
 
-    subgraph Domain_G["G. Thin Sales Turn Orchestrator (<= 400 LOC)"]
+    subgraph Domain_G["G. Thin Sales Turn Orchestrator (Single Responsibility)"]
         Orch["SalesTurnOrchestrator\n(Pure Sales-Turn Lifecycle Coordinator)"]
     end
 
@@ -160,13 +161,16 @@ Chi tiết các quy tắc nghiệp vụ đã được khóa trong [`TURN_STRATEG
 
 ## 5. Kế hoạch Phân rã 8 God Classes sang Kiến trúc Đích (Mục VIII Master Directive)
 
+> [!NOTE]
+> Tiêu chí nghiệm thu phân rã 8 God Classes dựa trên **sự tách bạch trách nhiệm đơn nhiệm (Single Responsibility) và tuân thủ ranh giới module**, không dùng giới hạn cứng số dòng code (LOC) của một class làm cổng nghiệm thu (acceptance gate).
+
 | God Class hiện tại (LOC) | Sẽ được phân rã / chuyển giao vào các Module Đích | Trạng thái cuối sau `P7` |
 |---|---|---|
-| `CleanAgentOrchestratorService` (`6,718 LOC`) | - Dọn dẹp nhánh `executeCleanAgentTurn` (~3,840 LOC không chạy trên prod)<br/>- Tách điều phối lượt bán hàng sang `SalesTurnOrchestrator` (<= 400 LOC)<br/>- Tách trace sang `DecisionTraceBuilder` | Giữ facade mỏng tương thích ngược hoặc thay thế bởi `SalesTurnOrchestrator` |
-| `CleanAgentOutputRefereeAndSanitizer` (`7,820 LOC`) | - `OutputTruthValidator` (kiểm tra giá, gói, `FACT`/`RETRACT`, `FalseApology`, `TurnStrategyContract.mustNotDo`)<br/>- `SafetyAndEscalationGuard` (y tế, bảo mật, AI honesty)<br/>- `DeterministicFallbackBuilder`<br/>- **Xóa bỏ các hàm regex cắt ghép câu in-place (`Semantic Surgery`)** | Giảm > 70% LOC, tách thành 3 class chuyên biệt trong `guard/` |
+| `CleanAgentOrchestratorService` (`6,718 LOC`) | - Dọn dẹp nhánh `executeCleanAgentTurn` (~3,840 LOC không chạy trên prod)<br/>- Tách điều phối lượt bán hàng sang `SalesTurnOrchestrator`<br/>- Tách trace sang `DecisionTraceBuilder` | Giữ facade mỏng tương thích ngược hoặc thay thế bởi `SalesTurnOrchestrator` |
+| `CleanAgentOutputRefereeAndSanitizer` (`7,820 LOC`) | - `OutputTruthValidator` (kiểm tra giá, gói, `FACT`/`RETRACT`, `FalseApology`, `TurnStrategyContract.mustNotDo`)<br/>- `SafetyAndEscalationGuard` (y tế, bảo mật, AI honesty)<br/>- `DeterministicFallbackBuilder`<br/>- **Xóa bỏ các hàm regex cắt ghép câu in-place (`Semantic Surgery`)** | Tách thành 3 class chuyên biệt trong `guard/` theo đúng trách nhiệm |
 | `ConversationState` (`5,928 LOC`) | - Chuyển quyền sở hữu state sang `ConversationMemoryStore` (`CustomerIntelligenceLedger`, `CustomerRelationshipState`, `BookingProgressState`)<br/>- Loại bỏ bản sao `StructuredBookingState` trong `SESSION_CACHE` | Thu gọn thành DTO/Snapshot bất biến nhẹ |
 | `CleanAgentCatalogAndPromptBuilder` (`5,773 LOC`) | - Dọn dẹp `buildCleanAgentPrompt` cũ (~1,995 LOC)<br/>- Tách xếp hạng gói sang `CatalogIntelligenceService`<br/>- Tách dựng prompt sang `ResponsePromptComposer` | Tách thành `CatalogIntelligenceService` + `ResponsePromptComposer` |
 | `AdaptiveConversationIntelligence` (`5,558 LOC`) | - Tách hiểu ý định sang `TurnUnderstandingEngine` + `ExecutionModeSelector`<br/>- Tách lập kế hoạch sang `SalesStrategyPlanner` + `TurnStrategyContract`<br/>- Loại bỏ `reconcileWithCurrentUtterance` (665 dòng regex ghi đè hậu kiểm) | Tách thành `TurnUnderstandingEngine` + `SalesStrategyPlanner` + `TurnStrategyContract` |
-| `FanpageBotService` (`5,152 LOC`) | - Giữ phần Gateway điều phối `handleCustomerMessage` (~650 LOC)<br/>- Dọn dẹp ~2,550 LOC hàm V1 chết (`L1743–L4290`) | Thu gọn còn < 1,200 LOC |
+| `FanpageBotService` (`5,152 LOC`) | - Giữ phần Gateway điều phối `handleCustomerMessage` & `OutboundDeliveryDispatcher`<br/>- Dọn dẹp ~2,550 LOC hàm V1 chết (`L1743–L4290`) | Chỉ giữ trách nhiệm Gateway (Miền A), không chứa logic tư vấn V1 |
 | `PrimaryActionRouter` (`4,703 LOC`) | - Chuyển `isStrictSystemOptOutMessage` sang `SafetyAndEscalationGuard`<br/>- Cô lập/dọn dẹp ~4,500 LOC máy trạng thái V1 không còn dùng | Decommission / thu gọn còn enum telemetry |
 | `AgentBrainService` (`3,858 LOC`) | - Hợp nhất thành `ConversationMemoryStore` (xóa nhánh legacy `recallAndAdvise` V1)<br/>- Chuẩn hóa lưu trữ `FACT`/`HYPOTHESIS`/`UNKNOWN` và `BookingProgressState` | Tinh gọn, giữ 100% tương thích JSONB PostgreSQL |
