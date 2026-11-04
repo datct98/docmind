@@ -1,7 +1,11 @@
 # GOD CLASSES AUDIT — DOCMIND BACKEND (`com.example.docmind`)
 
+> **Document Authority**: **AS-IS CURRENT-STATE AUDIT** *(Kiểm toán hiện trạng 8 God Classes trước khi tái cấu trúc; thiết kế phân rã đích nằm tại [`TARGET_ARCHITECTURE.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/TARGET_ARCHITECTURE.md) và [`MODULE_OWNERSHIP.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/MODULE_OWNERSHIP.md)).*  
 > **Phase Gate**: `P1 — Architecture Discovery`  
-> **Baseline Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **Approval Status**: **VERIFIED AS-IS AUDIT**  
+> **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
+> **P0 Cleanup Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **P2 Initial Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`  
 > **Phương pháp**: Quét AST/Method/Regex tự động trên toàn bộ `154 files` (`86,550 LOC`) trong `api-java/src/main/java` kết hợp đọc đối chiếu mã nguồn trực tiếp.
 
 ---

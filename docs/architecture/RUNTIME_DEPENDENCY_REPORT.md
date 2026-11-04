@@ -1,8 +1,11 @@
 # RUNTIME DEPENDENCY REPORT — DOCMIND ADAPTIVE SALES INTELLIGENCE
 
+> **Document Authority**: **AS-IS & P0 RUNTIME EVIDENCE** *(Bằng chứng kiểm tra Docker containers, ports, volumes và việc gỡ bỏ an toàn Python `agent-brain` `:8095`).*  
 > **Phase Gate**: `P0 — Runtime Cleanup` & `P1 — Architecture Discovery`  
+> **Approval Status**: **VERIFIED (P0 COMPLETED)**  
 > **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
-> **Current HEAD After P0**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d` (`chore: retire standalone Python Agent Brain service (8095)`)  
+> **P0 Cleanup Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d` (`chore: retire standalone Python Agent Brain service (8095)`)  
+> **P2 Initial Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`  
 > **Audit Mode**: Read-only đối với logic nghiệp vụ (`src/main/java`)
 
 ---

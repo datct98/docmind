@@ -1,7 +1,11 @@
-# CURRENT EXECUTION FLOW — HOT-PATH & COLD-PATH TRACE
+# CURRENT EXECUTION FLOW — HOT-PATH & COLD-PATH TRACE (AS-IS)
 
+> **Document Authority**: **AS-IS CURRENT-STATE AUDIT** *(Dấu vết thực thi từng dòng code của hệ thống hiện tại; luồng thực thi đích giữa Gateway và `SalesTurnOrchestrator` được quy định tại [`MODULE_OWNERSHIP.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/MODULE_OWNERSHIP.md)).*  
 > **Phase Gate**: `P1 — Architecture Discovery`  
-> **Baseline Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **Approval Status**: **VERIFIED AS-IS AUDIT**  
+> **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
+> **P0 Cleanup Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **P2 Initial Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`  
 > **Trạng thái xác minh**: Đã xác minh 100% bằng số dòng thực tế trong mã nguồn (`api-java` & `doc-service-py`).
 
 ---

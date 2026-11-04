@@ -1,8 +1,16 @@
 # QWEN3.8-MAX INDEPENDENT ARCHITECTURE REVIEW (STEP 4)
 
-> **Reviewer**: `qwen3.8-max` via Claude Code CLI (`claude.exe --bare -p --model qwen3.8-max --tools ""`)
+> **Document Authority**: **INDEPENDENT REVIEW RECORD** (`Verbatim Qwen3.8-Max Critique ? Input to P2 Refinements R1?R9`)  
+> **Approval Status**: **Recorded ? Addressed in P2 Refinements (`R1?R9`)**  
+> **Repository**: `datct98/docmind` (`refactor/aci-v2-cleanup`)  
+> **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
+> **P0 Cleanup Commit (Reviewed Target)**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **P2 Initial Architecture Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`  
+> **Reviewer**: `qwen3.8-max` via Claude Code CLI (`claude.exe --bare -p --model qwen3.8-max --tools ""`)  
 > **Total Wall-Clock Execution Time**: `113.1s` (4 Parallel Review Streams)
-> **Target Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`
+
+> [!NOTE]
+> T?i li?u n?y l?u nguy?n v?n k?t qu? ph?n bi?n ??c l?p t? `Qwen3.8-Max` ? B??c 4. C?c ?? xu?t t? Qwen ?? ???c ??nh gi? k? thu?t trong v?ng ph?n bi?n P2 (`R1?R9`): nh?ng ?? xu?t c? c? s? (nh? t?ch `SC01?SC15`, chu?n h?a `Customer Intelligence Model`, l?m r? `Gateway vs SalesTurnOrchestrator`) ?? ???c chu?n h?a v?o thi?t k? TO-BE; trong khi ?? xu?t d?ng **Database Advisory Lock (`pg_advisory_xact_lock`) m?i l??t** ?? ???c ??nh d?u **`SUPERSEDED BY ADR-03`** trong [`ARCHITECTURE_DECISIONS.md`](./ARCHITECTURE_DECISIONS.md) ?? tr?nh gi? DB connection trong th?i gian ch? LLM HTTP call, thay b?ng **JPA `@Version` OCC + Monotonic Merge (`ConversationSessionOptimisticMergeCoordinator`) + Deterministic `BookingPatch.patchId` (`R2`)**.
 
 ---
 

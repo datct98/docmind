@@ -1,24 +1,28 @@
-# STATE OWNERSHIP MAP — CURRENT VS TARGET
+# STATE OWNERSHIP MAP — CURRENT AS-IS AUDIT ONLY
 
-> **Phase Gate**: `P1 — Architecture Discovery`  
-> **Baseline Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`
+> **Document Authority**: **AS-IS CURRENT-STATE AUDIT ONLY** *(Tài liệu này chỉ ghi nhận hiện trạng phân mảnh trạng thái trước khi tái cấu trúc thuộc giai đoạn `P1 — Architecture Discovery`. Tài liệu này **KHÔNG** quy định thiết kế đích và không bao giờ ghi đè lên [`STATE_OWNERSHIP.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/STATE_OWNERSHIP.md)).*  
+> **Phase Gate**: `P1 — Architecture Discovery (Completed)`  
+> **Approval Status**: **VERIFIED AS-IS AUDIT**  
+> **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
+> **P0 Cleanup Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **P2 Initial Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`
 
 ---
 
-## 1. Hiện trạng phân mảnh trạng thái hội thoại (Đã xác minh)
+## 1. Hiện trạng phân mảnh trạng thái hội thoại trong Codebase hiện tại (Đã xác minh)
 
-Hiện tại, trạng thái của **cùng một phiên hội thoại** (`pageId + senderId`) đang bị chia cắt và nhân bản trên **6 nơi lưu trữ khác nhau** (4 trong bộ nhớ JVM và 2 trong PostgreSQL + Disk WAL):
+Trong codebase hiện tại (`f091ba5`), trạng thái của **cùng một phiên hội thoại** (`pageId + senderId`) đang bị chia cắt và nhân bản trên **6 nơi lưu trữ khác nhau** (4 trong bộ nhớ JVM và 2 trong PostgreSQL + Disk WAL):
 
 ```mermaid
 flowchart TD
-    subgraph JVM_Memory["In-JVM Static & Service Caches (docmind-api)"]
+    subgraph JVM_Memory["In-JVM Static & Service Caches (docmind-api — AS-IS)"]
         CS["1. ConversationState.SESSION_CACHE\n(ConcurrentHashMap<String, SessionCacheEntry>)\nKey: pageId|senderId|convId"]
         AB["2. AgentBrainService.memoryStore\n(ConcurrentHashMap<String, CustomerBrainMemory>)\nKey: pageId::senderId"]
         D2["3. CustomerUnderstandingDraft2Snapshot\n(Nested inside CustomerBrainMemory)\n3 Layers + AdaptiveResponsePlan"]
         SBL["4. SentBubbleLedger.LEDGER_MAP\n(ConcurrentHashMap<String, SessionLedger>)\nKey: pageId|senderId|convId"]
     end
 
-    subgraph Persistent_Storage["Durable Storage (PostgreSQL 16 & Volume WAL)"]
+    subgraph Persistent_Storage["Durable Storage (PostgreSQL 16 & Volume WAL — AS-IS)"]
         PG_CS[("5. PostgreSQL: conversation_sessions\n- control_mode, opted_out, version\n- aci_memory_state_json (JSONB)\n- customer_insight_json (JSONB)")]
         PG_MSG[("6. PostgreSQL: conversation_messages\n& sent_bubble_ledger_entries\n+ DurableInboundWalRecoveryStore (/var/lib/docmind/wal)")]
     end
@@ -30,7 +34,7 @@ flowchart TD
 
 ---
 
-## 2. Bảng đối chiếu quyền sở hữu từng trường trạng thái (State Field Ownership Audit)
+## 2. Bảng đối chiếu quyền sở hữu từng trường trạng thái ở Hiện trạng (AS-IS Audit)
 
 | Nhóm dữ liệu / Trường trạng thái | Nơi lưu hiện tại #1 (`ConversationState`) | Nơi lưu hiện tại #2 (`AgentBrainService`) | Nơi lưu hiện tại #3 (`Draft2Snapshot` / `PostgreSQL`) | Vấn đề xung đột / Rủi ro hiện tại (Đã xác minh) |
 |---|---|---|---|---|
@@ -45,7 +49,7 @@ flowchart TD
 
 ---
 
-## 3. Bốn điểm ra quyết định chiến thuật đang cạnh tranh nhau trong cùng 1 lượt (Competing Decision Makers)
+## 3. Bốn điểm ra quyết định chiến thuật đang cạnh tranh nhau trong cùng 1 lượt ở Hiện trạng (AS-IS Audit)
 
 Đã xác minh trên luồng `executeAciCognitiveTurn` (`CleanAgentOrchestratorService.java` L4215–L5825):
 
@@ -60,12 +64,6 @@ flowchart TD
 
 ---
 
-## 4. Nguyên tắc Sở hữu Trạng thái Đích (Target State Ownership Principle — Chuẩn bị cho `P2`)
+## 4. Liên kết tới Thiết kế Đích (`TO-BE Specification`)
 
-Để chấm dứt tình trạng 4 nơi giữ state và 4 nơi tranh quyền quyết định:
-1. **Một nguồn sự thật duy nhất cho mỗi loại trạng thái (Single Source of Truth)**:
-   - **Operational & Safety Control State** (`controlMode`, `optedOut`, `humanTakeover`, `externalMid` dedup): Thuộc quyền sở hữu tuyệt đối của `InboundSessionPersistenceService` + bảng `conversation_sessions` (PostgreSQL).
-   - **Confirmed Customer & Booking State** (`confirmedFacts`, `retractedFacts`, `CustomerRelationshipState`, `BookingProgressState` gồm `serviceId`, `branchId`, `timeSlot`, `partySize`, `phone`, `missingBookingFields`): Thuộc quyền sở hữu duy nhất của `ConversationMemoryStore` (hợp nhất từ `AgentBrainService` + `AciSessionMemoryPersistenceService`), lưu bền vững xuống `conversation_sessions.aci_memory_state_json`. Loại bỏ hoàn toàn việc giữ bản sao `StructuredBookingState` rời rạc trong `ConversationState.SESSION_CACHE`.
-   - **Delivered Bubble Ledger**: Thuộc quyền sở hữu duy nhất của `SentBubbleLedger` (`JdbcSentBubbleStore`).
-2. **Một Hợp đồng Chiến thuật Lượt duy nhất (`TurnStrategyContract`)**:
-   - Mọi quyết định về `primaryIntent`, `secondaryIntents`, `turnGoal`, `responseMode`, `maxQuestionsAllowed`, `pricePolicyMode`, `branchDisclosurePolicy` phải được chốt thành một `TurnStrategyContract` rõ ràng trước khi render câu trả lời cuối cùng; `OutputTruthAndSafetyGuard` chỉ kiểm định sự thật/an toàn và yêu cầu tạo lại (regenerate/repair) chứ **tuyệt đối không tự ý cắt ghép/viết lại văn bản bằng regex**.
+Toàn bộ thiết kế đích nhằm giải quyết triệt để hiện trạng trên (bao gồm Giao thức Nhất quán `ConversationMemoryStore` `R2` và Mô hình Trí tuệ Khách hàng `FACT` / `HYPOTHESIS` / `UNKNOWN` `R3`) được quy định chính thức tại [`STATE_OWNERSHIP.md`](file:///d:/Project/digital-spirituality/docmind/docs/architecture/STATE_OWNERSHIP.md).

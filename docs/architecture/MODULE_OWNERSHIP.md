@@ -1,39 +1,92 @@
-# MODULE OWNERSHIP & STATE OWNERSHIP SPECIFICATION
+# MODULE OWNERSHIP & GATEWAY–ORCHESTRATOR BOUNDARY SPECIFICATION
 
-> **Phase Gate**: `P2 — Architecture Design`  
-> **Baseline Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`
+> **Document Authority**: **TO-BE NORMATIVE SPECIFICATION** (Quy định thiết kế đích về ranh giới 8 miền A–H và ranh giới cứng giữa Gateway với `SalesTurnOrchestrator` theo `R4`; có hiệu lực cao hơn phần kiểm toán hiện trạng trong `ARCHITECTURE_DISCOVERY_REPORT.md`).  
+> **Phase Gate**: `P2 — Architecture Lock Pending Project Owner Approval`  
+> **Approval Status**: **PROPOSED** *(Chỉ chuyển sang `ACCEPTED` sau khi Chủ dự án phê duyệt Architecture Lock)*  
+> **Baseline Commit Before P0**: `244a2ec8a120878f8f863cb0388d72d51ae8bc2e`  
+> **P0 Cleanup Commit**: `f091ba557a079da86c8ae14cd7ccc19fe8ece59d`  
+> **P2 Initial Draft Commit**: `5aa985d43b5ef6ea1621f37fa546bcae520633c2`
 
 ---
 
-## 1. Bản đồ Quyền sở hữu Module Đích (`MODULE_OWNERSHIP.md`)
+## 1. Bản đồ Quyền Sở hữu Module Đích (`MODULE_OWNERSHIP.md` — 8 Miền A–H)
 
 Mỗi module trong kiến trúc đích (`Adaptive Sales Intelligence System`) sở hữu một trách nhiệm duy nhất (Single Responsibility Principle) và giao tiếp qua các DTO/Contract bất biến:
 
 | Miền (Domain) | Tên Module / Class Đích | Trách nhiệm Sở hữu Duy nhất (Must Own) | Điều Cấm Tuyệt Đối (Must NOT Do) |
 |---|---|---|---|
-| **A. Gateway & Persistence** | `InboundSessionPersistenceService` | Kiểm tra `HUMAN_TAKEOVER`, `OPT_OUT`, Re-consent, chống trùng `external_mid`, ghi WAL và bảng `conversation_sessions` / `conversation_messages`. | Không phân tích ý định bán hàng, không gọi LLM, không dựng prompt. |
-| **A. Gateway & Persistence** | `SenderEpochRegistry` & `SentBubbleLedger` | Quản lý epoch chống race condition khi khách nhắn dồn dập và lưu sổ cái bong bóng thực gửi. | Không can thiệp nội dung câu trả lời. |
-| **B. Memory & State** | `ConversationMemoryStore` | Lưu và nạp nguyên tử `CustomerRelationshipState`, `ConfirmedFactLedger`, `BookingProgressState`, `ConversationTurnLedger` (In-JVM + PostgreSQL JSONB `aci_memory_state_json`). | Không chứa regex phân loại câu hỏi hay logic lắp ghép câu trả lời. |
-| **C. Intelligence** | `KnowledgeRetrievalService` | Truy xuất Hybrid RAG (BM25 + pgvector 384-dim + Reciprocal Rank Fusion) và nạp các quy tắc `LearnedRuleDto` đã duyệt của Page. | Không tự ý cắt bỏ gói dịch vụ hợp lệ hoặc quyết định chiến thuật trả lời. |
-| **C. Intelligence** | `CatalogIntelligenceService` | Bóc tách gói dịch vụ từ tài liệu, xếp hạng `PRIMARY` / `ECONOMICAL_OPTION`, lọc theo vùng miền hoặc thành phần khách từ chối (`retractedFacts`). | Không tự sinh văn bản trả lời khách. |
-| **C. Intelligence** | `BranchIntelligenceService` | Quản lý cấu trúc chi nhánh của Page (`singleBranch` vs `multiBranch`), thông tin từng chi nhánh, tình trạng chỗ trống tĩnh/bán tĩnh và quyết định `BranchTurnContext`. | Không gọi API đặt lịch thời gian thực bên ngoài phạm vi v1. |
-| **D. Strategy Planner** | `TurnUnderstandingEngine` & `SalesStrategyPlanner` | Phân tích đa ý định, cập nhật `ConfirmedFactLedger` delta, áp dụng chính sách kinh doanh đã khóa (Mục V & VI) để xuất ra `TurnStrategyContract` bất biến. | Không trực tiếp viết lời thoại gửi khách. |
-| **D. Strategy Planner** | `SkillSelectionEngine` | Chọn tối đa 1–2 kỹ năng (`AgentSkillDto`) khớp với `TurnGoal` và chặn mọi skill bán hàng khi khách đang phàn nàn/đính chính. | Không ghi đè `pricePolicyMode` của `SalesStrategyPlanner`. |
-| **E. Composer** | `ResponsePromptComposer` & `ConsultativeResponseGenerator` | Chuyển `TurnStrategyContract` thành prompt ngắn gọn, gọi LLM sinh `reply_bubbles` tự nhiên và định dạng nhịp gửi qua `BubblePacingFormatter`. | Không tự ý thay đổi gói dịch vụ hay chính sách giá ngoài `TurnStrategyContract`. |
-| **F. Guard** | `OutputTruthValidator` & `SafetyAndEscalationGuard` | Kiểm định giá/tên gói đối chiếu catalog, kiểm tra tuân thủ `TurnStrategyContract.mustNotDo`, kiểm tra an toàn y tế/bảo mật, kích hoạt tạo lại (regenerate) kèm lỗi cụ thể hoặc gọi `DeterministicFallbackBuilder`. | **TUYỆT ĐỐI KHÔNG dùng regex cắt ghép, xóa câu hay nối câu vào bong bóng của LLM.** |
-| **G. Orchestrator** | `SalesTurnOrchestrator` | Điều phối tuần tự các bước từ A -> B -> C -> D -> E -> F -> H trong <= 400 dòng code. | Không chứa prompt template, không chứa regex nghiệp vụ. |
-| **H. Audit & Eval** | `DecisionTraceBuilder` & `TurnTelemetryRecorder` | Ghi nhận `DecisionTrace` JSON và telemetry độ trễ/token/chế độ thực thi cho từng lượt. | Không làm thay đổi trạng thái nghiệp vụ hay kết quả trả về. |
+| **A. Inbound/Outbound Gateway** | `FanpageBotController`, `FanpageBotService` (Gateway Layer), `InboundSessionPersistenceService`, `DurableInboundWalRecoveryStore`, `SenderEpochRegistry`, `SentBubbleLedger` | Vòng đời Meta Webhook, gom tin burst (`burstDebounceMs`), chống trùng `external_mid`, quản lý `SenderEpochRegistry`, WAL recovery, kiểm soát phiên (`HUMAN_TAKEOVER`, `OPT_OUT`, Re-consent), `Layer-2 Outbound Exit Fence` và phát bong bóng tuần tự ra Messenger. | **CẤM** phân loại ý định bán hàng (`SalesIntent`), **CẤM** chọn chính sách giá hay gói dịch vụ, **CẤM** gọi LLM tư vấn. |
+| **B. Memory & State** | `ConversationMemoryStore`, `ConversationSessionOptimisticMergeCoordinator` | Lưu và nạp nguyên tử `CustomerIntelligenceLedger` (`FACT` / `HYPOTHESIS` / `UNKNOWN`), `CustomerRelationshipState`, `BookingProgressState` (PostgreSQL JSONB `aci_memory_state_json` + JPA `@Version` OCC). | **CẤM** chứa regex phân loại câu hỏi hay logic lắp ghép câu trả lời. |
+| **C. Intelligence** | `KnowledgeRetrievalService`, `CatalogIntelligenceService`, `BranchIntelligenceService`, `PagePolicyConfigService` | Truy xuất Hybrid RAG, xếp hạng gói dịch vụ (`PRIMARY` / `ECONOMICAL_OPTION`), lọc bỏ phạm vi đã rút lại (`retractedFacts`), quản lý cấu hình chi nhánh tĩnh/bán tĩnh (`BranchTopology`, `customerLocation` vs `preferredBranchId`). | **CẤM** tự sinh văn bản trả lời khách; **CẤM** gọi hệ thống POS/lịch thời gian thực bên ngoài phạm vi v1. |
+| **D. Strategy Planner** | `TurnUnderstandingEngine`, `ExecutionModeSelector`, `SalesStrategyPlanner`, `TurnStrategyContract`, `SkillSelectionEngine` | Phân tích đa ý định & độ phức tạp quyết định, cập nhật ứng viên `FACT`/`HYPOTHESIS` delta, áp dụng chính sách kinh doanh đã khóa (Mục V & VI) để xuất ra `TurnStrategyContract` bất biến trước khi sinh lời thoại. | **CẤM** trực tiếp viết lời thoại gửi khách; **CẤM** dùng độ dài câu đơn thuần để chọn `FAST_SINGLE_PASS`. |
+| **E. Composer** | `ResponsePromptComposer`, `ConsultativeResponseGenerator`, `BubblePacingFormatter` | Chuyển `TurnStrategyContract` thành prompt ngắn gọn, gọi LLM (tuân thủ `TurnLlmBudgetTracker`) để sinh `reply_bubbles` tự nhiên và định dạng biểu diễn (`BubblePacingFormatter`). | **CẤM** tự ý thay đổi gói dịch vụ, chính sách giá hay `mustNotDo` ngoài `TurnStrategyContract`. |
+| **F. Guard** | `OutputTruthValidator`, `SafetyAndEscalationGuard`, `DeterministicFallbackBuilder` | Kiểm định giá/tên gói đối chiếu catalog, kiểm tra tuân thủ `TurnStrategyContract.mustNotDo`, kiểm tra an toàn y tế/bảo mật, kích hoạt tối đa 1 lần regenerate kèm `ViolationFeedback` hoặc gọi `DeterministicFallbackBuilder`. | **TUYỆT ĐỐI CẤM dùng regex cắt ghép, xóa câu hay nối câu vào bong bóng của LLM (`Zero Semantic Surgery`).** |
+| **G. Orchestrator** | `SalesTurnOrchestrator` | Chỉ điều phối vòng đời một lượt tư vấn bán hàng (`Sales-Turn Lifecycle`) sau khi Gateway đã xác nhận sự kiện inbound hợp lệ. Trả về `SalesTurnOutcome` thuần túy cho Gateway. | **CẤM** tự quản lý Meta webhook, burst debounce, WAL file hay tự phát tin nhắn trực tiếp ra Facebook Graph API. |
+| **H. Audit & Eval** | `DecisionTraceBuilder`, `TurnTelemetryRecorder`, `TranscriptEvaluationHarness` | Ghi nhận `DecisionTrace` JSON và bộ chỉ số `TurnEvaluationTelemetry` (`R8`) cho từng lượt. | **CẤM** làm thay đổi trạng thái nghiệp vụ hay kết quả trả về. |
 
 ---
 
-## 2. Quyền sở hữu Trạng thái Đích (`STATE_OWNERSHIP.md`)
+## 2. Ranh giới Cứng Giữa Gateway (Miền A) và `SalesTurnOrchestrator` (Miền G) (`R4`)
 
-Bảng dưới đây khóa chặt **nguồn sự thật duy nhất (Single Authoritative Owner)** cho từng nhóm dữ liệu trong hệ thống đích:
+### 2.1. Bảng Phân định Trách nhiệm Gateway vs Orchestrator
 
-| Thực thể Trạng thái (State Entity) | Owner Duy nhất (Read/Write Authority) | Nơi Lưu Bền Vững (Durable Backing) | Quy tắc Cập nhật (Mutation Rule) |
-|---|---|---|---|
-| `SessionControlState` (`controlMode`, `optedOut`, `lastInboundMid`) | `InboundSessionPersistenceService` | Bảng `conversation_sessions` (cột `control_mode`, `opted_out`, `version`) | Cập nhật nguyên tử qua SQL transaction trước khi vào Orchestrator và kiểm tra lại ở Layer-2 Exit Fence. |
-| `ConfirmedFactLedger` (`confirmedPains`, `symptomDuration`, `preferences`, `retractedFacts`) | `ConversationMemoryStore` | `conversation_sessions.aci_memory_state_json` (PostgreSQL JSONB) | Chỉ được cập nhật một lần mỗi lượt sau khi `TurnUnderstandingEngine` xác thực bằng chứng từ lời khách (`CustomerStatementRecord`). |
-| `CustomerRelationshipState` (`customerPronoun`, `pronounConfidence`, `relationshipStage`, `priceObjectionCount`, `lastTurnGoal`) | `ConversationMemoryStore` | `conversation_sessions.aci_memory_state_json` | Nếu chưa xác định giới tính -> giữ `"mình"` (hoặc `"bạn"` theo cấu hình Page). Khi khách đính chính (`"gọi anh nhé"`) -> khóa `pronounConfidence = 1.0`. |
-| `BookingProgressState` (`serviceId`, `branchId`, `timeSlot`, `partySize`, `phone`, `status`, `missingBookingFields`) | `ConversationMemoryStore` | `conversation_sessions.aci_memory_state_json` | **Xóa bỏ bản sao rời rạc trong `ConversationState.SESSION_CACHE`**. Chỉ cập nhật qua `BookingPatchValidator` của `SalesStrategyPlanner`. Không bao giờ tự reset về `NONE` khi khách hỏi xen câu hỏi phụ hoặc chê đắt. |
-| `ConversationTurnLedger` & `SentBubbleLedger` | `SentBubbleLedger` (`JdbcSentBubbleStore`) | Bảng `sent_bubble_ledger_entries` & `conversation_messages` | Ghi nhận đúng các bong bóng thực tế đã vượt qua `OutputTruthValidator` và gửi tới khách hàng. |
+| Khía cạnh | Gateway Layer (Miền A) | `SalesTurnOrchestrator` (Miền G) |
+|---|---|---|
+| **Đầu vào (Input)** | HTTP Payload thô từ Meta Webhook (`/webhook`) hoặc Simulator (`/message`). | `ValidatedTurnContext`: Sự kiện inbound đã qua dedup, đã lưu `Tx-Entry`, kèm `epochToken`, `baseSessionVersion` và `hydratedMemory`. |
+| **Quản lý Epoch & Concurrency** | Sở hữu `SenderEpochRegistry`: gọi `advanceEpoch(pageId, senderId)` khi nhận tin nhắn mới. | Chỉ gọi hàm đọc `epochToken.isCurrent()` tại các điểm checkpoint để tự hủy sớm (`SUPERSEDED_ABORTED`) nếu có tin nhắn mới hơn. |
+| **Quản lý Giao dịch DB** | Sở hữu `Tx-Entry` (ghi nhận inbound message + kiểm tra `HUMAN_TAKEOVER`/`OPT_OUT`) và `Layer-2 Exit Fence` (`verifyOutboundStillPermittedFresh`) + ghi `SentBubbleLedger`. | Ủy quyền cho `ConversationMemoryStore` thực hiện `Tx-Commit` (cập nhật `aci_memory_state_json` + `BookingPatch` qua OCC) ngay sau khi `OutputTruthValidator` thông qua câu trả lời. |
+| **Quyền Gửi Tin Nhắn Ra Ngoài** | **Độc quyền**: Chỉ Gateway mới được gọi `sendSequentialBubblesToFacebook` sau khi `Layer-2 Exit Fence` xác nhận phiên vẫn ở trạng thái `BOT_ACTIVE` và `opted_out == false`. | **Không có quyền gửi mạng**: Chỉ trả về danh sách `replyBubbles` đề xuất trong `SalesTurnOutcome`. |
+| **Quyết định Nghiệp vụ Tư vấn** | **Không có quyền**: Chỉ chặn trực tiếp Jailbreak bảo mật hoặc lệnh dừng hệ thống tường minh (`STOP`/`HỦY ĐĂNG KÝ`). | **Độc quyền điều phối**: Gọi Miền C, D, E, F để lập `TurnStrategyContract`, sinh câu trả lời và kiểm định sự thật. |
+
+### 2.2. Sequence Diagram Ranh giới Gateway ↔ `SalesTurnOrchestrator` & Các Điểm Commit / Abort / Rollback (`R4`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Meta as Meta Webhook / Client
+    participant GW as Gateway (Controller + InboundPersistence + ExitFence)
+    participant Epoch as SenderEpochRegistry
+    participant DB as PostgreSQL (conversation_sessions & messages)
+    participant Orch as SalesTurnOrchestrator (Domain G)
+    participant Mem as ConversationMemoryStore (Domain B)
+    participant Pipeline as Domains C + D + E + F (RAG, Planner, Composer, Guard)
+
+    Meta->>GW: POST /webhook (hoặc /message)
+    GW->>GW: Burst Debounce (gom tin nhắn dồn dập <= burstDebounceMs)
+    GW->>Epoch: advanceEpoch(pageId, senderId) -> cấp epochToken=E_n
+    GW->>DB: [COMMIT POINT 1: Tx-Entry (REQUIRES_NEW)]<br/>1. INSERT conversation_messages ON CONFLICT (session_id, external_mid) DO NOTHING<br/>2. Kiểm tra control_mode (HUMAN_TAKEOVER) & opted_out<br/>3. Đọc baseSessionVersion = V_k
+    alt Duplicate external_mid hoặc HUMAN_TAKEOVER / OPT_OUT
+        DB-->>GW: SUPPRESS_DUPLICATE / BLOCK_TAKEOVER / BLOCK_OPT_OUT
+        GW-->>Meta: HTTP 200 (Silent Suppressed — Không gọi Orchestrator)
+    else Inbound hợp lệ (BOT_ACTIVE)
+        GW->>Mem: refreshTurnBaseFromDb(pageId, senderId, V_k)
+        Mem-->>GW: HydratedMemorySnapshot (Version V_k)
+        GW->>Orch: executeSalesTurn(ValidatedTurnContext{epochToken=E_n, baseVersion=V_k, memory})
+        Orch->>Pipeline: 1. Retrieve Knowledge, Catalog & BranchContextSnapshot (Domain C)
+        Orch->>Epoch: [ABORT CHECKPOINT 1: BEFORE_LLM] isCurrent(E_n)?
+        alt Epoch E_n đã bị thay thế bởi tin nhắn mới E_{n+1}
+            Epoch-->>Orch: false (Superseded)
+            Orch-->>GW: SalesTurnOutcome.aborted("SUPERSEDED_BEFORE_LLM")
+        else Epoch E_n vẫn còn hiệu lực
+            Orch->>Pipeline: 2. TurnUnderstanding & SalesStrategyPlanner -> khóa TurnStrategyContract (Domain D)<br/>3. ConsultativeResponseGenerator (Fast-Path hoặc Two-Phase, Domain E)
+            Orch->>Epoch: [ABORT CHECKPOINT 2: AFTER_LLM_BEFORE_GUARD] isCurrent(E_n)?
+            Orch->>Pipeline: 4. OutputTruthValidator & SafetyAndEscalationGuard (Domain F)<br/>(Tối đa 1 lần Regenerate nếu vi phạm, hoặc DeterministicFallbackBuilder)
+            Orch->>Epoch: [ABORT CHECKPOINT 3: BEFORE_MEMORY_COMMIT] isCurrent(E_n)?
+            alt Epoch E_n vẫn còn hiệu lực
+                Orch->>Mem: commitTurnMemoryAndBookingPatch(baseVersion=V_k, memoryDelta, bookingPatch)
+                Mem->>DB: [COMMIT POINT 2: Tx-Commit (REQUIRES_NEW + JPA @Version OCC)]<br/>UPDATE conversation_sessions SET aci_memory_state_json=..., version=V_k+1 WHERE id=? AND version=V_k<br/>(Nếu OCC conflict -> Reload freshDb + MonotonicMerge tối đa 6 lần; lỗi terminal -> Evict JVM cache)
+                DB-->>Mem: PersistedSessionOutcome(V_{k+1})
+                Mem->>Mem: Write-Through cập nhật JVM Cache (chỉ sau khi DB commit thành công)
+                Orch-->>GW: SalesTurnOutcome(replyBubbles, decisionTrace, telemetry)
+                GW->>DB: [EXIT FENCE CHECK: Layer-2 Fresh Read]<br/>verifyOutboundStillPermittedFresh(pageId, senderId)
+                alt Nhân viên vừa bấm HUMAN_TAKEOVER trong lúc LLM đang chạy
+                    DB-->>GW: Permitted = false
+                    GW-->>Meta: Suppress Outbound Bubbles (Memory FACTs của khách vẫn được giữ trong DB cho nhân viên)
+                else Permitted = true
+                    GW->>Meta: sendSequentialBubblesToFacebook (Gửi từng bong bóng)
+                    GW->>DB: [COMMIT POINT 3: Tx-Ledger]<br/>Ghi SentBubbleLedger & conversation_messages (assistant) theo số bong bóng thực gửi
+                end
+            end
+        end
+    end
+```
