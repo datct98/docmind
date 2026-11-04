@@ -2,31 +2,114 @@ package com.example.docmind.service.bot;
 
 import com.example.docmind.dto.bot.FanpageBotRequest;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Sổ cái (ledger) Backend lưu ĐỦ từng bong bóng thực sự đã gửi cho khách, theo thứ tự hiển thị và trạng thái giao nhận.
+ * Sổ cái (ledger) Backend & Transactional Outbox lưu ĐỦ từng bong bóng outbound/inbound theo thứ tự hiển thị
+ * và vòng đời trạng thái giao nhận thực tế (P3.1 — Outbound Delivery Reliability).
  *
- * <p>v3.8: nguồn lưu chuẩn là {@link Store} bền vững (PostgreSQL qua {@link JdbcSentBubbleStore}); {@code CACHE} chỉ là
- * bộ nhớ đệm đọc-qua (read-through) nên restart tiến trình KHÔNG làm mất lịch sử. Khi chưa cài store bền vững
- * (unit test thuần), dùng {@link InMemoryStore}.
+ * <p>Nguồn lưu chuẩn là {@link Store} bền vững (PostgreSQL qua {@link JdbcSentBubbleStore}); {@code CACHE} chỉ là
+ * bộ nhớ đệm đọc-qua (read-through) nên restart tiến trình KHÔNG làm mất lịch sử hoặc trạng thái lease/attempt.
+ * Khi chưa cài store bền vững (unit test thuần), dùng {@link InMemoryStore}.
  */
 public final class SentBubbleLedger {
 
-    /** SENT/DELIVERED: khách đã thấy. CANCELED (bị lượt đồng thời huỷ) / FAILED: khách KHÔNG thấy bong bóng này. */
-    public enum DeliveryStatus { SENT, DELIVERED, CANCELED, FAILED }
+    /**
+     * Vòng đời trạng thái gửi tin P3.1:
+     * <ul>
+     *   <li>{@link #PENDING}: Bản ghi outbound đã được lưu bền vững trước khi gọi kênh gửi.</li>
+     *   <li>{@link #IN_FLIGHT}: Đang thực hiện một lần gửi, có {@code attemptCount} và {@code leaseUntil} phục vụ crash recovery.</li>
+     *   <li>{@link #ACCEPTED_BY_CHANNEL}: Facebook Graph API đã chấp nhận request gửi với HTTP 2xx hợp lệ (chưa phải DELIVERED).</li>
+     *   <li>{@link #DELIVERED}: Chỉ ghi khi thực sự nhận được delivery receipt ({@code delivery.mids} / {@code watermark}) từ kênh gửi.</li>
+     *   <li>{@link #FAILED}: Có bằng chứng rõ ràng lần gửi đã thất bại (HTTP 4xx/5xx hoặc từ chối rõ ràng).</li>
+     *   <li>{@link #UNKNOWN}: Không xác định chắc chắn Facebook đã chấp nhận hay chưa (timeout khi đang gửi hoặc hết hạn lease IN_FLIGHT sau khi crash). Không tự động gửi lặp.</li>
+     *   <li>{@link #SUPPRESSED_BY_FENCE}: Bị chặn trước khi gửi bởi Outbound Fence (HUMAN_TAKEOVER, OPT_OUT, hoặc có inbound mới hơn làm mất hiệu lực).</li>
+     *   <li>{@link #SENT}, {@link #CANCELED}: Giá trị tương thích ngược cho các bài test lịch sử/cắt ngang cũ.</li>
+     * </ul>
+     */
+    public enum DeliveryStatus {
+        PENDING,
+        IN_FLIGHT,
+        ACCEPTED_BY_CHANNEL,
+        DELIVERED,
+        FAILED,
+        UNKNOWN,
+        SUPPRESSED_BY_FENCE,
+        SENT,
+        CANCELED;
 
-    public record BubbleRecord(int order, String text, DeliveryStatus status) {
+        /**
+         * Kiểm tra chuyển trạng thái đơn điệu (monotonic state guard):
+         * <ul>
+         *   <li>{@link #DELIVERED} là trạng thái xác nhận cuối cùng cao nhất — không bao giờ bị hạ cấp bởi phản hồi HTTP đến muộn.</li>
+         *   <li>{@link #ACCEPTED_BY_CHANNEL} chỉ có thể tiến lên {@link #DELIVERED}, không bao giờ lùi về PENDING / IN_FLIGHT / FAILED / UNKNOWN / SUPPRESSED_BY_FENCE.</li>
+         *   <li>{@link #UNKNOWN} không bao giờ tự lùi về PENDING / IN_FLIGHT để gửi lặp; chỉ nâng lên ACCEPTED_BY_CHANNEL hoặc DELIVERED khi có bằng chứng.</li>
+         *   <li>{@link #FAILED}, {@link #SUPPRESSED_BY_FENCE}, {@link #CANCELED} không bao giờ lùi về PENDING / IN_FLIGHT.</li>
+         * </ul>
+         */
+        public static boolean canTransitionMonotonically(DeliveryStatus current, DeliveryStatus target) {
+            if (target == null) {
+                return false;
+            }
+            if (current == null || current == target) {
+                return true;
+            }
+            return switch (current) {
+                case DELIVERED -> false;
+                case ACCEPTED_BY_CHANNEL, SENT -> target == DELIVERED;
+                case UNKNOWN -> target == ACCEPTED_BY_CHANNEL || target == DELIVERED;
+                case FAILED, SUPPRESSED_BY_FENCE, CANCELED -> target == DELIVERED;
+                case IN_FLIGHT -> target == ACCEPTED_BY_CHANNEL
+                        || target == DELIVERED
+                        || target == FAILED
+                        || target == UNKNOWN;
+                case PENDING -> true;
+            };
+        }
+    }
+
+    public record BubbleRecord(
+            int order,
+            String text,
+            DeliveryStatus status,
+            String externalMid,
+            int attemptCount,
+            Instant leaseUntil,
+            String failureReason
+    ) {
+        public BubbleRecord(int order, String text, DeliveryStatus status) {
+            this(order, text, status, null, 0, null, null);
+        }
+
         public boolean visibleToCustomer() {
-            return status == DeliveryStatus.SENT || status == DeliveryStatus.DELIVERED;
+            return status == DeliveryStatus.ACCEPTED_BY_CHANNEL
+                    || status == DeliveryStatus.DELIVERED
+                    || status == DeliveryStatus.SENT;
+        }
+
+        /**
+         * Phân biệt bản ghi thực sự đã qua kênh gửi / nhận receipt với dữ liệu dựng sẵn (attemptCount=0, externalMid=null)
+         * trong các unit test cũ.
+         */
+        public boolean isUnattemptedPreSendRecord() {
+            return attemptCount == 0
+                    && (externalMid == null || externalMid.isBlank())
+                    && failureReason == null
+                    && (status == DeliveryStatus.PENDING
+                        || status == DeliveryStatus.SENT
+                        || status == DeliveryStatus.DELIVERED);
         }
     }
 
     public record TurnRecord(String turnId, String role, List<BubbleRecord> bubbles) {
-        /** Chỉ nối các bong bóng khách ĐÃ thấy. */
+        /** Chỉ nối các bong bóng khách ĐÃ thấy (ACCEPTED_BY_CHANNEL / DELIVERED / SENT). */
         public String joinedText() {
             StringBuilder sb = new StringBuilder();
             for (BubbleRecord b : bubbles) {
@@ -53,6 +136,9 @@ public final class SentBubbleLedger {
         }
     }
 
+    public record DispatchTurnHandle(String ledgerKey, String turnId) {
+    }
+
     /** Kho lưu trữ bền vững; {@code append} phải idempotent theo (key, turnId, role, order). */
     public interface Store {
         void append(String key, TurnRecord rec);
@@ -65,6 +151,44 @@ public final class SentBubbleLedger {
         }
 
         default void markAssistantBubblesCanceledFrom(String key, String turnId, int cancelFromOrder) {
+        }
+
+        default boolean tryAcquireDispatchLease(
+                String key,
+                String turnId,
+                int bubbleOrder,
+                Instant leaseUntil,
+                Instant now
+        ) {
+            return true;
+        }
+
+        default void updateBubbleState(
+                String key,
+                String turnId,
+                int bubbleOrder,
+                DeliveryStatus status,
+                String externalMid,
+                int attemptCount,
+                Instant leaseUntil,
+                String failureReason
+        ) {
+        }
+
+        default int recoverExpiredInFlightLeases(String key, Instant now) {
+            return 0;
+        }
+
+        default int recoverAllExpiredInFlightLeases(Instant now) {
+            return 0;
+        }
+
+        default int markDeliveredByExternalMid(String pageId, String senderPsid, String externalMid) {
+            return 0;
+        }
+
+        default int markDeliveredUpToWatermark(String pageId, String senderPsid, long watermarkEpochMs) {
+            return 0;
         }
     }
 
@@ -107,7 +231,8 @@ public final class SentBubbleLedger {
                     List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
                     for (BubbleRecord b : t.bubbles()) {
                         updated.add(b.order() >= cancelFromOrder
-                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED)
+                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED,
+                                        b.externalMid(), b.attemptCount(), null, b.failureReason())
                                 : b);
                     }
                     l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
@@ -115,18 +240,289 @@ public final class SentBubbleLedger {
                 }
             }
         }
+
+        @Override
+        public synchronized boolean tryAcquireDispatchLease(
+                String key,
+                String turnId,
+                int bubbleOrder,
+                Instant leaseUntil,
+                Instant now
+        ) {
+            List<TurnRecord> l = data.get(key);
+            if (l == null || turnId == null) {
+                return false;
+            }
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if ("assistant".equals(t.role()) && turnId.equals(t.turnId())) {
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    boolean acquired = false;
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (b.order() == bubbleOrder) {
+                            if (b.isUnattemptedPreSendRecord()) {
+                                acquired = true;
+                                updated.add(new BubbleRecord(
+                                        b.order(),
+                                        b.text(),
+                                        DeliveryStatus.IN_FLIGHT,
+                                        b.externalMid(),
+                                        b.attemptCount() + 1,
+                                        leaseUntil,
+                                        null
+                                ));
+                            } else {
+                                updated.add(b);
+                            }
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    if (acquired) {
+                        l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    }
+                    return acquired;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public synchronized void updateBubbleState(
+                String key,
+                String turnId,
+                int bubbleOrder,
+                DeliveryStatus status,
+                String externalMid,
+                int attemptCount,
+                Instant leaseUntil,
+                String failureReason
+        ) {
+            List<TurnRecord> l = data.get(key);
+            if (l == null || turnId == null) {
+                return;
+            }
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if ("assistant".equals(t.role()) && turnId.equals(t.turnId())) {
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (b.order() == bubbleOrder) {
+                            updated.add(new BubbleRecord(
+                                    b.order(),
+                                    b.text(),
+                                    status,
+                                    externalMid,
+                                    attemptCount,
+                                    leaseUntil,
+                                    failureReason
+                            ));
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    break;
+                }
+            }
+        }
+
+        @Override
+        public synchronized int recoverExpiredInFlightLeases(String key, Instant now) {
+            List<TurnRecord> l = data.get(key);
+            if (l == null) {
+                return 0;
+            }
+            return recoverExpiredInList(l, now);
+        }
+
+        @Override
+        public synchronized int recoverAllExpiredInFlightLeases(Instant now) {
+            int total = 0;
+            for (List<TurnRecord> l : data.values()) {
+                total += recoverExpiredInList(l, now);
+            }
+            return total;
+        }
+
+        private int recoverExpiredInList(List<TurnRecord> l, Instant now) {
+            int recovered = 0;
+            Instant effectiveNow = now != null ? now : Instant.now();
+            for (int idx = 0; idx < l.size(); idx++) {
+                TurnRecord t = l.get(idx);
+                if (!"assistant".equals(t.role())) {
+                    continue;
+                }
+                boolean changed = false;
+                List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                for (BubbleRecord b : t.bubbles()) {
+                    if (b.status() == DeliveryStatus.IN_FLIGHT
+                            && b.attemptCount() >= 1
+                            && (b.leaseUntil() == null || !b.leaseUntil().isAfter(effectiveNow))) {
+                        updated.add(new BubbleRecord(
+                                b.order(),
+                                b.text(),
+                                DeliveryStatus.UNKNOWN,
+                                b.externalMid(),
+                                b.attemptCount(),
+                                null,
+                                b.failureReason() != null ? b.failureReason() : "IN_FLIGHT_LEASE_EXPIRED_CRASH_RECOVERY"
+                        ));
+                        changed = true;
+                        recovered++;
+                    } else {
+                        updated.add(b);
+                    }
+                }
+                if (changed) {
+                    l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                }
+            }
+            return recovered;
+        }
+
+        @Override
+        public synchronized int markDeliveredByExternalMid(String pageId, String senderPsid, String externalMid) {
+            if (externalMid == null || externalMid.isBlank()) {
+                return 0;
+            }
+            String cleanMid = externalMid.strip();
+            String prefix = (pageId != null ? pageId.strip() : "-") + "|" + (senderPsid != null ? senderPsid.strip() : "-") + "|";
+            int updatedCount = 0;
+            for (Map.Entry<String, List<TurnRecord>> entry : data.entrySet()) {
+                if (!entry.getKey().startsWith(prefix)) {
+                    continue;
+                }
+                List<TurnRecord> l = entry.getValue();
+                for (int idx = 0; idx < l.size(); idx++) {
+                    TurnRecord t = l.get(idx);
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    boolean changed = false;
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (cleanMid.equals(b.externalMid())
+                                && DeliveryStatus.canTransitionMonotonically(b.status(), DeliveryStatus.DELIVERED)) {
+                            updated.add(new BubbleRecord(
+                                    b.order(),
+                                    b.text(),
+                                    DeliveryStatus.DELIVERED,
+                                    cleanMid,
+                                    Math.max(1, b.attemptCount()),
+                                    null,
+                                    "DELIVERY_RECEIPT"
+                            ));
+                            changed = true;
+                            if (b.status() != DeliveryStatus.DELIVERED) {
+                                updatedCount++;
+                            }
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    if (changed) {
+                        l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    }
+                }
+            }
+            if (updatedCount == 0) {
+                // Scenario 12: Delivery receipt arrived while IN_FLIGHT before HTTP response returned outMid
+                for (Map.Entry<String, List<TurnRecord>> entry : data.entrySet()) {
+                    if (!entry.getKey().startsWith(prefix)) {
+                        continue;
+                    }
+                    List<TurnRecord> l = entry.getValue();
+                    for (int idx = l.size() - 1; idx >= 0; idx--) {
+                        TurnRecord t = l.get(idx);
+                        if (!"assistant".equals(t.role())) {
+                            continue;
+                        }
+                        boolean matchedInFlight = false;
+                        List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                        for (BubbleRecord b : t.bubbles()) {
+                            if (!matchedInFlight
+                                    && b.status() == DeliveryStatus.IN_FLIGHT
+                                    && (b.externalMid() == null || b.externalMid().isBlank())) {
+                                updated.add(new BubbleRecord(
+                                        b.order(),
+                                        b.text(),
+                                        DeliveryStatus.DELIVERED,
+                                        cleanMid,
+                                        Math.max(1, b.attemptCount()),
+                                        null,
+                                        "DELIVERY_RECEIPT"
+                                ));
+                                matchedInFlight = true;
+                                updatedCount++;
+                            } else {
+                                updated.add(b);
+                            }
+                        }
+                        if (matchedInFlight) {
+                            l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                            return updatedCount;
+                        }
+                    }
+                }
+            }
+            return updatedCount;
+        }
+
+        @Override
+        public synchronized int markDeliveredUpToWatermark(String pageId, String senderPsid, long watermarkEpochMs) {
+            String prefix = (pageId != null ? pageId.strip() : "-") + "|" + (senderPsid != null ? senderPsid.strip() : "-") + "|";
+            int updatedCount = 0;
+            for (Map.Entry<String, List<TurnRecord>> entry : data.entrySet()) {
+                if (!entry.getKey().startsWith(prefix)) {
+                    continue;
+                }
+                List<TurnRecord> l = entry.getValue();
+                for (int idx = 0; idx < l.size(); idx++) {
+                    TurnRecord t = l.get(idx);
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    boolean changed = false;
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (b.status() == DeliveryStatus.ACCEPTED_BY_CHANNEL) {
+                            updated.add(new BubbleRecord(
+                                    b.order(),
+                                    b.text(),
+                                    DeliveryStatus.DELIVERED,
+                                    b.externalMid(),
+                                    Math.max(1, b.attemptCount()),
+                                    null,
+                                    "DELIVERY_WATERMARK:" + watermarkEpochMs
+                            ));
+                            changed = true;
+                            updatedCount++;
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    if (changed) {
+                        l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    }
+                }
+            }
+            return updatedCount;
+        }
     }
 
     private static final int MAX_TURNS_PER_SESSION = 60;
     private static final int MAX_RECONCILED_TURNS = 24;
     private static final int MAX_MID_CACHE_SIZE = 2000;
     private static final long MID_CACHE_TTL_MS = 24L * 60L * 60L * 1000L;
+    public static final Duration DEFAULT_IN_FLIGHT_LEASE_DURATION = Duration.ofSeconds(30);
 
     private record CachedMidEntry(String text, String role, long expiresAtMs) {
     }
 
     private static final Map<String, List<TurnRecord>> CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedMidEntry> MID_CACHE = new ConcurrentHashMap<>();
+    private static final Set<String> EARLY_DELIVERY_RECEIPT_MIDS = ConcurrentHashMap.newKeySet();
     private static volatile Store store = new InMemoryStore();
 
     private SentBubbleLedger() {
@@ -137,6 +533,7 @@ public final class SentBubbleLedger {
         store = s != null ? s : new InMemoryStore();
         CACHE.clear();
         MID_CACHE.clear();
+        EARLY_DELIVERY_RECEIPT_MIDS.clear();
     }
 
     public static String key(String pageId, String senderId, String conversationId) {
@@ -154,9 +551,19 @@ public final class SentBubbleLedger {
         return midLedgerKey(pageId, senderPsid) + "|" + (messageId != null ? messageId.strip() : "");
     }
 
+    private static String earlyReceiptKey(String pageId, String senderPsid, String externalMid) {
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        String normMid = (externalMid != null && !externalMid.isBlank()) ? externalMid.strip() : "-";
+        return normPage + "|" + normSender + "|" + normMid;
+    }
+
     /**
      * Lưu ánh xạ bền vững {@code (pageId, senderPsid, messageId) -> messageText} vào Bounded Cache có TTL
      * và xuống {@link Store} bền vững (PostgreSQL {@code sent_bubble_ledger} / {@link InMemoryStore}).
+     *
+     * <p>P3.1: Tin nhắn của {@code assistant} khi mới nhận HTTP 2xx từ Graph API chỉ được ghi nhận ở trạng thái
+     * {@link DeliveryStatus#ACCEPTED_BY_CHANNEL} (trừ khi đã có delivery receipt đến sớm cho {@code messageId} đó).
      */
     public static void recordMessageId(String pageId, String senderPsid, String messageId, String role, String messageText) {
         if (messageId == null || messageId.isBlank() || messageText == null || messageText.isBlank()) {
@@ -179,10 +586,18 @@ public final class SentBubbleLedger {
 
         MID_CACHE.put(midCacheKey(pageId, senderPsid, cleanMid),
                 new CachedMidEntry(cleanText, cleanRole, now + MID_CACHE_TTL_MS));
+        DeliveryStatus midStatus;
+        if ("user".equalsIgnoreCase(cleanRole)) {
+            midStatus = DeliveryStatus.DELIVERED;
+        } else if (EARLY_DELIVERY_RECEIPT_MIDS.contains(earlyReceiptKey(pageId, senderPsid, cleanMid))) {
+            midStatus = DeliveryStatus.DELIVERED;
+        } else {
+            midStatus = DeliveryStatus.ACCEPTED_BY_CHANNEL;
+        }
         try {
             store.append(midLedgerKey(pageId, senderPsid),
                     new TurnRecord(cleanMid, cleanRole,
-                            List.of(new BubbleRecord(0, cleanText, DeliveryStatus.DELIVERED))));
+                            List.of(new BubbleRecord(0, cleanText, midStatus, cleanMid, 1, null, null))));
         } catch (Exception ignored) {
             // Non-blocking fallback if DB store is temporarily unavailable
         }
@@ -236,6 +651,7 @@ public final class SentBubbleLedger {
     public static void clear() {
         CACHE.clear();
         MID_CACHE.clear();
+        EARLY_DELIVERY_RECEIPT_MIDS.clear();
         store.resetAll();
     }
 
@@ -303,6 +719,554 @@ public final class SentBubbleLedger {
     }
 
     /**
+     * Đảm bảo lượt outbound tồn tại trong {@link SentBubbleLedger} trước khi Dispatcher thực hiện gửi tuần tự.
+     * Nếu {@code FanpageBotService} đã ghi bản ghi {@link DeliveryStatus#PENDING} ở cuối lượt sinh câu trả lời,
+     * phương thức này trả về đúng {@code (ledgerKey, turnId)} đó; nếu test gọi thẳng {@code sendSequentialBubblesToFacebook},
+     * phương thức sẽ khởi tạo bản ghi {@link DeliveryStatus#PENDING} tương ứng.
+     */
+    public static DispatchTurnHandle ensureOrResolveTurnForDispatch(
+            String pageId,
+            String senderPsid,
+            String conversationId,
+            List<String> bubbleTexts
+    ) {
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        List<String> candidateKeys = new ArrayList<>();
+        if (conversationId != null && !conversationId.isBlank()) {
+            candidateKeys.add(key(normPage, normSender, conversationId.strip()));
+        }
+        String webhookConvKey = key(normPage, normSender, "fb_webhook_" + normSender);
+        if (!candidateKeys.contains(webhookConvKey)) {
+            candidateKeys.add(webhookConvKey);
+        }
+        String nullConvKey = key(normPage, normSender, null);
+        if (!candidateKeys.contains(nullConvKey)) {
+            candidateKeys.add(nullConvKey);
+        }
+
+        for (String candKey : candidateKeys) {
+            List<TurnRecord> turns = snapshot(candKey);
+            for (int idx = turns.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = turns.get(idx);
+                if ("assistant".equals(t.role()) && matchesBubbleTexts(t.bubbles(), bubbleTexts)) {
+                    return new DispatchTurnHandle(candKey, t.turnId());
+                }
+            }
+        }
+        for (String candKey : candidateKeys) {
+            List<TurnRecord> turns = snapshot(candKey);
+            for (int idx = turns.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = turns.get(idx);
+                if ("assistant".equals(t.role())) {
+                    return new DispatchTurnHandle(candKey, t.turnId());
+                }
+            }
+        }
+
+        String primaryKey = candidateKeys.get(0);
+        String turnId = "out-" + Integer.toHexString(Objects.hash(primaryKey, bubbleTexts, System.nanoTime()));
+        recordAssistantTurn(primaryKey, turnId, bubbleTexts, DeliveryStatus.PENDING, List.of());
+        return new DispatchTurnHandle(primaryKey, turnId);
+    }
+
+    private static boolean matchesBubbleTexts(List<BubbleRecord> bubbles, List<String> expectedTexts) {
+        if (bubbles == null || expectedTexts == null || bubbles.size() != expectedTexts.size()) {
+            return false;
+        }
+        for (int i = 0; i < bubbles.size(); i++) {
+            String a = bubbles.get(i).text() != null ? bubbles.get(i).text().strip() : "";
+            String b = expectedTexts.get(i) != null ? expectedTexts.get(i).strip() : "";
+            if (!a.equals(b)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Kiểm tra xem có lượt tin nhắn khách hàng ({@code role == "user"}) nào mới hơn {@code assistantTurnId}
+     * đã được ghi nhận vào cùng {@code ledgerKey} hay chưa.
+     */
+    public static boolean hasNewerCustomerTurnAfter(String key, String assistantTurnId) {
+        if (key == null || assistantTurnId == null) {
+            return false;
+        }
+        List<TurnRecord> turns = snapshot(key);
+        boolean seenTargetAssistantTurn = false;
+        for (TurnRecord t : turns) {
+            if ("assistant".equals(t.role()) && assistantTurnId.equals(t.turnId())) {
+                seenTargetAssistantTurn = true;
+            } else if (seenTargetAssistantTurn && "user".equals(t.role())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Cấp phát lease gửi tin ({@code PENDING -> IN_FLIGHT}, tăng {@code attemptCount}, gán {@code leaseUntil}).
+     * Trả về {@code false} nếu bong bóng đã từng bắt đầu gửi ({@code attemptCount >= 1}), đang ở {@code IN_FLIGHT},
+     * {@code UNKNOWN}, {@code ACCEPTED_BY_CHANNEL}, {@code DELIVERED}, {@code FAILED} hoặc {@code SUPPRESSED_BY_FENCE}.
+     */
+    public static boolean tryAcquireBubbleDispatchLease(
+            String key,
+            String turnId,
+            int bubbleOrder,
+            Duration leaseDuration
+    ) {
+        return tryAcquireBubbleDispatchLease(key, turnId, bubbleOrder, leaseDuration, Instant.now());
+    }
+
+    public static boolean tryAcquireBubbleDispatchLease(
+            String key,
+            String turnId,
+            int bubbleOrder,
+            Duration leaseDuration,
+            Instant now
+    ) {
+        if (key == null || turnId == null || bubbleOrder < 0) {
+            return false;
+        }
+        Instant effectiveNow = now != null ? now : Instant.now();
+        Duration effectiveLease = (leaseDuration != null && !leaseDuration.isNegative() && !leaseDuration.isZero())
+                ? leaseDuration
+                : DEFAULT_IN_FLIGHT_LEASE_DURATION;
+        Instant leaseUntil = effectiveNow.plus(effectiveLease);
+
+        List<TurnRecord> l = cached(key);
+        synchronized (l) {
+            int targetIdx = -1;
+            TurnRecord targetTurn = null;
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if ("assistant".equals(t.role()) && turnId.equals(t.turnId())) {
+                    targetIdx = idx;
+                    targetTurn = t;
+                    break;
+                }
+            }
+            if (targetTurn == null) {
+                return false;
+            }
+            BubbleRecord targetBubble = null;
+            for (BubbleRecord b : targetTurn.bubbles()) {
+                if (b.order() == bubbleOrder) {
+                    targetBubble = b;
+                    break;
+                }
+            }
+            if (targetBubble == null || !targetBubble.isUnattemptedPreSendRecord()) {
+                return false;
+            }
+            boolean dbAcquired = store.tryAcquireDispatchLease(key, turnId, bubbleOrder, leaseUntil, effectiveNow);
+            if (!dbAcquired) {
+                return false;
+            }
+            List<BubbleRecord> updated = new ArrayList<>(targetTurn.bubbles().size());
+            for (BubbleRecord b : targetTurn.bubbles()) {
+                if (b.order() == bubbleOrder) {
+                    updated.add(new BubbleRecord(
+                            b.order(),
+                            b.text(),
+                            DeliveryStatus.IN_FLIGHT,
+                            b.externalMid(),
+                            b.attemptCount() + 1,
+                            leaseUntil,
+                            null
+                    ));
+                } else {
+                    updated.add(b);
+                }
+            }
+            l.set(targetIdx, new TurnRecord(targetTurn.turnId(), targetTurn.role(), List.copyOf(updated)));
+            return true;
+        }
+    }
+
+    /**
+     * Chuyển trạng thái bong bóng theo quy tắc đơn điệu (monotonic state guard).
+     * Không bao giờ cho phép trạng thái xác nhận cao hơn ({@link DeliveryStatus#DELIVERED}) bị ghi đè ngược về
+     * {@link DeliveryStatus#ACCEPTED_BY_CHANNEL} khi phản hồi HTTP về muộn hơn webhook delivery receipt.
+     */
+    public static BubbleRecord transitionBubbleStatusMonotonically(
+            String key,
+            String turnId,
+            int bubbleOrder,
+            DeliveryStatus targetStatus,
+            String externalMid,
+            String failureReason
+    ) {
+        if (key == null || turnId == null || targetStatus == null) {
+            return null;
+        }
+        String cleanMid = (externalMid != null && !externalMid.isBlank()) ? externalMid.strip() : null;
+        String[] keyParts = key.split("\\|", -1);
+        String pagePart = keyParts.length > 0 ? keyParts[0] : "-";
+        String senderPart = keyParts.length > 1 ? keyParts[1] : "-";
+
+        List<TurnRecord> l = cached(key);
+        synchronized (l) {
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if (!"assistant".equals(t.role()) || !turnId.equals(t.turnId())) {
+                    continue;
+                }
+                List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                BubbleRecord resultRecord = null;
+                for (BubbleRecord b : t.bubbles()) {
+                    if (b.order() != bubbleOrder) {
+                        updated.add(b);
+                        continue;
+                    }
+                    DeliveryStatus effectiveTarget = targetStatus;
+                    String effectiveReason = failureReason;
+                    if (cleanMid != null
+                            && EARLY_DELIVERY_RECEIPT_MIDS.contains(earlyReceiptKey(pagePart, senderPart, cleanMid))) {
+                        effectiveTarget = DeliveryStatus.DELIVERED;
+                        effectiveReason = "DELIVERY_RECEIPT";
+                    }
+                    boolean hasPriorReceipt = b.status() == DeliveryStatus.DELIVERED
+                            && ((b.externalMid() != null && !b.externalMid().isBlank())
+                                || (b.failureReason() != null && b.failureReason().startsWith("DELIVERY_")));
+                    DeliveryStatus finalStatus;
+                    if (hasPriorReceipt) {
+                        finalStatus = DeliveryStatus.DELIVERED;
+                    } else if (DeliveryStatus.canTransitionMonotonically(b.status(), effectiveTarget)) {
+                        finalStatus = effectiveTarget;
+                    } else {
+                        finalStatus = b.status();
+                    }
+                    String finalMid = cleanMid != null ? cleanMid : b.externalMid();
+                    int finalAttempts = Math.max(b.attemptCount(),
+                            (finalStatus == DeliveryStatus.IN_FLIGHT
+                                    || finalStatus == DeliveryStatus.ACCEPTED_BY_CHANNEL
+                                    || finalStatus == DeliveryStatus.DELIVERED
+                                    || finalStatus == DeliveryStatus.FAILED
+                                    || finalStatus == DeliveryStatus.UNKNOWN) ? 1 : 0);
+                    Instant finalLease = finalStatus == DeliveryStatus.IN_FLIGHT ? b.leaseUntil() : null;
+                    String finalReason = effectiveReason != null ? effectiveReason : b.failureReason();
+                    resultRecord = new BubbleRecord(
+                            b.order(),
+                            b.text(),
+                            finalStatus,
+                            finalMid,
+                            finalAttempts,
+                            finalLease,
+                            finalReason
+                    );
+                    updated.add(resultRecord);
+                    store.updateBubbleState(
+                            key,
+                            turnId,
+                            bubbleOrder,
+                            finalStatus,
+                            finalMid,
+                            finalAttempts,
+                            finalLease,
+                            finalReason
+                    );
+                }
+                if (resultRecord != null) {
+                    l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    return resultRecord;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Đánh dấu các bong bóng chưa gửi ({@code order >= fromOrder}) ở lượt {@code turnId} (hoặc lượt assistant mới nhất)
+     * thành {@link DeliveryStatus#SUPPRESSED_BY_FENCE} khi bị chặn bởi Outbound Fence ({@code HUMAN_TAKEOVER},
+     * {@code OPT_OUT}, hoặc có inbound mới hơn làm mất hiệu lực).
+     */
+    public static void markAssistantBubblesSuppressedByFenceFrom(
+            String key,
+            String turnId,
+            int fromOrder,
+            String fenceReason
+    ) {
+        if (key == null || fromOrder < 0) {
+            return;
+        }
+        String effectiveReason = (fenceReason != null && !fenceReason.isBlank())
+                ? fenceReason.strip()
+                : "SUPPRESSED_BY_OUTBOUND_FENCE";
+        List<TurnRecord> l = cached(key);
+        synchronized (l) {
+            for (int idx = l.size() - 1; idx >= 0; idx--) {
+                TurnRecord t = l.get(idx);
+                if (!"assistant".equals(t.role())) {
+                    continue;
+                }
+                if (turnId != null && !turnId.equals(t.turnId())) {
+                    continue;
+                }
+                List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                for (BubbleRecord b : t.bubbles()) {
+                    if (b.order() >= fromOrder && b.isUnattemptedPreSendRecord()) {
+                        BubbleRecord suppressed = new BubbleRecord(
+                                b.order(),
+                                b.text(),
+                                DeliveryStatus.SUPPRESSED_BY_FENCE,
+                                b.externalMid(),
+                                b.attemptCount(),
+                                null,
+                                effectiveReason
+                        );
+                        updated.add(suppressed);
+                        store.updateBubbleState(
+                                key,
+                                t.turnId(),
+                                b.order(),
+                                DeliveryStatus.SUPPRESSED_BY_FENCE,
+                                b.externalMid(),
+                                b.attemptCount(),
+                                null,
+                                effectiveReason
+                        );
+                    } else {
+                        updated.add(b);
+                    }
+                }
+                l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                break;
+            }
+        }
+    }
+
+    public static void markLatestAssistantTurnSuppressedByFence(String key, String fenceReason) {
+        markAssistantBubblesSuppressedByFenceFrom(key, null, 0, fenceReason);
+    }
+
+    /**
+     * Crash Recovery (P3.1 Mục 3.3): Các bản ghi {@link DeliveryStatus#IN_FLIGHT} đã từng thực hiện attempt gửi
+     * ({@code attemptCount >= 1}) nhưng hết hạn lease khi tiến trình dừng đột ngột phải chuyển sang
+     * {@link DeliveryStatus#UNKNOWN}, tuyệt đối KHÔNG tự động gửi lại.
+     */
+    public static int recoverExpiredInFlightLeases(String key, Instant now) {
+        if (key == null) {
+            return 0;
+        }
+        Instant effectiveNow = now != null ? now : Instant.now();
+        int dbRecovered = store.recoverExpiredInFlightLeases(key, effectiveNow);
+        CACHE.remove(key);
+        List<TurnRecord> reloaded = cached(key);
+        int memRecovered = 0;
+        synchronized (reloaded) {
+            for (int idx = 0; idx < reloaded.size(); idx++) {
+                TurnRecord t = reloaded.get(idx);
+                if (!"assistant".equals(t.role())) {
+                    continue;
+                }
+                boolean changed = false;
+                List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                for (BubbleRecord b : t.bubbles()) {
+                    if (b.status() == DeliveryStatus.IN_FLIGHT
+                            && b.attemptCount() >= 1
+                            && (b.leaseUntil() == null || !b.leaseUntil().isAfter(effectiveNow))) {
+                        BubbleRecord unk = new BubbleRecord(
+                                b.order(),
+                                b.text(),
+                                DeliveryStatus.UNKNOWN,
+                                b.externalMid(),
+                                b.attemptCount(),
+                                null,
+                                b.failureReason() != null ? b.failureReason() : "IN_FLIGHT_LEASE_EXPIRED_CRASH_RECOVERY"
+                        );
+                        updated.add(unk);
+                        changed = true;
+                        memRecovered++;
+                        store.updateBubbleState(
+                                key,
+                                t.turnId(),
+                                b.order(),
+                                DeliveryStatus.UNKNOWN,
+                                b.externalMid(),
+                                b.attemptCount(),
+                                null,
+                                unk.failureReason()
+                        );
+                    } else {
+                        updated.add(b);
+                    }
+                }
+                if (changed) {
+                    reloaded.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                }
+            }
+        }
+        return Math.max(dbRecovered, memRecovered);
+    }
+
+    public static int recoverAllExpiredInFlightLeases(Instant now) {
+        Instant effectiveNow = now != null ? now : Instant.now();
+        int count = store.recoverAllExpiredInFlightLeases(effectiveNow);
+        CACHE.clear();
+        return count;
+    }
+
+    /**
+     * Ghi nhận Delivery Receipt thực tế từ Meta Webhook ({@code delivery.mids}) theo hướng đơn điệu
+     * và idempotent. Nếu receipt đến trước khi luồng gửi HTTP kịp trả về {@code message_id},
+     * ghi nhớ vào {@code EARLY_DELIVERY_RECEIPT_MIDS} và nâng trực tiếp bong bóng {@code IN_FLIGHT} lên {@code DELIVERED}.
+     */
+    public static int markBubbleDeliveredByExternalMid(String pageId, String senderPsid, String externalMid) {
+        if (externalMid == null || externalMid.isBlank()) {
+            return 0;
+        }
+        String cleanMid = externalMid.strip();
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        EARLY_DELIVERY_RECEIPT_MIDS.add(earlyReceiptKey(normPage, normSender, cleanMid));
+
+        int storeUpdated = store.markDeliveredByExternalMid(normPage, normSender, cleanMid);
+        String prefix = normPage + "|" + normSender + "|";
+        int cacheUpdated = 0;
+        for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) {
+                continue;
+            }
+            List<TurnRecord> l = entry.getValue();
+            synchronized (l) {
+                for (int idx = 0; idx < l.size(); idx++) {
+                    TurnRecord t = l.get(idx);
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    boolean changed = false;
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (cleanMid.equals(b.externalMid())
+                                && DeliveryStatus.canTransitionMonotonically(b.status(), DeliveryStatus.DELIVERED)) {
+                            updated.add(new BubbleRecord(
+                                    b.order(),
+                                    b.text(),
+                                    DeliveryStatus.DELIVERED,
+                                    cleanMid,
+                                    Math.max(1, b.attemptCount()),
+                                    null,
+                                    "DELIVERY_RECEIPT"
+                            ));
+                            changed = true;
+                            if (b.status() != DeliveryStatus.DELIVERED) {
+                                cacheUpdated++;
+                            }
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    if (changed) {
+                        l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    }
+                }
+            }
+        }
+        if (storeUpdated == 0 && cacheUpdated == 0) {
+            for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
+                if (!entry.getKey().startsWith(prefix)) {
+                    continue;
+                }
+                List<TurnRecord> l = entry.getValue();
+                synchronized (l) {
+                    for (int idx = l.size() - 1; idx >= 0; idx--) {
+                        TurnRecord t = l.get(idx);
+                        if (!"assistant".equals(t.role())) {
+                            continue;
+                        }
+                        boolean matchedInFlight = false;
+                        List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                        for (BubbleRecord b : t.bubbles()) {
+                            if (!matchedInFlight
+                                    && b.status() == DeliveryStatus.IN_FLIGHT
+                                    && (b.externalMid() == null || b.externalMid().isBlank())) {
+                                BubbleRecord deliv = new BubbleRecord(
+                                        b.order(),
+                                        b.text(),
+                                        DeliveryStatus.DELIVERED,
+                                        cleanMid,
+                                        Math.max(1, b.attemptCount()),
+                                        null,
+                                        "DELIVERY_RECEIPT"
+                                );
+                                updated.add(deliv);
+                                matchedInFlight = true;
+                                cacheUpdated++;
+                                store.updateBubbleState(
+                                        entry.getKey(),
+                                        t.turnId(),
+                                        b.order(),
+                                        DeliveryStatus.DELIVERED,
+                                        cleanMid,
+                                        deliv.attemptCount(),
+                                        null,
+                                        "DELIVERY_RECEIPT"
+                                );
+                            } else {
+                                updated.add(b);
+                            }
+                        }
+                        if (matchedInFlight) {
+                            l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return Math.max(storeUpdated, cacheUpdated);
+    }
+
+    public static int markBubblesDeliveredUpToWatermark(String pageId, String senderPsid, long watermarkEpochMs) {
+        if (watermarkEpochMs <= 0L) {
+            return 0;
+        }
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        int storeUpdated = store.markDeliveredUpToWatermark(normPage, normSender, watermarkEpochMs);
+        String prefix = normPage + "|" + normSender + "|";
+        int cacheUpdated = 0;
+        for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) {
+                continue;
+            }
+            List<TurnRecord> l = entry.getValue();
+            synchronized (l) {
+                for (int idx = 0; idx < l.size(); idx++) {
+                    TurnRecord t = l.get(idx);
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    boolean changed = false;
+                    List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (b.status() == DeliveryStatus.ACCEPTED_BY_CHANNEL) {
+                            updated.add(new BubbleRecord(
+                                    b.order(),
+                                    b.text(),
+                                    DeliveryStatus.DELIVERED,
+                                    b.externalMid(),
+                                    Math.max(1, b.attemptCount()),
+                                    null,
+                                    "DELIVERY_WATERMARK:" + watermarkEpochMs
+                            ));
+                            changed = true;
+                            cacheUpdated++;
+                        } else {
+                            updated.add(b);
+                        }
+                    }
+                    if (changed) {
+                        l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
+                    }
+                }
+            }
+        }
+        return Math.max(storeUpdated, cacheUpdated);
+    }
+
+    /**
      * Đánh dấu các bong bóng chưa kịp gửi ra Messenger (có {@code order >= cancelFromOrder}) ở lượt assistant mới nhất
      * thành {@link DeliveryStatus#CANCELED} khi khách nhắn chen ngang giữa khoảng nghỉ {@code bubbleDelayMs}.
      */
@@ -320,7 +1284,8 @@ public final class SentBubbleLedger {
                     List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
                     for (BubbleRecord b : t.bubbles()) {
                         updated.add(b.order() >= cancelFromOrder
-                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED)
+                                ? new BubbleRecord(b.order(), b.text(), DeliveryStatus.CANCELED,
+                                        b.externalMid(), b.attemptCount(), null, b.failureReason())
                                 : b);
                     }
                     l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));

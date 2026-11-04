@@ -437,6 +437,32 @@ public class FanpageBotService {
         return inboundSessionPersistenceService;
     }
 
+    /**
+     * P3.1 Pre-Send Outbound Fence evaluation right before calling Facebook Graph API.
+     * Checks fresh DB state for HUMAN_TAKEOVER, OPT_OUT, and newer inbound message invalidation,
+     * with fallback to {@code verifyOutboundStillPermittedFresh} for mock compatibility.
+     */
+    public InboundSessionPersistenceService.OutboundFenceDecision evaluateOutboundFenceBeforeBubbleSend(
+            String rawPageId,
+            String rawSenderId,
+            String sourceInboundExternalMid
+    ) {
+        if (inboundSessionPersistenceService == null) {
+            return InboundSessionPersistenceService.OutboundFenceDecision.allow();
+        }
+        UUID parsedPageId = parsePageId(rawPageId);
+        InboundSessionPersistenceService.OutboundFenceDecision decision =
+                inboundSessionPersistenceService.evaluateOutboundFenceFresh(
+                        parsedPageId, rawSenderId, sourceInboundExternalMid);
+        if (decision != null) {
+            return decision;
+        }
+        boolean permitted = inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(parsedPageId, rawSenderId);
+        return permitted
+                ? InboundSessionPersistenceService.OutboundFenceDecision.allow()
+                : InboundSessionPersistenceService.OutboundFenceDecision.block("SUPPRESSED_BY_OUTBOUND_FENCE");
+    }
+
     public void setMapOfContentService(MapOfContentService mapOfContentService) {
         this.mapOfContentService = mapOfContentService;
     }
@@ -607,6 +633,21 @@ public class FanpageBotService {
                 }
                 String effSenderId = request != null ? request.senderId() : null;
                 if (!inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(effPageId, effSenderId)) {
+                    if (request != null && effSenderId != null && resp.replyBubbles() != null && !resp.replyBubbles().isEmpty()) {
+                        String ledgerKeyExit = SentBubbleLedger.key(request.pageId(), effSenderId, request.conversationId());
+                        String mergedExit = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(mergeBurstMessages(request));
+                        String turnIdExit = SentBubbleLedger.stableUserTurnId(ledgerKeyExit, mergedExit);
+                        SentBubbleLedger.recordCustomerTurn(ledgerKeyExit, turnIdExit, mergedExit);
+                        SentBubbleLedger.recordAssistantTurn(
+                                ledgerKeyExit,
+                                turnIdExit + ":a",
+                                resp.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
+                                SentBubbleLedger.DeliveryStatus.PENDING,
+                                List.of()
+                        );
+                        SentBubbleLedger.markLatestAssistantTurnSuppressedByFence(
+                                ledgerKeyExit, "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
+                    }
                     log.warn("[EXIT-LAYER2-FENCE] Stale turn or safety handoff suppressed by fresh DB state lock (page_id={} sender_id={})",
                             effPageId, effSenderId);
                     lifecycle.recordGuard("EXIT_FENCE_SUPPRESS", "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
@@ -648,7 +689,7 @@ public class FanpageBotService {
             } else if (finalResp.needsHumanHandoff()) {
                 responseStatus = "HANDOFF";
             } else {
-                responseStatus = "DELIVERED";
+                responseStatus = "PENDING";
             }
             TurnSummaryRecord summary = new TurnSummaryRecord(
                     summaryPageId,
@@ -710,7 +751,7 @@ public class FanpageBotService {
                     ledgerKeyNow,
                     ledgerUserTurnId + ":a",
                     gatedResp.replyBubbles().stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                    SentBubbleLedger.DeliveryStatus.DELIVERED,
+                    SentBubbleLedger.DeliveryStatus.PENDING,
                     List.of()
             );
         }

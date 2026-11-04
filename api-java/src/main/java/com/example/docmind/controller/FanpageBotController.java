@@ -128,6 +128,9 @@ public class FanpageBotController {
     @Value("${docmind.fanpage.default-page-id:b23cd382-4f7a-4829-8c54-1d410da14bf8}")
     private String defaultPageId = DEFAULT_NANG_SEN_PAGE_ID;
 
+    private Duration inFlightLeaseDuration =
+            com.example.docmind.service.bot.SentBubbleLedger.DEFAULT_IN_FLIGHT_LEASE_DURATION;
+
     public FanpageBotController(FanpageBotService fanpageBotService) {
         this(fanpageBotService, null);
     }
@@ -190,6 +193,18 @@ public class FanpageBotController {
 
     public void setMaxBurstWaitMs(long maxBurstWaitMs) {
         this.maxBurstWaitMs = Math.max(200L, maxBurstWaitMs);
+    }
+
+    public void setInFlightLeaseDuration(Duration inFlightLeaseDuration) {
+        this.inFlightLeaseDuration = (inFlightLeaseDuration != null
+                && !inFlightLeaseDuration.isNegative()
+                && !inFlightLeaseDuration.isZero())
+                ? inFlightLeaseDuration
+                : com.example.docmind.service.bot.SentBubbleLedger.DEFAULT_IN_FLIGHT_LEASE_DURATION;
+    }
+
+    public Duration getInFlightLeaseDuration() {
+        return this.inFlightLeaseDuration;
     }
 
     /**
@@ -321,8 +336,12 @@ public class FanpageBotController {
                 if (!messagingArr.isArray()) continue;
 
                 for (JsonNode event : messagingArr) {
-                    // Lọc bỏ delivery, read receipt và tin nhắn phản chiếu của chính Page (is_echo=true)
-                    if (event.hasNonNull("delivery") || event.hasNonNull("read")
+                    if (event.hasNonNull("delivery")) {
+                        handleDeliveryReceiptWebhookEvent(effectivePageId, fbNumericPageId, event);
+                        continue;
+                    }
+                    // Lọc bỏ read receipt và tin nhắn phản chiếu của chính Page (is_echo=true)
+                    if (event.hasNonNull("read")
                             || event.path("message").path("is_echo").asBoolean(false)) {
                         continue;
                     }
@@ -709,6 +728,10 @@ public class FanpageBotController {
                                 || !batchResp.triggeredHooks().contains("SUPERSEDED_BY_NEWER_EPOCH"));
                     if (!stillCurrent) {
                         supersededBeforeSend = true;
+                        com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantTurnSuppressedByFence(
+                                com.example.docmind.service.bot.SentBubbleLedger.key(
+                                        effectivePageId, normalizedSenderId, stableWebhookConvId),
+                                "SUPERSEDED_BY_NEWER_EPOCH");
                         log.info("[FB_WEBHOOK_EPOCH] Discarding superseded batchId={} epoch={} for sender={}",
                                 epochCtx.batchId(), epochCtx.epoch(), normalizedSenderId);
                     } else {
@@ -728,14 +751,38 @@ public class FanpageBotController {
                             com.example.docmind.service.bot.ConversationState.cacheWebhookResponse(dKey, batchResp);
                         }
                     }
+                    int sentBubbles = sendSequentialBubblesToFacebook(
+                            effectivePageId, normalizedSenderId, stableWebhookConvId, batchResp);
                     if (conversationInboxService != null) {
                         try {
-                            conversationInboxService.recordCustomerAndBotTurn(webhookReq, batchResp);
+                            boolean hadOutboundBubbles = (batchResp.replyBubbles() != null && !batchResp.replyBubbles().isEmpty())
+                                    || (batchResp.replyText() != null && !batchResp.replyText().isBlank());
+                            boolean tokenConfigured = pageAccessToken != null && !pageAccessToken.isBlank();
+                            FanpageBotResponse inboxResp = (tokenConfigured && hadOutboundBubbles && sentBubbles == 0)
+                                    ? new FanpageBotResponse(
+                                            "",
+                                            List.of(),
+                                            List.of(),
+                                            batchResp.salesStage(),
+                                            batchResp.confidenceScore(),
+                                            batchResp.needsHumanHandoff(),
+                                            batchResp.handoffCategory(),
+                                            batchResp.handoffReason(),
+                                            batchResp.extractedLead(),
+                                            batchResp.appliedRules(),
+                                            batchResp.customerInsight(),
+                                            batchResp.activeSkills(),
+                                            List.of("SUPPRESSED_BY_FENCE"),
+                                            false,
+                                            batchResp.pendingTurnSequence(),
+                                            batchResp.priceBubbleSentAtNs()
+                                    ).withInboundExternalMid(batchResp.inboundExternalMid())
+                                    : batchResp;
+                            conversationInboxService.recordCustomerAndBotTurn(webhookReq, inboxResp);
                         } catch (Exception ignored) {
                             // Non-blocking sync to inbox
                         }
                     }
-                    sendSequentialBubblesToFacebook(effectivePageId, normalizedSenderId, stableWebhookConvId, batchResp);
                     finalResp = batchResp;
                 }
             } finally {
@@ -855,21 +902,63 @@ public class FanpageBotController {
                 com.example.docmind.service.bot.SenderEpochRegistry.getCurrentThreadTurn();
         long expectedEpoch = (turnCtx != null && !uninterruptibleSafety) ? turnCtx.epoch() : 0L;
 
+        com.example.docmind.service.bot.SentBubbleLedger.DispatchTurnHandle turnHandle =
+                com.example.docmind.service.bot.SentBubbleLedger.ensureOrResolveTurnForDispatch(
+                        resolvedPageId, cleanPsid, conversationId, bubbleTexts);
+        java.time.Instant recoveryNow = java.time.Instant.now();
+        com.example.docmind.service.bot.SentBubbleLedger.recoverExpiredInFlightLeases(
+                turnHandle.ledgerKey(), recoveryNow);
+        if (conversationId == null || conversationId.isBlank()) {
+            com.example.docmind.service.bot.SentBubbleLedger.recoverExpiredInFlightLeases(
+                    com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, null), recoveryNow);
+            com.example.docmind.service.bot.SentBubbleLedger.recoverExpiredInFlightLeases(
+                    com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, "fb_webhook_" + cleanPsid), recoveryNow);
+        }
+
         String url = buildFacebookMessagesUrl(pageAccessToken.strip());
         int sentCount = 0;
         int total = bubbleTexts.size();
-        boolean interruptedByNewerEpoch = false;
+        boolean suppressedMidSequence = false;
+        String suppressionReason = null;
+        int suppressedFromIndex = total;
+
         for (int i = 0; i < total; i++) {
-            if (!uninterruptibleSafety
-                    && !com.example.docmind.service.bot.SenderEpochRegistry.checkThreadEpochStillCurrent(
-                            resolvedPageId,
-                            cleanPsid,
-                            com.example.docmind.service.bot.SenderEpochRegistry.Checkpoint.BEFORE_OUTBOUND_BUBBLE_SEND)) {
-                interruptedByNewerEpoch = true;
-                log.info("[FB_SEND_API] Aborted sending bubble {}/{} to psid={} because epoch is superseded",
-                        i + 1, total, cleanPsid);
+            // 1. Pre-Send Outbound Fence (Section 3.4): verify epoch, newer inbound turn, and fresh DB state (HUMAN_TAKEOVER / OPT_OUT / newer inbound)
+            String fenceBlockReason = evaluatePreSendOutboundFence(
+                    resolvedPageId,
+                    cleanPsid,
+                    turnHandle,
+                    uninterruptibleSafety,
+                    expectedEpoch,
+                    botResp.inboundExternalMid()
+            );
+            if (fenceBlockReason != null) {
+                suppressedMidSequence = true;
+                suppressionReason = fenceBlockReason;
+                suppressedFromIndex = i;
+                com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                        turnHandle.ledgerKey(), turnHandle.turnId(), i, fenceBlockReason);
+                log.info("[FB_SEND_API] Suppressed bubble {}/{} to psid={} by outbound fence reason={}",
+                        i + 1, total, cleanPsid, fenceBlockReason);
                 break;
             }
+
+            // 2. Lease Acquisition: PENDING (attemptCount == 0) -> IN_FLIGHT (attemptCount = 1, leaseUntil = now + leaseDuration)
+            boolean leaseAcquired = com.example.docmind.service.bot.SentBubbleLedger.tryAcquireBubbleDispatchLease(
+                    turnHandle.ledgerKey(), turnHandle.turnId(), i, inFlightLeaseDuration);
+            if (!leaseAcquired) {
+                com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus existingStatus =
+                        resolveBubbleStatusInTurn(turnHandle.ledgerKey(), turnHandle.turnId(), i);
+                if (existingStatus == com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL
+                        || existingStatus == com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.DELIVERED
+                        || existingStatus == com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.SENT) {
+                    continue;
+                }
+                log.warn("[FB_SEND_API] Aborting dispatch at bubble {}/{} to psid={} because bubble is in non-dispatchable status={}",
+                        i + 1, total, cleanPsid, existingStatus);
+                break;
+            }
+
             String bubbleText = bubbleTexts.get(i);
             try {
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -879,7 +968,7 @@ public class FanpageBotController {
                 String jsonBody = objectMapper.writeValueAsString(payload);
 
                 HttpResponseResult resp = graphApiSender.postJson(url, jsonBody);
-                if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                if (resp != null && resp.statusCode() >= 200 && resp.statusCode() < 300) {
                     sentCount++;
                     String outMid = "";
                     // Trích xuất message_id từ response của POST /v21.0/me/messages để lưu ánh xạ Quote-Reply bền vững
@@ -890,31 +979,74 @@ public class FanpageBotController {
                             if (outMid == null || outMid.isBlank()) {
                                 outMid = respNode.path("mid").asText("");
                             }
-                            if (outMid != null && !outMid.isBlank()) {
-                                com.example.docmind.service.bot.SentBubbleLedger.recordMessageId(
-                                        resolvedPageId, cleanPsid, outMid.strip(), "assistant", bubbleText);
-                            }
                         } catch (Exception ignored) {
                             // Ignore non-JSON mock response bodies if any
                         }
                     }
-                    log.info("[FB_SEND_API] Sent bubble {}/{} to psid={} status={} mid={}",
+                    String cleanOutMid = (outMid != null && !outMid.isBlank()) ? outMid.strip() : null;
+                    com.example.docmind.service.bot.SentBubbleLedger.transitionBubbleStatusMonotonically(
+                            turnHandle.ledgerKey(),
+                            turnHandle.turnId(),
+                            i,
+                            com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL,
+                            cleanOutMid,
+                            null
+                    );
+                    if (cleanOutMid != null) {
+                        com.example.docmind.service.bot.SentBubbleLedger.recordMessageId(
+                                resolvedPageId, cleanPsid, cleanOutMid, "assistant", bubbleText);
+                    }
+                    log.info("[FB_SEND_API] Accepted bubble {}/{} by channel to psid={} status={} mid={}",
                             i + 1, total, cleanPsid, resp.statusCode(),
-                            (outMid != null && !outMid.isBlank()) ? outMid.strip() : "-");
+                            cleanOutMid != null ? cleanOutMid : "-");
                 } else {
+                    int code = resp != null ? resp.statusCode() : 0;
+                    com.example.docmind.service.bot.SentBubbleLedger.transitionBubbleStatusMonotonically(
+                            turnHandle.ledgerKey(),
+                            turnHandle.turnId(),
+                            i,
+                            com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED,
+                            null,
+                            "HTTP_" + code
+                    );
                     log.error("[FB_SEND_API] Failed bubble {}/{} to psid={} status={} body={}",
-                            i + 1, total, cleanPsid, resp.statusCode(), resp.body());
+                            i + 1, total, cleanPsid, code, resp != null ? resp.body() : "null");
+                    break;
                 }
-            } catch (Exception e) {
-                log.error("[FB_SEND_API] Exception sending bubble {}/{} to psid={}: {}",
-                        i + 1, total, cleanPsid, e.getMessage());
+            } catch (Throwable e) {
+                if (isSimulatedJvmCrashAfterInFlight(e)) {
+                    if (e instanceof Error err) {
+                        throw err;
+                    }
+                    if (e instanceof RuntimeException rex) {
+                        throw rex;
+                    }
+                    throw new RuntimeException(e);
+                }
+                com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus errorStatus = classifySendExceptionStatus(e);
+                String reason = e.getClass().getSimpleName() + (e.getMessage() != null ? ":" + e.getMessage() : "");
+                com.example.docmind.service.bot.SentBubbleLedger.transitionBubbleStatusMonotonically(
+                        turnHandle.ledgerKey(),
+                        turnHandle.turnId(),
+                        i,
+                        errorStatus,
+                        null,
+                        reason
+                );
+                log.error("[FB_SEND_API] Exception sending bubble {}/{} to psid={} classifiedStatus={}: {}",
+                        i + 1, total, cleanPsid, errorStatus, e.getMessage());
+                break;
             }
 
             if (i + 1 < total) {
                 if (!uninterruptibleSafety && expectedEpoch > 0L
                         && !com.example.docmind.service.bot.SenderEpochRegistry.isEpochCurrent(
                                 resolvedPageId, cleanPsid, expectedEpoch)) {
-                    interruptedByNewerEpoch = true;
+                    suppressedMidSequence = true;
+                    suppressionReason = "SUPERSEDED_BY_NEWER_EPOCH";
+                    suppressedFromIndex = i + 1;
+                    com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                            turnHandle.ledgerKey(), turnHandle.turnId(), i + 1, suppressionReason);
                     log.info("[FB_SEND_API] Aborted remaining bubbles after {}/{} to psid={} because newer message arrived",
                             i + 1, total, cleanPsid);
                     break;
@@ -924,26 +1056,167 @@ public class FanpageBotController {
                     boolean stillValid = com.example.docmind.service.bot.SenderEpochRegistry.awaitBubbleDelayOrSupersede(
                             resolvedPageId, cleanPsid, expectedEpoch, interBubbleDelayMs);
                     if (!stillValid) {
-                        interruptedByNewerEpoch = true;
-                        log.info("[FB_SEND_API] Woke up early and canceled remaining bubbles {}-{} to psid={} due to customer interruption",
+                        suppressedMidSequence = true;
+                        suppressionReason = "SUPERSEDED_BY_NEWER_INBOUND_DURING_DELAY";
+                        suppressedFromIndex = i + 1;
+                        com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                                turnHandle.ledgerKey(), turnHandle.turnId(), i + 1, suppressionReason);
+                        log.info("[FB_SEND_API] Woke up early and suppressed remaining bubbles {}-{} to psid={} due to customer interruption",
                                 i + 2, total, cleanPsid);
                         break;
                     }
                 }
             }
         }
-        if (interruptedByNewerEpoch && sentCount < total) {
-            if (conversationId != null && !conversationId.isBlank()) {
-                String ledgerKey = com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, conversationId);
-                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(ledgerKey, sentCount);
-            } else {
-                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(
-                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, null), sentCount);
-                com.example.docmind.service.bot.SentBubbleLedger.markLatestAssistantBubblesCanceledFrom(
-                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, "fb_webhook_" + cleanPsid), sentCount);
+        if (suppressedMidSequence && suppressedFromIndex < total) {
+            String reasonToRecord = suppressionReason != null ? suppressionReason : "SUPPRESSED_BY_FENCE";
+            if (conversationId == null || conversationId.isBlank()) {
+                com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, null),
+                        turnHandle.turnId(),
+                        suppressedFromIndex,
+                        reasonToRecord
+                );
+                com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                        com.example.docmind.service.bot.SentBubbleLedger.key(resolvedPageId, cleanPsid, "fb_webhook_" + cleanPsid),
+                        turnHandle.turnId(),
+                        suppressedFromIndex,
+                        reasonToRecord
+                );
             }
         }
         return sentCount;
+    }
+
+    private void handleDeliveryReceiptWebhookEvent(String effectivePageId, String fbNumericPageId, JsonNode event) {
+        if (event == null || !event.hasNonNull("delivery")) {
+            return;
+        }
+        String senderId = event.path("sender").path("id").asText("").strip();
+        String recipientId = event.path("recipient").path("id").asText("").strip();
+        String customerPsid;
+        if (!senderId.isEmpty() && !senderId.equals(fbNumericPageId)) {
+            customerPsid = senderId;
+        } else if (!recipientId.isEmpty() && !recipientId.equals(fbNumericPageId)) {
+            customerPsid = recipientId;
+        } else {
+            customerPsid = senderId;
+        }
+
+        JsonNode deliveryNode = event.path("delivery");
+        JsonNode midsNode = deliveryNode.path("mids");
+        long watermark = deliveryNode.path("watermark").asLong(0L);
+        boolean hasExplicitMids = midsNode.isArray() && !midsNode.isEmpty();
+        if (hasExplicitMids) {
+            for (JsonNode midNode : midsNode) {
+                String deliveredMid = midNode.asText("").strip();
+                if (!deliveredMid.isEmpty()) {
+                    com.example.docmind.service.bot.SentBubbleLedger.markBubbleDeliveredByExternalMid(
+                            effectivePageId, customerPsid, deliveredMid);
+                }
+            }
+        } else if (watermark > 0L && !customerPsid.isEmpty()) {
+            com.example.docmind.service.bot.SentBubbleLedger.markBubblesDeliveredUpToWatermark(
+                    effectivePageId, customerPsid, watermark);
+        }
+    }
+
+    private String evaluatePreSendOutboundFence(
+            String resolvedPageId,
+            String cleanPsid,
+            com.example.docmind.service.bot.SentBubbleLedger.DispatchTurnHandle turnHandle,
+            boolean uninterruptibleSafety,
+            long expectedEpoch,
+            String sourceInboundExternalMid
+    ) {
+        if (!uninterruptibleSafety) {
+            if (!com.example.docmind.service.bot.SenderEpochRegistry.checkThreadEpochStillCurrent(
+                    resolvedPageId,
+                    cleanPsid,
+                    com.example.docmind.service.bot.SenderEpochRegistry.Checkpoint.BEFORE_OUTBOUND_BUBBLE_SEND)) {
+                return "SUPERSEDED_BY_NEWER_EPOCH";
+            }
+            if (expectedEpoch > 0L
+                    && !com.example.docmind.service.bot.SenderEpochRegistry.isEpochCurrent(
+                            resolvedPageId, cleanPsid, expectedEpoch)) {
+                return "SUPERSEDED_BY_NEWER_EPOCH";
+            }
+            if (turnHandle != null
+                    && com.example.docmind.service.bot.SentBubbleLedger.hasNewerCustomerTurnAfter(
+                            turnHandle.ledgerKey(), turnHandle.turnId())) {
+                return "SUPERSEDED_BY_NEWER_INBOUND_TURN";
+            }
+        }
+        if (fanpageBotService != null) {
+            com.example.docmind.service.bot.InboundSessionPersistenceService.OutboundFenceDecision decision =
+                    fanpageBotService.evaluateOutboundFenceBeforeBubbleSend(
+                            resolvedPageId, cleanPsid, sourceInboundExternalMid);
+            if (decision != null && !decision.permitted()) {
+                return decision.blockReason() != null ? decision.blockReason() : "SUPPRESSED_BY_OUTBOUND_FENCE";
+            }
+        }
+        return null;
+    }
+
+    private static com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus resolveBubbleStatusInTurn(
+            String ledgerKey,
+            String turnId,
+            int bubbleOrder
+    ) {
+        List<com.example.docmind.service.bot.SentBubbleLedger.TurnRecord> snapshot =
+                com.example.docmind.service.bot.SentBubbleLedger.snapshot(ledgerKey);
+        for (int t = snapshot.size() - 1; t >= 0; t--) {
+            com.example.docmind.service.bot.SentBubbleLedger.TurnRecord tr = snapshot.get(t);
+            if (tr != null && "assistant".equals(tr.role())
+                    && (turnId == null || turnId.equals(tr.turnId()))
+                    && tr.bubbles() != null) {
+                for (com.example.docmind.service.bot.SentBubbleLedger.BubbleRecord br : tr.bubbles()) {
+                    if (br != null && br.order() == bubbleOrder) {
+                        return br.status();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSimulatedJvmCrashAfterInFlight(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        if (e instanceof VirtualMachineError) {
+            return true;
+        }
+        String cls = e.getClass().getSimpleName().toUpperCase(Locale.ROOT);
+        String msg = e.getMessage() != null ? e.getMessage().toUpperCase(Locale.ROOT) : "";
+        return cls.contains("CRASH") || msg.contains("SIMULATED_JVM_CRASH");
+    }
+
+    private static com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus classifySendExceptionStatus(Throwable e) {
+        if (e == null) {
+            return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN;
+        }
+        Throwable curr = e;
+        while (curr != null) {
+            if (curr instanceof java.net.SocketTimeoutException
+                    || curr instanceof java.net.http.HttpTimeoutException
+                    || curr instanceof java.io.InterruptedIOException
+                    || curr instanceof java.util.concurrent.TimeoutException) {
+                return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN;
+            }
+            if (curr instanceof java.net.ConnectException) {
+                return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED;
+            }
+            String msg = curr.getMessage() != null ? curr.getMessage().toLowerCase(Locale.ROOT) : "";
+            if (msg.contains("timeout") || msg.contains("timed out") || msg.contains("reset") || msg.contains("eof")) {
+                return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN;
+            }
+            if (msg.contains("refused") || msg.contains("rejected")) {
+                return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED;
+            }
+            curr = curr.getCause();
+        }
+        return com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN;
     }
 
     private static String buildFacebookMessagesUrl(String token) {

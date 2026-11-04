@@ -171,7 +171,7 @@ class P35HotfixVerificationTest {
         assertThat(deliveredSummary.retrievalStarted()).isTrue();
         assertThat(deliveredSummary.llmStarted()).isTrue();
         assertThat(deliveredSummary.responseBubbleCount()).isEqualTo(1);
-        assertThat(deliveredSummary.responseStatus()).isEqualTo("DELIVERED");
+        assertThat(deliveredSummary.responseStatus()).isEqualTo("PENDING");
     }
 
     @Test

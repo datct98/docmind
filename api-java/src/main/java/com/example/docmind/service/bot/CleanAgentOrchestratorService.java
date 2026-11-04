@@ -504,19 +504,6 @@ public class CleanAgentOrchestratorService {
                     null
             );
             if (introBubbles != null && !introBubbles.isEmpty()) {
-                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
-                        request != null ? request.pageId() : null,
-                        request != null ? request.senderId() : null,
-                        SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
-                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
-                }
-                if (!isOutboundStillPermittedLayer2(pageId, request)) {
-                    log.warn("[CLEAN-INTRO-LAYER2-FENCE] Stale intro suppressed before ledger commit (page_id={} sender_id={})",
-                            pageId, request != null ? request.senderId() : null);
-                    FanpageBotService.markProvenanceV38Logged();
-                    return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
-                }
-                String introText = String.join("\n\n", introBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
                 String ledgerKeyIntro = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
                 String ledgerTurnIdIntro = SentBubbleLedger.stableUserTurnId(ledgerKeyIntro, mergedMessage);
                 SentBubbleLedger.recordCustomerTurn(ledgerKeyIntro, ledgerTurnIdIntro, mergedMessage);
@@ -524,9 +511,26 @@ public class CleanAgentOrchestratorService {
                         ledgerKeyIntro,
                         ledgerTurnIdIntro + ":a",
                         introBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                        SentBubbleLedger.DeliveryStatus.DELIVERED,
+                        SentBubbleLedger.DeliveryStatus.PENDING,
                         List.of()
                 );
+                if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                        request != null ? request.pageId() : null,
+                        request != null ? request.senderId() : null,
+                        SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+                    SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                            ledgerKeyIntro, ledgerTurnIdIntro + ":a", 0, "SUPERSEDED_BY_NEWER_EPOCH");
+                    return buildSupersededAbortedResponse(extractedLead, customerInsight);
+                }
+                if (!isOutboundStillPermittedLayer2(pageId, request)) {
+                    SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                            ledgerKeyIntro, ledgerTurnIdIntro + ":a", 0, "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
+                    log.warn("[CLEAN-INTRO-LAYER2-FENCE] Stale intro suppressed before ledger commit (page_id={} sender_id={})",
+                            pageId, request != null ? request.senderId() : null);
+                    FanpageBotService.markProvenanceV38Logged();
+                    return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
+                }
+                String introText = String.join("\n\n", introBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
                 ConversationState.updateAfterSend(
                         pageId,
                         request.senderId(),
@@ -1777,18 +1781,6 @@ public class CleanAgentOrchestratorService {
                 replyHasPrice,
                 shouldHandoff
         );
-        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
-                request != null ? request.pageId() : null,
-                request != null ? request.senderId() : null,
-                SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
-            return buildSupersededAbortedResponse(extractedLead, customerInsight);
-        }
-        if (!isOutboundStillPermittedLayer2(pageId, request)) {
-            log.warn("[CLEAN-V1-LAYER2-FENCE] Stale turn suppressed before ledger commit (page_id={} sender_id={})",
-                    pageId, request != null ? request.senderId() : null);
-            FanpageBotService.markProvenanceV38Logged();
-            return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
-        }
         String ledgerKey = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
         String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, mergedMessage);
         SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, mergedMessage);
@@ -1797,9 +1789,27 @@ public class CleanAgentOrchestratorService {
                     ledgerKey,
                     ledgerUserTurnId + ":a",
                     finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                    SentBubbleLedger.DeliveryStatus.DELIVERED,
+                    SentBubbleLedger.DeliveryStatus.PENDING,
                     List.of()
             );
+        }
+        if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
+                request != null ? request.pageId() : null,
+                request != null ? request.senderId() : null,
+                SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+            SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                    ledgerKey, ledgerUserTurnId + ":a", 0, "SUPERSEDED_BY_NEWER_EPOCH");
+            return buildSupersededAbortedResponse(extractedLead, customerInsight);
+        }
+        if (!isOutboundStillPermittedLayer2(pageId, request)) {
+            SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                    ledgerKey, ledgerUserTurnId + ":a", 0, "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
+            log.warn("[CLEAN-V1-LAYER2-FENCE] Stale turn suppressed before ledger commit (page_id={} sender_id={})",
+                    pageId, request != null ? request.senderId() : null);
+            FanpageBotService.markProvenanceV38Logged();
+            return FanpageBotService.buildSilentSuppressedResponse("SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK", null);
+        }
+        if (!finalBubbles.isEmpty()) {
             ConversationState.updateAfterSend(
                     pageId,
                     request.senderId(),
@@ -5333,13 +5343,34 @@ public class CleanAgentOrchestratorService {
                 PriceQuoteReadingBudgetScheduler.DEFAULT_INTER_BUBBLE_TYPING_DELAY_MS
         );
 
+        String ledgerKey = SentBubbleLedger.key(
+                request != null ? request.pageId() : null,
+                senderId,
+                request != null ? request.conversationId() : null
+        );
+        String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, originalVerbatim);
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, originalVerbatim);
+        if (!finalBubbles.isEmpty()) {
+            SentBubbleLedger.recordAssistantTurn(
+                    ledgerKey,
+                    ledgerUserTurnId + ":a",
+                    finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
+                    SentBubbleLedger.DeliveryStatus.PENDING,
+                    List.of()
+            );
+        }
+
         if (!SenderEpochRegistry.checkThreadEpochStillCurrent(
                 request != null ? request.pageId() : null,
                 request != null ? request.senderId() : null,
                 SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+            SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                    ledgerKey, ledgerUserTurnId + ":a", 0, "SUPERSEDED_BY_NEWER_EPOCH");
             return buildSupersededAbortedResponse(extractedLead, customerInsight);
         }
         if (!isOutboundStillPermittedLayer2(pageId, request)) {
+            SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                    ledgerKey, ledgerUserTurnId + ":a", 0, "SUPPRESSED_STALE_TURN_AFTER_STATE_LOCK");
             log.warn("[ACI-V2-LAYER2-FENCE] Stale turn suppressed before memory/ledger commit (page_id={} sender_id={})",
                     pageId, senderId);
             FanpageBotService.markProvenanceV38Logged();
@@ -5401,14 +5432,7 @@ public class CleanAgentOrchestratorService {
             agentBrainService.recordBookingState(pageId, senderId, authoritativeBookingState);
         }
 
-        // Đồng bộ Ledger & ConversationState (giữ opted_out = false cho mọi câu hội thoại thông thường như S06!)
-        String ledgerKey = SentBubbleLedger.key(
-                request != null ? request.pageId() : null,
-                senderId,
-                request != null ? request.conversationId() : null
-        );
-        String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKey, originalVerbatim);
-        SentBubbleLedger.recordCustomerTurn(ledgerKey, ledgerUserTurnId, originalVerbatim);
+        // Đồng bộ ConversationState (giữ opted_out = false cho mọi câu hội thoại thông thường như S06!)
         PrimaryActionRouter.RoutingDecision v2StateSyncDecision = new PrimaryActionRouter.RoutingDecision(
                 shouldHandoff
                         ? PrimaryActionRouter.PrimaryAction.HARD_HANDOFF_COMPLAINT
@@ -5428,13 +5452,6 @@ public class CleanAgentOrchestratorService {
                 null
         );
         if (!finalBubbles.isEmpty()) {
-            SentBubbleLedger.recordAssistantTurn(
-                    ledgerKey,
-                    ledgerUserTurnId + ":a",
-                    finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList(),
-                    SentBubbleLedger.DeliveryStatus.DELIVERED,
-                    List.of()
-            );
             String verifiedSymptomDurationAfterSync = agentBrainService != null
                     ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId)
                     : reflection.customerUnderstanding().verifiedSymptomDuration();

@@ -419,30 +419,79 @@ public class InboundSessionPersistenceService {
      * right after LLM generation completes and BEFORE committing {@code SentBubbleLedger} or dispatching
      * outbound bubbles. Fails closed ({@code false}) if PostgreSQL becomes unreachable mid-turn.
      */
-    public boolean verifyOutboundStillPermittedFresh(UUID requestedPageId, String rawSenderId) {
+    public record OutboundFenceDecision(boolean permitted, String blockReason) {
+        public static OutboundFenceDecision allow() {
+            return new OutboundFenceDecision(true, null);
+        }
+
+        public static OutboundFenceDecision block(String reason) {
+            return new OutboundFenceDecision(false, (reason != null && !reason.isBlank()) ? reason : "SUPPRESSED_BY_OUTBOUND_FENCE");
+        }
+    }
+
+    public OutboundFenceDecision evaluateOutboundFenceFresh(
+            UUID requestedPageId,
+            String rawSenderId,
+            String sourceInboundExternalMid
+    ) {
         if (!this.atomicStateGuardEnabled) {
-            return true;
+            return OutboundFenceDecision.allow();
         }
         String psid = normalizePsid(rawSenderId);
+        String cleanSourceMid = (sourceInboundExternalMid != null && !sourceInboundExternalMid.isBlank())
+                ? sourceInboundExternalMid.strip()
+                : null;
         try {
-            Boolean permitted = executeInJpaRequiresNew(() -> {
+            OutboundFenceDecision decision = executeInJpaRequiresNew(() -> {
                 UUID effectiveDbPageId = resolveExistingPageIdOrNullInTx(requestedPageId);
                 List<SessionSnapshot> rows = queryLatestSessionSnapshotInTx(effectiveDbPageId, psid);
                 if (rows.isEmpty()) {
-                    return true;
+                    return OutboundFenceDecision.allow();
                 }
                 SessionSnapshot fresh = rows.get(0);
                 if ("HUMAN_TAKEOVER".equalsIgnoreCase(fresh.controlMode())) {
-                    return false;
+                    return OutboundFenceDecision.block("HUMAN_TAKEOVER");
                 }
-                return !fresh.optedOut();
+                if (fresh.optedOut()) {
+                    return OutboundFenceDecision.block("OPT_OUT");
+                }
+                if (cleanSourceMid != null && jdbcTemplate != null && fresh.id() != null) {
+                    List<String> latestCustomerMids = jdbcTemplate.query(
+                            "SELECT external_mid FROM conversation_messages "
+                                    + "WHERE session_id = ? AND sender_role = 'CUSTOMER' "
+                                    + "  AND external_mid IS NOT NULL AND external_mid <> '' "
+                                    + "ORDER BY created_at DESC, id DESC LIMIT 1",
+                            (rs, rowNum) -> rs.getString("external_mid"),
+                            fresh.id()
+                    );
+                    if (!latestCustomerMids.isEmpty()) {
+                        String latestMid = latestCustomerMids.get(0) != null ? latestCustomerMids.get(0).strip() : "";
+                        if (!latestMid.isEmpty() && !latestMid.equals(cleanSourceMid)) {
+                            Integer sourceExists = jdbcTemplate.queryForObject(
+                                    "SELECT count(*) FROM conversation_messages "
+                                            + "WHERE session_id = ? AND sender_role = 'CUSTOMER' AND external_mid = ?",
+                                    Integer.class,
+                                    fresh.id(),
+                                    cleanSourceMid
+                            );
+                            if (sourceExists != null && sourceExists > 0) {
+                                return OutboundFenceDecision.block("SUPERSEDED_BY_NEWER_INBOUND");
+                            }
+                        }
+                    }
+                }
+                return OutboundFenceDecision.allow();
             });
-            return Boolean.TRUE.equals(permitted);
+            return decision != null ? decision : OutboundFenceDecision.block("STATE_GUARD_FAIL_CLOSED");
         } catch (Exception dbEx) {
             log.error("[LAYER2_OUTBOUND_FENCING_FAIL_CLOSED] pageId={} senderId={} reason={}",
                     requestedPageId, psid, dbEx.getMessage());
-            return false;
+            return OutboundFenceDecision.block("STATE_GUARD_FAIL_CLOSED");
         }
+    }
+
+    public boolean verifyOutboundStillPermittedFresh(UUID requestedPageId, String rawSenderId) {
+        return evaluateOutboundFenceFresh(requestedPageId, rawSenderId, null).permitted();
     }
 
     /**
