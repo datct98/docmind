@@ -350,9 +350,10 @@ class P31OutboundDeliveryReliabilityTest {
 
         List<SentBubbleLedger.BubbleRecord> bubbles = SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles();
         assertThat(bubbles.get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.FAILED);
-        assertThat(bubbles.get(0).failureReason()).isEqualTo("HTTP_400");
+        assertThat(bubbles.get(0).failureReason()).isEqualTo("HTTP_400_REJECTED");
         assertThat(bubbles.get(0).attemptCount()).isEqualTo(1);
-        assertThat(bubbles.get(1).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.PENDING);
+        assertThat(bubbles.get(1).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.SUPPRESSED_BY_FENCE);
+        assertThat(bubbles.get(1).failureReason()).isEqualTo("ABORTED_AFTER_PRIOR_BUBBLE_FAILED");
 
         // Bong bóng FAILED không được hiển thị như đã gửi trong lịch sử hội thoại
         assertThat(SentBubbleLedger.reconcile(ledgerKey, List.of()))
@@ -720,6 +721,274 @@ class P31OutboundDeliveryReliabilityTest {
         assertThat(midTurns.get(0).bubbles().get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.DELIVERED);
     }
 
+    @Test
+    @DisplayName("P3.1.1 — HTTP 429 Rate Limit -> ghi nhận HTTP_429_RATE_LIMITED, dừng chuỗi bong bóng và không retry mù")
+    void p311_http429RateLimit_recordsRateLimitedAndNeverBlindRetries() {
+        FanpageBotController controller = new FanpageBotController(Mockito.mock(FanpageBotService.class));
+        controller.setPageAccessToken("EAAB_P311_TOKEN");
+        controller.setInterBubbleDelayMs(0L);
+
+        AtomicInteger sendAttempts = new AtomicInteger(0);
+        controller.setGraphApiSender((url, jsonBody) -> {
+            sendAttempts.incrementAndGet();
+            return new FanpageBotController.HttpResponseResult(429, "{\"error\":{\"message\":\"(#613) Calls to this api have exceeded the rate limit.\"}}");
+        });
+
+        String senderId = "psid_p311_429";
+        String convId = "conv_p311_429";
+        String ledgerKey = SentBubbleLedger.key(PAGE_ID.toString(), senderId, convId);
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "t_429", "Cho hỏi giá");
+        SentBubbleLedger.recordAssistantTurn(
+                ledgerKey, "t_429:a", List.of("Bong bóng 1", "Bong bóng 2"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+
+        FanpageBotResponse botResp = buildBotResponse(List.of("Bong bóng 1", "Bong bóng 2"));
+        assertThat(controller.sendSequentialBubblesToFacebook(PAGE_ID.toString(), senderId, convId, botResp)).isZero();
+        assertThat(sendAttempts.get()).isEqualTo(1);
+
+        List<SentBubbleLedger.BubbleRecord> bubbles = SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles();
+        assertThat(bubbles.get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.FAILED);
+        assertThat(bubbles.get(0).failureReason()).isEqualTo("HTTP_429_RATE_LIMITED");
+        assertThat(bubbles.get(0).attemptCount()).isEqualTo(1);
+        assertThat(bubbles.get(1).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.SUPPRESSED_BY_FENCE);
+        assertThat(bubbles.get(1).failureReason()).isEqualTo("ABORTED_AFTER_PRIOR_BUBBLE_FAILED");
+
+        // Gọi lại lần 2 -> không retry mù
+        assertThat(controller.sendSequentialBubblesToFacebook(PAGE_ID.toString(), senderId, convId, botResp)).isZero();
+        assertThat(sendAttempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("P3.1.1 — HTTP 5xx, HTTP 408 và không nhận được response -> chuyển sang UNKNOWN (không phải FAILED) và không gửi lặp")
+    void p311_http5xxAnd408AndNullResponse_transitionToUnknownAndNeverBlindRetry() {
+        FanpageBotController controller = new FanpageBotController(Mockito.mock(FanpageBotService.class));
+        controller.setPageAccessToken("EAAB_P311_TOKEN");
+        controller.setInterBubbleDelayMs(0L);
+
+        // 1. HTTP 503 Server Error -> UNKNOWN
+        AtomicInteger attempts503 = new AtomicInteger(0);
+        controller.setGraphApiSender((url, jsonBody) -> {
+            attempts503.incrementAndGet();
+            return new FanpageBotController.HttpResponseResult(503, "{\"error\":\"Service Unavailable\"}");
+        });
+        String sender503 = "psid_p311_503";
+        String conv503 = "conv_p311_503";
+        String key503 = SentBubbleLedger.key(PAGE_ID.toString(), sender503, conv503);
+        SentBubbleLedger.recordCustomerTurn(key503, "t_503", "Tư vấn gói");
+        SentBubbleLedger.recordAssistantTurn(
+                key503, "t_503:a", List.of("Gói A 239k", "Chị muốn đặt giờ nào ạ?"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+        FanpageBotResponse resp503 = buildBotResponse(List.of("Gói A 239k", "Chị muốn đặt giờ nào ạ?"));
+        assertThat(controller.sendSequentialBubblesToFacebook(PAGE_ID.toString(), sender503, conv503, resp503)).isZero();
+        assertThat(attempts503.get()).isEqualTo(1);
+
+        List<SentBubbleLedger.BubbleRecord> bubbles503 = SentBubbleLedger.snapshot(key503).get(1).bubbles();
+        assertThat(bubbles503.get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.UNKNOWN);
+        assertThat(bubbles503.get(0).failureReason()).isEqualTo("HTTP_503_SERVER_ERROR_UNCERTAIN");
+        assertThat(bubbles503.get(1).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.SUPPRESSED_BY_FENCE);
+        assertThat(bubbles503.get(1).failureReason()).isEqualTo("ABORTED_AFTER_PRIOR_BUBBLE_UNKNOWN");
+
+        // Không tự động retry UNKNOWN
+        assertThat(controller.sendSequentialBubblesToFacebook(PAGE_ID.toString(), sender503, conv503, resp503)).isZero();
+        assertThat(attempts503.get()).isEqualTo(1);
+
+        // 2. HTTP 408 Request Timeout -> UNKNOWN
+        controller.setGraphApiSender((url, jsonBody) ->
+                new FanpageBotController.HttpResponseResult(408, "Request Timeout")
+        );
+        String sender408 = "psid_p311_408";
+        String conv408 = "conv_p311_408";
+        String key408 = SentBubbleLedger.key(PAGE_ID.toString(), sender408, conv408);
+        SentBubbleLedger.recordCustomerTurn(key408, "t_408", "Hỏi lịch");
+        SentBubbleLedger.recordAssistantTurn(
+                key408, "t_408:a", List.of("Dạ bên em còn lịch ạ"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+        assertThat(controller.sendSequentialBubblesToFacebook(
+                PAGE_ID.toString(), sender408, conv408, buildBotResponse(List.of("Dạ bên em còn lịch ạ")))).isZero();
+        SentBubbleLedger.BubbleRecord bubble408 = SentBubbleLedger.snapshot(key408).get(1).bubbles().get(0);
+        assertThat(bubble408.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.UNKNOWN);
+        assertThat(bubble408.failureReason()).isEqualTo("HTTP_408_REQUEST_TIMEOUT_UNCERTAIN");
+
+        // 3. Không nhận được response (null) -> UNKNOWN
+        controller.setGraphApiSender((url, jsonBody) -> null);
+        String senderNull = "psid_p311_null";
+        String convNull = "conv_p311_null";
+        String keyNull = SentBubbleLedger.key(PAGE_ID.toString(), senderNull, convNull);
+        SentBubbleLedger.recordCustomerTurn(keyNull, "t_null", "Hỏi địa chỉ");
+        SentBubbleLedger.recordAssistantTurn(
+                keyNull, "t_null:a", List.of("Dạ 123 Nguyễn Huệ ạ"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+        assertThat(controller.sendSequentialBubblesToFacebook(
+                PAGE_ID.toString(), senderNull, convNull, buildBotResponse(List.of("Dạ 123 Nguyễn Huệ ạ")))).isZero();
+        SentBubbleLedger.BubbleRecord bubbleNull = SentBubbleLedger.snapshot(keyNull).get(1).bubbles().get(0);
+        assertThat(bubbleNull.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.UNKNOWN);
+        assertThat(bubbleNull.failureReason()).isEqualTo("NO_HTTP_RESPONSE_UNCERTAIN");
+    }
+
+    @Test
+    @DisplayName("P3.1.1 — ConnectException trước khi thiết lập kết nối -> FAILED và dừng chuỗi bong bóng")
+    void p311_connectExceptionBeforeSend_transitionsToFailedAndStopsSequence() {
+        FanpageBotController controller = new FanpageBotController(Mockito.mock(FanpageBotService.class));
+        controller.setPageAccessToken("EAAB_P311_TOKEN");
+        controller.setInterBubbleDelayMs(0L);
+
+        AtomicInteger attempts = new AtomicInteger(0);
+        controller.setGraphApiSender((url, jsonBody) -> {
+            attempts.incrementAndGet();
+            throw new java.net.ConnectException("Connection refused: connect");
+        });
+
+        String senderId = "psid_p311_conn_refused";
+        String convId = "conv_p311_conn_refused";
+        String ledgerKey = SentBubbleLedger.key(PAGE_ID.toString(), senderId, convId);
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "t_conn", "Tư vấn");
+        SentBubbleLedger.recordAssistantTurn(
+                ledgerKey, "t_conn:a", List.of("Bong bóng 1", "Bong bóng 2"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+
+        FanpageBotResponse botResp = buildBotResponse(List.of("Bong bóng 1", "Bong bóng 2"));
+        assertThat(controller.sendSequentialBubblesToFacebook(PAGE_ID.toString(), senderId, convId, botResp)).isZero();
+        assertThat(attempts.get()).isEqualTo(1);
+
+        List<SentBubbleLedger.BubbleRecord> bubbles = SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles();
+        assertThat(bubbles.get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.FAILED);
+        assertThat(bubbles.get(0).failureReason()).contains("ConnectException");
+        assertThat(bubbles.get(1).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.SUPPRESSED_BY_FENCE);
+        assertThat(bubbles.get(1).failureReason()).isEqualTo("ABORTED_AFTER_PRIOR_BUBBLE_FAILED");
+    }
+
+    @Test
+    @DisplayName("P3.1.1 — Phân biệt Message Echo và Delivery Receipt: Echo chỉ đối soát UNKNOWN -> ACCEPTED_BY_CHANNEL (không bao giờ DELIVERED); Receipt mới nâng lên DELIVERED")
+    void p311_messageEchoReconcilesUnknownToAcceptedNeverDelivered_andDeliveryReceiptElevatesToDelivered() throws Exception {
+        FanpageBotController controller = new FanpageBotController(Mockito.mock(FanpageBotService.class));
+        controller.setPageAccessToken("EAAB_P311_TOKEN");
+        controller.setInterBubbleDelayMs(0L);
+
+        String senderId = "psid_p311_echo";
+        String convId = "fb_webhook_" + senderId;
+        String ledgerKey = SentBubbleLedger.key(PAGE_ID.toString(), senderId, convId);
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "t_echo_1", "Gói cơ bản bao nhiêu?");
+        SentBubbleLedger.recordAssistantTurn(
+                ledgerKey, "t_echo_1:a", List.of("Dạ gói dưỡng sinh cơ bản 239k ạ."), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+
+        // Lần gửi gặp HTTP 502 -> trạng thái là UNKNOWN (chưa có externalMid)
+        controller.setGraphApiSender((url, jsonBody) ->
+                new FanpageBotController.HttpResponseResult(502, "Bad Gateway")
+        );
+        controller.sendSequentialBubblesToFacebook(
+                PAGE_ID.toString(), senderId, convId, buildBotResponse(List.of("Dạ gói dưỡng sinh cơ bản 239k ạ."))
+        );
+        assertThat(SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles().get(0).status())
+                .isEqualTo(SentBubbleLedger.DeliveryStatus.UNKNOWN);
+
+        // Meta gửi message_echoes (is_echo = true) chứng minh Page thực sự đã gửi tin này với mid = m_echo_239k
+        String echoWebhook = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "12218945612345",
+                    "time": 1730000020000,
+                    "messaging": [{
+                      "sender": { "id": "12218945612345" },
+                      "recipient": { "id": "psid_p311_echo" },
+                      "timestamp": 1730000020100,
+                      "message": {
+                        "is_echo": true,
+                        "mid": "m_echo_239k",
+                        "text": "Dạ gói dưỡng sinh cơ bản 239k ạ."
+                      }
+                    }]
+                  }]
+                }
+                """;
+        var echoResp = controller.receiveMetaWebhook(PAGE_ID.toString(), null, echoWebhook);
+        assertThat(echoResp.getStatusCode().value()).isEqualTo(200);
+        assertThat(echoResp.getBody().get("processed_events")).isEqualTo(0);
+
+        SentBubbleLedger.BubbleRecord afterEcho = SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles().get(0);
+        assertThat(afterEcho.status())
+                .as("message_echoes chỉ được nâng UNKNOWN lên ACCEPTED_BY_CHANNEL, tuyệt đối KHÔNG phải DELIVERED")
+                .isEqualTo(SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL);
+        assertThat(afterEcho.externalMid()).isEqualTo("m_echo_239k");
+        assertThat(afterEcho.failureReason()).isEqualTo("RECONCILED_BY_MESSAGE_ECHO");
+
+        // Sau đó Meta gửi message_deliveries thực tế cho m_echo_239k -> lúc này mới chuyển sang DELIVERED
+        String deliveryWebhook = """
+                {
+                  "object": "page",
+                  "entry": [{
+                    "id": "12218945612345",
+                    "time": 1730000021000,
+                    "messaging": [{
+                      "sender": { "id": "psid_p311_echo" },
+                      "recipient": { "id": "12218945612345" },
+                      "timestamp": 1730000021100,
+                      "delivery": {
+                        "mids": ["m_echo_239k"],
+                        "watermark": 1730000021100
+                      }
+                    }]
+                  }]
+                }
+                """;
+        controller.receiveMetaWebhook(PAGE_ID.toString(), null, deliveryWebhook);
+
+        SentBubbleLedger.BubbleRecord afterDelivery = SentBubbleLedger.snapshot(ledgerKey).get(1).bubbles().get(0);
+        assertThat(afterDelivery.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.DELIVERED);
+    }
+
+    @Test
+    @DisplayName("P3.1.1 — Early Delivery Receipt (Option 2): Receipt không bao giờ bị gán nhầm giữa nhiều lượt IN_FLIGHT cùng sender")
+    void p311_earlyReceiptNeverMisattributedAcrossMultipleInFlightTurnsForSameSender() {
+        String senderId = "psid_p311_multi_inflight";
+        String convId = "fb_webhook_" + senderId;
+        String ledgerKey = SentBubbleLedger.key(PAGE_ID.toString(), senderId, convId);
+
+        // Giả sử có 2 lượt assistant cùng của một sender đang ở trạng thái IN_FLIGHT và chưa có externalMid
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "t_multi_1", "Câu hỏi 1");
+        SentBubbleLedger.recordAssistantTurn(
+                ledgerKey, "t_multi_1:a", List.of("Trả lời lượt 1"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+        SentBubbleLedger.recordCustomerTurn(ledgerKey, "t_multi_2", "Câu hỏi 2");
+        SentBubbleLedger.recordAssistantTurn(
+                ledgerKey, "t_multi_2:a", List.of("Trả lời lượt 2"), SentBubbleLedger.DeliveryStatus.PENDING
+        );
+
+        assertThat(SentBubbleLedger.tryAcquireBubbleDispatchLease(ledgerKey, "t_multi_1:a", 0, Duration.ofSeconds(30))).isTrue();
+        assertThat(SentBubbleLedger.tryAcquireBubbleDispatchLease(ledgerKey, "t_multi_2:a", 0, Duration.ofSeconds(30))).isTrue();
+
+        // Receipt của lượt 2 (mid_turn_2) đến sớm khi cả lượt 1 và lượt 2 đều chưa nhận HTTP response
+        SentBubbleLedger.markBubbleDeliveredByExternalMid(PAGE_ID.toString(), senderId, "mid_turn_2");
+
+        // Trước khi có HTTP response cung cấp MID: cả 2 lượt vẫn phải giữ nguyên IN_FLIGHT (không được đoán mò gán cho lượt 1 hay lượt 2)
+        List<SentBubbleLedger.TurnRecord> whileInFlight = SentBubbleLedger.snapshot(ledgerKey);
+        assertThat(whileInFlight.get(1).bubbles().get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.IN_FLIGHT);
+        assertThat(whileInFlight.get(1).bubbles().get(0).externalMid()).isNull();
+        assertThat(whileInFlight.get(3).bubbles().get(0).status()).isEqualTo(SentBubbleLedger.DeliveryStatus.IN_FLIGHT);
+        assertThat(whileInFlight.get(3).bubbles().get(0).externalMid()).isNull();
+
+        // Khi HTTP response của lượt 1 trả về mid_turn_1 -> lượt 1 chỉ lên ACCEPTED_BY_CHANNEL (không bị gán nhầm receipt của lượt 2)
+        SentBubbleLedger.transitionBubbleStatusMonotonically(
+                ledgerKey, "t_multi_1:a", 0, SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL, "mid_turn_1", null
+        );
+        // Khi HTTP response của lượt 2 trả về mid_turn_2 -> khớp đúng receipt đã giữ nên nâng thẳng lên DELIVERED
+        SentBubbleLedger.transitionBubbleStatusMonotonically(
+                ledgerKey, "t_multi_2:a", 0, SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL, "mid_turn_2", null
+        );
+
+        List<SentBubbleLedger.TurnRecord> afterResponses = SentBubbleLedger.snapshot(ledgerKey);
+        assertThat(afterResponses.get(1).bubbles().get(0).status())
+                .as("Lượt 1 (mid_turn_1) không có receipt nên phải là ACCEPTED_BY_CHANNEL")
+                .isEqualTo(SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL);
+        assertThat(afterResponses.get(1).bubbles().get(0).externalMid()).isEqualTo("mid_turn_1");
+
+        assertThat(afterResponses.get(3).bubbles().get(0).status())
+                .as("Lượt 2 (mid_turn_2) khớp đúng early receipt nên phải được nâng lên DELIVERED")
+                .isEqualTo(SentBubbleLedger.DeliveryStatus.DELIVERED);
+        assertThat(afterResponses.get(3).bubbles().get(0).externalMid()).isEqualTo("mid_turn_2");
+    }
+
     private static String reachablePostgresUrl() {
         String fromEnv = System.getenv("SENT_LEDGER_TEST_JDBC_URL");
         List<String> candidates = fromEnv != null ? List.of(fromEnv) : List.of(
@@ -843,9 +1112,41 @@ class P31OutboundDeliveryReliabilityTest {
             SentBubbleLedger.BubbleRecord pgFenceBubble = SentBubbleLedger.snapshot(keyFence).get(1).bubbles().get(0);
             assertThat(pgFenceBubble.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.SUPPRESSED_BY_FENCE);
             assertThat(pgFenceBubble.failureReason()).isEqualTo("SUPERSEDED_BY_NEWER_INBOUND_TURN");
+
+            // 6. P3.1.1 Option 2 trên PostgreSQL thật: Early delivery receipt đến trước HTTP response & qua dropCacheOnly()
+            //    không đoán mò IN_FLIGHT có external_mid = NULL, chỉ nâng đúng bubble khi external_mid xuất hiện
+            String earlyMidPg = "m_pg_out_early_" + UUID.randomUUID();
+            SentBubbleLedger.recordCustomerTurn(key1, "t_pg_early_1", "Hỏi gói đá nóng");
+            SentBubbleLedger.recordAssistantTurn(
+                    key1, "t_pg_early_1:a", List.of("Dạ gói đá nóng 799k ạ"), SentBubbleLedger.DeliveryStatus.PENDING
+            );
+            assertThat(SentBubbleLedger.tryAcquireBubbleDispatchLease(key1, "t_pg_early_1:a", 0, Duration.ofSeconds(30))).isTrue();
+
+            // Early receipt tới trước khi HTTP 200 trả về
+            SentBubbleLedger.markBubbleDeliveredByExternalMid(PAGE_ID.toString(), sender1, earlyMidPg);
+            SentBubbleLedger.dropCacheOnly();
+
+            // Khi external_mid còn NULL trong PostgreSQL, bubble đang IN_FLIGHT tuyệt đối KHÔNG bị đoán mò thành DELIVERED
+            SentBubbleLedger.BubbleRecord pgStillInFlight = SentBubbleLedger.snapshot(key1).stream()
+                    .filter(t -> "t_pg_early_1:a".equals(t.turnId()))
+                    .findFirst().orElseThrow().bubbles().get(0);
+            assertThat(pgStillInFlight.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.IN_FLIGHT);
+            assertThat(pgStillInFlight.externalMid()).isNull();
+
+            // Khi HTTP response mang earlyMidPg về (dù cache in-memory đã drop, đối soát từ midKey trong PostgreSQL) -> nâng lên DELIVERED
+            SentBubbleLedger.transitionBubbleStatusMonotonically(
+                    key1, "t_pg_early_1:a", 0, SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL, earlyMidPg, null
+            );
+            SentBubbleLedger.dropCacheOnly();
+            SentBubbleLedger.BubbleRecord pgCorrelatedDelivered = SentBubbleLedger.snapshot(key1).stream()
+                    .filter(t -> "t_pg_early_1:a".equals(t.turnId()))
+                    .findFirst().orElseThrow().bubbles().get(0);
+            assertThat(pgCorrelatedDelivered.status()).isEqualTo(SentBubbleLedger.DeliveryStatus.DELIVERED);
+            assertThat(pgCorrelatedDelivered.externalMid()).isEqualTo(earlyMidPg);
         } finally {
-            jdbc.update("DELETE FROM sent_bubble_ledger WHERE ledger_key IN (?, ?, ?)", key1, keyCrash, keyFence);
-            jdbc.update("DELETE FROM sent_bubble_ledger WHERE turn_id LIKE ?", "mid:m_pg_out_%");
+            jdbc.update("DELETE FROM sent_bubble_ledger WHERE ledger_key IN (?, ?, ?, ?)",
+                    key1, keyCrash, keyFence, SentBubbleLedger.midLedgerKey(PAGE_ID.toString(), sender1));
+            jdbc.update("DELETE FROM sent_bubble_ledger WHERE turn_id LIKE ?", "m_pg_out_%");
             SentBubbleLedger.useStore(new SentBubbleLedger.InMemoryStore());
         }
     }

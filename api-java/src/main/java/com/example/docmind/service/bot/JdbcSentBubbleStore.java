@@ -128,7 +128,9 @@ public class JdbcSentBubbleStore implements SentBubbleLedger.Store {
                 jdbc.update("INSERT INTO sent_bubble_ledger "
                                 + "(ledger_key, turn_id, role, bubble_order, bubble_text, delivery_status, external_mid, attempt_count, lease_until, failure_reason, updated_at) "
                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
-                                + "ON CONFLICT ON CONSTRAINT uq_sent_bubble_ledger_event DO NOTHING",
+                                + "ON CONFLICT ON CONSTRAINT uq_sent_bubble_ledger_event DO UPDATE SET "
+                                + "bubble_text = CASE WHEN sent_bubble_ledger.bubble_text = '' AND EXCLUDED.bubble_text <> '' THEN EXCLUDED.bubble_text ELSE sent_bubble_ledger.bubble_text END, "
+                                + "external_mid = COALESCE(NULLIF(sent_bubble_ledger.external_mid, ''), EXCLUDED.external_mid)",
                         key, rec.turnId(), rec.role(), b.order(), b.text(), b.status().name(),
                         b.externalMid(), b.attemptCount(), leaseTs, b.failureReason());
             }
@@ -305,10 +307,33 @@ public class JdbcSentBubbleStore implements SentBubbleLedger.Store {
             return 0;
         }
         String cleanMid = externalMid.strip();
-        String likePrefix = (pageId != null ? pageId.strip() : "-") + "|"
-                + (senderPsid != null ? senderPsid.strip() : "-") + "|%";
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+        String likePrefix = normPage + "|" + normSender + "|%";
+        String midKey = SentBubbleLedger.midLedgerKey(normPage, normSender);
         try {
-            int updated = jdbc.update("UPDATE sent_bubble_ledger "
+            // Option 2 (P3.1.1): Persist held receipt under midKey so early receipts survive cache drop / restart
+            // without ever guessing an IN_FLIGHT bubble whose external_mid is still NULL.
+            jdbc.update("INSERT INTO sent_bubble_ledger "
+                            + "(ledger_key, turn_id, role, bubble_order, bubble_text, delivery_status, external_mid, attempt_count, lease_until, failure_reason, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, now()) "
+                            + "ON CONFLICT ON CONSTRAINT uq_sent_bubble_ledger_event DO UPDATE SET "
+                            + "delivery_status = 'DELIVERED', "
+                            + "external_mid = EXCLUDED.external_mid, "
+                            + "lease_until = NULL, "
+                            + "failure_reason = 'DELIVERY_RECEIPT', "
+                            + "updated_at = now()",
+                    midKey,
+                    cleanMid,
+                    "assistant",
+                    0,
+                    "",
+                    "DELIVERED",
+                    cleanMid,
+                    1,
+                    "DELIVERY_RECEIPT");
+
+            return jdbc.update("UPDATE sent_bubble_ledger "
                             + "SET delivery_status = 'DELIVERED', "
                             + "    lease_until = NULL, "
                             + "    failure_reason = 'DELIVERY_RECEIPT', "
@@ -316,23 +341,6 @@ public class JdbcSentBubbleStore implements SentBubbleLedger.Store {
                             + "WHERE ledger_key LIKE ? AND role = 'assistant' AND external_mid = ? "
                             + "  AND delivery_status <> 'DELIVERED'",
                     likePrefix, cleanMid);
-            if (updated == 0) {
-                // Scenario 12: Delivery receipt arrived while IN_FLIGHT before HTTP response returned outMid
-                updated = jdbc.update("UPDATE sent_bubble_ledger "
-                                + "SET delivery_status = 'DELIVERED', "
-                                + "    external_mid = ?, "
-                                + "    lease_until = NULL, "
-                                + "    failure_reason = 'DELIVERY_RECEIPT', "
-                                + "    updated_at = now() "
-                                + "WHERE id = ("
-                                + "    SELECT id FROM sent_bubble_ledger "
-                                + "    WHERE ledger_key LIKE ? AND role = 'assistant' "
-                                + "      AND delivery_status = 'IN_FLIGHT' AND (external_mid IS NULL OR external_mid = '') "
-                                + "    ORDER BY id DESC LIMIT 1"
-                                + ")",
-                        cleanMid, likePrefix);
-            }
-            return updated;
         } catch (Exception e) {
             log.warn("[SentBubbleLedger] markDeliveredByExternalMid failed mid={}: {}", cleanMid, e.getMessage());
             return 0;

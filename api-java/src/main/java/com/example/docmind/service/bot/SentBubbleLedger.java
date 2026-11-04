@@ -198,9 +198,38 @@ public final class SentBubbleLedger {
         @Override
         public synchronized void append(String key, TurnRecord rec) {
             List<TurnRecord> l = data.computeIfAbsent(key, k -> new ArrayList<>());
-            if (l.stream().noneMatch(t -> sameEvent(t, rec))) {
-                l.add(rec);
+            for (int idx = 0; idx < l.size(); idx++) {
+                TurnRecord existing = l.get(idx);
+                if (sameEvent(existing, rec)) {
+                    if (key != null && key.startsWith("fb_mid|")
+                            && !existing.bubbles().isEmpty()
+                            && !rec.bubbles().isEmpty()
+                            && (existing.bubbles().get(0).text() == null || existing.bubbles().get(0).text().isBlank())
+                            && rec.bubbles().get(0).text() != null
+                            && !rec.bubbles().get(0).text().isBlank()) {
+                        BubbleRecord eb = existing.bubbles().get(0);
+                        BubbleRecord rb = rec.bubbles().get(0);
+                        DeliveryStatus mergedStatus = eb.status() == DeliveryStatus.DELIVERED
+                                ? DeliveryStatus.DELIVERED
+                                : rb.status();
+                        l.set(idx, new TurnRecord(
+                                existing.turnId(),
+                                existing.role(),
+                                List.of(new BubbleRecord(
+                                        0,
+                                        rb.text(),
+                                        mergedStatus,
+                                        eb.externalMid() != null ? eb.externalMid() : rb.externalMid(),
+                                        Math.max(eb.attemptCount(), rb.attemptCount()),
+                                        null,
+                                        eb.failureReason() != null ? eb.failureReason() : rb.failureReason()
+                                ))
+                        ));
+                    }
+                    return;
+                }
             }
+            l.add(rec);
         }
 
         @Override
@@ -387,7 +416,9 @@ public final class SentBubbleLedger {
                 return 0;
             }
             String cleanMid = externalMid.strip();
-            String prefix = (pageId != null ? pageId.strip() : "-") + "|" + (senderPsid != null ? senderPsid.strip() : "-") + "|";
+            String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+            String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+            String prefix = normPage + "|" + normSender + "|";
             int updatedCount = 0;
             for (Map.Entry<String, List<TurnRecord>> entry : data.entrySet()) {
                 if (!entry.getKey().startsWith(prefix)) {
@@ -426,45 +457,40 @@ public final class SentBubbleLedger {
                     }
                 }
             }
-            if (updatedCount == 0) {
-                // Scenario 12: Delivery receipt arrived while IN_FLIGHT before HTTP response returned outMid
-                for (Map.Entry<String, List<TurnRecord>> entry : data.entrySet()) {
-                    if (!entry.getKey().startsWith(prefix)) {
-                        continue;
-                    }
-                    List<TurnRecord> l = entry.getValue();
-                    for (int idx = l.size() - 1; idx >= 0; idx--) {
-                        TurnRecord t = l.get(idx);
-                        if (!"assistant".equals(t.role())) {
-                            continue;
-                        }
-                        boolean matchedInFlight = false;
-                        List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
-                        for (BubbleRecord b : t.bubbles()) {
-                            if (!matchedInFlight
-                                    && b.status() == DeliveryStatus.IN_FLIGHT
-                                    && (b.externalMid() == null || b.externalMid().isBlank())) {
-                                updated.add(new BubbleRecord(
-                                        b.order(),
+            // Option 2 (P3.1.1): Hold early delivery receipt keyed by cleanMid under midLedgerKey;
+            // NEVER guess an IN_FLIGHT bubble whose externalMid is still null.
+            String midKey = midLedgerKey(normPage, normSender);
+            List<TurnRecord> midList = data.computeIfAbsent(midKey, k -> new ArrayList<>());
+            boolean foundMidRecord = false;
+            for (int idx = 0; idx < midList.size(); idx++) {
+                TurnRecord t = midList.get(idx);
+                if (cleanMid.equals(t.turnId()) && "assistant".equals(t.role()) && !t.bubbles().isEmpty()) {
+                    foundMidRecord = true;
+                    BubbleRecord b = t.bubbles().get(0);
+                    if (b.status() != DeliveryStatus.DELIVERED) {
+                        midList.set(idx, new TurnRecord(
+                                t.turnId(),
+                                t.role(),
+                                List.of(new BubbleRecord(
+                                        0,
                                         b.text(),
                                         DeliveryStatus.DELIVERED,
                                         cleanMid,
                                         Math.max(1, b.attemptCount()),
                                         null,
                                         "DELIVERY_RECEIPT"
-                                ));
-                                matchedInFlight = true;
-                                updatedCount++;
-                            } else {
-                                updated.add(b);
-                            }
-                        }
-                        if (matchedInFlight) {
-                            l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
-                            return updatedCount;
-                        }
+                                ))
+                        ));
                     }
+                    break;
                 }
+            }
+            if (!foundMidRecord) {
+                midList.add(new TurnRecord(
+                        cleanMid,
+                        "assistant",
+                        List.of(new BubbleRecord(0, "", DeliveryStatus.DELIVERED, cleanMid, 1, null, "DELIVERY_RECEIPT"))
+                ));
             }
             return updatedCount;
         }
@@ -559,6 +585,36 @@ public final class SentBubbleLedger {
     }
 
     /**
+     * Kiểm tra xem một {@code externalMid} đã có Delivery Receipt đến sớm (Option 2 — P3.1.1)
+     * trong bộ nhớ hoặc trong kho bền vững {@code fb_mid|pageId|senderPsid} hay chưa.
+     */
+    public static boolean hasHeldEarlyDeliveryReceipt(String pageId, String senderPsid, String externalMid) {
+        if (externalMid == null || externalMid.isBlank()) {
+            return false;
+        }
+        String cleanMid = externalMid.strip();
+        String eKey = earlyReceiptKey(pageId, senderPsid, cleanMid);
+        if (EARLY_DELIVERY_RECEIPT_MIDS.contains(eKey)) {
+            return true;
+        }
+        try {
+            List<TurnRecord> persisted = store.load(midLedgerKey(pageId, senderPsid));
+            for (TurnRecord rec : persisted) {
+                if (rec != null && cleanMid.equals(rec.turnId()) && !rec.bubbles().isEmpty()) {
+                    BubbleRecord b = rec.bubbles().get(0);
+                    if (b.status() == DeliveryStatus.DELIVERED) {
+                        EARLY_DELIVERY_RECEIPT_MIDS.add(eKey);
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Non-blocking fallback
+        }
+        return false;
+    }
+
+    /**
      * Lưu ánh xạ bền vững {@code (pageId, senderPsid, messageId) -> messageText} vào Bounded Cache có TTL
      * và xuống {@link Store} bền vững (PostgreSQL {@code sent_bubble_ledger} / {@link InMemoryStore}).
      *
@@ -589,7 +645,7 @@ public final class SentBubbleLedger {
         DeliveryStatus midStatus;
         if ("user".equalsIgnoreCase(cleanRole)) {
             midStatus = DeliveryStatus.DELIVERED;
-        } else if (EARLY_DELIVERY_RECEIPT_MIDS.contains(earlyReceiptKey(pageId, senderPsid, cleanMid))) {
+        } else if (hasHeldEarlyDeliveryReceipt(pageId, senderPsid, cleanMid)) {
             midStatus = DeliveryStatus.DELIVERED;
         } else {
             midStatus = DeliveryStatus.ACCEPTED_BY_CHANNEL;
@@ -921,8 +977,7 @@ public final class SentBubbleLedger {
                     }
                     DeliveryStatus effectiveTarget = targetStatus;
                     String effectiveReason = failureReason;
-                    if (cleanMid != null
-                            && EARLY_DELIVERY_RECEIPT_MIDS.contains(earlyReceiptKey(pagePart, senderPart, cleanMid))) {
+                    if (cleanMid != null && hasHeldEarlyDeliveryReceipt(pagePart, senderPart, cleanMid)) {
                         effectiveTarget = DeliveryStatus.DELIVERED;
                         effectiveReason = "DELIVERY_RECEIPT";
                     }
@@ -1109,8 +1164,12 @@ public final class SentBubbleLedger {
 
     /**
      * Ghi nhận Delivery Receipt thực tế từ Meta Webhook ({@code delivery.mids}) theo hướng đơn điệu
-     * và idempotent. Nếu receipt đến trước khi luồng gửi HTTP kịp trả về {@code message_id},
-     * ghi nhớ vào {@code EARLY_DELIVERY_RECEIPT_MIDS} và nâng trực tiếp bong bóng {@code IN_FLIGHT} lên {@code DELIVERED}.
+     * và idempotent (Option 2 — P3.1.1).
+     *
+     * <p>Nếu receipt đến trước khi luồng gửi HTTP kịp trả về {@code message_id},
+     * lưu giữ receipt trong {@code EARLY_DELIVERY_RECEIPT_MIDS} và trong kho bền vững {@code fb_mid|pageId|senderPsid};
+     * tuyệt đối KHÔNG đoán mò gán cho bong bóng {@code IN_FLIGHT} chưa có {@code externalMid}.
+     * Ngay khi phản hồi HTTP hoặc {@code message_echo} cung cấp {@code externalMid} khớp, bong bóng đó sẽ được nâng lên {@code DELIVERED}.
      */
     public static int markBubbleDeliveredByExternalMid(String pageId, String senderPsid, String externalMid) {
         if (externalMid == null || externalMid.isBlank()) {
@@ -1122,6 +1181,9 @@ public final class SentBubbleLedger {
         EARLY_DELIVERY_RECEIPT_MIDS.add(earlyReceiptKey(normPage, normSender, cleanMid));
 
         int storeUpdated = store.markDeliveredByExternalMid(normPage, normSender, cleanMid);
+        cached(key(normPage, normSender, null));
+        cached(key(normPage, normSender, "fb_webhook_" + normSender));
+
         String prefix = normPage + "|" + normSender + "|";
         int cacheUpdated = 0;
         for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
@@ -1163,59 +1225,133 @@ public final class SentBubbleLedger {
                 }
             }
         }
-        if (storeUpdated == 0 && cacheUpdated == 0) {
-            for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
-                if (!entry.getKey().startsWith(prefix)) {
-                    continue;
-                }
-                List<TurnRecord> l = entry.getValue();
-                synchronized (l) {
-                    for (int idx = l.size() - 1; idx >= 0; idx--) {
-                        TurnRecord t = l.get(idx);
-                        if (!"assistant".equals(t.role())) {
-                            continue;
-                        }
-                        boolean matchedInFlight = false;
-                        List<BubbleRecord> updated = new ArrayList<>(t.bubbles().size());
-                        for (BubbleRecord b : t.bubbles()) {
-                            if (!matchedInFlight
-                                    && b.status() == DeliveryStatus.IN_FLIGHT
-                                    && (b.externalMid() == null || b.externalMid().isBlank())) {
-                                BubbleRecord deliv = new BubbleRecord(
-                                        b.order(),
-                                        b.text(),
-                                        DeliveryStatus.DELIVERED,
-                                        cleanMid,
-                                        Math.max(1, b.attemptCount()),
-                                        null,
-                                        "DELIVERY_RECEIPT"
-                                );
-                                updated.add(deliv);
-                                matchedInFlight = true;
-                                cacheUpdated++;
-                                store.updateBubbleState(
-                                        entry.getKey(),
-                                        t.turnId(),
-                                        b.order(),
-                                        DeliveryStatus.DELIVERED,
-                                        cleanMid,
-                                        deliv.attemptCount(),
-                                        null,
-                                        "DELIVERY_RECEIPT"
-                                );
-                            } else {
-                                updated.add(b);
+        return Math.max(storeUpdated, cacheUpdated);
+    }
+
+    /**
+     * Đối soát sự kiện {@code message_echoes} từ Meta Webhook (P3.1.1 Mục 2.2.B & 2.2.C):
+     * <ul>
+     *   <li>Tuyệt đối KHÔNG coi {@code message_echoes} là {@link DeliveryStatus#DELIVERED} (trừ khi đã có
+     *       delivery receipt thực tế đến sớm cho đúng {@code echoMid} đó).</li>
+     *   <li>{@code message_echoes} là bằng chứng Page đã gửi/phản chiếu tin nhắn trên kênh, nên chỉ nâng
+     *       bong bóng đang ở {@link DeliveryStatus#UNKNOWN} hoặc {@link DeliveryStatus#IN_FLIGHT} lên
+     *       {@link DeliveryStatus#ACCEPTED_BY_CHANNEL} (hoặc {@link DeliveryStatus#DELIVERED} nếu đã giữ receipt của {@code echoMid}).</li>
+     *   <li>Chỉ ghép theo nội dung {@code echoText} khi có ĐÚNG 1 bong bóng {@code UNKNOWN}/{@code IN_FLIGHT} chưa có {@code externalMid}
+     *       khớp nội dung trong phạm vi {@code (pageId, senderPsid)} (không bao giờ đoán mò nếu có &ge; 2 ứng viên trùng nội dung).</li>
+     * </ul>
+     */
+    public static int reconcileOutboundEchoFromWebhook(
+            String pageId,
+            String senderPsid,
+            String echoMid,
+            String echoText
+    ) {
+        if (echoMid == null || echoMid.isBlank()) {
+            return 0;
+        }
+        String cleanMid = echoMid.strip();
+        String cleanText = (echoText != null && !echoText.isBlank()) ? echoText.strip() : null;
+        String normPage = (pageId != null && !pageId.isBlank()) ? pageId.strip() : "-";
+        String normSender = (senderPsid != null && !senderPsid.isBlank()) ? senderPsid.strip() : "-";
+
+        if (cleanText != null) {
+            recordMessageId(normPage, normSender, cleanMid, "assistant", cleanText);
+        }
+
+        cached(key(normPage, normSender, null));
+        cached(key(normPage, normSender, "fb_webhook_" + normSender));
+
+        boolean heldReceipt = hasHeldEarlyDeliveryReceipt(normPage, normSender, cleanMid);
+        DeliveryStatus targetStatus = heldReceipt
+                ? DeliveryStatus.DELIVERED
+                : DeliveryStatus.ACCEPTED_BY_CHANNEL;
+        String targetReason = heldReceipt
+                ? "DELIVERY_RECEIPT"
+                : "RECONCILED_BY_MESSAGE_ECHO";
+
+        String prefix = normPage + "|" + normSender + "|";
+        int reconciledCount = 0;
+
+        // Bước 1: Khớp chính xác theo externalMid đã biết
+        for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) {
+                continue;
+            }
+            List<TurnRecord> l = entry.getValue();
+            synchronized (l) {
+                for (TurnRecord t : l) {
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    for (BubbleRecord b : t.bubbles()) {
+                        if (cleanMid.equals(b.externalMid())
+                                && (b.status() == DeliveryStatus.UNKNOWN
+                                    || b.status() == DeliveryStatus.IN_FLIGHT
+                                    || (heldReceipt && b.status() == DeliveryStatus.ACCEPTED_BY_CHANNEL))) {
+                            BubbleRecord updated = transitionBubbleStatusMonotonically(
+                                    entry.getKey(),
+                                    t.turnId(),
+                                    b.order(),
+                                    targetStatus,
+                                    cleanMid,
+                                    targetReason
+                            );
+                            if (updated != null && updated.status() == targetStatus) {
+                                reconciledCount++;
                             }
-                        }
-                        if (matchedInFlight) {
-                            l.set(idx, new TurnRecord(t.turnId(), t.role(), List.copyOf(updated)));
-                            break;
                         }
                     }
                 }
             }
         }
-        return Math.max(storeUpdated, cacheUpdated);
+        if (reconciledCount > 0 || cleanText == null) {
+            return reconciledCount;
+        }
+
+        // Bước 2: Khớp đơn trị (unambiguous) theo văn bản đối với bong bóng UNKNOWN/IN_FLIGHT chưa có externalMid
+        String normEchoText = norm(cleanText);
+        java.util.Set<String> candidateTurnOrders = new java.util.LinkedHashSet<>();
+        java.util.List<String[]> candidateLocations = new ArrayList<>();
+        for (Map.Entry<String, List<TurnRecord>> entry : CACHE.entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) {
+                continue;
+            }
+            List<TurnRecord> l = entry.getValue();
+            synchronized (l) {
+                for (TurnRecord t : l) {
+                    if (!"assistant".equals(t.role())) {
+                        continue;
+                    }
+                    for (BubbleRecord b : t.bubbles()) {
+                        if ((b.status() == DeliveryStatus.UNKNOWN || b.status() == DeliveryStatus.IN_FLIGHT)
+                                && (b.externalMid() == null || b.externalMid().isBlank())
+                                && normEchoText.equals(norm(b.text()))) {
+                            String logicalId = t.turnId() + ":" + b.order();
+                            candidateTurnOrders.add(logicalId);
+                            candidateLocations.add(new String[]{entry.getKey(), t.turnId(), String.valueOf(b.order())});
+                        }
+                    }
+                }
+            }
+        }
+
+        // Chỉ đối soát khi có ĐÚNG 1 bong bóng logic khớp văn bản; nếu >= 2 ứng viên thì giữ nguyên UNKNOWN để an toàn
+        if (candidateTurnOrders.size() == 1) {
+            for (String[] loc : candidateLocations) {
+                BubbleRecord updated = transitionBubbleStatusMonotonically(
+                        loc[0],
+                        loc[1],
+                        Integer.parseInt(loc[2]),
+                        targetStatus,
+                        cleanMid,
+                        targetReason
+                );
+                if (updated != null && updated.status() == targetStatus) {
+                    reconciledCount++;
+                }
+            }
+        }
+        return reconciledCount;
     }
 
     public static int markBubblesDeliveredUpToWatermark(String pageId, String senderPsid, long watermarkEpochMs) {

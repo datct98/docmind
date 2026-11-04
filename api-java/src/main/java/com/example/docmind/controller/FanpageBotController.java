@@ -341,8 +341,11 @@ public class FanpageBotController {
                         continue;
                     }
                     // Lọc bỏ read receipt và tin nhắn phản chiếu của chính Page (is_echo=true)
-                    if (event.hasNonNull("read")
-                            || event.path("message").path("is_echo").asBoolean(false)) {
+                    if (event.hasNonNull("read")) {
+                        continue;
+                    }
+                    if (event.path("message").path("is_echo").asBoolean(false)) {
+                        handleMessageEchoWebhookEvent(effectivePageId, fbNumericPageId, event);
                         continue;
                     }
                     String senderId = event.path("sender").path("id").asText(null);
@@ -352,6 +355,7 @@ public class FanpageBotController {
                     String normalizedSenderId = senderId.strip();
                     // Đối chiếu chống lặp is_echo theo PAGE_ID số của Facebook (nếu sender.id == entry[].id thì bỏ qua tuyệt đối)
                     if (!fbNumericPageId.isEmpty() && fbNumericPageId.equals(normalizedSenderId)) {
+                        handleMessageEchoWebhookEvent(effectivePageId, fbNumericPageId, event);
                         continue;
                     }
 
@@ -1001,16 +1005,25 @@ public class FanpageBotController {
                             cleanOutMid != null ? cleanOutMid : "-");
                 } else {
                     int code = resp != null ? resp.statusCode() : 0;
+                    HttpOutcomeClassification outcome = classifyHttpResponseOutcome(resp);
                     com.example.docmind.service.bot.SentBubbleLedger.transitionBubbleStatusMonotonically(
                             turnHandle.ledgerKey(),
                             turnHandle.turnId(),
                             i,
-                            com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED,
+                            outcome.status(),
                             null,
-                            "HTTP_" + code
+                            outcome.reason()
                     );
-                    log.error("[FB_SEND_API] Failed bubble {}/{} to psid={} status={} body={}",
-                            i + 1, total, cleanPsid, code, resp != null ? resp.body() : "null");
+                    if (i + 1 < total) {
+                        suppressedMidSequence = true;
+                        suppressionReason = "ABORTED_AFTER_PRIOR_BUBBLE_" + outcome.status().name();
+                        suppressedFromIndex = i + 1;
+                        com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                                turnHandle.ledgerKey(), turnHandle.turnId(), i + 1, suppressionReason);
+                    }
+                    log.error("[FB_SEND_API] Non-2xx bubble {}/{} to psid={} httpCode={} classified={} reason={} body={}",
+                            i + 1, total, cleanPsid, code, outcome.status(), outcome.reason(),
+                            resp != null ? resp.body() : "null");
                     break;
                 }
             } catch (Throwable e) {
@@ -1033,6 +1046,13 @@ public class FanpageBotController {
                         null,
                         reason
                 );
+                if (i + 1 < total) {
+                    suppressedMidSequence = true;
+                    suppressionReason = "ABORTED_AFTER_PRIOR_BUBBLE_" + errorStatus.name();
+                    suppressedFromIndex = i + 1;
+                    com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                            turnHandle.ledgerKey(), turnHandle.turnId(), i + 1, suppressionReason);
+                }
                 log.error("[FB_SEND_API] Exception sending bubble {}/{} to psid={} classifiedStatus={}: {}",
                         i + 1, total, cleanPsid, errorStatus, e.getMessage());
                 break;
@@ -1119,6 +1139,105 @@ public class FanpageBotController {
             com.example.docmind.service.bot.SentBubbleLedger.markBubblesDeliveredUpToWatermark(
                     effectivePageId, customerPsid, watermark);
         }
+    }
+
+    /**
+     * Đối soát sự kiện {@code message_echoes} ({@code message.is_echo=true} hoặc {@code sender.id == fbNumericPageId})
+     * theo P3.1.1 Mục 2.2.B & 2.2.C:
+     * <ul>
+     *   <li>Tuyệt đối KHÔNG coi {@code message_echoes} là {@code DELIVERED} (trừ khi đã có delivery receipt đến sớm cho đúng {@code mid} đó).</li>
+     *   <li>Chỉ dùng để đối soát {@code UNKNOWN}/{@code IN_FLIGHT} lên {@code ACCEPTED_BY_CHANNEL} và lưu ánh xạ {@code mid}.</li>
+     * </ul>
+     */
+    private void handleMessageEchoWebhookEvent(String effectivePageId, String fbNumericPageId, JsonNode event) {
+        if (event == null) {
+            return;
+        }
+        String recipientId = event.path("recipient").path("id").asText("").strip();
+        String senderId = event.path("sender").path("id").asText("").strip();
+        String customerPsid;
+        if (!recipientId.isEmpty() && !recipientId.equals(fbNumericPageId)) {
+            customerPsid = recipientId;
+        } else if (!senderId.isEmpty() && !senderId.equals(fbNumericPageId)) {
+            customerPsid = senderId;
+        } else {
+            customerPsid = recipientId;
+        }
+        if (customerPsid.isEmpty()) {
+            return;
+        }
+        String echoMid = event.path("message").path("mid").asText("").strip();
+        String echoText = event.path("message").path("text").asText(null);
+        if (!echoMid.isEmpty()) {
+            com.example.docmind.service.bot.SentBubbleLedger.reconcileOutboundEchoFromWebhook(
+                    effectivePageId, customerPsid, echoMid, echoText);
+        }
+    }
+
+    private record HttpOutcomeClassification(
+            com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus status,
+            String reason
+    ) {
+    }
+
+    /**
+     * Phân loại chính xác HTTP response từ Facebook Graph API (P3.1.1 Mục 2.2.A):
+     * <ul>
+     *   <li>HTTP 2xx: {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#ACCEPTED_BY_CHANNEL}</li>
+     *   <li>HTTP 408 (Request Timeout): {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#UNKNOWN}
+     *       (không chắc chắn kênh đã xử lý hay chưa, không gửi lại mù).</li>
+     *   <li>HTTP 429 (Rate Limit): {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#FAILED}
+     *       với lý do {@code HTTP_429_RATE_LIMITED}; {@code attemptCount == 1} ngăn gửi lại mù ngay lập tức.</li>
+     *   <li>HTTP 4xx khác (400, 401, 403, 404...): {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#FAILED}
+     *       với lý do {@code HTTP_<code>_REJECTED}.</li>
+     *   <li>HTTP 5xx (500, 502, 503, 504...): {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#UNKNOWN}
+     *       với lý do {@code HTTP_<code>_SERVER_ERROR_UNCERTAIN} (không chắc chắn kênh đã tiếp nhận hay chưa).</li>
+     *   <li>Không nhận được response ({@code resp == null} hoặc {@code statusCode <= 0}):
+     *       {@link com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus#UNKNOWN} ({@code NO_HTTP_RESPONSE_UNCERTAIN}).</li>
+     * </ul>
+     */
+    private static HttpOutcomeClassification classifyHttpResponseOutcome(HttpResponseResult resp) {
+        if (resp == null || resp.statusCode() <= 0) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN,
+                    "NO_HTTP_RESPONSE_UNCERTAIN"
+            );
+        }
+        int code = resp.statusCode();
+        if (code >= 200 && code < 300) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.ACCEPTED_BY_CHANNEL,
+                    null
+            );
+        }
+        if (code == 408) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN,
+                    "HTTP_408_REQUEST_TIMEOUT_UNCERTAIN"
+            );
+        }
+        if (code == 429) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED,
+                    "HTTP_429_RATE_LIMITED"
+            );
+        }
+        if (code >= 400 && code < 500) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.FAILED,
+                    "HTTP_" + code + "_REJECTED"
+            );
+        }
+        if (code >= 500 && code < 600) {
+            return new HttpOutcomeClassification(
+                    com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN,
+                    "HTTP_" + code + "_SERVER_ERROR_UNCERTAIN"
+            );
+        }
+        return new HttpOutcomeClassification(
+                com.example.docmind.service.bot.SentBubbleLedger.DeliveryStatus.UNKNOWN,
+                "HTTP_" + code + "_UNCERTAIN"
+        );
     }
 
     private String evaluatePreSendOutboundFence(
