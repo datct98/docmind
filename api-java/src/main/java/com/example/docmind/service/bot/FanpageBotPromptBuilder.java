@@ -2327,9 +2327,10 @@ public final class FanpageBotPromptBuilder {
 
     /**
      * Quản lý ngân sách lịch sử hội thoại theo ranh giới lượt (Turn-boundary token budget):
-     * - Giữ nguyên 100% nguyên văn và vai người nói của các lượt gần nhất nằm trong ngân sách token (~1200 tokens / 4800 ký tự).
-     * - Không dùng substring(0, 260) cắt giữa câu làm mất chữ trong ngoặc kép hoặc thông tin cuối câu.
-     * - Với các lượt cũ hơn ngoài ngân sách cửa sổ gần nhất, tóm tắt gọn vào 1 dòng dữ kiện từ ConversationState.
+    /**
+     * P3.3: Đọc lịch sử hội thoại theo ngân sách token động thay vì giới hạn cứng 16 lượt / 4800 ký tự:
+     * - Khi toàn bộ phiên nằm trong ngân sách token, giữ 100% nguyên văn từ lượt đầu tiên đến lượt mới nhất.
+     * - Chỉ khi vượt ngân sách token mới tóm tắt phần lịch sử cũ kèm provenance và giữ nguyên văn các lượt mới nhất theo ranh giới lượt.
      */
     private static void appendTurnBoundaryBudgetedHistory(
             StringBuilder sb,
@@ -2338,59 +2339,8 @@ public final class FanpageBotPromptBuilder {
             String assistantLabel,
             String userLabel
     ) {
-        if (history == null || history.isEmpty()) {
-            return;
-        }
-        final int maxRecentTurns = 16;
-        final int charBudget = 4800; // ~1200 tokens trên RAM 24GB
-        int totalTurns = history.size();
-        int minStartIdx = Math.max(0, totalTurns - maxRecentTurns);
-        int usedChars = 0;
-        int firstIncludedIdx = totalTurns;
-        for (int i = totalTurns - 1; i >= minStartIdx; i--) {
-            FanpageBotRequest.ConversationTurn turn = history.get(i);
-            if (turn == null || turn.content() == null || turn.content().isBlank()) {
-                firstIncludedIdx = i;
-                continue;
-            }
-            int turnLen = turn.content().length() + 16;
-            if (usedChars + turnLen > charBudget && firstIncludedIdx < totalTurns) {
-                break;
-            }
-            usedChars += turnLen;
-            firstIncludedIdx = i;
-        }
-        if (firstIncludedIdx > 0 && convState != null) {
-            List<String> olderFacts = new ArrayList<>();
-            if (convState.knownSymptoms() != null && !convState.knownSymptoms().isEmpty()) {
-                olderFacts.add("triệu chứng=" + String.join(", ", convState.knownSymptoms()));
-            }
-            if (convState.frequency() != null && !convState.frequency().isBlank()) {
-                olderFacts.add("tần suất=" + convState.frequency());
-            } else if (convState.onset() != null && !convState.onset().isBlank()) {
-                olderFacts.add("khởi phát=" + convState.onset());
-            }
-            if (convState.lastOfferedPackageName() != null && !convState.lastOfferedPackageName().isBlank()) {
-                olderFacts.add("gói đã trao đổi=" + convState.lastOfferedPackageName());
-            }
-            if (convState.bookingStatus() != null && !"NONE".equals(convState.bookingStatus())) {
-                olderFacts.add("trạng thái đặt lịch=" + convState.bookingStatus());
-            }
-            if (!olderFacts.isEmpty()) {
-                sb.append("[Tóm tắt các lượt trước đó: ").append(String.join("; ", olderFacts)).append("]\n");
-            }
-        }
-        for (int i = firstIncludedIdx; i < totalTurns; i++) {
-            FanpageBotRequest.ConversationTurn turn = history.get(i);
-            if (turn == null || turn.content() == null || turn.content().isBlank()) {
-                continue;
-            }
-            String role = "assistant".equalsIgnoreCase(turn.role()) ? assistantLabel : userLabel;
-            String cleanTurn = PromptSecurityGuard.sanitizeUntrustedContent(turn.content().strip())
-                    .replace(" | ", ". ")
-                    .replaceAll("\\s*\\n+\\s*", " ");
-            sb.append(role).append(": ").append(cleanTurn).append('\n');
-        }
+        CleanAgentCatalogAndPromptBuilder.appendTokenBudgetedFanpageHistory(
+                sb, history, convState, assistantLabel, userLabel);
     }
 
     /** Mô tả gói từ Catalog của Tenant (tên + thời lượng + giá hiển thị); trả null nếu không đối chiếu được gói. */

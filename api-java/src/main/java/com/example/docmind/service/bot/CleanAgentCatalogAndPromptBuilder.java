@@ -1941,42 +1941,39 @@ public final class CleanAgentCatalogAndPromptBuilder {
             sb.append(governedPlaybookSection);
         }
 
-        sb.append("<CONVERSATION_HISTORY>\n");
-        int turnCounter = 0;
-        if (history != null && !history.isEmpty()) {
-            int startIdx = Math.max(0, history.size() - 8);
-            for (int i = startIdx; i < history.size(); i++) {
-                FanpageBotRequest.ConversationTurn t = history.get(i);
-                if (t == null || t.content() == null || t.content().isBlank()) continue;
-                turnCounter++;
-                String roleLabel = ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role()))
-                        ? "Bot"
-                        : "Khách";
-                sb.append("[T").append(turnCounter).append("] ")
-                  .append(roleLabel).append(": ").append(t.content().strip().replaceAll("\\s+", " ")).append('\n');
-            }
-        }
+        StringBuilder currentFooterSb = new StringBuilder();
         if (safeQuote.quotedBubbleText() != null && !safeQuote.quotedBubbleText().isBlank()) {
-            sb.append("Bong bóng tin nhắn cũ khách vừa Reply (reply_to.mid=")
+            currentFooterSb.append("Bong bóng tin nhắn cũ khách vừa Reply (reply_to.mid=")
               .append(safeQuote.replyToMid())
               .append("): \"")
               .append(safeQuote.quotedBubbleText().replaceAll("\\s+", " ").strip())
               .append("\"\n");
         } else if (safeQuote.unresolvedReplyToMid()) {
-            sb.append("Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=")
+            currentFooterSb.append("Khách vừa Reply vào một tin nhắn cũ (reply_to.mid=")
               .append(safeQuote.replyToMid())
               .append(") nhưng không tìm thấy nội dung bong bóng cũ trong bộ nhớ/DB.\n");
         }
         if (burstSubMessages.size() >= 2) {
-            sb.append("[CHỈ DẪN GỘP TIN NHẮN LIÊN TIẾP (MULTI-MESSAGE BURST — KHÁCH VỪA GỬI ")
+            currentFooterSb.append("[CHỈ DẪN GỘP TIN NHẮN LIÊN TIẾP (MULTI-MESSAGE BURST — KHÁCH VỪA GỬI ")
               .append(burstSubMessages.size())
               .append(" TIN NHẮN LIÊN TIẾP, BẮT BUỘC TRẢ LỜI ĐẦY ĐỦ TẤT CẢ CÁC Ý HỎI BÊN DƯỚI TRONG CÙNG LƯỢT NÀY, KHÔNG BỎ SÓT CÂU NÀO)]:\n");
             for (int i = 0; i < burstSubMessages.size(); i++) {
-                sb.append("  + Tin nhắn ").append(i + 1).append(": \"").append(burstSubMessages.get(i)).append("\"\n");
+                currentFooterSb.append("  + Tin nhắn ").append(i + 1).append(": \"").append(burstSubMessages.get(i)).append("\"\n");
             }
         }
-        sb.append("[T_CURRENT] Khách (tin nhắn hiện tại): ").append(customerMessage != null ? customerMessage.strip() : "").append('\n');
-        sb.append("</CONVERSATION_HISTORY>");
+        currentFooterSb.append("[T_CURRENT] Khách (tin nhắn hiện tại): ").append(customerMessage != null ? customerMessage.strip() : "").append('\n');
+        currentFooterSb.append("</CONVERSATION_HISTORY>");
+
+        appendTokenBudgetedConversationHistory(
+                sb,
+                history,
+                currentFooterSb.toString(),
+                null,
+                structuredBookingState,
+                tieredCatalog != null ? tieredCatalog.allAllowedPackages() : List.of(),
+                null,
+                true
+        );
         return sb.toString();
     }
 
@@ -5017,17 +5014,18 @@ public final class CleanAgentCatalogAndPromptBuilder {
             for (AdaptiveConversationIntelligence.VersionedCustomerFact sf : l2.selfReportedSymptoms()) {
                 if (sf == null) continue;
                 sb.append("         * [status=").append(sf.validity().name())
+                  .append(" | provenance=").append(sf.provenance().name())
                   .append(" | turn=").append(sf.sourceTurnId())
                   .append("]: \"").append(compactSingleLine(sf.value(), 70)).append("\"\n");
             }
         }
         if (!l2.confirmedFacts().isEmpty()) {
             sb.append("       - versioned_confirmed_facts:\n");
-            int factStart = Math.max(0, l2.confirmedFacts().size() - 8);
-            for (int i = factStart; i < l2.confirmedFacts().size(); i++) {
+            for (int i = 0; i < l2.confirmedFacts().size(); i++) {
                 AdaptiveConversationIntelligence.VersionedCustomerFact vf = l2.confirmedFacts().get(i);
                 if (vf == null) continue;
                 sb.append("         * [validity=").append(vf.validity().name())
+                  .append(" | provenance=").append(vf.provenance().name())
                   .append(" | turn=").append(vf.sourceTurnId())
                   .append(" | key=").append(vf.key())
                   .append("]: \"").append(compactSingleLine(vf.value(), 80)).append("\"\n");
@@ -5200,37 +5198,609 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         sb.append("</DOCUMENT_CONTEXT>\n\n");
 
-        // 6. VERBATIM CONVERSATION HISTORY WITH [T1]..[T_CURRENT] TURN IDS & BURST BUBBLES
-        sb.append("<CONVERSATION_HISTORY>\n");
-        int turnIdx = 0;
-        if (history != null && !history.isEmpty()) {
-            int startIdx = Math.max(0, history.size() - 10);
-            for (int i = startIdx; i < history.size(); i++) {
-                FanpageBotRequest.ConversationTurn t = history.get(i);
-                if (t == null || t.content() == null || t.content().isBlank()) continue;
-                turnIdx++;
-                boolean isBotRole = "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role());
-                String roleLabel = isBotRole ? "Bot" : "Khách";
-                String renderedTurnText = isBotRole
-                        ? t.content().strip().replaceAll("\\r?\\n\\s*\\r?\\n+", " | ")
-                        : t.content().strip();
-                sb.append("[T").append(turnIdx).append("] ")
-                  .append(roleLabel).append(": ")
-                  .append(renderedTurnText)
-                  .append('\n');
-            }
-        }
+        // 6. TOKEN-BUDGETED CONVERSATION HISTORY WITH [T1]..[T_CURRENT] TURN IDS, BURST BUBBLES & OLDER-HISTORY EVIDENCE SUMMARY
+        StringBuilder currentFooterSb = new StringBuilder();
         List<String> burstBubbles = threeStreamInput != null ? threeStreamInput.originalBurstBubbles() : List.of();
         if (burstBubbles.size() >= 2) {
-            sb.append("[T_CURRENT] Khách (gửi liên tiếp ").append(burstBubbles.size()).append(" bong bóng nguyên văn):\n");
+            currentFooterSb.append("[T_CURRENT] Khách (gửi liên tiếp ").append(burstBubbles.size()).append(" bong bóng nguyên văn):\n");
             for (int i = 0; i < burstBubbles.size(); i++) {
-                sb.append("  [Bong bóng ").append(i + 1).append("] ").append(burstBubbles.get(i)).append('\n');
+                currentFooterSb.append("  [Bong bóng ").append(i + 1).append("] ").append(burstBubbles.get(i)).append('\n');
             }
         } else {
-            sb.append("[T_CURRENT] Khách: ").append(verbatimOriginal).append('\n');
+            currentFooterSb.append("[T_CURRENT] Khách: ").append(verbatimOriginal).append('\n');
         }
-        sb.append("</CONVERSATION_HISTORY>");
+        currentFooterSb.append("</CONVERSATION_HISTORY>");
+
+        List<PackageCatalogService.PackageSummary> mergedCatalogForSummary = new ArrayList<>();
+        if (primaryPackages != null) mergedCatalogForSummary.addAll(primaryPackages);
+        if (economicalPackages != null) mergedCatalogForSummary.addAll(economicalPackages);
+
+        appendTokenBudgetedConversationHistory(
+                sb,
+                history,
+                currentFooterSb.toString(),
+                safeDraft2,
+                safeBooking,
+                mergedCatalogForSummary,
+                null,
+                false
+        );
         return sb.toString();
+    }
+
+    /**
+     * P3.3 Mục 2.2 & 2.3: Chính sách ngân sách token động cho lịch sử hội thoại theo Context Window của model
+     * (mặc định 8192 token theo {@code ollama.num-ctx=${OLLAMA_NUM_CTX:8192}}, trừ non-history prompt tokens,
+     * trừ output token reserve, trừ safety headroom).
+     */
+    public record HistoryTokenBudgetPolicy(
+            int contextWindowTokens,
+            int outputTokenReserve,
+            int safetyHeadroomTokens
+    ) {
+        public static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 8192;
+        public static final int DEFAULT_OUTPUT_TOKEN_RESERVE = 1200;
+        public static final int DEFAULT_SAFETY_HEADROOM_TOKENS = 256;
+
+        public HistoryTokenBudgetPolicy {
+            contextWindowTokens = Math.max(512, contextWindowTokens);
+            outputTokenReserve = Math.max(64, Math.min(outputTokenReserve, contextWindowTokens / 3));
+            safetyHeadroomTokens = Math.max(32, Math.min(safetyHeadroomTokens, contextWindowTokens / 8));
+        }
+
+        public static HistoryTokenBudgetPolicy defaultPolicy() {
+            return new HistoryTokenBudgetPolicy(
+                    DEFAULT_CONTEXT_WINDOW_TOKENS,
+                    DEFAULT_OUTPUT_TOKEN_RESERVE,
+                    DEFAULT_SAFETY_HEADROOM_TOKENS
+            );
+        }
+
+        public int computeAvailableHistoryBudget(int nonHistoryPromptTokens) {
+            int available = contextWindowTokens - outputTokenReserve - safetyHeadroomTokens - Math.max(0, nonHistoryPromptTokens);
+            return Math.max(96, available);
+        }
+    }
+
+    public record HistoryBudgetAssemblyReport(
+            int contextWindowTokens,
+            int outputTokenReserve,
+            int safetyHeadroomTokens,
+            int nonHistoryPromptTokens,
+            int availableHistoryTokenBudget,
+            int totalTranscriptTurns,
+            int totalTranscriptTokens,
+            int summarizedOlderTurnCount,
+            int verbatimIncludedTurnCount,
+            int firstVerbatimTurnOneBasedIndex,
+            int olderSummaryTokens,
+            int verbatimHistoryTokens,
+            int totalPromptTokens,
+            boolean usedOlderHistorySummary,
+            List<Integer> summarizedTurnOneBasedIndices,
+            List<Integer> verbatimTurnOneBasedIndices,
+            String olderHistorySummaryText
+    ) {}
+
+    private static volatile HistoryTokenBudgetPolicy configuredHistoryTokenBudgetPolicy =
+            HistoryTokenBudgetPolicy.defaultPolicy();
+    private static volatile HistoryBudgetAssemblyReport lastHistoryBudgetReport = null;
+
+    public static void setConfiguredHistoryTokenBudgetPolicy(HistoryTokenBudgetPolicy policy) {
+        configuredHistoryTokenBudgetPolicy = policy != null ? policy : HistoryTokenBudgetPolicy.defaultPolicy();
+    }
+
+    public static void resetConfiguredHistoryTokenBudgetPolicy() {
+        configuredHistoryTokenBudgetPolicy = HistoryTokenBudgetPolicy.defaultPolicy();
+    }
+
+    public static HistoryTokenBudgetPolicy getConfiguredHistoryTokenBudgetPolicy() {
+        return configuredHistoryTokenBudgetPolicy;
+    }
+
+    public static HistoryBudgetAssemblyReport getLastHistoryBudgetReport() {
+        return lastHistoryBudgetReport;
+    }
+
+    public static int estimateTokens(CharSequence text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return (text.length() + 3) / 4;
+    }
+
+    private record IndexedTranscriptTurn(
+            int oneBasedTurnIndex,
+            FanpageBotRequest.ConversationTurn rawTurn,
+            boolean isBotRole,
+            String formattedLine,
+            int estimatedTokens
+    ) {}
+
+    public static void appendTokenBudgetedConversationHistory(
+            StringBuilder sb,
+            List<FanpageBotRequest.ConversationTurn> history,
+            String currentTurnFooter,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2,
+            ConversationState.StructuredBookingState bookingState,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            ConversationState convState,
+            boolean collapseSingleLine
+    ) {
+        HistoryTokenBudgetPolicy policy = configuredHistoryTokenBudgetPolicy != null
+                ? configuredHistoryTokenBudgetPolicy
+                : HistoryTokenBudgetPolicy.defaultPolicy();
+        String openTag = "<CONVERSATION_HISTORY>\n";
+        String safeFooter = currentTurnFooter != null ? currentTurnFooter : "</CONVERSATION_HISTORY>";
+        int nonHistoryTokens = estimateTokens(sb) + estimateTokens(openTag) + estimateTokens(safeFooter);
+        int availableHistoryBudget = policy.computeAvailableHistoryBudget(nonHistoryTokens);
+
+        List<IndexedTranscriptTurn> indexedTurns = new ArrayList<>();
+        int turnCounter = 0;
+        if (history != null) {
+            for (FanpageBotRequest.ConversationTurn t : history) {
+                if (t == null || t.content() == null || t.content().isBlank()) {
+                    continue;
+                }
+                turnCounter++;
+                boolean isBot = "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role());
+                String roleLabel = isBot ? "Bot" : "Khách";
+                String renderedText;
+                if (collapseSingleLine) {
+                    renderedText = t.content().strip().replaceAll("\\s+", " ");
+                } else {
+                    renderedText = isBot
+                            ? t.content().strip().replaceAll("\\r?\\n\\s*\\r?\\n+", " | ")
+                            : t.content().strip();
+                }
+                String line = "[T" + turnCounter + "] " + roleLabel + ": " + renderedText + "\n";
+                indexedTurns.add(new IndexedTranscriptTurn(
+                        turnCounter,
+                        t,
+                        isBot,
+                        line,
+                        estimateTokens(line)
+                ));
+            }
+        }
+
+        int totalTranscriptTokens = 0;
+        for (IndexedTranscriptTurn it : indexedTurns) {
+            totalTranscriptTokens += it.estimatedTokens();
+        }
+
+        sb.append(openTag);
+        if (indexedTurns.isEmpty() || totalTranscriptTokens <= availableHistoryBudget) {
+            List<Integer> verbatimIndices = new ArrayList<>(indexedTurns.size());
+            for (IndexedTranscriptTurn it : indexedTurns) {
+                sb.append(it.formattedLine());
+                verbatimIndices.add(it.oneBasedTurnIndex());
+            }
+            sb.append(safeFooter);
+            int totalPromptTokens = estimateTokens(sb);
+            lastHistoryBudgetReport = new HistoryBudgetAssemblyReport(
+                    policy.contextWindowTokens(),
+                    policy.outputTokenReserve(),
+                    policy.safetyHeadroomTokens(),
+                    nonHistoryTokens,
+                    availableHistoryBudget,
+                    indexedTurns.size(),
+                    totalTranscriptTokens,
+                    0,
+                    indexedTurns.size(),
+                    indexedTurns.isEmpty() ? 0 : indexedTurns.get(0).oneBasedTurnIndex(),
+                    0,
+                    totalTranscriptTokens,
+                    totalPromptTokens,
+                    false,
+                    List.of(),
+                    List.copyOf(verbatimIndices),
+                    ""
+            );
+            return;
+        }
+
+        // P3.3 Mục 2.3: Transcript vượt ngân sách token -> giữ nguyên văn các lượt mới nhất theo ranh giới lượt
+        // và tóm tắt có cấu trúc + gắn nhãn nguồn gốc (provenance) các lượt cũ hơn.
+        int summaryReserveTokens = Math.min(360, Math.max(120, (availableHistoryBudget * 3) / 5));
+        int targetVerbatimBudget = Math.max(40, availableHistoryBudget - summaryReserveTokens);
+
+        int firstVerbatimIdx = indexedTurns.size();
+        int verbatimTokens = 0;
+        for (int i = indexedTurns.size() - 1; i >= 1; i--) {
+            int turnTokens = indexedTurns.get(i).estimatedTokens();
+            if (verbatimTokens + turnTokens > targetVerbatimBudget && firstVerbatimIdx < indexedTurns.size()) {
+                break;
+            }
+            if (verbatimTokens + turnTokens <= availableHistoryBudget - 64 || firstVerbatimIdx == indexedTurns.size()) {
+                verbatimTokens += turnTokens;
+                firstVerbatimIdx = i;
+            } else {
+                break;
+            }
+        }
+        if (firstVerbatimIdx <= 0) {
+            firstVerbatimIdx = 1;
+            verbatimTokens = 0;
+            for (int i = firstVerbatimIdx; i < indexedTurns.size(); i++) {
+                verbatimTokens += indexedTurns.get(i).estimatedTokens();
+            }
+        }
+
+        List<IndexedTranscriptTurn> olderTurns = indexedTurns.subList(0, firstVerbatimIdx);
+        int maxSummaryTokens = Math.max(64, availableHistoryBudget - verbatimTokens);
+        String summaryBlock = summarizeOlderTurnsEvidence(
+                olderTurns, draft2, bookingState, allCatalog, convState, maxSummaryTokens);
+        int summaryTokens = estimateTokens(summaryBlock);
+
+        while (summaryTokens + verbatimTokens > availableHistoryBudget && firstVerbatimIdx < indexedTurns.size() - 1) {
+            verbatimTokens -= indexedTurns.get(firstVerbatimIdx).estimatedTokens();
+            firstVerbatimIdx++;
+            olderTurns = indexedTurns.subList(0, firstVerbatimIdx);
+            maxSummaryTokens = Math.max(64, availableHistoryBudget - verbatimTokens);
+            summaryBlock = summarizeOlderTurnsEvidence(
+                    olderTurns, draft2, bookingState, allCatalog, convState, maxSummaryTokens);
+            summaryTokens = estimateTokens(summaryBlock);
+        }
+        if (summaryTokens + verbatimTokens > availableHistoryBudget) {
+            int strictMaxSummaryTokens = Math.max(48, availableHistoryBudget - verbatimTokens);
+            summaryBlock = summarizeOlderTurnsEvidence(
+                    olderTurns, draft2, bookingState, allCatalog, convState, strictMaxSummaryTokens);
+            summaryTokens = estimateTokens(summaryBlock);
+        }
+
+        sb.append(summaryBlock);
+        List<Integer> summarizedIndices = new ArrayList<>(firstVerbatimIdx);
+        for (int i = 0; i < firstVerbatimIdx; i++) {
+            summarizedIndices.add(indexedTurns.get(i).oneBasedTurnIndex());
+        }
+        List<Integer> verbatimIndices = new ArrayList<>(indexedTurns.size() - firstVerbatimIdx);
+        for (int i = firstVerbatimIdx; i < indexedTurns.size(); i++) {
+            sb.append(indexedTurns.get(i).formattedLine());
+            verbatimIndices.add(indexedTurns.get(i).oneBasedTurnIndex());
+        }
+        sb.append(safeFooter);
+
+        int totalPromptTokens = estimateTokens(sb);
+        lastHistoryBudgetReport = new HistoryBudgetAssemblyReport(
+                policy.contextWindowTokens(),
+                policy.outputTokenReserve(),
+                policy.safetyHeadroomTokens(),
+                nonHistoryTokens,
+                availableHistoryBudget,
+                indexedTurns.size(),
+                totalTranscriptTokens,
+                olderTurns.size(),
+                verbatimIndices.size(),
+                verbatimIndices.isEmpty() ? 0 : verbatimIndices.get(0),
+                summaryTokens,
+                verbatimTokens,
+                totalPromptTokens,
+                true,
+                List.copyOf(summarizedIndices),
+                List.copyOf(verbatimIndices),
+                summaryBlock
+        );
+    }
+
+    public static void appendTokenBudgetedFanpageHistory(
+            StringBuilder sb,
+            List<FanpageBotRequest.ConversationTurn> history,
+            ConversationState convState,
+            String assistantLabel,
+            String userLabel
+    ) {
+        if (history == null || history.isEmpty()) {
+            return;
+        }
+        HistoryTokenBudgetPolicy policy = configuredHistoryTokenBudgetPolicy != null
+                ? configuredHistoryTokenBudgetPolicy
+                : HistoryTokenBudgetPolicy.defaultPolicy();
+        int nonHistoryTokens = estimateTokens(sb) + 120;
+        int availableHistoryBudget = policy.computeAvailableHistoryBudget(nonHistoryTokens);
+
+        List<IndexedTranscriptTurn> indexedTurns = new ArrayList<>();
+        int turnCounter = 0;
+        for (FanpageBotRequest.ConversationTurn turn : history) {
+            if (turn == null || turn.content() == null || turn.content().isBlank()) {
+                continue;
+            }
+            turnCounter++;
+            boolean isBot = "assistant".equalsIgnoreCase(turn.role()) || "bot".equalsIgnoreCase(turn.role());
+            String role = isBot ? assistantLabel : userLabel;
+            String cleanTurn = com.example.docmind.service.security.PromptSecurityGuard.sanitizeUntrustedContent(turn.content().strip())
+                    .replace(" | ", ". ")
+                    .replaceAll("\\s*\\n+\\s*", " ");
+            String line = role + ": " + cleanTurn + "\n";
+            indexedTurns.add(new IndexedTranscriptTurn(turnCounter, turn, isBot, line, estimateTokens(line)));
+        }
+
+        int totalTranscriptTokens = 0;
+        for (IndexedTranscriptTurn it : indexedTurns) {
+            totalTranscriptTokens += it.estimatedTokens();
+        }
+        if (indexedTurns.isEmpty() || totalTranscriptTokens <= availableHistoryBudget) {
+            for (IndexedTranscriptTurn it : indexedTurns) {
+                sb.append(it.formattedLine());
+            }
+            return;
+        }
+
+        int summaryReserveTokens = Math.min(280, Math.max(72, availableHistoryBudget / 3));
+        int targetVerbatimBudget = Math.max(40, availableHistoryBudget - summaryReserveTokens);
+        int firstVerbatimIdx = indexedTurns.size();
+        int verbatimTokens = 0;
+        for (int i = indexedTurns.size() - 1; i >= 1; i--) {
+            int turnTokens = indexedTurns.get(i).estimatedTokens();
+            if (verbatimTokens + turnTokens > targetVerbatimBudget && firstVerbatimIdx < indexedTurns.size()) {
+                break;
+            }
+            verbatimTokens += turnTokens;
+            firstVerbatimIdx = i;
+        }
+        if (firstVerbatimIdx <= 0) {
+            firstVerbatimIdx = 1;
+        }
+        List<IndexedTranscriptTurn> olderTurns = indexedTurns.subList(0, firstVerbatimIdx);
+        String summaryBlock = summarizeOlderTurnsEvidence(
+                olderTurns,
+                null,
+                convState != null ? convState.structuredBookingState() : null,
+                convState != null ? convState.availablePackageCatalog() : List.of(),
+                convState,
+                Math.max(64, availableHistoryBudget - verbatimTokens)
+        );
+        sb.append(summaryBlock);
+        for (int i = firstVerbatimIdx; i < indexedTurns.size(); i++) {
+            sb.append(indexedTurns.get(i).formattedLine());
+        }
+    }
+
+    public static String buildOlderHistoryEvidenceSummary(
+            List<FanpageBotRequest.ConversationTurn> olderHistoryTurns,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2,
+            ConversationState.StructuredBookingState bookingState,
+            List<PackageCatalogService.PackageSummary> allCatalog
+    ) {
+        if (olderHistoryTurns == null || olderHistoryTurns.isEmpty()) {
+            return "";
+        }
+        List<IndexedTranscriptTurn> indexed = new ArrayList<>();
+        int idx = 0;
+        for (FanpageBotRequest.ConversationTurn t : olderHistoryTurns) {
+            if (t == null || t.content() == null || t.content().isBlank()) continue;
+            idx++;
+            boolean isBot = "assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role());
+            String line = "[T" + idx + "] " + (isBot ? "Bot: " : "Khách: ") + t.content().strip() + "\n";
+            indexed.add(new IndexedTranscriptTurn(idx, t, isBot, line, estimateTokens(line)));
+        }
+        return summarizeOlderTurnsEvidence(indexed, draft2, bookingState, allCatalog, null, 2048);
+    }
+
+    private static String summarizeOlderTurnsEvidence(
+            List<IndexedTranscriptTurn> olderTurns,
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot draft2,
+            ConversationState.StructuredBookingState bookingState,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            ConversationState convState,
+            int maxSummaryTokens
+    ) {
+        if (olderTurns == null || olderTurns.isEmpty()) {
+            return "";
+        }
+        int firstTurn = olderTurns.get(0).oneBasedTurnIndex();
+        int lastTurn = olderTurns.get(olderTurns.size() - 1).oneBasedTurnIndex();
+        String turnRangeLabel = "T" + firstTurn + "..T" + lastTurn;
+
+        AdaptiveConversationIntelligence.ConsultativeProfileLayer l2 = draft2 != null
+                ? draft2.consultativeProfile()
+                : AdaptiveConversationIntelligence.ConsultativeProfileLayer.initial();
+        AdaptiveConversationIntelligence.BusinessCommitmentLayer l3 = draft2 != null
+                ? draft2.businessCommitment()
+                : AdaptiveConversationIntelligence.BusinessCommitmentLayer.initial();
+        AdaptiveConversationIntelligence.ConversationalContextLayer l1 = draft2 != null
+                ? draft2.conversationalContext()
+                : AdaptiveConversationIntelligence.ConversationalContextLayer.initial();
+
+        // 1. Nhu cầu & triệu chứng khách đã xác nhận (CUSTOMER_CONFIRMED)
+        Set<String> confirmedNeedsAndSymptoms = new LinkedHashSet<>();
+        for (AdaptiveConversationIntelligence.VersionedCustomerFact sf : l2.selfReportedSymptoms()) {
+            if (sf != null && !sf.value().isBlank()) {
+                confirmedNeedsAndSymptoms.add(sf.value() + " [" + sf.validity().name() + ", turn=" + sf.sourceTurnId() + "]");
+            }
+        }
+        for (AdaptiveConversationIntelligence.VersionedCustomerFact vf : l2.currentConfirmedFacts()) {
+            if (vf != null && "need_scope".equals(vf.key()) && !vf.value().isBlank()) {
+                confirmedNeedsAndSymptoms.add(vf.value() + " [provenance=" + vf.provenance().name() + ", turn=" + vf.sourceTurnId() + "]");
+            }
+        }
+        if (convState != null && convState.knownSymptoms() != null) {
+            for (String s : convState.knownSymptoms()) {
+                if (s != null && !s.isBlank()) {
+                    confirmedNeedsAndSymptoms.add(s.strip() + " [CUSTOMER_CONFIRMED]");
+                }
+            }
+        }
+
+        // Quét trực tiếp các lượt cũ của khách và bot để không bỏ sót dữ kiện dù chưa nạp vào Draft2
+        Set<String> olderCustomerBudgets = new LinkedHashSet<>();
+        Set<String> olderBranches = new LinkedHashSet<>();
+        Set<String> olderBotProposedPkgs = new LinkedHashSet<>();
+        Set<String> olderObjectionsAndConcerns = new LinkedHashSet<>();
+        Set<String> olderRevisions = new LinkedHashSet<>();
+        boolean olderHasCustomerDeferral = false;
+
+        for (IndexedTranscriptTurn it : olderTurns) {
+            String content = it.rawTurn() != null && it.rawTurn().content() != null ? it.rawTurn().content().strip() : "";
+            if (content.isEmpty()) continue;
+            String turnTag = "T" + it.oneBasedTurnIndex();
+            if (!it.isBotRole()) {
+                List<String> symAtoms = AdaptiveConversationIntelligence.splitAtomicHealthExpressions(content);
+                for (String atom : symAtoms) {
+                    if (atom != null && atom.split("\\s+").length <= 5
+                            && atom.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(đau|mỏi|nhức|buốt|tê|căng|cứng|nặng|khó\\s+ngủ|mất\\s+ngủ|chóng\\s+mặt|hoa\\s+mắt)\\b.*")) {
+                        confirmedNeedsAndSymptoms.add(atom + " [CUSTOMER_CONFIRMED, turn=" + turnTag + "]");
+                    }
+                }
+                String extractedBudget = AdaptiveConversationIntelligence.extractExplicitCustomerTargetBudget(content);
+                if (extractedBudget != null) {
+                    boolean isRev = AdaptiveConversationIntelligence.isCustomerPreferenceOrNeedRevisionUtterance(content);
+                    olderCustomerBudgets.add(extractedBudget + " [provenance="
+                            + (isRev ? "CUSTOMER_CORRECTED" : "CUSTOMER_CONFIRMED") + ", turn=" + turnTag + "]");
+                }
+                String extractedBranch = AdaptiveConversationIntelligence.extractExplicitCustomerBranch(content);
+                if (extractedBranch != null) {
+                    boolean isRev = AdaptiveConversationIntelligence.isCustomerPreferenceOrNeedRevisionUtterance(content);
+                    olderBranches.add(extractedBranch + " [provenance="
+                            + (isRev ? "CUSTOMER_CORRECTED" : "CUSTOMER_CONFIRMED") + ", turn=" + turnTag + "]");
+                }
+                if (AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(content)) {
+                    olderObjectionsAndConcerns.add("PRICE_OBJECTION(\"" + compactSingleLine(content, 55) + "\", turn=" + turnTag + ")");
+                }
+                if (AdaptiveConversationIntelligence.isCustomerPreferenceOrNeedRevisionUtterance(content)) {
+                    olderRevisions.add("CUSTOMER_CORRECTED(\"" + compactSingleLine(content, 60) + "\", turn=" + turnTag + ")");
+                }
+                if (AdaptiveConversationIntelligence.isCustomerDeferralMessage(content)) {
+                    olderHasCustomerDeferral = true;
+                }
+            } else {
+                if (allCatalog != null && !allCatalog.isEmpty()) {
+                    List<PackageCatalogService.PackageSummary> presented = extractPresentedPackagesFromHistory(
+                            List.of(it.rawTurn()), null, allCatalog);
+                    for (PackageCatalogService.PackageSummary p : presented) {
+                        if (p != null && p.productId() != null) {
+                            olderBotProposedPkgs.add(p.productId() + " (" + p.canonicalLabel() + ") [BOT_PROPOSED, turn=" + turnTag + "]");
+                        }
+                    }
+                }
+                Matcher priceInBot = Pattern.compile("\\b(\\d{3}\\s*k|\\d{3}[.,]000\\s*(?:đ|vnđ|vnd)?)\\b", Pattern.CASE_INSENSITIVE)
+                        .matcher(content);
+                while (priceInBot.find()) {
+                    olderBotProposedPkgs.add("gói " + priceInBot.group(1).strip() + " [BOT_PROPOSED, turn=" + turnTag + "]");
+                }
+            }
+        }
+
+        // Bổ sung từ Structured Memory (Draft2 & BookingState)
+        for (AdaptiveConversationIntelligence.VersionedCustomerFact vf : l2.confirmedFacts()) {
+            if (vf == null || vf.value().isBlank()) continue;
+            String item = vf.key() + "=" + vf.value() + " [validity=" + vf.validity().name()
+                    + ", provenance=" + vf.provenance().name() + ", turn=" + vf.sourceTurnId() + "]";
+            if ("customer_budget".equals(vf.key()) || "budget_note".equals(vf.key())) {
+                if (vf.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT) {
+                    olderCustomerBudgets.add(item);
+                } else {
+                    olderRevisions.add(item);
+                }
+            } else if ("preferred_branch".equals(vf.key())) {
+                if (vf.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT) {
+                    olderBranches.add(item);
+                } else {
+                    olderRevisions.add(item);
+                }
+            } else if ("price_reaction".equals(vf.key())) {
+                olderObjectionsAndConcerns.add(item);
+            } else if (vf.validity() == AdaptiveConversationIntelligence.FactValidity.SUPERSEDED
+                    || vf.provenance() == AdaptiveConversationIntelligence.FactProvenance.CUSTOMER_CORRECTED) {
+                olderRevisions.add(item);
+            }
+        }
+        if (l3.negativePreferences() != null) {
+            for (var np : l3.negativePreferences()) {
+                if (np != null) {
+                    olderBranches.add("negative_preference=" + np.targetKey() + "(" + np.scope() + ") [CUSTOMER_CONFIRMED]");
+                }
+            }
+        }
+        if (l3.lastOfferedPackageIds() != null) {
+            for (String pid : l3.lastOfferedPackageIds()) {
+                if (pid != null && !pid.isBlank()) {
+                    olderBotProposedPkgs.add(pid + " [provenance=BOT_PROPOSED, unconfirmed_by_customer]");
+                }
+            }
+        }
+        if (convState != null && convState.lastOfferedPackageName() != null && !convState.lastOfferedPackageName().isBlank()) {
+            olderBotProposedPkgs.add(convState.lastOfferedPackageName() + " [provenance=BOT_PROPOSED]");
+        }
+        for (AdaptiveConversationIntelligence.UnresolvedRequestItem req : l1.unresolvedRequests()) {
+            if (req != null && req.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN) {
+                olderObjectionsAndConcerns.add("open_question=\"" + compactSingleLine(req.item(), 55) + "\" [turn=" + req.sourceTurnId() + "]");
+            }
+        }
+        if (l2.barrierHypothesis() != null && !"NONE".equalsIgnoreCase(l2.barrierHypothesis().barrierType())) {
+            olderObjectionsAndConcerns.add("barrier_hypothesis=" + l2.barrierHypothesis().barrierType()
+                    + " [provenance=INFERRED]");
+        }
+
+        String interestedPkgStr = l3.interestedPackageId() != null ? l3.interestedPackageId() : "NONE";
+        String selectedPkgStr = (bookingState != null && bookingState.selectedProductId() != null)
+                ? bookingState.selectedProductId()
+                : (l3.selectedPackageId() != null ? l3.selectedPackageId() : "NONE");
+        String bookingStatusStr = bookingState != null && bookingState.status() != null
+                ? bookingState.status().name()
+                : (convState != null && convState.bookingStatus() != null ? convState.bookingStatus() : "NONE");
+        String bookingDateStr = bookingState != null && bookingState.bookingDate() != null ? bookingState.bookingDate() : "null";
+        String bookingTimeStr = bookingState != null && bookingState.bookingTime() != null ? bookingState.bookingTime() : "null";
+
+        boolean isDeferralState = olderHasCustomerDeferral
+                || "CUSTOMER_DEFERRAL".equalsIgnoreCase(l2.turnIntent())
+                || "PAUSED_BY_CUSTOMER".equalsIgnoreCase(l2.conversationState());
+        String confirmationStatusStr;
+        if (!"NONE".equals(selectedPkgStr) || !"NONE".equals(bookingStatusStr)) {
+            confirmationStatusStr = "CUSTOMER_CONFIRMED (selected_package=" + selectedPkgStr + ", booking_status=" + bookingStatusStr + ")";
+        } else if (isDeferralState) {
+            confirmationStatusStr = "CUSTOMER_DEFERRAL (PAUSED_BY_CUSTOMER: khách đang cân nhắc 'Để tôi xem đã' — KHÔNG phải từ chối, KHÔNG phải đã đặt lịch, giữ nguyên gói đang quan tâm interested_package=" + interestedPkgStr + ")";
+        } else {
+            confirmationStatusStr = "UNDECIDED (khách đang tìm hiểu, chưa xác nhận chọn gói hay đặt lịch)";
+        }
+
+        StringBuilder full = new StringBuilder(512);
+        full.append("<OLDER_HISTORY_EVIDENCE_SUMMARY turns=\"").append(turnRangeLabel).append("\">\n");
+        full.append("[Tóm tắt các lượt trước đó (").append(turnRangeLabel).append(") — Bảo toàn Provenance & Mức xác nhận]:\n");
+        full.append("- customer_needs_and_symptoms [provenance=CUSTOMER_CONFIRMED]: ")
+            .append(confirmedNeedsAndSymptoms.isEmpty() ? "(chưa ghi nhận)" : String.join("; ", confirmedNeedsAndSymptoms))
+            .append(" | goal=").append(l2.conversationGoal()).append('\n');
+        full.append("- package_interest_vs_selection: interested_package=").append(interestedPkgStr)
+            .append(" [status=CONSIDERING], selected_package=").append(selectedPkgStr)
+            .append(!"NONE".equals(selectedPkgStr) ? " [provenance=CUSTOMER_CONFIRMED]" : " [chưa chốt gói]").append('\n');
+        full.append("- customer_budget_and_price_sensitivity: customer_budget=")
+            .append(olderCustomerBudgets.isEmpty() ? "NONE (chưa nêu ngân sách mục tiêu)" : String.join("; ", olderCustomerBudgets))
+            .append('\n');
+        full.append("- branch_preferences_and_exclusions: ")
+            .append(olderBranches.isEmpty() ? "NONE" : String.join("; ", olderBranches)).append('\n');
+        full.append("- bot_introduced_packages [provenance=BOT_PROPOSED, unconfirmed_by_customer]: ")
+            .append(olderBotProposedPkgs.isEmpty() ? "NONE" : String.join("; ", olderBotProposedPkgs)).append('\n');
+        full.append("- objections_concerns_and_unresolved_questions: ")
+            .append(olderObjectionsAndConcerns.isEmpty() ? "NONE" : String.join("; ", olderObjectionsAndConcerns)).append('\n');
+        full.append("- customer_corrections_and_revisions [provenance=CUSTOMER_CORRECTED]: ")
+            .append(olderRevisions.isEmpty() ? "NONE" : String.join("; ", olderRevisions)).append('\n');
+        full.append("- booking_intent_and_state [provenance=SYSTEM_DERIVED]: status=").append(bookingStatusStr)
+            .append(", selected_product_id=").append(selectedPkgStr)
+            .append(", date=").append(bookingDateStr)
+            .append(", time=").append(bookingTimeStr).append('\n');
+        full.append("- customer_confirmation_status: ").append(confirmationStatusStr).append('\n');
+        full.append("</OLDER_HISTORY_EVIDENCE_SUMMARY>\n");
+
+        if (estimateTokens(full) <= Math.max(maxSummaryTokens, 4096)) {
+            return full.toString();
+        }
+
+        // Chế độ nén gọn khi ngân sách token dành cho tóm tắt rất hẹp (TC03) nhưng vẫn giữ đủ 9 nhóm dữ kiện & provenance
+        StringBuilder compact = new StringBuilder(256);
+        compact.append("<OLDER_HISTORY_EVIDENCE_SUMMARY turns=\"").append(turnRangeLabel).append("\">\n");
+        compact.append("[Tóm tắt các lượt trước đó (").append(turnRangeLabel).append("): ")
+               .append("needs[CUSTOMER_CONFIRMED]=").append(compactSingleLine(String.join(",", confirmedNeedsAndSymptoms), 48))
+               .append("; interested_pkg=").append(interestedPkgStr)
+               .append("; selected_pkg=").append(selectedPkgStr)
+               .append("; budget=").append(olderCustomerBudgets.isEmpty() ? "NONE" : compactSingleLine(String.join(",", olderCustomerBudgets), 36))
+               .append("; branch=").append(olderBranches.isEmpty() ? "NONE" : compactSingleLine(String.join(",", olderBranches), 36))
+               .append("; bot_proposed[BOT_PROPOSED]=").append(olderBotProposedPkgs.isEmpty() ? "NONE" : compactSingleLine(String.join(",", olderBotProposedPkgs), 36))
+               .append("; objections=").append(olderObjectionsAndConcerns.isEmpty() ? "NONE" : compactSingleLine(String.join(",", olderObjectionsAndConcerns), 42))
+               .append("; revisions[CUSTOMER_CORRECTED]=").append(olderRevisions.isEmpty() ? "NONE" : compactSingleLine(String.join(",", olderRevisions), 42))
+               .append("; booking=").append(bookingStatusStr).append("@").append(bookingDateStr).append(" ").append(bookingTimeStr)
+               .append("; confirm=").append(isDeferralState ? "CUSTOMER_DEFERRAL" : (!"NONE".equals(selectedPkgStr) ? "CUSTOMER_CONFIRMED" : "UNDECIDED"))
+               .append("]\n</OLDER_HISTORY_EVIDENCE_SUMMARY>\n");
+        return compact.toString();
     }
 
     public enum CatalogViewMode { NEED_MATCHED_RECOMMENDATION, FULL_DISCLOSURE, PACKAGE_COMPARISON }

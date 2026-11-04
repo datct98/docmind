@@ -884,6 +884,39 @@ public final class AdaptiveConversationIntelligence {
     }
 
     /**
+     * P3.3 Mục 2.4: Phân biệt nguồn gốc và mức độ xác nhận của thông tin trong bộ nhớ phiên.
+     */
+    public enum FactProvenance {
+        CUSTOMER_CONFIRMED,
+        CUSTOMER_CORRECTED,
+        BOT_PROPOSED,
+        INFERRED,
+        SYSTEM_DERIVED;
+
+        public static FactProvenance fromSourceAndStatus(String rawSource, String rawStatus, FactValidity validity) {
+            String src = rawSource != null ? rawSource.strip().toUpperCase(Locale.ROOT) : "";
+            String st = rawStatus != null ? rawStatus.strip().toUpperCase(Locale.ROOT) : "";
+            if (src.contains("CUSTOMER_CORRECT") || st.contains("CORRECT") || src.contains("REVISE")) {
+                return CUSTOMER_CORRECTED;
+            }
+            if (src.contains("BOT") || st.contains("BOT") || src.contains("ASSISTANT") || src.contains("OFFER")) {
+                return BOT_PROPOSED;
+            }
+            if (src.contains("SYSTEM") || st.contains("SYSTEM") || src.contains("GATEWAY") || src.contains("DERIVED")) {
+                return SYSTEM_DERIVED;
+            }
+            if (src.contains("INFER") || st.contains("INFER") || src.contains("HYPOTHESIS")
+                    || src.contains("PARSER") || src.contains("CANDIDATE")) {
+                return INFERRED;
+            }
+            if (src.contains("CUSTOMER") || "CONFIRMED".equals(st)) {
+                return CUSTOMER_CONFIRMED;
+            }
+            return INFERRED;
+        }
+    }
+
+    /**
      * Phương án B (Versioned Facts): Mỗi dữ kiện trong {@code confirmed_facts} / {@code self_reported_symptoms}
      * lưu đầy đủ nguồn gốc và hiệu lực 5 trạng thái ({@code CURRENT | RESOLVED | PAST | NEGATED | SUPERSEDED}).
      */
@@ -906,6 +939,10 @@ public final class AdaptiveConversationIntelligence {
             observedAt = (observedAt != null && !observedAt.isBlank()) ? observedAt.strip() : Instant.now().toString();
             validity = validity != null ? validity : FactValidity.CURRENT;
             confidence = normalizeConfidenceLevel(confidence, 0.90);
+        }
+
+        public FactProvenance provenance() {
+            return FactProvenance.fromSourceAndStatus(source, status, validity);
         }
 
         public VersionedCustomerFact withValidity(FactValidity newValidity) {
@@ -1353,11 +1390,170 @@ public final class AdaptiveConversationIntelligence {
             return true;
         }
         List<String> valueScopes = ScopeMatcher.extractScopesFromText(val, List.of());
-        if (valueScopes.isEmpty()) {
+        if (!valueScopes.isEmpty()) {
+            Set<String> evidenceScopes = new LinkedHashSet<>(ScopeMatcher.extractScopesFromText(msg, List.of()));
+            return evidenceScopes.containsAll(valueScopes);
+        }
+        // P3.3: Hỗ trợ đối chiếu tương đương số tiền ngân sách (VD: "250k" <-> "250.000đ" <-> "250 nghìn")
+        Set<Integer> valAmountsK = extractNormalizedAmountsInThousands(val);
+        if (!valAmountsK.isEmpty()) {
+            Set<Integer> msgAmountsK = extractNormalizedAmountsInThousands(msg);
+            if (!msgAmountsK.isEmpty() && msgAmountsK.containsAll(valAmountsK)) {
+                return true;
+            }
+        }
+        // P3.3: Hỗ trợ đối chiếu viết tắt cơ sở/chi nhánh (VD: "quận 1" <-> "q1", "quận 3" <-> "q3")
+        Matcher qMatcher = Pattern.compile("\\bquận\\s*(\\d{1,2})\\b").matcher(val);
+        if (qMatcher.find()) {
+            String qNum = qMatcher.group(1);
+            if (msg.matches("(?isU).*\\b(?:quận\\s*" + qNum + "|q\\.?\\s*" + qNum + ")\\b.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static Set<Integer> extractNormalizedAmountsInThousands(String text) {
+        if (text == null || text.isBlank()) {
+            return Set.of();
+        }
+        String low = Normalizer.normalize(text, Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        Set<Integer> amounts = new LinkedHashSet<>();
+        Matcher kMatch = Pattern.compile("\\b(\\d{2,4})\\s*(?:k|nghìn|ngàn)\\b").matcher(low);
+        while (kMatch.find()) {
+            try {
+                amounts.add(Integer.parseInt(kMatch.group(1)));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        Matcher vndMatch = Pattern.compile("\\b(\\d{2,4})[.,]000(?:\\s*(?:đ|vnđ|vnd|d|đồng))?\\b").matcher(low);
+        while (vndMatch.find()) {
+            try {
+                amounts.add(Integer.parseInt(vndMatch.group(1)));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        Matcher trMatch = Pattern.compile("\\b(\\d{1,2})(?:[.,](\\d{1,2}))?\\s*(?:triệu|tr)\\b").matcher(low);
+        while (trMatch.find()) {
+            try {
+                int millions = Integer.parseInt(trMatch.group(1));
+                String dec = trMatch.group(2);
+                int subThousands = 0;
+                if (dec != null && !dec.isEmpty()) {
+                    subThousands = dec.length() == 1
+                            ? Integer.parseInt(dec) * 100
+                            : Integer.parseInt(dec) * 10;
+                }
+                amounts.add(millions * 1000 + subThousands);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return amounts;
+    }
+
+    public static boolean isPriceObjectionFactValue(String rawVal) {
+        if (rawVal == null || rawVal.isBlank()) {
             return false;
         }
-        Set<String> evidenceScopes = new LinkedHashSet<>(ScopeMatcher.extractScopesFromText(msg, List.of()));
-        return evidenceScopes.containsAll(valueScopes);
+        String low = Normalizer.normalize(rawVal.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return low.matches("(?isU).*\\b(cao\\s+quá|giá\\s+cao|cao\\s+thế|cao\\s+vậy|đắt|mắc|chát|hơi\\s+cao|hơi\\s+căng|căng\\s+quá|đau\\s+ví|quá\\s+sức|phản\\s+ứng\\s+giá)\\b.*");
+    }
+
+    private static final Pattern EXPLICIT_CUSTOMER_TARGET_BUDGET_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:"
+                    + "(?:ngân\\s+sách|tài\\s+chính|kinh\\s+phí|tầm\\s+giá|mức\\s+giá)(?:\\s+của)?(?:\\s+(?:mình|tôi|em|anh|chị))?(?:\\s+(?:chỉ|đổi\\s+sang|đổi\\s+xuống|hạ\\s+xuống|khoảng|tầm|dưới|tối\\s+đa|trong\\s+khoảng))*\\s*((?:tầm\\s+|khoảng\\s+|dưới\\s+|tối\\s+đa\\s+)?\\d{2,4}\\s*(?:k|nghìn|ngàn)|(?:tầm\\s+|khoảng\\s+|dưới\\s+|tối\\s+đa\\s+)?\\d{2,4}[.,]000\\s*(?:đ|vnđ|vnd|d)?(?:\\s*đổ\\s+lại)?)"
+                    + "|(?:gói\\s+|loại\\s+|mức\\s+|tìm\\s+gói\\s+|đổi\\s+sang\\s+tầm\\s+|chuyển\\s+sang\\s+tầm\\s+|chỉ\\s+tầm\\s+|tầm\\s+khoảng\\s+|dưới\\s+|tối\\s+đa\\s+)?((?:tầm\\s+|khoảng\\s+|dưới\\s+|tối\\s+đa\\s+)\\d{2,4}\\s*(?:k|nghìn|ngàn)|(?:tầm\\s+|khoảng\\s+|dưới\\s+|tối\\s+đa\\s+)?\\d{2,4}[.,]000\\s*(?:đ|vnđ|vnd|d)?)(?:\\s*(?:thôi|đổ\\s+lại|trở\\s+xuống|nhé|nha|ạ))?"
+                    + ")\\b"
+    );
+
+    /**
+     * P3.3 Mục 2.4 (TC01, TC06): Chỉ trích xuất ngân sách mục tiêu do khách tự xác nhận
+     * (VD: "ngân sách tầm 250k", "tìm gói dưới 300k"); TUYỆT ĐỐI KHÔNG trích mức giá bị khách chê đắt
+     * ("Giá 399k cao quá") hoặc giá chỉ đang hỏi thông tin ("Gói 399k gồm những gì?").
+     */
+    public static String extractExplicitCustomerTargetBudget(String rawUserMessage) {
+        if (rawUserMessage == null || rawUserMessage.isBlank()) {
+            return null;
+        }
+        String norm = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC);
+        Matcher m = EXPLICIT_CUSTOMER_TARGET_BUDGET_PATTERN.matcher(norm);
+        while (m.find()) {
+            String candidate = m.group(1) != null ? m.group(1).strip() : (m.group(2) != null ? m.group(2).strip() : "");
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            int endPos = m.end();
+            String trailing = norm.substring(endPos, Math.min(norm.length(), endPos + 24)).toLowerCase(Locale.ROOT);
+            if (trailing.matches("(?isU)^\\s*(?:cao|đắt|mắc|chát|hơi\\s+cao|quá\\s+cao|gồm\\s+những\\s+gì|có\\s+gì|làm\\s+trong\\s+bao\\s+lâu).*")) {
+                continue;
+            }
+            return candidate.replaceAll("\\s+", " ").strip();
+        }
+        return null;
+    }
+
+    private static final Pattern EXPLICIT_CUSTOMER_BRANCH_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:cơ\\s+sở|chi\\s+nhánh|ở|bên|qua|ghé|sang|tại|khu\\s+vực)\\s+"
+                    + "(?:cơ\\s+sở\\s+|chi\\s+nhánh\\s+)?"
+                    + "(quận\\s*\\d{1,2}|q\\.?\\s*\\d{1,2}|cầu\\s+giấy|đống\\s+đa|ba\\s+đình|hoàn\\s+kiếm|thanh\\s+xuân|tây\\s+hồ|"
+                    + "hai\\s+bà\\s+trưng|hà\\s+đông|long\\s+biên|nam\\s+từ\\s+liêm|bắc\\s+từ\\s+liêm|bình\\s+thạnh|phú\\s+nhuận|"
+                    + "tân\\s+bình|thủ\\s+đức|gò\\s+vấp|hà\\s+nội|tp\\.?\\s*hcm|sài\\s+gòn|đà\\s+nẵng)\\b"
+    );
+
+    public static String extractExplicitCustomerBranch(String rawUserMessage) {
+        if (rawUserMessage == null || rawUserMessage.isBlank()) {
+            return null;
+        }
+        String norm = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC);
+        Matcher m = EXPLICIT_CUSTOMER_BRANCH_PATTERN.matcher(norm);
+        String lastMatch = null;
+        while (m.find()) {
+            String rawBranch = m.group(1).strip().replaceAll("\\s+", " ");
+            String low = rawBranch.toLowerCase(Locale.ROOT);
+            if (low.matches("q\\.?\\s*(\\d{1,2})")) {
+                String digits = low.replaceAll("\\D+", "");
+                lastMatch = "Quận " + digits;
+            } else if (low.matches("quận\\s*(\\d{1,2})")) {
+                String digits = low.replaceAll("\\D+", "");
+                lastMatch = "Quận " + digits;
+            } else {
+                lastMatch = rawBranch;
+            }
+        }
+        return lastMatch;
+    }
+
+    public static boolean isCustomerPreferenceOrNeedRevisionUtterance(String rawUserMessage) {
+        if (rawUserMessage == null || rawUserMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return low.matches("(?isU).*\\b(đổi\\s+sang|chuyển\\s+sang|chuyển\\s+qua|đổi\\s+qua|đổi\\s+lại|thay\\s+vì|"
+                + "thôi\\s+(?:mình|tôi|em|anh|chị)?\\s*(?:muốn|chọn|đổi|chuyển|lấy|làm)|"
+                + "không\\s+(?:làm|lấy|chọn)\\s+[^,.!?]{1,35}\\s+nữa)\\b.*");
+    }
+
+    /**
+     * P3.3 Mục 2.4 (TC05): Nhận diện khi khách chỉ đang hỏi thông tin về gói (VD: "Ok, gói đó gồm những gì?",
+     * "Gói 399k làm trong bao lâu?", "Cho mình hỏi gói 239k") mà CHƯA xác nhận chọn gói hay đặt lịch.
+     */
+    public static boolean isPurePackageInformationInquiry(String rawUserMessage) {
+        if (rawUserMessage == null || rawUserMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawUserMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        boolean hasExplicitSelectionOrBookingVerb = low.matches(
+                "(?isU).*\\b(?:chốt\\s+gói|chọn\\s+gói|lấy\\s+gói|đặt\\s+gói|đặt\\s+lịch|book\\s+lịch|chốt\\s+lịch|"
+                        + "giữ\\s+chỗ|đăng\\s+ký\\s+gói|cho\\s+(?:mình|tôi|anh|chị|em)\\s+(?:chốt|chọn|lấy|đặt|thử)\\s+gói|"
+                        + "thử\\s+gói\\s+\\d|đổi\\s+sang\\s+gói)\\b.*"
+        );
+        if (hasExplicitSelectionOrBookingVerb) {
+            return false;
+        }
+        return low.contains("?")
+                || low.contains("？")
+                || low.matches("(?isU).*\\b(gồm\\s+những\\s+gì|gồm\\s+gì|bao\\s+gồm|như\\s+thế\\s+nào|ra\\s+sao|"
+                        + "bao\\s+lâu|mấy\\s+phút|khác\\s+gì|hỏi\\s+thêm\\s+về\\s+gói)\\b.*");
     }
 
     public static List<String> splitAtomicHealthExpressions(String raw) {
@@ -1456,6 +1652,20 @@ public final class AdaptiveConversationIntelligence {
             if (k.contains("symptom") || k.contains("health_condition") || k.contains("health_issue")) {
                 return "self_reported_symptom";
             }
+            if ("budget_note".equals(k)) {
+                return isPriceObjectionFactValue(rawVal) ? "price_reaction" : "budget_note";
+            }
+            if (k.contains("budget") || k.contains("ngan_sach") || k.contains("ngân_sách")) {
+                return isPriceObjectionFactValue(rawVal) ? "price_reaction" : "customer_budget";
+            }
+            if (k.contains("branch") || k.contains("facility") || k.contains("location")
+                    || k.contains("chi_nhanh") || k.contains("chi_nhánh")
+                    || k.contains("co_so") || k.contains("cơ_sở")) {
+                return "preferred_branch";
+            }
+            if ("preferred_package".equals(k) || "interested_package".equals(k)) {
+                return k;
+            }
             if (k.contains("need") || k.contains("scope") || k.contains("area") || k.contains("service")) return "need_scope";
             if (k.contains("time") || k.contains("slot") || k.contains("schedule")) return "available_time";
             if (k.contains("price") || k.contains("cost") || k.contains("objection")) return "price_reaction";
@@ -1469,7 +1679,7 @@ public final class AdaptiveConversationIntelligence {
                 || v.contains("đau lưng") || v.contains("nặng đầu") || v.contains("tê bì")) {
             return "self_reported_symptom";
         }
-        if (v.contains("đắt") || v.contains("giá cao")) {
+        if (v.contains("đắt") || v.contains("giá cao") || isPriceObjectionFactValue(rawVal)) {
             return "price_reaction";
         }
         return "need_scope";
@@ -2062,6 +2272,7 @@ public final class AdaptiveConversationIntelligence {
             boolean droppedUngrounded = false;
             for (FactDeltaProposal f : confirmedFactsDelta) {
                 if (f != null && f.op() == FactMutationOp.ADD
+                        && !("price_reaction".equals(f.key()) && hasGenuinePriceObjectionCue(groundingEvidence))
                         && !hasLexicalEvidenceInUtterance(f.value(), groundingEvidence)) {
                     droppedUngrounded = true;
                     continue;
@@ -2151,6 +2362,29 @@ public final class AdaptiveConversationIntelligence {
             boolean explicitHumanEscalation = !explicitStop
                     && isExplicitHumanEscalationMessage(rawUserMessage)
                     && !FanpageBotService.isUniversalAcuteMedicalEmergency(rawUserMessage);
+
+            // P3.3 Mục 2.4: Trích xuất & đối soát bằng chứng từ phát ngôn khách (ngân sách mục tiêu vs phản đối giá,
+            // cơ sở/chi nhánh, đính chính/thay đổi ý định, và hỏi thông tin gói chưa chọn).
+            String explicitTargetBudget = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
+                    ? extractExplicitCustomerTargetBudget(rawUserMessage)
+                    : null;
+            String explicitBranch = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
+                    ? extractExplicitCustomerBranch(rawUserMessage)
+                    : null;
+            boolean utteranceHasRevisionCue = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
+                    && isCustomerPreferenceOrNeedRevisionUtterance(rawUserMessage);
+            boolean purePkgInfoInquiry = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
+                    && !affirmativeBookingCue
+                    && isPurePackageInformationInquiry(rawUserMessage);
+            boolean hasP33EvidenceOrPatchUpdate = explicitTargetBudget != null
+                    || explicitBranch != null
+                    || utteranceHasRevisionCue
+                    || (purePkgInfoInquiry
+                        && proposedBookingPatch != null
+                        && proposedBookingPatch.selectedProductId() != null
+                        && proposedBookingPatch.proposedDate() == null
+                        && proposedBookingPatch.proposedTime() == null);
+
             if (!explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
@@ -2162,7 +2396,8 @@ public final class AdaptiveConversationIntelligence {
                     && !explicitFullPriceListRequest
                     && !explicitGenderCorrection
                     && !firstGenuinePriceObjection
-                    && !explicitHumanEscalation) {
+                    && !explicitHumanEscalation
+                    && !hasP33EvidenceOrPatchUpdate) {
                 return this;
             }
 
@@ -2185,6 +2420,65 @@ public final class AdaptiveConversationIntelligence {
             List<FactDeltaProposal> reconciledFactsDelta = new ArrayList<>(confirmedFactsDelta);
             ProposedBookingPatch reconciledBookingPatch = proposedBookingPatch;
             HandoffRequestReflection reconciledHandoff = handoffRequest;
+            boolean reconciledNeedRevision = needRevisionDetected;
+            String reconciledInterestedPkgId = interestedPackageId;
+
+            // P3.3 TC05: Khi khách chỉ hỏi thông tin về gói ("Ok, gói đó gồm những gì?", "Gói 399k gồm những gì?"),
+            // không được ghi nhận thành selected_product_id; chỉ giữ ở interestedPackageId.
+            if (purePkgInfoInquiry
+                    && reconciledBookingPatch != null
+                    && reconciledBookingPatch.selectedProductId() != null
+                    && reconciledBookingPatch.proposedDate() == null
+                    && reconciledBookingPatch.proposedTime() == null) {
+                if (reconciledInterestedPkgId == null || reconciledInterestedPkgId.isBlank()) {
+                    reconciledInterestedPkgId = reconciledBookingPatch.selectedProductId();
+                }
+                reconciledBookingPatch = ProposedBookingPatch.empty();
+            }
+
+            // P3.3 TC01 & TC04: Ghi nhận ngân sách mục tiêu tường minh của khách và cơ sở/chi nhánh khách nêu
+            if (explicitTargetBudget != null) {
+                boolean hasBudgetDelta = reconciledFactsDelta.stream()
+                        .anyMatch(d -> d != null && ("customer_budget".equals(d.key()) || "budget_note".equals(d.key())));
+                if (!hasBudgetDelta) {
+                    reconciledFactsDelta.add(new FactDeltaProposal(
+                            "customer_budget",
+                            explicitTargetBudget,
+                            utteranceHasRevisionCue ? FactMutationOp.REVISE : FactMutationOp.ADD,
+                            "HIGH"
+                    ));
+                }
+            }
+            if (explicitBranch != null) {
+                boolean hasBranchDelta = reconciledFactsDelta.stream()
+                        .anyMatch(d -> d != null && "preferred_branch".equals(d.key()));
+                if (!hasBranchDelta) {
+                    reconciledFactsDelta.add(new FactDeltaProposal(
+                            "preferred_branch",
+                            explicitBranch,
+                            utteranceHasRevisionCue ? FactMutationOp.REVISE : FactMutationOp.ADD,
+                            "HIGH"
+                    ));
+                }
+            }
+            if (utteranceHasRevisionCue) {
+                for (int i = 0; i < reconciledFactsDelta.size(); i++) {
+                    FactDeltaProposal d = reconciledFactsDelta.get(i);
+                    if (d != null && d.op() == FactMutationOp.ADD
+                            && ("need_scope".equals(d.key())
+                                || "preferred_branch".equals(d.key())
+                                || "customer_budget".equals(d.key())
+                                || "budget_note".equals(d.key())
+                                || "available_time".equals(d.key())
+                                || "preferred_package".equals(d.key()))) {
+                        reconciledFactsDelta.set(i, new FactDeltaProposal(
+                                d.key(), d.value(), FactMutationOp.REVISE, d.confidence(), d.explicitValidity()));
+                        if ("need_scope".equals(d.key())) {
+                            reconciledNeedRevision = true;
+                        }
+                    }
+                }
+            }
 
             if (explicitStop) {
                 detIntent = "EXPLICIT_REFUSAL";
@@ -2570,6 +2864,57 @@ public final class AdaptiveConversationIntelligence {
                     detIntent = "PRICE_OBJECTION";
                     convState = "OBJECTION_NEGOTIATION";
                 }
+                // P3.3 TC06: Khi khách phản đối giá ("Giá 399k cao quá"), TUYỆT ĐỐI KHÔNG cho phép lưu mức giá bị chê
+                // thành customer_budget / budget_note hoặc khóa gói thành selected_product_id!
+                Set<Integer> targetBudgetAmountsK = extractNormalizedAmountsInThousands(explicitTargetBudget);
+                List<FactDeltaProposal> cleanedObjectionFacts = new ArrayList<>();
+                boolean hasPriceReactionFact = false;
+                for (FactDeltaProposal d : reconciledFactsDelta) {
+                    if (d == null) continue;
+                    if ("price_reaction".equals(d.key())) {
+                        hasPriceReactionFact = true;
+                        cleanedObjectionFacts.add(d);
+                        continue;
+                    }
+                    if ("customer_budget".equals(d.key()) || "budget_note".equals(d.key())) {
+                        Set<Integer> deltaAmountsK = extractNormalizedAmountsInThousands(d.value());
+                        boolean matchesExplicitTargetBudget = explicitTargetBudget != null
+                                && !targetBudgetAmountsK.isEmpty()
+                                && targetBudgetAmountsK.equals(deltaAmountsK);
+                        if (!matchesExplicitTargetBudget) {
+                            hasPriceReactionFact = true;
+                            cleanedObjectionFacts.add(new FactDeltaProposal(
+                                    "price_reaction",
+                                    "PRICE_OBJECTION: khách phản ứng giá " + d.value() + " cao",
+                                    FactMutationOp.ADD,
+                                    "HIGH"
+                            ));
+                            continue;
+                        }
+                    }
+                    cleanedObjectionFacts.add(d);
+                }
+                if (!hasPriceReactionFact) {
+                    Set<Integer> objectedAmountsK = extractNormalizedAmountsInThousands(rawUserMessage);
+                    objectedAmountsK.removeAll(targetBudgetAmountsK);
+                    String priceReactionVal = !objectedAmountsK.isEmpty()
+                            ? ("PRICE_OBJECTION: khách phản ứng giá " + objectedAmountsK.iterator().next() + "k cao")
+                            : "PRICE_OBJECTION: khách phản ứng giá đắt";
+                    cleanedObjectionFacts.add(new FactDeltaProposal(
+                            "price_reaction",
+                            priceReactionVal,
+                            FactMutationOp.ADD,
+                            "HIGH"
+                    ));
+                }
+                reconciledFactsDelta = cleanedObjectionFacts;
+                if (reconciledBookingPatch != null
+                        && reconciledBookingPatch.selectedProductId() != null
+                        && reconciledBookingPatch.proposedDate() == null
+                        && reconciledBookingPatch.proposedTime() == null) {
+                    reconciledBookingPatch = ProposedBookingPatch.empty();
+                }
+
         boolean explicitBudgetConstraintCue = normLower.matches(
                 "(?isU).*\\b(không\\s+đủ\\s+tiền|chưa\\s+đủ\\s+tiền|vượt\\s+ngân\\s+sách|quá\\s+ngân\\s+sách|quá\\s+sức|đau\\s+ví|ví\\s+mỏng|rẻ\\s+hơn|mềm\\s+hơn|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|tiết\\s+kiệm\\s+hơn|bằng\\s+cả\\s+ngày|ngày\\s+công)\\b.*");
         if ("VALUE_PERCEPTION_GAP".equalsIgnoreCase(effBarrier)) {
@@ -2630,11 +2975,11 @@ public final class AdaptiveConversationIntelligence {
                     unresolvedRequestsDelta,
                     pendingReferences,
                     conversationGoal,
-                    needRevisionDetected,
+                    reconciledNeedRevision,
                     reconciledFactsDelta,
                     effBarrier,
                     hypothesisConfidenceLevel,
-                    interestedPackageId,
+                    reconciledInterestedPkgId,
                     plan
             );
         }
@@ -2839,9 +3184,30 @@ public final class AdaptiveConversationIntelligence {
                         ? cuNode.get("fact_deltas")
                         : (cuNode.has("confirmed_facts") ? cuNode.get("confirmed_facts") : b.get("confirmed_facts_delta")));
             parseFactDeltaProposals(factsNode, confirmedFactsDelta, needRevisionDetected);
-            // Tương thích ngược cho test cũ vẫn truyền mảng self_reported_symptoms rời
+            // Tương thích ngược cho test cũ vẫn truyền mảng self_reported_symptoms rời (hỗ trợ cả chuỗi lẫn object {"value":..., "validity":...})
             JsonNode symNode = cuNode.get("self_reported_symptoms");
-            if (symNode != null) {
+            if (symNode != null && symNode.isArray()) {
+                for (JsonNode symEl : symNode) {
+                    if (symEl == null || symEl.isNull()) continue;
+                    if (symEl.isObject()) {
+                        String symVal = readTextOrDefault(symEl, "value",
+                                readTextOrDefault(symEl, "symptom",
+                                        readTextOrDefault(symEl, "symptom_name", "")));
+                        FactValidity symValidity = FactValidity.parseExplicit(
+                                readTextOrDefault(symEl, "validity", readTextOrDefault(symEl, "status", null)));
+                        String symOpRaw = readTextOrDefault(symEl, "operation", readTextOrDefault(symEl, "op", null));
+                        FactMutationOp symOp = symOpRaw != null && !symOpRaw.isBlank()
+                                ? FactMutationOp.fromString(symOpRaw)
+                                : FactMutationOp.ADD;
+                        String symConf = readTextOrDefault(symEl, "confidence", "HIGH");
+                        appendFactDeltaWithAtomicSymptomSplit(
+                                confirmedFactsDelta, "self_reported_symptom", symVal, symOp, symConf, symValidity);
+                    } else if (symEl.isTextual()) {
+                        appendFactDeltaWithAtomicSymptomSplit(
+                                confirmedFactsDelta, "self_reported_symptom", symEl.asText(), FactMutationOp.ADD, "HIGH", null);
+                    }
+                }
+            } else if (symNode != null) {
                 for (String sym : readStringList(symNode)) {
                     appendFactDeltaWithAtomicSymptomSplit(
                             confirmedFactsDelta, "self_reported_symptom", sym, FactMutationOp.ADD, "HIGH", null);
@@ -3292,7 +3658,7 @@ public final class AdaptiveConversationIntelligence {
                     String val = readTextOrDefault(el, "value", readTextOrDefault(el, "fact", ""));
                     if (val.isBlank()) continue;
                     String key = readTextOrDefault(el, "key", readTextOrDefault(el, "category", ""));
-                    String rawOp = readTextOrDefault(el, "op", null);
+                    String rawOp = readTextOrDefault(el, "op", readTextOrDefault(el, "operation", null));
                     FactMutationOp op = rawOp != null && !rawOp.isBlank()
                             ? FactMutationOp.fromString(rawOp)
                             : (defaultReviseOnNeedScope ? FactMutationOp.REVISE : FactMutationOp.ADD);
@@ -3996,6 +4362,33 @@ public final class AdaptiveConversationIntelligence {
         );
     }
 
+    private static ConversationState.StructuredBookingState withCandidateProducts(
+            ConversationState.StructuredBookingState state,
+            List<String> candidateProductIds,
+            ZoneId safeZone
+    ) {
+        ConversationState.StructuredBookingState safe =
+                state != null ? state : ConversationState.StructuredBookingState.none();
+        if (candidateProductIds == null || candidateProductIds.isEmpty()) {
+            return safe;
+        }
+        Set<String> merged = new LinkedHashSet<>();
+        if (safe.candidateProductIds() != null) {
+            merged.addAll(safe.candidateProductIds());
+        }
+        merged.addAll(candidateProductIds);
+        return new ConversationState.StructuredBookingState(
+                safe.selectedProductId(),
+                safe.selectedProductLabel(),
+                safe.bookingDate(),
+                safe.resolvedIsoDate(),
+                safe.bookingTime(),
+                safe.timezoneId() != null ? safe.timezoneId() : safeZone.getId(),
+                safe.status(),
+                List.copyOf(merged)
+        );
+    }
+
     public static ConversationState.StructuredBookingState applyAuthoritativeBookingPatch(
             ConversationState.StructuredBookingState priorState,
             ProposedBookingPatch patch,
@@ -4026,26 +4419,29 @@ public final class AdaptiveConversationIntelligence {
             }
         }
 
-        // Chặn lỗi tự hiểu nhầm "Ok" / "Ừ" / "Để xem đã" thành xác nhận đặt lịch:
-        // Khi chưa có bookingState mở (status == NONE), nếu khách chỉ nhắn bare ack ("Ok", "Ừ", "Vâng") hoặc câu lưỡng lự/xin suy nghĩ thêm,
-        // BẮT BUỘC giữ nguyên BookingStatus.NONE bất kể lượt bot liền trước có câu mời nhẹ hay không!
-        boolean isBareAck = CleanAgentOrchestratorService.isBareAcknowledgmentMessage(originalCustomerMessage);
-        boolean isDeferOrHesitation = CleanAgentOrchestratorService.isHesitationOrDeferralMessage(originalCustomerMessage);
-        if ((isBareAck || isDeferOrHesitation) && safePrior.status() == ConversationState.BookingStatus.NONE) {
-            return safePrior;
-        }
-        if (isDeferOrHesitation && safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
-            return safePrior;
-        }
-
         List<PackageCatalogService.PackageSummary> distinctPresented = new ArrayList<>();
+        List<String> earlyCandidateIds = new ArrayList<>();
         if (presentedPackagesInHistory != null) {
             Set<String> seenIds = new LinkedHashSet<>();
             for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
                 if (p != null && p.productId() != null && seenIds.add(p.productId())) {
                     distinctPresented.add(p);
+                    earlyCandidateIds.add(p.productId());
                 }
             }
+        }
+
+        // Chặn lỗi tự hiểu nhầm "Ok" / "Ừ" / "Để xem đã" thành xác nhận đặt lịch:
+        // Khi chưa có bookingState mở (status == NONE), nếu khách chỉ nhắn bare ack ("Ok", "Ừ", "Vâng") hoặc câu lưỡng lự/xin suy nghĩ thêm,
+        // BẮT BUỘC giữ nguyên BookingStatus.NONE bất kể lượt bot liền trước có câu mời nhẹ hay không!
+        boolean isBareAck = CleanAgentOrchestratorService.isBareAcknowledgmentMessage(originalCustomerMessage);
+        boolean isDeferOrHesitation = CleanAgentOrchestratorService.isHesitationOrDeferralMessage(originalCustomerMessage)
+                || isCustomerDeferralMessage(originalCustomerMessage);
+        if ((isBareAck || isDeferOrHesitation) && safePrior.status() == ConversationState.BookingStatus.NONE) {
+            return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
+        }
+        if (isDeferOrHesitation && safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+            return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
         }
 
         // ACI V3: Phân giải lựa chọn tương đối của khách ("vừa đủ để thử", "cái thứ hai", "chỉ muốn massage", "gói đó"...)
@@ -4080,7 +4476,7 @@ public final class AdaptiveConversationIntelligence {
 
         boolean hasPatch = patch != null && patch.hasAnyProposal();
         if (!hasPatch && contextualResolvedPkg == null && explicitPkgInMsg == null && !hasDirectDateOrTimeInMsg && !hasExplicitBookingCue) {
-            return safePrior;
+            return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
         }
 
         // Gói đã được phân giải ở lượt này (ưu tiên lựa chọn tường minh/ngữ cảnh của khách hơn đề xuất của LLM để tránh upsell hoặc tự đoán khi có >= 2 gói).
@@ -4099,9 +4495,19 @@ public final class AdaptiveConversationIntelligence {
         // Chặn nhảy cóc sang AWAITING_DATE_OR_TIME khi khách mới EXPLORING / CONSIDERING (ví dụ: "Mình muốn hỏi gói dưỡng sinh 239k"):
         // Khi chưa có lịch mở (status == NONE) và khách chưa nêu bất kỳ ngày/giờ hẹn nào, chỉ cho phép mở AWAITING_DATE_OR_TIME
         // khi khách thực sự ở trạng thái READY_TO_BOOK (hoặc ưu tiên chính là BOOKING_COMPLETION).
+        // P3.3 Mục 2.4 (TC05, TC06, TC07): Nếu khách chỉ đang chê giá ("Giá 399k cao quá"), hỏi thông tin gói ("Gói 399k gồm những gì?"),
+        // hoặc hoãn quyết định ("Để tôi xem đã") mà chưa có động từ chọn gói/đặt lịch -> KHÔNG khóa vào selectedProductId!
         boolean hasDateOrTimeProposal = (patch != null && (patch.proposedDate() != null || patch.proposedTime() != null))
                 || hasDirectDateOrTimeInMsg;
+        boolean nonSelectionMention = !hasExplicitBookingCue
+                && !isTrialOrRelativeOptionSelectionMessage(originalCustomerMessage)
+                && (hasGenuinePriceObjectionCue(originalCustomerMessage)
+                    || isDeferOrHesitation
+                    || isPurePackageInformationInquiry(originalCustomerMessage));
         if (safePrior.status() == ConversationState.BookingStatus.NONE && !hasDateOrTimeProposal && !hasExplicitBookingCue) {
+            if (nonSelectionMention) {
+                return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
+            }
             boolean notReadyToBook = (bookingReadiness != null && bookingReadiness != BookingReadiness.READY_TO_BOOK)
                     || (bookingReadiness == null
                         && primaryPriority != null
@@ -4110,10 +4516,6 @@ public final class AdaptiveConversationIntelligence {
             if (notReadyToBook || (!hasPatch && contextualResolvedPkg != null)) {
                 if (resolvedSelectionPkg != null) {
                     // TUYỆT ĐỐI không vứt bỏ lựa chọn của khách: lưu selectedProductId nhưng giữ nguyên trạng thái lịch.
-                    List<String> earlyCandidateIds = new ArrayList<>();
-                    for (PackageCatalogService.PackageSummary p : distinctPresented) {
-                        earlyCandidateIds.add(p.productId());
-                    }
                     return new ConversationState.StructuredBookingState(
                             resolvedSelectionPkg.productId(),
                             resolvedSelectionPkg.canonicalLabel(),
@@ -4125,7 +4527,7 @@ public final class AdaptiveConversationIntelligence {
                             List.copyOf(earlyCandidateIds)
                     );
                 }
-                return safePrior;
+                return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
             }
         }
 

@@ -2126,8 +2126,16 @@ public class AgentBrainService {
                 continue;
             }
 
+            boolean isSingleValuedPreferenceKey = "preferred_branch".equals(delta.key())
+                    || "customer_budget".equals(delta.key())
+                    || "budget_note".equals(delta.key())
+                    || "available_time".equals(delta.key())
+                    || "preferred_package".equals(delta.key())
+                    || "communication_preference".equals(delta.key());
             boolean shouldSupersedePriorSameKey = delta.op() == AdaptiveConversationIntelligence.FactMutationOp.REVISE
-                    || (hasReviseOnNeed && "need_scope".equals(delta.key()));
+                    || (hasReviseOnNeed && "need_scope".equals(delta.key()))
+                    || isSingleValuedPreferenceKey;
+            boolean supersededExistingFact = false;
             if (shouldSupersedePriorSameKey) {
                 for (int i = 0; i < mem.draft2ConfirmedFacts.size(); i++) {
                     AdaptiveConversationIntelligence.VersionedCustomerFact existing = mem.draft2ConfirmedFacts.get(i);
@@ -2136,6 +2144,7 @@ public class AgentBrainService {
                             && existing.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT
                             && !existing.value().equalsIgnoreCase(delta.value())) {
                         mem.draft2ConfirmedFacts.set(i, existing.markSuperseded());
+                        supersededExistingFact = true;
                     }
                 }
             }
@@ -2148,11 +2157,14 @@ public class AgentBrainService {
                 if (mem.draft2ConfirmedFacts.size() >= 18) {
                     mem.draft2ConfirmedFacts.remove(0);
                 }
+                String effectiveSource = (delta.op() == AdaptiveConversationIntelligence.FactMutationOp.REVISE || supersededExistingFact)
+                        ? "CUSTOMER_CORRECTED"
+                        : "CUSTOMER_MESSAGE";
                 mem.draft2ConfirmedFacts.add(new AdaptiveConversationIntelligence.VersionedCustomerFact(
                         delta.key(),
                         delta.value(),
                         "CONFIRMED",
-                        "CUSTOMER_MESSAGE",
+                        effectiveSource,
                         safeTurnId,
                         nowIso,
                         AdaptiveConversationIntelligence.FactValidity.CURRENT,
@@ -2254,6 +2266,13 @@ public class AgentBrainService {
         );
         mem.draft2Emotion = cu.emotionalState();
 
+        // Ghi nhận danh sách gói vừa được giới thiệu (ứng viên BOT_PROPOSED) trước để phân giải lựa chọn / hoãn quyết định
+        if (authoritativeBookingState != null && authoritativeBookingState.candidateProductIds() != null
+                && !authoritativeBookingState.candidateProductIds().isEmpty()) {
+            mem.draft2LastOfferedPackageIds.clear();
+            mem.draft2LastOfferedPackageIds.addAll(authoritativeBookingState.candidateProductIds());
+        }
+
         // 3. Tầng 3 — Business & Commitment State: Tách interested_package vs selected_package
         String committedSelectedPkg = authoritativeBookingState != null
                 ? authoritativeBookingState.selectedProductId()
@@ -2262,6 +2281,14 @@ public class AgentBrainService {
             mem.draft2InterestedPackageId = committedSelectedPkg;
         } else if (reflection.interestedPackageId() != null && !reflection.interestedPackageId().isBlank()) {
             mem.draft2InterestedPackageId = reflection.interestedPackageId();
+        } else if (mem.draft2InterestedPackageId == null
+                && !mem.draft2LastOfferedPackageIds.isEmpty()
+                && ("CUSTOMER_DEFERRAL".equalsIgnoreCase(turnIntent) || "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT".equalsIgnoreCase(turnIntent) || "PAUSED_BY_CUSTOMER".equalsIgnoreCase(cu.conversationState())
+                    || AdaptiveConversationIntelligence.isCustomerDeferralMessage(originalCustomerMessage)
+                    || AdaptiveConversationIntelligence.isPurePackageInformationInquiry(originalCustomerMessage))) {
+            // P3.3 TC05 & TC07: Khi khách đang hỏi thêm hoặc nói "Để tôi xem đã" về đúng 1 gói bot vừa giới thiệu,
+            // bảo toàn gói đó ở interested_package (CONSIDERING), tuyệt đối không ghi vào selected_package.
+            mem.draft2InterestedPackageId = mem.draft2LastOfferedPackageIds.get(0);
         }
         if (mem.draft2InterestedPackageId != null && mem.draft2PendingReferences.isEmpty()) {
             mem.draft2PendingReferences.add(mem.draft2InterestedPackageId);

@@ -5917,6 +5917,37 @@ public class CleanAgentOrchestratorService {
                             draft2Before
                     )
                     : generatedSpeechAct);
+        // P3.3 Mục 2.4 (TC05): Ghi nhận các gói bot vừa giới thiệu ở lượt hiện tại vào candidateProductIds (BOT_PROPOSED / lastOfferedPackageIds)
+        // nhưng tuyệt đối không gán vào selectedProductId khi khách chưa chọn.
+        if (!combinedReplyText.isBlank() && allCatalog != null && !allCatalog.isEmpty() && authoritativeBookingState != null) {
+            List<PackageCatalogService.PackageSummary> newlyOffered =
+                    CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(
+                            List.of(new FanpageBotRequest.ConversationTurn("assistant", combinedReplyText)),
+                            null,
+                            allCatalog
+                    );
+            if (!newlyOffered.isEmpty()) {
+                Set<String> mergedCandidates = new LinkedHashSet<>();
+                if (authoritativeBookingState.candidateProductIds() != null) {
+                    mergedCandidates.addAll(authoritativeBookingState.candidateProductIds());
+                }
+                for (PackageCatalogService.PackageSummary pkg : newlyOffered) {
+                    if (pkg != null && pkg.productId() != null && !pkg.productId().isBlank()) {
+                        mergedCandidates.add(pkg.productId());
+                    }
+                }
+                authoritativeBookingState = new ConversationState.StructuredBookingState(
+                        authoritativeBookingState.selectedProductId(),
+                        authoritativeBookingState.selectedProductLabel(),
+                        authoritativeBookingState.bookingDate(),
+                        authoritativeBookingState.resolvedIsoDate(),
+                        authoritativeBookingState.bookingTime(),
+                        authoritativeBookingState.timezoneId(),
+                        authoritativeBookingState.status(),
+                        List.copyOf(mergedCandidates)
+                );
+            }
+        }
         // Ghi nhận nguyên tử 5 tầng bộ nhớ, vòng đời Working Hypothesis, chiến thuật lượt trước & Session Commitments (Mục 4)
         if (agentBrainService != null) {
             agentBrainService.applyAciTurnMemoryUpdates(
