@@ -147,8 +147,13 @@ public final class AdaptiveConversationIntelligence {
     );
 
     private static final Pattern EXPLICIT_BOOKING_CANCEL_PATTERN = Pattern.compile(
-            "(?isU).*\\b(hủy\\s+lịch|huỷ\\s+lịch|không\\s+đặt\\s+lịch\\s+nữa|bỏ\\s+lịch\\s+hẹn)\\b.*"
+            "(?isU).*\\b(hủy\\s+lịch|huỷ\\s+lịch|không\\s+đặt\\s+lịch\\s+nữa|không\\s+đặt\\s+nữa|bỏ\\s+lịch\\s+hẹn|thôi\\s+mình\\s+không\\s+đặt\\s+đâu|thôi\\s+không\\s+đặt\\s+đâu|không\\s+đặt\\s+đâu)\\b.*"
     );
+
+    public static boolean isExplicitBookingCancelOrRefusalMessage(String message) {
+        return message != null && !message.isBlank()
+                && EXPLICIT_BOOKING_CANCEL_PATTERN.matcher(Normalizer.normalize(message.strip(), Normalizer.Form.NFC)).matches();
+    }
 
     /**
      * Xây dựng 3 luồng đầu vào tách biệt từ {@link FanpageBotRequest} mà không chạm vào {@code FanpageBotRequest.java}.
@@ -4006,7 +4011,7 @@ public final class AdaptiveConversationIntelligence {
                 priorState != null ? priorState : ConversationState.StructuredBookingState.none();
         ZoneId safeZone = pageZoneId != null ? pageZoneId : ZoneId.of("Asia/Ho_Chi_Minh");
 
-        if (originalCustomerMessage != null && EXPLICIT_BOOKING_CANCEL_PATTERN.matcher(originalCustomerMessage).matches()) {
+        if (isExplicitBookingCancelOrRefusalMessage(originalCustomerMessage)) {
             return ConversationState.StructuredBookingState.none();
         }
 
@@ -4029,6 +4034,19 @@ public final class AdaptiveConversationIntelligence {
         if ((isBareAck || isDeferOrHesitation) && safePrior.status() == ConversationState.BookingStatus.NONE) {
             return safePrior;
         }
+        if (isDeferOrHesitation && safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+            return safePrior;
+        }
+
+        List<PackageCatalogService.PackageSummary> distinctPresented = new ArrayList<>();
+        if (presentedPackagesInHistory != null) {
+            Set<String> seenIds = new LinkedHashSet<>();
+            for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
+                if (p != null && p.productId() != null && seenIds.add(p.productId())) {
+                    distinctPresented.add(p);
+                }
+            }
+        }
 
         // ACI V3: Phân giải lựa chọn tương đối của khách ("vừa đủ để thử", "cái thứ hai", "chỉ muốn massage", "gói đó"...)
         // dựa trên các gói THỰC SỰ vừa được giới thiệu — trước khi kiểm tra hasPatch để không đánh rơi lựa chọn.
@@ -4046,14 +4064,34 @@ public final class AdaptiveConversationIntelligence {
                     safePrior.selectedProductId(), presentedPackagesInHistory, allCatalog);
         }
 
+        PackageCatalogService.PackageSummary explicitPkgInMsg = resolveCatalogProductByFlexibleIdentifier(
+                originalCustomerMessage, presentedPackagesInHistory, allCatalog);
+        boolean hasExplicitBookingCue = CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(originalCustomerMessage);
+        boolean activeBookingSession = safePrior.status() != ConversationState.BookingStatus.NONE;
+        ConversationState.ParsedBookingDateTime parsedDirectFromMsg = (activeBookingSession || hasExplicitBookingCue)
+                ? ConversationState.parseBookingDateTime(
+                        originalCustomerMessage,
+                        null,
+                        null,
+                        safeZone,
+                        LocalDate.now(safeZone))
+                : new ConversationState.ParsedBookingDateTime(null, null, null, safeZone.getId());
+        boolean hasDirectDateOrTimeInMsg = parsedDirectFromMsg.bookingDate() != null || parsedDirectFromMsg.bookingTime() != null;
+
         boolean hasPatch = patch != null && patch.hasAnyProposal();
-        if (!hasPatch && contextualResolvedPkg == null) {
+        if (!hasPatch && contextualResolvedPkg == null && explicitPkgInMsg == null && !hasDirectDateOrTimeInMsg && !hasExplicitBookingCue) {
             return safePrior;
         }
 
-        // Gói đã được phân giải ở lượt này (ưu tiên lựa chọn ngữ cảnh của khách hơn đề xuất của LLM để tránh upsell).
-        PackageCatalogService.PackageSummary resolvedSelectionPkg = contextualResolvedPkg;
-        if (resolvedSelectionPkg == null && patch != null && patch.selectedProductId() != null) {
+        // Gói đã được phân giải ở lượt này (ưu tiên lựa chọn tường minh/ngữ cảnh của khách hơn đề xuất của LLM để tránh upsell hoặc tự đoán khi có >= 2 gói).
+        PackageCatalogService.PackageSummary resolvedSelectionPkg = contextualResolvedPkg != null
+                ? contextualResolvedPkg
+                : explicitPkgInMsg;
+        boolean ambiguousMultiProductSelection = (safePrior.selectedProductId() == null || safePrior.selectedProductId().isBlank())
+                && distinctPresented.size() >= 2
+                && contextualResolvedPkg == null
+                && explicitPkgInMsg == null;
+        if (resolvedSelectionPkg == null && !ambiguousMultiProductSelection && patch != null && patch.selectedProductId() != null) {
             resolvedSelectionPkg = resolveCatalogProductByFlexibleIdentifier(
                     patch.selectedProductId(), presentedPackagesInHistory, allCatalog);
         }
@@ -4061,8 +4099,9 @@ public final class AdaptiveConversationIntelligence {
         // Chặn nhảy cóc sang AWAITING_DATE_OR_TIME khi khách mới EXPLORING / CONSIDERING (ví dụ: "Mình muốn hỏi gói dưỡng sinh 239k"):
         // Khi chưa có lịch mở (status == NONE) và khách chưa nêu bất kỳ ngày/giờ hẹn nào, chỉ cho phép mở AWAITING_DATE_OR_TIME
         // khi khách thực sự ở trạng thái READY_TO_BOOK (hoặc ưu tiên chính là BOOKING_COMPLETION).
-        boolean hasDateOrTimeProposal = patch != null && (patch.proposedDate() != null || patch.proposedTime() != null);
-        if (safePrior.status() == ConversationState.BookingStatus.NONE && !hasDateOrTimeProposal) {
+        boolean hasDateOrTimeProposal = (patch != null && (patch.proposedDate() != null || patch.proposedTime() != null))
+                || hasDirectDateOrTimeInMsg;
+        if (safePrior.status() == ConversationState.BookingStatus.NONE && !hasDateOrTimeProposal && !hasExplicitBookingCue) {
             boolean notReadyToBook = (bookingReadiness != null && bookingReadiness != BookingReadiness.READY_TO_BOOK)
                     || (bookingReadiness == null
                         && primaryPriority != null
@@ -4072,12 +4111,8 @@ public final class AdaptiveConversationIntelligence {
                 if (resolvedSelectionPkg != null) {
                     // TUYỆT ĐỐI không vứt bỏ lựa chọn của khách: lưu selectedProductId nhưng giữ nguyên trạng thái lịch.
                     List<String> earlyCandidateIds = new ArrayList<>();
-                    if (presentedPackagesInHistory != null) {
-                        for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
-                            if (p != null && p.productId() != null && !earlyCandidateIds.contains(p.productId())) {
-                                earlyCandidateIds.add(p.productId());
-                            }
-                        }
+                    for (PackageCatalogService.PackageSummary p : distinctPresented) {
+                        earlyCandidateIds.add(p.productId());
                     }
                     return new ConversationState.StructuredBookingState(
                             resolvedSelectionPkg.productId(),
@@ -4100,19 +4135,16 @@ public final class AdaptiveConversationIntelligence {
         if (resolvedSelectionPkg != null) {
             nextProductId = resolvedSelectionPkg.productId();
             nextProductLabel = resolvedSelectionPkg.canonicalLabel();
-        } else if ((nextProductId == null || nextProductId.isBlank()) && hasDateOrTimeProposal) {
-            // Nếu khách chỉ định rõ gói ngay trong câu đặt lịch hoặc lịch sử chỉ đang trao đổi đúng 1 gói duy nhất
-            // (không mơ hồ giữa >= 2 sản phẩm), kế thừa gói đó một cách xác định.
-            PackageCatalogService.PackageSummary explicitInMsg = resolveCatalogProductByFlexibleIdentifier(
-                    originalCustomerMessage, presentedPackagesInHistory, allCatalog);
-            if (explicitInMsg != null) {
-                nextProductId = explicitInMsg.productId();
-                nextProductLabel = explicitInMsg.canonicalLabel();
-            } else if (presentedPackagesInHistory != null && presentedPackagesInHistory.size() == 1
-                    && presentedPackagesInHistory.get(0) != null) {
-                PackageCatalogService.PackageSummary solePresented = presentedPackagesInHistory.get(0);
+        } else if ((nextProductId == null || nextProductId.isBlank()) && (hasDateOrTimeProposal || hasExplicitBookingCue)) {
+            // Nếu lịch sử chỉ đang trao đổi đúng 1 gói duy nhất (không mơ hồ giữa >= 2 sản phẩm), kế thừa gói đó một cách xác định.
+            if (distinctPresented.size() == 1) {
+                PackageCatalogService.PackageSummary solePresented = distinctPresented.get(0);
                 nextProductId = solePresented.productId();
                 nextProductLabel = solePresented.canonicalLabel();
+            } else if (distinctPresented.isEmpty() && allCatalog != null && allCatalog.size() == 1 && allCatalog.get(0) != null) {
+                PackageCatalogService.PackageSummary soleCatalog = allCatalog.get(0);
+                nextProductId = soleCatalog.productId();
+                nextProductLabel = soleCatalog.canonicalLabel();
             }
         }
 
@@ -4121,15 +4153,18 @@ public final class AdaptiveConversationIntelligence {
         String nextTime = safePrior.bookingTime();
 
         if (hasDateOrTimeProposal) {
-            String combinedTimeInput = ((patch.proposedDate() != null ? patch.proposedDate() : "")
-                    + " " + (patch.proposedTime() != null ? patch.proposedTime() : "")).strip();
-            ConversationState.ParsedBookingDateTime parsedFromPatch = ConversationState.parseBookingDateTime(
-                    combinedTimeInput,
-                    nextDate,
-                    nextTime,
-                    safeZone,
-                    LocalDate.now(safeZone)
-            );
+            String combinedTimeInput = patch != null
+                    ? ((patch.proposedDate() != null ? patch.proposedDate() : "")
+                            + " " + (patch.proposedTime() != null ? patch.proposedTime() : "")).strip()
+                    : "";
+            ConversationState.ParsedBookingDateTime parsedFromPatch = !combinedTimeInput.isBlank()
+                    ? ConversationState.parseBookingDateTime(
+                            combinedTimeInput,
+                            nextDate,
+                            nextTime,
+                            safeZone,
+                            LocalDate.now(safeZone))
+                    : new ConversationState.ParsedBookingDateTime(null, null, null, safeZone.getId());
             // Cũng đối chiếu với tin nhắn gốc để lấy mốc ngày tương đối chính xác (VD: "tối nay lúc 19h" -> bookingDate="tối nay", bookingTime="19:00")
             ConversationState.ParsedBookingDateTime parsedFromMsg = ConversationState.parseBookingDateTime(
                     originalCustomerMessage,
@@ -4139,17 +4174,17 @@ public final class AdaptiveConversationIntelligence {
                     LocalDate.now(safeZone)
             );
 
-            if (patch.proposedDate() != null) {
+            if (patch != null && patch.proposedDate() != null) {
                 nextDate = parsedFromMsg.bookingDate() != null ? parsedFromMsg.bookingDate()
                         : (parsedFromPatch.bookingDate() != null ? parsedFromPatch.bookingDate() : patch.proposedDate());
                 nextIsoDate = parsedFromMsg.resolvedIsoDate() != null ? parsedFromMsg.resolvedIsoDate()
                         : parsedFromPatch.resolvedIsoDate();
-            } else if (nextDate == null && parsedFromMsg.bookingDate() != null) {
+            } else if (parsedFromMsg.bookingDate() != null) {
                 nextDate = parsedFromMsg.bookingDate();
                 nextIsoDate = parsedFromMsg.resolvedIsoDate();
             }
 
-            if (patch.proposedTime() != null) {
+            if (patch != null && patch.proposedTime() != null) {
                 nextTime = parsedFromPatch.bookingTime() != null
                         ? parsedFromPatch.bookingTime()
                         : (parsedFromMsg.bookingTime() != null ? parsedFromMsg.bookingTime() : normalizeClockString(patch.proposedTime()));
@@ -4162,6 +4197,12 @@ public final class AdaptiveConversationIntelligence {
                         nextIsoDate = LocalDate.now(safeZone).toString();
                     }
                 }
+            } else if (parsedFromMsg.bookingTime() != null) {
+                nextTime = parsedFromMsg.bookingTime();
+                if (nextDate == null) {
+                    nextDate = "hôm nay";
+                    nextIsoDate = LocalDate.now(safeZone).toString();
+                }
             }
         }
 
@@ -4173,17 +4214,13 @@ public final class AdaptiveConversationIntelligence {
         }
 
         List<String> candidateIds = new ArrayList<>();
-        if (presentedPackagesInHistory != null) {
-            for (PackageCatalogService.PackageSummary p : presentedPackagesInHistory) {
-                if (p != null && p.productId() != null && !candidateIds.contains(p.productId())) {
-                    candidateIds.add(p.productId());
-                }
-            }
+        for (PackageCatalogService.PackageSummary p : distinctPresented) {
+            candidateIds.add(p.productId());
         }
 
         ConversationState.BookingStatus nextStatus;
         if (nextProductId == null || nextProductId.isBlank()) {
-            if (nextDate != null || nextTime != null) {
+            if (nextDate != null || nextTime != null || (hasExplicitBookingCue && distinctPresented.size() >= 2)) {
                 nextStatus = ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION;
             } else {
                 nextStatus = ConversationState.BookingStatus.NONE;

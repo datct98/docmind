@@ -703,10 +703,24 @@ public record AciCustomerBrainMemorySnapshot(
         }
 
         // 3. Monotonic booking state: never erase confirmed product/date/time back to null by an older turn
+        boolean candidateExplicitlyCancelledBooking = candidateIsNewerOrEqualTurn
+                && candidate.structuredBookingState() != null
+                && "NONE".equalsIgnoreCase(candidate.structuredBookingState().status())
+                && candidate.supersededOrRetractedFacts() != null
+                && candidate.supersededOrRetractedFacts().contains("BOOKING_CANCELLED");
+        boolean candidateInvalidatedUnavailableSlot = candidateIsNewerOrEqualTurn
+                && candidate.structuredBookingState() != null
+                && "AWAITING_DATE_OR_TIME".equalsIgnoreCase(candidate.structuredBookingState().status())
+                && (candidate.structuredBookingState().bookingTime() == null
+                    || candidate.structuredBookingState().bookingTime().isBlank())
+                && candidate.supersededOrRetractedFacts() != null
+                && candidate.supersededOrRetractedFacts().contains("BOOKING_SLOT_UNAVAILABLE");
         PersistedBookingState mergedBooking = mergeBookingStateMonotonic(
                 freshDb.structuredBookingState(),
                 candidate.structuredBookingState(),
-                candidateIsNewerOrEqualTurn
+                candidateIsNewerOrEqualTurn,
+                candidateExplicitlyCancelledBooking,
+                candidateInvalidatedUnavailableSlot
         );
 
         // 4. Operational state: optedOut monotonic OR (overridden by row-level V33/V35 opted_out timestamp truth)
@@ -725,8 +739,15 @@ public record AciCustomerBrainMemorySnapshot(
         List<PersistedBusinessFact> mergedBusinessFacts =
                 mergeBusinessFactsByKey(freshDb.authoritativeBusinessFacts(), candidate.authoritativeBusinessFacts());
 
-        List<String> mergedSupersededLegacy = unionStringsBounded(
-                freshDb.supersededOrRetractedFacts(), candidate.supersededOrRetractedFacts(), 24);
+        List<String> mergedSupersededLegacy = new ArrayList<>(unionStringsBounded(
+                freshDb.supersededOrRetractedFacts(), candidate.supersededOrRetractedFacts(), 24));
+        if (mergedBooking != null && !"NONE".equalsIgnoreCase(mergedBooking.status())) {
+            mergedSupersededLegacy.removeIf("BOOKING_CANCELLED"::equalsIgnoreCase);
+        }
+        if (mergedBooking != null && mergedBooking.bookingTime() != null && !mergedBooking.bookingTime().isBlank()) {
+            mergedSupersededLegacy.removeIf("BOOKING_SLOT_UNAVAILABLE"::equalsIgnoreCase);
+        }
+        mergedSupersededLegacy = List.copyOf(mergedSupersededLegacy);
         Set<String> retractedLower = new LinkedHashSet<>();
         for (String r : mergedSupersededLegacy) {
             retractedLower.add(r.toLowerCase(Locale.ROOT));
@@ -1015,7 +1036,9 @@ public record AciCustomerBrainMemorySnapshot(
     private static PersistedBookingState mergeBookingStateMonotonic(
             PersistedBookingState freshBooking,
             PersistedBookingState candBooking,
-            boolean candidateIsNewerOrEqualTurn
+            boolean candidateIsNewerOrEqualTurn,
+            boolean candidateExplicitlyCancelledBooking,
+            boolean candidateInvalidatedUnavailableSlot
     ) {
         if (freshBooking == null) {
             return candBooking;
@@ -1023,12 +1046,27 @@ public record AciCustomerBrainMemorySnapshot(
         if (candBooking == null) {
             return freshBooking;
         }
+        if (candidateExplicitlyCancelledBooking || candidateInvalidatedUnavailableSlot) {
+            return candBooking;
+        }
         PersistedBookingState newer = candidateIsNewerOrEqualTurn ? candBooking : freshBooking;
         PersistedBookingState older = candidateIsNewerOrEqualTurn ? freshBooking : candBooking;
 
+        boolean newerMutatedActiveSlot = candidateIsNewerOrEqualTurn && (
+                (newer.selectedProductId() != null && !newer.selectedProductId().isBlank()
+                        && older.selectedProductId() != null && !older.selectedProductId().isBlank()
+                        && !newer.selectedProductId().equals(older.selectedProductId()))
+                || (newer.bookingDate() != null && !newer.bookingDate().isBlank()
+                        && older.bookingDate() != null && !older.bookingDate().isBlank()
+                        && !newer.bookingDate().equals(older.bookingDate()))
+                || (newer.bookingTime() != null && !newer.bookingTime().isBlank()
+                        && older.bookingTime() != null && !older.bookingTime().isBlank()
+                        && !newer.bookingTime().equals(older.bookingTime()))
+        );
+
         int newerRank = bookingStatusRank(newer.status());
         int olderRank = bookingStatusRank(older.status());
-        String winningStatus = newerRank >= olderRank ? newer.status() : older.status();
+        String winningStatus = (newerMutatedActiveSlot || newerRank >= olderRank) ? newer.status() : older.status();
 
         return new PersistedBookingState(
                 nonBlankOrDefault(newer.selectedProductId(), older.selectedProductId()),

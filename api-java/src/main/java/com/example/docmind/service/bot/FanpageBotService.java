@@ -426,6 +426,26 @@ public class FanpageBotService {
         return cleanAgentOrchestratorService;
     }
 
+    @org.springframework.beans.factory.annotation.Value("${booking.gateway.mode:DISABLED}")
+    public void setBookingGatewayModeProperty(String rawMode) {
+        if (this.cleanAgentOrchestratorService != null) {
+            this.cleanAgentOrchestratorService.setBookingGatewayModeProperty(rawMode);
+        }
+    }
+
+    public void setBookingGatewayMode(BookingGateway.Mode mode) {
+        if (this.cleanAgentOrchestratorService != null) {
+            this.cleanAgentOrchestratorService.setBookingGatewayMode(mode);
+        }
+    }
+
+    @Autowired(required = false)
+    public void setBookingGateway(BookingGateway bookingGateway) {
+        if (this.cleanAgentOrchestratorService != null) {
+            this.cleanAgentOrchestratorService.setBookingGateway(bookingGateway);
+        }
+    }
+
     public void setInboundSessionPersistenceService(InboundSessionPersistenceService inboundSessionPersistenceService) {
         this.inboundSessionPersistenceService = inboundSessionPersistenceService;
         if (this.cleanAgentOrchestratorService != null) {

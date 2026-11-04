@@ -1157,9 +1157,41 @@ public class AgentBrainService {
         }
         CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         synchronized (mem) {
+            syncBookingRetractionMarkers(mem, mem.structuredBookingState, bookingState);
             mem.structuredBookingState = bookingState;
         }
         persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
+    }
+
+    private static void syncBookingRetractionMarkers(
+            CustomerBrainMemory mem,
+            ConversationState.StructuredBookingState prevBooking,
+            ConversationState.StructuredBookingState nextBooking
+    ) {
+        if (mem == null || nextBooking == null) {
+            return;
+        }
+        if (nextBooking.status() == ConversationState.BookingStatus.NONE) {
+            if (prevBooking != null && prevBooking.status() != ConversationState.BookingStatus.NONE) {
+                if (!mem.supersededOrRetractedFacts.contains("BOOKING_CANCELLED")) {
+                    mem.supersededOrRetractedFacts.add("BOOKING_CANCELLED");
+                }
+            }
+        } else {
+            mem.supersededOrRetractedFacts.removeIf("BOOKING_CANCELLED"::equalsIgnoreCase);
+        }
+
+        if (nextBooking.status() == ConversationState.BookingStatus.AWAITING_DATE_OR_TIME
+                && (nextBooking.bookingTime() == null || nextBooking.bookingTime().isBlank())
+                && prevBooking != null
+                && prevBooking.bookingTime() != null
+                && !prevBooking.bookingTime().isBlank()) {
+            if (!mem.supersededOrRetractedFacts.contains("BOOKING_SLOT_UNAVAILABLE")) {
+                mem.supersededOrRetractedFacts.add("BOOKING_SLOT_UNAVAILABLE");
+            }
+        } else if (nextBooking.bookingTime() != null && !nextBooking.bookingTime().isBlank()) {
+            mem.supersededOrRetractedFacts.removeIf("BOOKING_SLOT_UNAVAILABLE"::equalsIgnoreCase);
+        }
     }
 
     public ConversationState.StructuredBookingState recallBookingState(UUID pageId, String senderId) {
@@ -1167,6 +1199,59 @@ public class AgentBrainService {
         return mem != null && mem.structuredBookingStateSnapshot() != null
                 ? mem.structuredBookingStateSnapshot()
                 : ConversationState.StructuredBookingState.none();
+    }
+
+    public void recordBookingExecutionMetadata(
+            UUID pageId,
+            String senderId,
+            ConversationState.StructuredBookingState bookingState,
+            BookingExecutionResult executionResult
+    ) {
+        if (senderId == null || senderId.isBlank()) {
+            return;
+        }
+        boolean isConfirmed = bookingState != null && bookingState.status() == ConversationState.BookingStatus.CONFIRMED;
+        String bookingIdVal = (isConfirmed && executionResult != null && executionResult.bookingId() != null && !executionResult.bookingId().isBlank())
+                ? executionResult.bookingId().strip()
+                : (isConfirmed ? recallBookingId(pageId, senderId) : "NONE");
+        if (bookingIdVal == null || bookingIdVal.isBlank()) {
+            bookingIdVal = "NONE";
+        }
+        String bookingSourceVal = (executionResult != null && executionResult.source() != null
+                && executionResult.source() != BookingExecutionResult.Source.NONE)
+                ? executionResult.source().name()
+                : (bookingState != null && bookingState.status() != ConversationState.BookingStatus.NONE
+                    ? recallBookingSource(pageId, senderId)
+                    : "NONE");
+        if (bookingSourceVal == null || bookingSourceVal.isBlank()) {
+            bookingSourceVal = "NONE";
+        }
+        recordAuthoritativeBusinessFact(pageId, senderId, "BOOKING_EXECUTION", "BOOKING_ID", bookingIdVal, bookingSourceVal);
+        recordAuthoritativeBusinessFact(pageId, senderId, "BOOKING_EXECUTION", "BOOKING_SOURCE", bookingSourceVal, bookingSourceVal);
+    }
+
+    public String recallBookingId(UUID pageId, String senderId) {
+        List<AdaptiveConversationIntelligence.VerifiedBusinessFact> facts = getAuthoritativeBusinessFacts(pageId, senderId);
+        for (int i = facts.size() - 1; i >= 0; i--) {
+            AdaptiveConversationIntelligence.VerifiedBusinessFact f = facts.get(i);
+            if (f != null && "BOOKING_ID".equalsIgnoreCase(f.factKey())) {
+                String val = f.factValue() != null ? f.factValue().strip() : "";
+                return (val.isEmpty() || "NONE".equalsIgnoreCase(val)) ? null : val;
+            }
+        }
+        return null;
+    }
+
+    public String recallBookingSource(UUID pageId, String senderId) {
+        List<AdaptiveConversationIntelligence.VerifiedBusinessFact> facts = getAuthoritativeBusinessFacts(pageId, senderId);
+        for (int i = facts.size() - 1; i >= 0; i--) {
+            AdaptiveConversationIntelligence.VerifiedBusinessFact f = facts.get(i);
+            if (f != null && "BOOKING_SOURCE".equalsIgnoreCase(f.factKey())) {
+                String val = f.factValue() != null ? f.factValue().strip() : "";
+                return (val.isEmpty() || "NONE".equalsIgnoreCase(val)) ? null : val;
+            }
+        }
+        return null;
     }
 
     public void clearCustomerMemory(UUID pageId, String senderId) {
@@ -1448,6 +1533,7 @@ public class AgentBrainService {
                         && mem.structuredBookingState != null
                         && mem.structuredBookingState.status() != ConversationState.BookingStatus.NONE;
                 if (!wouldClobberActiveBookingOnTimeout) {
+                    syncBookingRetractionMarkers(mem, mem.structuredBookingState, authoritativeBookingState);
                     mem.structuredBookingState = authoritativeBookingState;
                 }
             }

@@ -59,8 +59,8 @@ public class CleanAgentOrchestratorService {
 
     private static final Pattern HESITATION_OR_DEFERRAL_CLEAN_PATTERN = Pattern.compile(
             "(?isU).*\\b("
-            + "để\\s+(?:tối\\s+)?(?:về\\s+)?(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+|t\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|hỏi|bàn|tham\\s+khảo)(?:\\s+lại|\\s+thêm|\\s+trước)?(?:\\s+đã|\\s+nhé|\\s+nha|\\s+ạ)?|"
-            + "(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+|t\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|tham\\s+khảo)(?:\\s+lại|\\s+thêm)?\\s+(?:đã|trước\\s+đã|thêm\\s+đã)(?:\\s+nhé|\\s+nha|\\s+ạ|\\s+em)?|"
+            + "để\\s+(?:tối\\s+)?(?:về\\s+)?(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+|t\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|hỏi|bàn|tham\\s+khảo|kiểm\\s+tra\\s+lịch)(?:\\s+lại|\\s+thêm|\\s+trước|\\s+của\\s+(?:mình|tôi|em|anh|chị))?(?:\\s+đã|\\s+nhé|\\s+nha|\\s+ạ)?|"
+            + "(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+|t\\s+)?(?:xem|tính|nghĩ|suy\\s+nghĩ|cân\\s+nhắc|tham\\s+khảo|kiểm\\s+tra\\s+lịch)(?:\\s+lại|\\s+thêm|\\s+của\\s+(?:mình|tôi|em|anh|chị))?\\s+(?:đã|trước\\s+đã|thêm\\s+đã)(?:\\s+nhé|\\s+nha|\\s+ạ|\\s+em)?|"
             + "(?:em\\s+|mình\\s+|anh\\s+|chị\\s+|tôi\\s+|t\\s+)?(?:nghĩ|suy\\s+nghĩ|cân\\s+nhắc|tham\\s+khảo)\\s+thêm(?:\\s+đã|\\s+chút|\\s+nhé|\\s+nha|\\s+ạ|\\s+em)?|"
             + "chưa\\s+quyết(?:\\s+định)?(?:\\s+được|\\s+đã|\\s+nhé|\\s+ạ)?|"
             + "chưa\\s+biết(?:\\s+nữa|\\s+được|\\s+ạ)?|từ\\s+từ(?:\\s+đã|\\s+nhé|\\s+ạ)?|để\\s+sau|để\\s+tối|đang\\s+bận|bận\\s+chút|bận\\s+rồi|khi\\s+khác|hôm\\s+khác|lúc\\s+khác"
@@ -262,6 +262,10 @@ public class CleanAgentOrchestratorService {
     private volatile ThinkingModePolicy.TurnTelemetry lastTurnTelemetry;
     private volatile ConversationState.StructuredBookingState lastTurnBookingState =
             ConversationState.StructuredBookingState.none();
+    private volatile BookingGateway.Mode bookingGatewayMode = BookingGateway.Mode.DISABLED;
+    @Autowired(required = false)
+    private BookingGateway bookingGateway = new MockBookingGateway();
+    private volatile BookingExecutionResult lastTurnBookingExecutionResult = BookingExecutionResult.disabled();
     private volatile ThinkingMode lastSelectedThinkingMode = ThinkingMode.FAST_NO_THINK;
 
     public CleanAgentOrchestratorService() {
@@ -282,6 +286,31 @@ public class CleanAgentOrchestratorService {
     public void setCognitiveModeProperty(String rawMode) {
         this.cognitiveMode = AdaptiveConversationIntelligence.CognitiveMode.fromProperty(rawMode);
         this.aciCognitiveLoopActive = true;
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${booking.gateway.mode:DISABLED}")
+    public void setBookingGatewayModeProperty(String rawMode) {
+        this.bookingGatewayMode = BookingGateway.Mode.fromProperty(rawMode);
+    }
+
+    public void setBookingGatewayMode(BookingGateway.Mode mode) {
+        this.bookingGatewayMode = mode != null ? mode : BookingGateway.Mode.DISABLED;
+    }
+
+    public BookingGateway.Mode getBookingGatewayMode() {
+        return bookingGatewayMode;
+    }
+
+    public void setBookingGateway(BookingGateway bookingGateway) {
+        this.bookingGateway = bookingGateway != null ? bookingGateway : new MockBookingGateway();
+    }
+
+    public BookingGateway getBookingGateway() {
+        return bookingGateway;
+    }
+
+    public BookingExecutionResult getLastTurnBookingExecutionResult() {
+        return lastTurnBookingExecutionResult;
     }
 
     public void setCognitiveMode(AdaptiveConversationIntelligence.CognitiveMode cognitiveMode) {
@@ -886,7 +915,7 @@ public class CleanAgentOrchestratorService {
             inPriceObjectionContext = false;
         }
 
-        ConversationState.StructuredBookingState bookingState = resolveMultiIndustryBookingState(
+        ConversationState.StructuredBookingState rawBookingState = resolveMultiIndustryBookingState(
                 mergedMessage,
                 priorBookingState,
                 packageInterestAccepted || isBookingAlreadyConfirmed,
@@ -900,6 +929,15 @@ public class CleanAgentOrchestratorService {
                 null,
                 prevBotTurnText
         );
+        BookingLifecycleEvaluation bookingLifecycleEval = applyBookingGatewayLifecycle(
+                pageId,
+                request != null ? request.senderId() : null,
+                priorBookingState,
+                rawBookingState,
+                mergedMessage,
+                safeConv.preferredRegion()
+        );
+        ConversationState.StructuredBookingState bookingState = bookingLifecycleEval.bookingState();
         String bookingFunnelStatus = bookingState.status().name();
 
         List<String> currentTurnSignals = new ArrayList<>(classifyCleanCurrentTurnSignals(
@@ -1394,6 +1432,16 @@ public class CleanAgentOrchestratorService {
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
                     candidateBubbles, selfPronoun, safeHonorific);
         }
+        candidateBubbles = alignBubblesWithBookingLifecycle(
+                candidateBubbles,
+                bookingLifecycleEval,
+                priorBookingState,
+                mergedMessage,
+                allCatalog,
+                presentedPackagesInHistory,
+                selfPronoun,
+                safeHonorific
+        );
 
         List<String> allViolations = new ArrayList<>(
                 CleanAgentOutputRefereeAndSanitizer.checkCleanCatalogGrounding(
@@ -1753,6 +1801,18 @@ public class CleanAgentOrchestratorService {
             fallbackText = BubbleTextSanitizer.capitalizeFirstLetter(fallbackText);
             finalBubbles.add(new FanpageBotResponse.ReplyBubble(fallbackText, 0));
         }
+        if (!usedSafeHandoffFallback) {
+            finalBubbles = new ArrayList<>(alignBubblesWithBookingLifecycle(
+                    finalBubbles,
+                    bookingLifecycleEval,
+                    priorBookingState,
+                    mergedMessage,
+                    allCatalog,
+                    presentedPackagesInHistory,
+                    selfPronoun,
+                    safeHonorific
+            ));
+        }
 
         boolean shouldHandoff = usedSafeHandoffFallback || (structured != null && Boolean.TRUE.equals(structured.shouldHandoff()));
         String combinedReplyText = String.join("\n\n", finalBubbles.stream().map(FanpageBotResponse.ReplyBubble::text).toList());
@@ -1829,6 +1889,7 @@ public class CleanAgentOrchestratorService {
             );
         }
         this.lastTurnBookingState = bookingState;
+        this.lastTurnBookingExecutionResult = bookingLifecycleEval.executionResult();
 
         String traceCorrelationId = org.slf4j.MDC.get("correlation_id");
         if (traceCorrelationId == null || traceCorrelationId.isBlank()) {
@@ -1901,6 +1962,8 @@ public class CleanAgentOrchestratorService {
         if (agentBrainService != null) {
             try {
                 agentBrainService.recordBookingState(pageId, request.senderId(), bookingState);
+                agentBrainService.recordBookingExecutionMetadata(
+                        pageId, request.senderId(), bookingState, bookingLifecycleEval.executionResult());
                 agentBrainService.recordCommercialFunnelState(
                         pageId,
                         request.senderId(),
@@ -2456,10 +2519,17 @@ public class CleanAgentOrchestratorService {
                 ? priorBookingState
                 : ConversationState.StructuredBookingState.none();
 
-        if (shouldCancelActiveBooking) {
+        if (AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(mergedMessage)) {
             return ConversationState.StructuredBookingState.none();
         }
-        if (officiallyConfirmedByToolOrStaff || safePrior.status() == ConversationState.BookingStatus.CONFIRMED) {
+        if (shouldCancelActiveBooking) {
+            if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION
+                    && isHesitationOrDeferralMessage(mergedMessage)) {
+                return safePrior;
+            }
+            return ConversationState.StructuredBookingState.none();
+        }
+        if (officiallyConfirmedByToolOrStaff) {
             ConversationState.ParsedBookingDateTime dt = ConversationState.parseBookingDateTime(
                     mergedMessage, safePrior.bookingDate(), safePrior.bookingTime(), safeZone, referenceDate);
             return new ConversationState.StructuredBookingState(
@@ -2565,12 +2635,18 @@ public class CleanAgentOrchestratorService {
             }
         }
 
+        boolean slotChangedFromPrior = !java.util.Objects.equals(selectedProductId, safePrior.selectedProductId())
+                || !java.util.Objects.equals(parsedDT.bookingDate(), safePrior.bookingDate())
+                || !java.util.Objects.equals(parsedDT.bookingTime(), safePrior.bookingTime());
+
         ConversationState.BookingStatus nextStatus;
         if (selectedProductId == null || selectedProductId.isBlank()) {
             nextStatus = ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION;
         } else if (parsedDT.bookingDate() == null || parsedDT.bookingTime() == null) {
             nextStatus = ConversationState.BookingStatus.AWAITING_DATE_OR_TIME;
-        } else if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+        } else if (safePrior.status() == ConversationState.BookingStatus.CONFIRMED && !slotChangedFromPrior) {
+            nextStatus = ConversationState.BookingStatus.CONFIRMED;
+        } else if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION && !slotChangedFromPrior) {
             nextStatus = ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
         } else {
             nextStatus = ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK;
@@ -2586,6 +2662,382 @@ public class CleanAgentOrchestratorService {
                 nextStatus,
                 candidateProductIds
         );
+    }
+
+    private static final Pattern EXPLICIT_CUSTOMER_BOOKING_CONFIRMATION_PATTERN = Pattern.compile(
+            "(?isU)^\\s*(?:dạ\\s+|vâng\\s+|ừ\\s+|uk\\s+|ok\\s+|oke\\s+|okay\\s+)?(?:"
+                    + "ok(?:e|ay)?\\s+(?:chốt|đặt|giữ\\s+lịch|lên\\s+lịch|xác\\s+nhận|nhé|nha|luôn|đi|giúp\\s+(?:mình|tôi|anh|chị|em))|"
+                    + "(?:chốt|xác\\s+nhận|đồng\\s+ý)(?:\\s+(?:lịch|đặt|giữ\\s+lịch|khung\\s+giờ\\s+này|giúp\\s+(?:mình|tôi|anh|chị|em)|nhé|nha|luôn|đi|ạ))*|"
+                    + "(?:vâng|dạ|ừ|uk)\\s+(?:chốt|đặt|giữ\\s+lịch|xác\\s+nhận)(?:\\s+(?:giúp\\s+(?:mình|tôi|anh|chị|em)|nhé|nha|luôn|ạ))*|"
+                    + "đặt\\s+luôn\\s+(?:giúp\\s+(?:mình|tôi|anh|chị|em)|nhé|nha|ạ)"
+                    + ")[^?]*$"
+    );
+
+    public static boolean isExplicitCustomerBookingConfirmationMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String trimmed = java.text.Normalizer.normalize(message.strip(), java.text.Normalizer.Form.NFC);
+        if (trimmed.contains("?")
+                || isHesitationOrDeferralMessage(trimmed)
+                || AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(trimmed)
+                || isOperationalOrLogisticsQuestion(trimmed)
+                || isNormalPriceOrDetailInquiryMessage(trimmed)) {
+            return false;
+        }
+        if (EXPLICIT_CUSTOMER_BOOKING_CONFIRMATION_PATTERN.matcher(trimmed).matches()) {
+            return true;
+        }
+        return isBareAcknowledgmentMessage(trimmed);
+    }
+
+    public record BookingLifecycleEvaluation(
+            ConversationState.StructuredBookingState bookingState,
+            BookingExecutionResult executionResult,
+            String lifecycleAction,
+            String unavailableRequestedTime
+    ) {
+    }
+
+    private BookingLifecycleEvaluation applyBookingGatewayLifecycle(
+            UUID pageId,
+            String senderId,
+            ConversationState.StructuredBookingState priorState,
+            ConversationState.StructuredBookingState resolvedAfterPatch,
+            String customerMessage,
+            String branch
+    ) {
+        ConversationState.StructuredBookingState safePrior = priorState != null
+                ? priorState
+                : ConversationState.StructuredBookingState.none();
+        ConversationState.StructuredBookingState safeCurrent = resolvedAfterPatch != null
+                ? resolvedAfterPatch
+                : ConversationState.StructuredBookingState.none();
+
+        // 0. Explicit cancellation / refusal resets booking state and invalidates any prior mock availability
+        if (AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(customerMessage)
+                || (safePrior.status() != ConversationState.BookingStatus.NONE
+                    && safeCurrent.status() == ConversationState.BookingStatus.NONE)) {
+            if (bookingGateway != null) {
+                bookingGateway.invalidateAvailabilityForConversation(pageId, senderId);
+            }
+            return new BookingLifecycleEvaluation(
+                    ConversationState.StructuredBookingState.none(),
+                    BookingExecutionResult.disabled(),
+                    safePrior.status() != ConversationState.BookingStatus.NONE ? "EXPLICIT_BOOKING_CANCEL" : "NONE",
+                    null
+            );
+        }
+
+        // Multi-product ambiguity guard (Scenario H)
+        if (safeCurrent.status() == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION) {
+            return new BookingLifecycleEvaluation(
+                    safeCurrent,
+                    BookingExecutionResult.disabled(),
+                    "MULTI_PRODUCT_SELECTION_REQUIRED",
+                    null
+            );
+        }
+
+        boolean slotMutatedFromPrior = safePrior.status() != ConversationState.BookingStatus.NONE && (
+                !java.util.Objects.equals(safeCurrent.selectedProductId(), safePrior.selectedProductId())
+                || !java.util.Objects.equals(safeCurrent.bookingDate(), safePrior.bookingDate())
+                || !java.util.Objects.equals(safeCurrent.bookingTime(), safePrior.bookingTime())
+        );
+
+        // 1. Production Default (DISABLED): never call MockBookingGateway, never transition to CONFIRMED via mock
+        if (bookingGatewayMode != BookingGateway.Mode.MOCK || bookingGateway == null) {
+            ConversationState.StructuredBookingState safeDisabledState = safeCurrent;
+            if (safeDisabledState.status() == ConversationState.BookingStatus.CONFIRMED
+                    || safeDisabledState.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+                safeDisabledState = new ConversationState.StructuredBookingState(
+                        safeDisabledState.selectedProductId(),
+                        safeDisabledState.selectedProductLabel(),
+                        safeDisabledState.bookingDate(),
+                        safeDisabledState.resolvedIsoDate(),
+                        safeDisabledState.bookingTime(),
+                        safeDisabledState.timezoneId(),
+                        ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK,
+                        safeDisabledState.candidateProductIds()
+                );
+            }
+            String disabledAction = (safeDisabledState.status() == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK
+                    && isExplicitCustomerBookingConfirmationMessage(customerMessage))
+                    ? "DISABLED_GATEWAY_HOLD"
+                    : "NONE";
+            return new BookingLifecycleEvaluation(
+                    safeDisabledState,
+                    BookingExecutionResult.disabled(),
+                    disabledAction,
+                    null
+            );
+        }
+
+        // 2. MOCK Mode
+        if (slotMutatedFromPrior) {
+            bookingGateway.invalidateAvailabilityForConversation(pageId, senderId);
+        }
+
+        // Case 2A: Customer hesitates/defers while in AWAITING_CUSTOMER_CONFIRMATION (Scenario D)
+        if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION
+                && !slotMutatedFromPrior
+                && isHesitationOrDeferralMessage(customerMessage)) {
+            BookingGateway.BookingSlotRequest slotReq = new BookingGateway.BookingSlotRequest(
+                    pageId,
+                    senderId,
+                    safePrior.selectedProductId(),
+                    safePrior.selectedProductLabel(),
+                    safePrior.bookingDate(),
+                    safePrior.resolvedIsoDate(),
+                    safePrior.bookingTime(),
+                    safePrior.timezoneId(),
+                    branch
+            );
+            return new BookingLifecycleEvaluation(
+                    safePrior,
+                    BookingExecutionResult.mockAvailable(slotReq.slotSignature(), branch),
+                    "HESITATION_ON_CONFIRMATION",
+                    null
+            );
+        }
+
+        // Case 2B: Customer confirms a previously verified slot (Step 4 & Step 5 of Section 3.3)
+        if (safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION
+                && !slotMutatedFromPrior
+                && isExplicitCustomerBookingConfirmationMessage(customerMessage)) {
+            BookingGateway.BookingSlotRequest slotReq = new BookingGateway.BookingSlotRequest(
+                    pageId,
+                    senderId,
+                    safePrior.selectedProductId(),
+                    safePrior.selectedProductLabel(),
+                    safePrior.bookingDate(),
+                    safePrior.resolvedIsoDate(),
+                    safePrior.bookingTime(),
+                    safePrior.timezoneId(),
+                    branch
+            );
+            BookingExecutionResult createRes = bookingGateway.createBooking(slotReq);
+            if (createRes.isConfirmedSuccess()) {
+                ConversationState.StructuredBookingState confirmedState = new ConversationState.StructuredBookingState(
+                        safePrior.selectedProductId(),
+                        safePrior.selectedProductLabel(),
+                        safePrior.bookingDate(),
+                        safePrior.resolvedIsoDate(),
+                        safePrior.bookingTime(),
+                        safePrior.timezoneId(),
+                        ConversationState.BookingStatus.CONFIRMED,
+                        safePrior.candidateProductIds()
+                );
+                return new BookingLifecycleEvaluation(confirmedState, createRes, "CREATE_BOOKING_SUCCESS", null);
+            } else {
+                return new BookingLifecycleEvaluation(safePrior, createRes, "CREATE_BOOKING_FAILURE", null);
+            }
+        }
+
+        // Case 2C: Duplicate confirmation event when already CONFIRMED (Scenario G — Idempotency)
+        if (safePrior.status() == ConversationState.BookingStatus.CONFIRMED
+                && !slotMutatedFromPrior
+                && isExplicitCustomerBookingConfirmationMessage(customerMessage)) {
+            BookingGateway.BookingSlotRequest slotReq = new BookingGateway.BookingSlotRequest(
+                    pageId,
+                    senderId,
+                    safePrior.selectedProductId(),
+                    safePrior.selectedProductLabel(),
+                    safePrior.bookingDate(),
+                    safePrior.resolvedIsoDate(),
+                    safePrior.bookingTime(),
+                    safePrior.timezoneId(),
+                    branch
+            );
+            BookingExecutionResult dedupRes = bookingGateway.createBooking(slotReq);
+            return new BookingLifecycleEvaluation(safePrior, dedupRes, "CREATE_BOOKING_IDEMPOTENT_REPLAY", null);
+        }
+
+        // Case 2D: Slot has all 3 required parameters (product + date + time) and needs availability check (Step 2 & Step 3)
+        boolean hasFullSlot = safeCurrent.selectedProductId() != null && !safeCurrent.selectedProductId().isBlank()
+                && safeCurrent.bookingDate() != null && !safeCurrent.bookingDate().isBlank()
+                && safeCurrent.bookingTime() != null && !safeCurrent.bookingTime().isBlank();
+        if (hasFullSlot && (safeCurrent.status() == ConversationState.BookingStatus.AWAITING_AVAILABILITY_CHECK || slotMutatedFromPrior)) {
+            BookingGateway.BookingSlotRequest slotReq = new BookingGateway.BookingSlotRequest(
+                    pageId,
+                    senderId,
+                    safeCurrent.selectedProductId(),
+                    safeCurrent.selectedProductLabel(),
+                    safeCurrent.bookingDate(),
+                    safeCurrent.resolvedIsoDate(),
+                    safeCurrent.bookingTime(),
+                    safeCurrent.timezoneId(),
+                    branch
+            );
+            BookingExecutionResult checkRes = bookingGateway.checkAvailability(slotReq);
+            if (checkRes.status() == BookingExecutionResult.Status.SUCCESS && checkRes.available()) {
+                ConversationState.StructuredBookingState awaitingConfirm = new ConversationState.StructuredBookingState(
+                        safeCurrent.selectedProductId(),
+                        safeCurrent.selectedProductLabel(),
+                        safeCurrent.bookingDate(),
+                        safeCurrent.resolvedIsoDate(),
+                        safeCurrent.bookingTime(),
+                        safeCurrent.timezoneId(),
+                        ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION,
+                        safeCurrent.candidateProductIds()
+                );
+                return new BookingLifecycleEvaluation(awaitingConfirm, checkRes, "CHECK_AVAILABILITY_AVAILABLE", null);
+            } else if (checkRes.status() == BookingExecutionResult.Status.SUCCESS && !checkRes.available()) {
+                ConversationState.StructuredBookingState awaitingNewTime = new ConversationState.StructuredBookingState(
+                        safeCurrent.selectedProductId(),
+                        safeCurrent.selectedProductLabel(),
+                        safeCurrent.bookingDate(),
+                        safeCurrent.resolvedIsoDate(),
+                        null,
+                        safeCurrent.timezoneId(),
+                        ConversationState.BookingStatus.AWAITING_DATE_OR_TIME,
+                        safeCurrent.candidateProductIds()
+                );
+                return new BookingLifecycleEvaluation(
+                        awaitingNewTime,
+                        checkRes,
+                        "CHECK_AVAILABILITY_UNAVAILABLE",
+                        safeCurrent.bookingTime()
+                );
+            } else {
+                return new BookingLifecycleEvaluation(safeCurrent, checkRes, "CHECK_AVAILABILITY_FAILURE", null);
+            }
+        }
+
+        // Preserve existing MOCK booking execution metadata when already CONFIRMED and customer asks an unrelated follow-up
+        if (safeCurrent.status() == ConversationState.BookingStatus.CONFIRMED && agentBrainService != null) {
+            String existingBookingId = agentBrainService.recallBookingId(pageId, senderId);
+            if (existingBookingId != null) {
+                BookingGateway.BookingSlotRequest slotReq = new BookingGateway.BookingSlotRequest(
+                        pageId,
+                        senderId,
+                        safeCurrent.selectedProductId(),
+                        safeCurrent.selectedProductLabel(),
+                        safeCurrent.bookingDate(),
+                        safeCurrent.resolvedIsoDate(),
+                        safeCurrent.bookingTime(),
+                        safeCurrent.timezoneId(),
+                        branch
+                );
+                return new BookingLifecycleEvaluation(
+                        safeCurrent,
+                        BookingExecutionResult.mockCreated(
+                                existingBookingId,
+                                slotReq.slotSignature(),
+                                branch),
+                        "NONE",
+                        null
+                );
+            }
+        }
+
+        return new BookingLifecycleEvaluation(safeCurrent, BookingExecutionResult.disabled(), "NONE", null);
+    }
+
+    private static List<FanpageBotResponse.ReplyBubble> alignBubblesWithBookingLifecycle(
+            List<FanpageBotResponse.ReplyBubble> currentBubbles,
+            BookingLifecycleEvaluation eval,
+            ConversationState.StructuredBookingState priorState,
+            String customerMessage,
+            List<PackageCatalogService.PackageSummary> allCatalog,
+            List<PackageCatalogService.PackageSummary> presentedPackagesInHistory,
+            String selfPronoun,
+            String safeHonorific
+    ) {
+        if (eval == null || eval.lifecycleAction() == null || "NONE".equals(eval.lifecycleAction())) {
+            return currentBubbles != null ? currentBubbles : List.of();
+        }
+        String sp = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
+        String hon = (safeHonorific != null && !safeHonorific.isBlank()) ? safeHonorific.strip() : "mình";
+        String capHon = BubbleTextSanitizer.capitalizeFirstLetter(hon);
+        ConversationState.StructuredBookingState st = eval.bookingState() != null
+                ? eval.bookingState()
+                : ConversationState.StructuredBookingState.none();
+        BookingExecutionResult res = eval.executionResult() != null
+                ? eval.executionResult()
+                : BookingExecutionResult.disabled();
+
+        PackageCatalogService.PackageSummary matchedPkg = st.selectedProductId() != null
+                ? AdaptiveConversationIntelligence.resolveCatalogProductByFlexibleIdentifier(
+                        st.selectedProductId(), presentedPackagesInHistory, allCatalog)
+                : null;
+        String productDisplayWithPrice = matchedPkg != null
+                ? (matchedPkg.canonicalLabel() + " (" + matchedPkg.priceDisplay() + ")")
+                : (st.selectedProductLabel() != null && !st.selectedProductLabel().isBlank()
+                    ? st.selectedProductLabel()
+                    : "dịch vụ đã chọn");
+
+        return switch (eval.lifecycleAction()) {
+            case "CHECK_AVAILABILITY_AVAILABLE" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ khung giờ " + st.bookingTime() + " " + st.bookingDate() + " cho " + productDisplayWithPrice
+                            + " hiện đang còn chỗ trống trên lịch mô phỏng ạ. " + capHon + " xác nhận giúp " + sp
+                            + " để " + sp + " tiến hành ghi nhận lịch hẹn nhé ạ?",
+                    0
+            ));
+            case "CHECK_AVAILABILITY_UNAVAILABLE" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ rất tiếc khung giờ " + (eval.unavailableRequestedTime() != null ? eval.unavailableRequestedTime() + " " : "")
+                            + (st.bookingDate() != null ? st.bookingDate() + " " : "")
+                            + "cho " + productDisplayWithPrice + " hiện đã kín lịch trên hệ thống mô phỏng ạ. "
+                            + capHon + " muốn đổi sang khung giờ khác (ví dụ 20:00) để " + sp + " kiểm tra lại lịch trống giúp " + hon + " nhé ạ?",
+                    0
+            ));
+            case "CREATE_BOOKING_SUCCESS", "CREATE_BOOKING_IDEMPOTENT_REPLAY" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + sp + " đã đặt lịch thành công cho " + hon + " " + productDisplayWithPrice
+                            + " vào lúc " + st.bookingTime() + " " + st.bookingDate()
+                            + " ạ. Mã đặt lịch mô phỏng (MOCK): " + res.bookingId()
+                            + ". Khi ghé cơ sở " + hon + " chỉ cần báo mã này tại quầy lễ tân nhé ạ.",
+                    0
+            ));
+            case "CREATE_BOOKING_FAILURE" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ hiện hệ thống đặt lịch mô phỏng đang gặp gián đoạn tạm thời ("
+                            + (res.failureReason() != null ? res.failureReason() : "BOOKING_CREATION_FAILED")
+                            + ") nên " + sp + " chưa thể tạo mã đặt lịch cho khung giờ " + st.bookingTime() + " " + st.bookingDate()
+                            + " của " + hon + " ạ. " + capHon + " vui lòng thử xác nhận lại hoặc để " + sp
+                            + " chuyển nhân sự hỗ trợ giữ lịch trực tiếp cho " + hon + " nhé ạ?",
+                    0
+            ));
+            case "EXPLICIT_BOOKING_CANCEL" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ vâng ạ, " + sp + " đã hủy yêu cầu đặt lịch theo ý " + hon + " rồi ạ. Khi nào " + hon
+                            + " thu xếp được thời gian phù hợp và muốn đặt lịch lại thì cứ nhắn " + sp + " hỗ trợ bất cứ lúc nào nhé ạ.",
+                    0
+            ));
+            case "HESITATION_ON_CONFIRMATION" -> {
+                ConversationState.StructuredBookingState slotRef = st.selectedProductId() != null ? st : (priorState != null ? priorState : st);
+                yield List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ vâng ạ, " + hon + " cứ kiểm tra lại lịch cá nhân thoải mái nhé ạ. Khung giờ "
+                                + (slotRef.bookingTime() != null ? slotRef.bookingTime() + " " : "")
+                                + (slotRef.bookingDate() != null ? slotRef.bookingDate() + " " : "")
+                                + "cho " + productDisplayWithPrice + " vẫn đang chờ " + hon
+                                + " xác nhận, khi nào chốt được " + hon + " nhắn lại giúp " + sp + " nhé ạ.",
+                        0
+                ));
+            }
+            case "DISABLED_GATEWAY_HOLD" -> List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + sp + " đã ghi nhận thông tin đặt lịch " + productDisplayWithPrice
+                            + " vào lúc " + st.bookingTime() + " " + st.bookingDate() + " của " + hon
+                            + " và đang chờ bộ phận điều phối kiểm tra lịch trống thực tế tại cơ sở để xác nhận chính thức với " + hon + " nhé ạ.",
+                    0
+            ));
+            case "MULTI_PRODUCT_SELECTION_REQUIRED" -> {
+                List<PackageCatalogService.PackageSummary> distinct = deduplicateNonAddonProducts(presentedPackagesInHistory);
+                if (distinct.size() >= 2) {
+                    String optionsList = distinct.stream()
+                            .map(p -> p.canonicalLabel() + " (" + p.priceDisplay() + ")")
+                            .reduce((a, b) -> a + " hay " + b)
+                            .orElse("các gói đã tư vấn");
+                    String timePart = (st.bookingTime() != null && st.bookingDate() != null)
+                            ? (" cho khung giờ " + st.bookingTime() + " " + st.bookingDate())
+                            : (st.bookingDate() != null ? (" vào " + st.bookingDate()) : "");
+                    yield List.of(new FanpageBotResponse.ReplyBubble(
+                            "Dạ để " + sp + " kiểm tra lịch chính xác" + timePart + ", " + hon + " muốn chọn "
+                                    + optionsList + " ạ?",
+                            0
+                    ));
+                }
+                yield currentBubbles != null ? currentBubbles : List.of();
+            }
+            default -> currentBubbles != null ? currentBubbles : List.of();
+        };
     }
 
     private static boolean isShortAffirmativeBookingNod(String message) {
@@ -4913,7 +5365,7 @@ public class CleanAgentOrchestratorService {
         }
 
         // Áp dụng ProposedBookingPatch qua cổng thẩm quyền Java Core & đánh giá Conditional Handoff (Mục 3.4 & Mục 4)
-        ConversationState.StructuredBookingState authoritativeBookingState =
+        ConversationState.StructuredBookingState rawAuthoritativeBookingState =
                 AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
                         priorBookingState,
                         reflection.proposedBookingPatch(),
@@ -4925,6 +5377,25 @@ public class CleanAgentOrchestratorService {
                         reflection.customerUnderstanding().bookingReadiness(),
                         reflection.priority().primary()
                 );
+        BookingLifecycleEvaluation bookingLifecycleEval = applyBookingGatewayLifecycle(
+                pageId,
+                senderId,
+                priorBookingState,
+                rawAuthoritativeBookingState,
+                originalVerbatim,
+                effectivePromptRegion
+        );
+        ConversationState.StructuredBookingState authoritativeBookingState = bookingLifecycleEval.bookingState();
+        candidateBubbles = alignBubblesWithBookingLifecycle(
+                candidateBubbles,
+                bookingLifecycleEval,
+                priorBookingState,
+                originalVerbatim,
+                allCatalog,
+                presentedPackagesInHistory,
+                selfPronoun,
+                safeHonorific
+        );
         AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision =
                 AdaptiveConversationIntelligence.evaluateAndExecuteConditionalHandoff(
                         pageId,
@@ -5067,17 +5538,27 @@ public class CleanAgentOrchestratorService {
                                 }
                                 candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
                                         candidateBubbles, selfPronoun, safeHonorific);
-                                authoritativeBookingState = AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                                ConversationState.StructuredBookingState repairedRawBookingState =
+                                        AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                                                priorBookingState,
+                                                reflection.proposedBookingPatch(),
+                                                originalVerbatim,
+                                                prevBotTurnText,
+                                                allCatalog,
+                                                presentedPackagesInHistory,
+                                                pageZoneId,
+                                                reflection.customerUnderstanding().bookingReadiness(),
+                                                reflection.priority().primary()
+                                        );
+                                bookingLifecycleEval = applyBookingGatewayLifecycle(
+                                        pageId,
+                                        senderId,
                                         priorBookingState,
-                                        reflection.proposedBookingPatch(),
+                                        repairedRawBookingState,
                                         originalVerbatim,
-                                        prevBotTurnText,
-                                        allCatalog,
-                                        presentedPackagesInHistory,
-                                        pageZoneId,
-                                        reflection.customerUnderstanding().bookingReadiness(),
-                                        reflection.priority().primary()
+                                        effectivePromptRegion
                                 );
+                                authoritativeBookingState = bookingLifecycleEval.bookingState();
                                 handoffDecision = AdaptiveConversationIntelligence.evaluateAndExecuteConditionalHandoff(
                                         pageId,
                                         senderId,
@@ -5087,6 +5568,16 @@ public class CleanAgentOrchestratorService {
                                         handoffEventDispatcher
                                 );
                             }
+                            candidateBubbles = alignBubblesWithBookingLifecycle(
+                                    candidateBubbles,
+                                    bookingLifecycleEval,
+                                    priorBookingState,
+                                    originalVerbatim,
+                                    allCatalog,
+                                    presentedPackagesInHistory,
+                                    selfPronoun,
+                                    safeHonorific
+                            );
                             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.sanitizePatronizingEmpathyPhrasesInPlace(
                                     candidateBubbles, selfPronoun, safeHonorific);
                             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.stripInternalCatalogSkuCodesInPlace(
@@ -5288,6 +5779,18 @@ public class CleanAgentOrchestratorService {
                     turnContextSnapshot.plan()
             );
         }
+        if (!usedSafeHandoffFallback) {
+            formattedBubbles = new ArrayList<>(alignBubblesWithBookingLifecycle(
+                    formattedBubbles,
+                    bookingLifecycleEval,
+                    priorBookingState,
+                    originalVerbatim,
+                    allCatalog,
+                    presentedPackagesInHistory,
+                    selfPronoun,
+                    safeHonorific
+            ));
+        }
 
         // ACI V3 — Stage P3 Gate (tc2/tc3/tc5): tuyến phòng thủ CUỐI trên output hậu Referee-repair.
         // Nhánh repair của Referee (REFEREE_VIOLATION retry) không đi qua các guard đầu pipeline, nên cả
@@ -5430,6 +5933,8 @@ public class CleanAgentOrchestratorService {
                     actualSentSpeechAct
             );
             agentBrainService.recordBookingState(pageId, senderId, authoritativeBookingState);
+            agentBrainService.recordBookingExecutionMetadata(
+                    pageId, senderId, authoritativeBookingState, bookingLifecycleEval.executionResult());
         }
 
         // Đồng bộ ConversationState (giữ opted_out = false cho mọi câu hội thoại thông thường như S06!)
@@ -5476,6 +5981,7 @@ public class CleanAgentOrchestratorService {
         }
 
         this.lastTurnBookingState = authoritativeBookingState;
+        this.lastTurnBookingExecutionResult = bookingLifecycleEval.executionResult();
         this.lastAciReflection = reflection;
         this.lastHandoffDecision = handoffDecision;
 

@@ -62,6 +62,8 @@ public class ConversationInboxService {
     @Autowired(required = false)
     private ConversationSessionOptimisticMergeCoordinator sessionMergeCoordinator;
     @Autowired(required = false)
+    private AgentBrainService agentBrainService;
+    @Autowired(required = false)
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     @Value("${docmind.security.atomic-state-guard.enabled:true}")
     private volatile boolean atomicStateGuardEnabled = true;
@@ -457,7 +459,7 @@ public class ConversationInboxService {
                     .sessionId(session.getId())
                     .senderRole("AI_BOT")
                     .content(botResponse.replyText() != null ? botResponse.replyText() : "")
-                    .metadataJson(serializeBotMetadata(botResponse))
+                    .metadataJson(serializeBotMetadata(session, botResponse))
                     .createdAt(now.plusMillis(100))
                     .build();
             messageRepository.save(botMsgEntity);
@@ -597,7 +599,7 @@ public class ConversationInboxService {
                 .sessionId(sessionId)
                 .senderRole("AI_BOT")
                 .content(botResp.replyText() != null ? botResp.replyText() : "")
-                .metadataJson(serializeBotMetadata(botResp))
+                .metadataJson(serializeBotMetadata(session, botResp))
                 .createdAt(Instant.now())
                 .build();
         messageRepository.save(botEntity);
@@ -998,11 +1000,93 @@ public class ConversationInboxService {
         return out;
     }
 
+    public void setAgentBrainService(AgentBrainService agentBrainService) {
+        this.agentBrainService = agentBrainService;
+    }
+
+    private record SessionBookingMetadata(
+            String bookingStatus,
+            String bookingId,
+            String bookingSource,
+            Map<String, Object> structuredBookingMap
+    ) {
+    }
+
+    private SessionBookingMetadata resolveSessionBookingMetadata(ConversationSessionEntity s) {
+        if (s == null) {
+            return new SessionBookingMetadata("NONE", null, "NONE", Map.of("status", "NONE"));
+        }
+        UUID pageId = s.getPageId();
+        String psid = s.getCustomerPsid();
+        ConversationState.StructuredBookingState bookingState = null;
+        String bookingId = null;
+        String bookingSource = null;
+
+        if (agentBrainService != null && psid != null && !psid.isBlank()) {
+            bookingState = agentBrainService.recallBookingState(pageId, psid);
+            bookingId = agentBrainService.recallBookingId(pageId, psid);
+            bookingSource = agentBrainService.recallBookingSource(pageId, psid);
+        }
+        if ((bookingState == null || bookingState.status() == ConversationState.BookingStatus.NONE)
+                && s.getAciMemoryStateJson() != null && !s.getAciMemoryStateJson().isBlank()) {
+            AciCustomerBrainMemorySnapshot snap = AciCustomerBrainMemorySnapshot.fromJson(s.getAciMemoryStateJson());
+            if (snap != null) {
+                if (snap.structuredBookingState() != null) {
+                    bookingState = snap.structuredBookingState().toDomain();
+                }
+                if (snap.authoritativeBusinessFacts() != null) {
+                    for (int i = snap.authoritativeBusinessFacts().size() - 1; i >= 0; i--) {
+                        AciCustomerBrainMemorySnapshot.PersistedBusinessFact f = snap.authoritativeBusinessFacts().get(i);
+                        if (f == null || f.factKey() == null) continue;
+                        if (bookingId == null && "BOOKING_ID".equalsIgnoreCase(f.factKey())) {
+                            String v = f.factValue() != null ? f.factValue().strip() : "";
+                            if (!v.isEmpty() && !"NONE".equalsIgnoreCase(v)) {
+                                bookingId = v;
+                            }
+                        } else if (bookingSource == null && "BOOKING_SOURCE".equalsIgnoreCase(f.factKey())) {
+                            String v = f.factValue() != null ? f.factValue().strip() : "";
+                            if (!v.isEmpty() && !"NONE".equalsIgnoreCase(v)) {
+                                bookingSource = v;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ConversationState.StructuredBookingState safeState = bookingState != null
+                ? bookingState
+                : ConversationState.StructuredBookingState.none();
+        String statusStr = safeState.status() != null ? safeState.status().name() : "NONE";
+        String effBookingId = "CONFIRMED".equalsIgnoreCase(statusStr) ? bookingId : null;
+        String effSource = (bookingSource != null && !bookingSource.isBlank())
+                ? bookingSource
+                : (effBookingId != null && effBookingId.startsWith("MOCK-") ? "MOCK" : "NONE");
+
+        Map<String, Object> stateMap = new LinkedHashMap<>();
+        stateMap.put("status", statusStr);
+        stateMap.put("selected_product_id", safeState.selectedProductId());
+        stateMap.put("selected_product_label", safeState.selectedProductLabel());
+        stateMap.put("booking_date", safeState.bookingDate());
+        stateMap.put("resolved_iso_date", safeState.resolvedIsoDate());
+        stateMap.put("booking_time", safeState.bookingTime());
+        stateMap.put("booking_id", effBookingId);
+        stateMap.put("booking_source", effSource);
+        return new SessionBookingMetadata(statusStr, effBookingId, effSource, stateMap);
+    }
+
     private String serializeBotMetadata(FanpageBotResponse resp) {
+        return serializeBotMetadata(null, resp);
+    }
+
+    private String serializeBotMetadata(ConversationSessionEntity session, FanpageBotResponse resp) {
         try {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("sales_stage", resp.salesStage());
             meta.put("confidence_score", resp.confidenceScore());
+            SessionBookingMetadata bookingMeta = resolveSessionBookingMetadata(session);
+            meta.put("booking_status", bookingMeta.bookingStatus());
+            meta.put("booking_id", bookingMeta.bookingId());
+            meta.put("booking_source", bookingMeta.bookingSource());
             meta.put("triggered_hooks", resp.triggeredHooks() != null ? resp.triggeredHooks() : List.of());
             List<com.example.docmind.dto.bot.AgentSkillDto> effActivated =
                     resp.activatedSkills() != null ? resp.activatedSkills()
@@ -1109,6 +1193,11 @@ public class ConversationInboxService {
         m.put("recommended_strategy", s.getRecommendedStrategy());
         m.put("customer_insight", insight);
         m.put("sales_stage", s.getSalesStage());
+        SessionBookingMetadata bookingMeta = resolveSessionBookingMetadata(s);
+        m.put("booking_status", bookingMeta.bookingStatus());
+        m.put("booking_id", bookingMeta.bookingId());
+        m.put("booking_source", bookingMeta.bookingSource());
+        m.put("structured_booking_state", bookingMeta.structuredBookingMap());
         m.put("has_human_sale_reply", s.isHasHumanSaleReply());
         m.put("learned_in_cold_path", s.isLearnedInColdPath());
         m.put("opted_out", s.isOptedOut());
@@ -1173,6 +1262,15 @@ public class ConversationInboxService {
                     }
                     if (meta.get("bubble_delays_ms") != null) {
                         item.put("bubble_delays_ms", meta.get("bubble_delays_ms"));
+                    }
+                    if (meta.get("booking_status") != null) {
+                        item.put("booking_status", meta.get("booking_status"));
+                    }
+                    if (meta.containsKey("booking_id")) {
+                        item.put("booking_id", meta.get("booking_id"));
+                    }
+                    if (meta.get("booking_source") != null) {
+                        item.put("booking_source", meta.get("booking_source"));
                     }
                 } catch (Exception ignored) {
                 }
