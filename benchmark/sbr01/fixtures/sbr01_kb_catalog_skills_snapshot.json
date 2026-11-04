@@ -1,0 +1,1246 @@
+{
+  "benchmarkId": "SBR-01-PHASE-1",
+  "baselineCommitSha": "1cd09e48d80db9bfc2f69c047933f67595d298d3",
+  "systemPrompt": {
+    "path": "config/aci_v2_system_prompt.md",
+    "sha256": "df02dd9ab614f201e6a6cefae2c6c44e4a0073877946d6eef230cb67160b2b1a",
+    "charLength": 12627
+  },
+  "inferenceConfig": {
+    "cognitiveMode": "LLM_COGNITIVE_V2",
+    "primaryProvider": "openai-compatible (https://api.vilao.ai/v1)",
+    "primaryModel": "qwen3.8-max",
+    "fallbackProvider": "openai-compatible (https://api.alijun.com/v1)",
+    "fallbackModel": "hada/deepseek-ai/deepseek-v4.1-flash-1017",
+    "temperature": 0.35,
+    "topP": 0.9,
+    "frequencyPenalty": 0.0,
+    "presencePenalty": 0.0,
+    "embeddingProvider": "StubEmbeddingClient (stub)",
+    "topK": 6,
+    "candidateK": 80,
+    "rrfK": 60
+  },
+  "knowledgePages": [
+    {
+      "id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+      "name": "Nàng sen",
+      "industry": "Spa",
+      "target_audience": "Nữ 25-50",
+      "description": "",
+      "persona_config": {
+        "bot_name": "Chuyên viên Tư vấn Nàng sen",
+        "unit_noun": null,
+        "care_actor": null,
+        "tone_style": "Dịu dàng, tận tâm, thấu cảm sâu sắc và tạo cảm giác an tâm tuyệt đối",
+        "emoji_level": "LOW",
+        "cta_template": null,
+        "self_pronoun": "em",
+        "industry_code": "BEAUTY_SPA",
+        "closing_action": null,
+        "nonSpaIndustry": false,
+        "query_synonyms": {},
+        "scope_taxonomy": [
+          "toàn thân",
+          "đầu",
+          "cổ",
+          "vai",
+          "gáy",
+          "lưng",
+          "tay",
+          "chân"
+        ],
+        "domain_keywords": [
+          "gội đầu",
+          "dưỡng sinh",
+          "massage",
+          "trị mụn",
+          "chăm sóc da",
+          "liệu trình",
+          "thư giãn"
+        ],
+        "emotion_signals": {},
+        "forbidden_words": [
+          "cam kết khỏi 100%",
+          "chữa bách bệnh",
+          "rẻ nhất thị trường"
+        ],
+        "opening_bubbles": [
+          "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.",
+          "Mình đang muốn tìm một chút thư giãn, chăm sóc cơ thể hay muốn hỏi Sen điều gì ạ?"
+        ],
+        "safety_red_flags": [],
+        "symptom_keywords": [
+          "đau",
+          "mỏi",
+          "nhức",
+          "căng",
+          "căng cứng",
+          "tê",
+          "đau đầu",
+          "khó ngủ",
+          "mất ngủ",
+          "mệt mỏi",
+          "stress",
+          "căng thẳng"
+        ],
+        "body_area_keywords": [
+          "cổ vai gáy",
+          "vai gáy",
+          "bắp chân",
+          "đùi",
+          "bàn chân",
+          "đầu gối",
+          "cổ tay",
+          "bả vai"
+        ],
+        "post_price_delay_ms": null,
+        "active_prompt_compact": null,
+        "service_family_keywords": {},
+        "default_customer_pronoun": "mình",
+        "condition_discovery_prompt": null,
+        "medicalOrBodySafetyIndustry": true,
+        "preference_discovery_prompt": null,
+        "condition_discovery_prompt_alt": null
+      }
+    }
+  ],
+  "documents": [
+    {
+      "id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+      "filename": "01_giá_dịch_vụ.html",
+      "sha256": "0ee849d10ee7bc8d26f27adba05a6eaa6f8a4e296454028018a4b5613c4b446f",
+      "mime": "text/html",
+      "pages": 1,
+      "status": "READY",
+      "is_active": true,
+      "effective_from": null,
+      "effective_to": null,
+      "created_at": "2026-10-20T15:06:01.876246+00:00"
+    },
+    {
+      "id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+      "filename": "02_chi_tiết_điều_trị.html",
+      "sha256": "335c46b23ba351a5cd506b426841955342b8e521b90b66be011c63fc25c99f0f",
+      "mime": "text/html",
+      "pages": 1,
+      "status": "READY",
+      "is_active": true,
+      "effective_from": null,
+      "effective_to": null,
+      "created_at": "2026-10-20T15:05:59.976925+00:00"
+    },
+    {
+      "id": "03b03613-682a-4db0-8d42-da651a98ecca",
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+      "filename": "03_khuyến_mãi_phiếu_vouchers (tùy chọn).html",
+      "sha256": "833f1dbc39bf07187a4cc302a01c99b65adf65f5afff21748c0f5a88d7312c30",
+      "mime": "text/html",
+      "pages": 1,
+      "status": "READY",
+      "is_active": true,
+      "effective_from": null,
+      "effective_to": null,
+      "created_at": "2026-10-20T15:05:14.673519+00:00"
+    }
+  ],
+  "chunksSummary": {
+    "totalChunks": 65,
+    "chunks": [
+      {
+        "id": "6f5cf2dc-31ba-4a86-9073-a6ba578ff3f0",
+        "document_id": "03b03613-682a-4db0-8d42-da651a98ecca",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Tên ưu đãi | Điều kiện áp dụng | Mức ưu đãi | Áp dụng cho | Không áp dụng | Quy định sử dụng |\n| --- | --- | --- | --- | --- | --- |\n| Ưu đãi mua liệu trình từ 5 buổi | Khách mua từ 5 buổi trở lên | Giảm 10% trên tổng giá trị liệu trình |",
+        "text_length": 749,
+        "text_md5": "a23cbc3282134e3d47b1be8f05297693"
+      },
+      {
+        "id": "08b309ad-1f28-480d-9a55-fcfb7e0960a2",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Em mất ngủ | Dạ nếu mình thường xuyên khó ngủ hoặc ngủ không sâu thì các liệu trình đầu - cổ - vai - gáy kết hợp dưỡng sinh bên em sẽ khá phù hợp ạNhiều khách sau khi làm thư",
+        "text_length": 1194,
+        "text_md5": "5e54478a13235c91a844c0fc102d7f82"
+      },
+      {
+        "id": "0ff2b772-6093-494d-80a9-f00656ce1dc1",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "LƯU_Ý_QUY_TRÌNH"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage có hỗ trợ đau lưng không? | Dạ các liệu trình trị liệu bên em thường phù hợp với khách đang bị đau lưng, căng cơ hoặc cơ thể nặng mỏi do làm việc và vận động nhiều ạ ",
+        "text_length": 868,
+        "text_md5": "a51172a8ae1b6a9c8a5fdf5a9f6f3886"
+      },
+      {
+        "id": "2375f00d-20ec-443c-8210-58e6a8449796",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình Gội đầu dưỡng sinh"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Bước | Tên bước | Mô tả | Mục đích / Lợi ích |\n| --- | --- | --- | --- |\n| B10 | Trị liệu cổ – vai – gáy chuyên sâu | Tập trung xử lý vùng căng cứng | Giúp cổ vai gáy nhẹ và linh hoạt hơn |\n| B11 | Gội canh bát lần 2 kết hợp khăn nóng | G",
+        "text_length": 876,
+        "text_md5": "58a8e0d66c0c0f9d9bccbd6dc5cca2ee"
+      },
+      {
+        "id": "326df26f-79d9-462d-ac49-7a52ef1e3e4d",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có massage cổ vai gáy không? | Dạ có ạPhần cổ - vai - gáy là một trong những bước được tập trung nhiều nhất để hỗ trợ giảm căng cứng do làm việc lâu hoặc ngồi sai tư thế. |\n|",
+        "text_length": 1154,
+        "text_md5": "d7ecdf1bb94d6509ce6e514a9dc731f2"
+      },
+      {
+        "id": "3472d0d1-6806-419c-94b4-269915a3909d",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có dưỡng tóc không? | Dạ sau khi hoàn thiện liệu trình bên em sẽ có bước dưỡng tóc nhẹ nhàng để tóc mềm và vào nếp hơn ạ 🌿 |\n| Có phục hồi tóc không? | Dạ các gói dưỡng sinh ",
+        "text_length": 326,
+        "text_md5": "e2f969f86e3115db1085f3f55702aa48"
+      },
+      {
+        "id": "44fa26a7-8bcf-4f9f-a8ab-61d05b1c342d",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình Gội đầu dưỡng sinh"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Quy trình Gội đầu dưỡng sinh",
+        "text_length": 28,
+        "text_md5": "2476e3f2cd3757a98d5c8747356ea0b7"
+      },
+      {
+        "id": "505920f9-2ebf-4617-a1f1-72fb037c4f90",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Gội dưỡng sinh gồm những gì? | Dạ liệu trình dưỡng sinh tại Nàng Sen sẽ gồm nhiều bước chăm sóc liền mạch chứ không chỉ đơn thuần là gội đầu ạBắt đầu từ làm sạch da mặt, tẩy ",
+        "text_length": 637,
+        "text_md5": "57225845dbc9685295a9f16103d24935"
+      },
+      {
+        "id": "50a9b819-f990-4cf6-9e86-3bbaecc69d28",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Khách hỏi",
+        "text_length": 9,
+        "text_md5": "5ab84fb4332c6ae9f0e615b5bce9a10e"
+      },
+      {
+        "id": "55b9ee69-4ea6-461c-801a-a2b3a6d7bf20",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có bị đau không? | Dạ kỹ thuật viên sẽ điều chỉnh lực theo tình trạng cơ thể của từng khách nên sẽ không cố làm đau quá mức đâu ạ 🌿 |\n| Có nhẹ đầu không? | Dạ nhiều khách sau",
+        "text_length": 1075,
+        "text_md5": "044ea5e5a8b33910ee4daf7cf41dd05c"
+      },
+      {
+        "id": "58b9089c-e9dc-407d-a94e-c5de85cd6a0a",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "LƯU_Ý_QUY_TRÌNH"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage trị liệu bên mình gồm những gì? | Dạ liệu trình massage trị liệu tại Nàng Sen sẽ bắt đầu từ tắm xông thảo dược giúp cơ thể làm ấm và dễ vào trạng thái phục hồi hơn ạS",
+        "text_length": 1164,
+        "text_md5": "febe293db535c59f1f369048122d58a3"
+      },
+      {
+        "id": "59302919-0d2b-41de-9b06-7b8cd137d1db",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình massage"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Bước | Hạng mục | Thời gian | Mô tả | Mục đích / Lợi ích |\n| --- | --- | --- | --- | --- |\n| B8 | Điểm tâm phục hồi | Sau trị liệu | Khách được phục vụ điểm tâm theo chế độ dinh dưỡng | Hỗ trợ cơ thể phục hồi năng lượng sau trị liệu |",
+        "text_length": 236,
+        "text_md5": "c4efd1aee8000379ef8b54e8bd5ceff4"
+      },
+      {
+        "id": "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "LƯU_Ý_QUY_TRÌNH"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage có dùng tinh dầu không? | Dạ trong liệu trình bên em sẽ kết hợp tinh dầu dừa hoặc tinh dầu nha đam nhằm hỗ trợ cơ thể dễ chịu và giảm cảm giác căng cơ hơn ạ ✨ |\n| Có ",
+        "text_length": 1095,
+        "text_md5": "60bb09c547e8a2553340c4bffb2108fe"
+      },
+      {
+        "id": "5e165432-6892-47c1-a16b-ae42e3be1900",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "LƯU_Ý_QUY_TRÌNH"
+        ],
+        "semantic_tags": [],
+        "text_preview": "LƯU_Ý_QUY_TRÌNH\n| Nội dung | Chi tiết |\n| --- | --- |\n| Không gian | Phòng riêng tư khép kín |\n| Trong quá trình tắm xông | Nhân viên sẽ ra ngoài để đảm bảo sự riêng tư cho khách |\n| Khi cần hỗ trợ | Khách có thể bấm chuông để được hỗ trợ n",
+        "text_length": 398,
+        "text_md5": "46e779604ae86a587cbf474ba100ed73"
+      },
+      {
+        "id": "86dda2aa-6884-400f-bd72-f5e9900069ba",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình Gội đầu dưỡng sinh"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Bước | Tên bước | Mô tả | Mục đích / Lợi ích |\n| --- | --- | --- | --- |\n| B1 | Làm sạch lớp trang điểm & bụi bẩn bề mặt | Loại bỏ lớp makeup, kem chống nắng và bụi bẩn trên da | Chuẩn bị cho các bước chăm sóc chuyên sâu |\n| B2 | Làm sạch",
+        "text_length": 1169,
+        "text_md5": "b742548890167a78d7754d673e54c92f"
+      },
+      {
+        "id": "8d056c79-f467-42a0-ba2c-25d052ae2a42",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có chăm sóc tóc không? | Dạ ngoài phần trị liệu đầu và da đầu thì liệu trình bên Nàng Sen còn có các bước chăm sóc và dưỡng tóc bằng canh thảo dược cùng dầu gội thiên nhiên n",
+        "text_length": 1161,
+        "text_md5": "9cd268c7a734dad490d29cbbceaebc85"
+      },
+      {
+        "id": "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Khách hỏi"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Quy trình như nào? | Dạ liệu trình bên Nàng Sen thường sẽ đi theo từng bước để cơ thể được phục hồi từ từ và liền mạch ạĐầu tiên là làm sạch và chăm sóc da mặt để cơ thể bắt ",
+        "text_length": 1148,
+        "text_md5": "4372b62a9433b0665043c3bd0e95c2f2"
+      },
+      {
+        "id": "e5f199b6-a298-4ff9-bfcc-9be4ab7838e2",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình massage"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Quy trình massage",
+        "text_length": 17,
+        "text_md5": "e93cc5fadba06ed06f7337579e298d6f"
+      },
+      {
+        "id": "ffc359f9-f1ed-44fc-bbc9-cdd0e9b6aee5",
+        "document_id": "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "Quy trình massage"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Bước | Hạng mục | Thời gian | Mô tả | Mục đích / Lợi ích |\n| --- | --- | --- | --- | --- |\n| B1 | Tắm tráng | 5 phút | Tắm bằng bộ sản phẩm chăm sóc toàn thân chiết xuất tinh dầu bưởi/gừng theo mùa | Làm sạch cơ thể và hỗ trợ làm ấm cơ th",
+        "text_length": 1136,
+        "text_md5": "b6cd7a81f581f6b7e4a092d7d282fb72"
+      },
+      {
+        "id": "03eb3e77-4a38-481b-b663-f91b664fa349",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi + dưỡng sinh | 970.000VNĐ | 120 phút | 10p ngâm bồn + 5p xôn",
+        "text_length": 1047,
+        "text_md5": "cc1453b137aef81a6ec3aafa80bb085a"
+      },
+      {
+        "id": "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=538501441083395111",
+        "text_length": 101,
+        "text_md5": "819ff1940cc62136b96556add22ffc63"
+      },
+      {
+        "id": "160ad719-0882-4a34-a07d-d0912d573d52",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | P",
+        "text_length": 1093,
+        "text_md5": "81d57093f7d685ebdd38ccdaaf7d8b63"
+      },
+      {
+        "id": "19cae90d-96ea-4397-959a-4ff125df91c8",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "FAQ",
+        "text_length": 3,
+        "text_md5": "1fe917b01f9a3f87fa2d7d3b7643fac1"
+      },
+      {
+        "id": "1cb73cb8-3e05-4f4b-8f3d-8d896d4da169",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội",
+        "text_length": 127,
+        "text_md5": "98ff5c9fc96bca08dd3a354411716019"
+      },
+      {
+        "id": "22c4f27c-e52b-428d-8589-008813476089",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Khách dùng gói nào nhiều nhất? | Dạ hiện khách bên em sử dụng nhiều nhất là gói 580k và 670k ạ Vì đã cân bằng khá tốt giữa trị liệu, không gian riêng và cảm giác phục hồi cơ ",
+        "text_length": 257,
+        "text_md5": "92578209706cccc6703ca19df219e3b2"
+      },
+      {
+        "id": "22da547a-fe4e-4d84-9f9e-7ce378f9783a",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực Hà Nội"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 780.000VNĐ | 140 phút | Gội đầu phục hồi",
+        "text_length": 655,
+        "text_md5": "343b592bba26fbf93d3e451896421a24"
+      },
+      {
+        "id": "2417cee1-6322-438a-9a8d-f73d0d3ca351",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| NS05 | Silver – Massage phục hồi chuyên sâu | 120 phút | • Tắm tráng• Ngâm bồn thảo dược• Xông hơi• Massage trị liệu full body chuyên sâu• Tập trung xử l",
+        "text_length": 1112,
+        "text_md5": "eb1b4daada86303f746865f1bf3f6c7a"
+      },
+      {
+        "id": "253b20f6-1a04-426e-a342-060128ade5b1",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Gói nào phù hợp dân văn phòng? | Dạ khách văn phòng bên em thường phù hợp từ 580k trở lên ạ Vì phần cổ – vai – gáy, đầu và vùng cơ căng do ngồi lâu sẽ được tập trung trị liệu",
+        "text_length": 1167,
+        "text_md5": "99fb27011a30fae72c67004a56934478"
+      },
+      {
+        "id": "25e4fd8e-8dcc-4224-9d45-a7e1735b431e",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "- banh my bo sot vang\n- trung ngại cuu\n- che dau den\n- bun doc mung\n- Chao sươn\n- hoa quả theo mùa",
+        "text_length": 98,
+        "text_md5": "774caebd8e7470b489d29ceec417942d"
+      },
+      {
+        "id": "2a01482c-ca9f-4e4c-9f98-0c582def5954",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Tối nay còn phòng VIP không? | Dạ bên em sẽ kiểm tra tình trạng phòng VIP theo khung giờ mình mong muốn ạ Vì buổi tối thường khá nhanh kín nên nếu đã có thời gian dự kiến, Nà",
+        "text_length": 1167,
+        "text_md5": "07a861115e3980047004b7022a46a20c"
+      },
+      {
+        "id": "2fea2aed-ae36-4ae2-9b97-328394720e97",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực SÀI GÒN"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| DS05 | Gold – Gói dưỡng sinh phục hồi VIP | 870.000VNĐ | 140 phút | Gội đầu phục hồi",
+        "text_length": 657,
+        "text_md5": "afee08337fcc85a9840b909c4e57187a"
+      },
+      {
+        "id": "31e8858a-067e-4159-b3da-8792307faf7f",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 6",
+        "text_length": 1172,
+        "text_md5": "656eca6aeb24e1de6dec169d18172d56"
+      },
+      {
+        "id": "3d923ca0-5130-494f-8426-f9cbea9c18e8",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông h",
+        "text_length": 717,
+        "text_md5": "a8aa920b82e61185aec99d78510ffc36"
+      },
+      {
+        "id": "45cda87a-f76e-4014-bf07-59e8979a202b",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| 670k và 780k khác gì nhau? | Dạ 780k sẽ riêng tư hơn vì phần gội dưỡng sinh được thực hiện ngay tại phòng VIP riêng khép kín nên khách gần như không cần di chuyển giữa các bư",
+        "text_length": 1154,
+        "text_md5": "47d945e02d410cf0ff057639168b7ed9"
+      },
+      {
+        "id": "4c8138db-b2c8-4e18-83da-89b00eaad7c3",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có kín đáo không? | Dạ Nàng Sen khá chú trọng cảm giác riêng tư và nghỉ ngơi thật sự cho khách ạ Các phòng VIP sẽ là không gian khép kín riêng biệt và yên tĩnh hơn. |\n| Có ph",
+        "text_length": 1033,
+        "text_md5": "93d75bf6fbf35fe41a9bfb7650324312"
+      },
+      {
+        "id": "4df73031-e381-4296-8fd1-5bf579a0a823",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=1700470354156339386",
+        "text_length": 102,
+        "text_md5": "fc78af4086bff046137a66ed5cc87b42"
+      },
+      {
+        "id": "5771f328-651f-455d-8e10-d9bd7aeb4a5c",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS06 | Gold – Massage trị liệu phục hồi | 990.000VNĐ | ~150 phút | 10p ngâm bồn + tắ",
+        "text_length": 926,
+        "text_md5": "65de3e6ad6d1b490e9b8bc4b068167de"
+      },
+      {
+        "id": "5bfa4d5a-1318-4ecf-a85e-5b209a80903c",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có phòng đôi không? | Dạ bên em có hỗ trợ phòng đôi cho khách đi cùng người thân hoặc bạn bè ạ |\n| Có VIP thật không? | Dạ các gói VIP bên em sẽ ưu tiên không gian riêng, yên",
+        "text_length": 1177,
+        "text_md5": "b41e8a58ed17563b2522046d7175226e"
+      },
+      {
+        "id": "6e373009-e35b-4126-8088-3145f09bacc0",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| NS01 | Massage trị liệu cơ bản | 60 phút | • Thay đồ & chuẩn bị trị liệu• Massage trị liệu full body cơ bản• Kết hợp bấm huyệt và thả lỏng cơ thể• Khách ",
+        "text_length": 1138,
+        "text_md5": "accbd9c9c42699b3590b929e90b52ca9"
+      },
+      {
+        "id": "73673fd3-cd4e-481e-a519-74d9443ba511",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| ADD01 | Tẩy da chết toàn thân | Theo liệu trình | • Tẩy tế bào chết toàn thân• Làm sạch lớp da sần cũ• Hỗ trợ da mềm và sạch thoáng hơn sau liệu trình |",
+        "text_length": 239,
+        "text_md5": "2a5a98115dbc569d5adda422b472f093"
+      },
+      {
+        "id": "7a302093-db1a-40c8-a9fe-264a065a5840",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực SÀI GÒN"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trá",
+        "text_length": 1107,
+        "text_md5": "457e39fa45eb18a7a025acbb53976c97"
+      },
+      {
+        "id": "81fe63db-7dab-4761-80f2-7581ab75b130",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội",
+        "text_length": 64,
+        "text_md5": "9a2bd68d6d42a33d0e3973fdf5ed3b2c"
+      },
+      {
+        "id": "821b9f7b-66c3-4e50-a7a5-491053eb0fcb",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | P",
+        "text_length": 1093,
+        "text_md5": "81d57093f7d685ebdd38ccdaaf7d8b63"
+      },
+      {
+        "id": "9076d20d-3955-49ab-81b0-cdf08179b406",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi",
+        "text_length": 1028,
+        "text_md5": "ce538d178da3e3c780d56307ab17dd95"
+      },
+      {
+        "id": "911a5ca7-5217-4abd-91eb-b40d4a327163",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh",
+        "text_length": 109,
+        "text_md5": "dd80bc99d129358191a33bc6ca7b8df2"
+      },
+      {
+        "id": "912df9e3-553f-467b-9611-2a758fbefc35",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông h",
+        "text_length": 717,
+        "text_md5": "a8aa920b82e61185aec99d78510ffc36"
+      },
+      {
+        "id": "91a4a550-96ac-49bc-9295-82f236b1e734",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội",
+        "text_length": 79,
+        "text_md5": "ad660ba346e27f5ce79c5dbc5a0189b1"
+      },
+      {
+        "id": "9a67fd46-8526-4b2a-9ab3-41aee09020f9",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS03 | Massage phục hồi | 870.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông h",
+        "text_length": 712,
+        "text_md5": "a243ef72eddd62a50dc33661047e912e"
+      },
+      {
+        "id": "9c8f4610-ad0d-4f5c-980f-fe713ca857e7",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực SÀI GÒN"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Khu vực SÀI GÒN",
+        "text_length": 15,
+        "text_md5": "18baabe8ec2ec4d2407e7c7e418613f6"
+      },
+      {
+        "id": "9cbe55e8-72b9-464e-a97c-9584f570044f",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=10303902383466831354",
+        "text_length": 103,
+        "text_md5": "4d203693bab5bc717349f981d0891ddb"
+      },
+      {
+        "id": "9e641580-3a0d-441c-9535-6177754b3993",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi | 670.000VNĐ | 120 phút | 10p ngâm bồn + 5p xông hơi + 105p ",
+        "text_length": 953,
+        "text_md5": "919ceadd9ce931da777477079ad81458"
+      },
+      {
+        "id": "9ebeb576-4b34-44ff-a250-70339f749855",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi + dưỡng sinh | 670.000VNĐ | 120 phút | 90p ngâm bồn xông hơi",
+        "text_length": 1028,
+        "text_md5": "ce538d178da3e3c780d56307ab17dd95"
+      },
+      {
+        "id": "a3614a27-df51-43cf-8410-45d621c6de64",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | 399.000VNĐ | 60 phút | Full body massage trị liệu cơ bản | P",
+        "text_length": 1093,
+        "text_md5": "81d57093f7d685ebdd38ccdaaf7d8b63"
+      },
+      {
+        "id": "a830a65b-b093-4d7d-91a3-aafb34ac9229",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage gồm những gì? | Dạ liệu trình bên em thường sẽ gồm tắm xông thảo dược, massage trị liệu bấm huyệt, chườm ngải cứu và điểm tâm phục hồi sau trị liệu ạ |\n| Có ngâm bồn ",
+        "text_length": 1101,
+        "text_md5": "9f490c9fa12f6621e080fda2e887f97c"
+      },
+      {
+        "id": "c100351e-e215-4f7f-b0e1-5ce5f15fe5a5",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=4800272146003296030",
+        "text_length": 102,
+        "text_md5": "38012fd505bf75a2877ff639011f34fd"
+      },
+      {
+        "id": "d0e5ee21-0cae-488d-9441-6684ddc24ecc",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage phục hồi chuyên sâu | 780.000VNĐ | 120 phút | Tương tự gói 6",
+        "text_length": 1172,
+        "text_md5": "656eca6aeb24e1de6dec169d18172d56"
+      },
+      {
+        "id": "d110a192-b191-468e-ba63-fb04d2f3996c",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage phục hồi chuyên sâu | 1.270.000VNĐ | 140 phút | 10p ngâm bồn",
+        "text_length": 871,
+        "text_md5": "10db6f7dff084f402670810e14c7cdb5"
+      },
+      {
+        "id": "d2b75b8c-cb20-440f-b107-e1016ccb1bcb",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Vì sao giá cao hơn chỗ khác? | Dạ bên em tập trung khá nhiều vào massage trị liệu, không gian riêng tư và trải nghiệm phục hồi liền mạch thay vì massage relax thông thường ạ ",
+        "text_length": 1074,
+        "text_md5": "a6851ae1e2f361c6e00f839027ff24c2"
+      },
+      {
+        "id": "d9bb72c8-3ef2-4ce4-80d9-a57cfc2efa41",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "social_proof"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Em nên đi gói nào? | Dạ nếu mình đi lần đầu thì bên em thường sẽ tư vấn theo tình trạng cơ thể nhiều hơn ạ Nếu đau mỏi nhẹ hoặc muốn trải nghiệm trước thì có thể bắt đầu từ 5",
+        "text_length": 1059,
+        "text_md5": "8c986768f56fef158cd3564b20c75e6e"
+      },
+      {
+        "id": "de465b94-4fa4-4131-8ce0-b0b11ddaba33",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS03 | Massage phục hồi | 580.000VNĐ | 100 phút | 10p ngâm bồn thảo dược + 5p xông h",
+        "text_length": 717,
+        "text_md5": "a8aa920b82e61185aec99d78510ffc36"
+      },
+      {
+        "id": "e28a2f0a-d3fe-435d-bd62-5b5930e262e7",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực Hà Nội"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| DS01 | Lấy ráy tai cơ bản | 129.000VNĐ | 30 phút | Lấy ráy tai cơ bản + ăn nhẹ & trá",
+        "text_length": 1107,
+        "text_md5": "5664a5ed89c5611fec0a4425b4ed8821"
+      },
+      {
+        "id": "f0794469-42d2-4515-b854-d810431e7f40",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "MASSAGE",
+          "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)"
+        ],
+        "semantic_tags": [
+          "spec_ingredients",
+          "scarcity_promo"
+        ],
+        "text_preview": "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | 570.000VNĐ | 70 phút | Full body massage trị liệu cơ bản | P",
+        "text_length": 1084,
+        "text_md5": "e8fcf47bea910c499d868367acb31c83"
+      },
+      {
+        "id": "f67b44b9-33fa-46e0-97e6-940f65416a9a",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "spec_ingredients"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Em đau vai gáy thì nên đi gói nào? | Dạ nếu vùng cổ vai gáy đang đau và căng cứng khá nhiều thì bên em thường sẽ phù hợp với gói 580k hoặc 670k ạ Vì đã có xông hơi và trị liệ",
+        "text_length": 1058,
+        "text_md5": "b49f2ba7653f0dd267e3fa0056354a76"
+      },
+      {
+        "id": "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "FAQ"
+        ],
+        "semantic_tags": [
+          "scarcity_promo"
+        ],
+        "text_preview": "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có dễ ngủ không? | Dạ nhiều khách sau khi trị liệu đầu – cổ – vai – gáy thường ngủ sâu và dễ ngủ hơn ạ |\n| Có đỡ đau đầu không? | Dạ phần trị liệu đầu và cổ vai gáy bên em sẽ",
+        "text_length": 1181,
+        "text_md5": "f85d06aa8157b96a6efd21c25a902289"
+      },
+      {
+        "id": "ff0d3cf7-cea7-4316-be20-b0f825c48ebe",
+        "document_id": "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+        "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "page": 1,
+        "heading_path": [
+          "GỘI ĐẦU DƯỠNG SINH",
+          "Khu vực Hà Nội"
+        ],
+        "semantic_tags": [],
+        "text_preview": "Khu vực Hà Nội",
+        "text_length": 14,
+        "text_md5": "f047c328d7a39015007280440cdbdf52"
+      }
+    ]
+  },
+  "activeSkills": [
+    {
+      "id": "24000001-0000-4000-8000-000000000001",
+      "code": "discovery_empathy_and_scope",
+      "name": "Đồng cảm giác quan & Khám phá vùng mỏi ưu tiên (Nàng Sen)",
+      "category": "PSYCHOLOGY",
+      "description": "Lắng nghe, vỗ về cảm giác căng mỏi cơ thể hoặc khó ngủ bằng ngôn từ ấm áp, giàu hình ảnh và hỏi nhẹ vùng mỏi ưu tiên khi cần.",
+      "trigger_signals": "SHARING_CONDITION_OR_CONTEXT,ACKNOWLEDGED_GENERAL_INFO,LUKEWARM_POST_QUOTE_CHECKIN",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách vừa chia sẻ cơ thể căng mỏi sau buổi tập nặng, ngồi làm việc lâu, uể oải hoặc trằn trọc khó ngủ nhưng chưa nêu rõ vùng ưu tiên (hoặc vừa tiếp nhận thông tin chung) -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Vỗ về cảm giác mỏi mệt bằng ngôn từ dịu dàng, đánh thức cảm giác thư thái; khéo léo hỏi nhẹ khách đang mỏi nhất ở vùng nào để chọn đúng liệu trình đo ni đóng giày, TUYỆT ĐỐI KHÔNG tự giả định hay gán sẵn vùng cơ thể cho khách khi khách chưa nêu (nếu khách đã nêu rõ toàn thân hoặc hỏi giá thì giới thiệu ngay cuốn hút); tuyệt đối không chèn lời khuyên đi khám bệnh viện lạnh lùng khi không có dấu hiệu cấp tính -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Tập nặng về mà các thớ cơ còn đang căng cứng chắc người mình oải lắm ạ\", \"Hơi ấm thảo dược dịu nhẹ kết hợp thả lỏng từng điểm cơ căng sẽ giúp người nhẹ nhõm hơn hẳn; hiện mình đang mỏi nhất ở vùng nào, hay muốn thả lỏng toàn thân ạ?\"",
+      "good_example": "Dạ đi tập nặng về mà cơ khớp còn đang căng mỏi chắc người mình oải lắm ạ. Để em chọn đúng liệu trình thả lỏng vừa vặn nhất, hiện tại mình đang nhức mỏi nhiều nhất ở vùng nào, hay muốn chăm sóc giãn cơ toàn thân luôn ạ?",
+      "anti_pattern": "Xổ ngay bảng giá khô khan khi chưa biết vùng mỏi ưu tiên của khách, hoặc khuyên khách đi khám bệnh viện lạnh lùng khi khách chỉ đau mỏi cơ thông thường.",
+      "priority": 98,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "24000001-0000-4000-8000-000000000002",
+      "code": "price_objection_sensory_value",
+      "name": "Thấu cảm giá & Khắc họa chiều sâu thư giãn giác quan (Nàng Sen)",
+      "category": "PSYCHOLOGY",
+      "description": "Đồng cảm nhẹ nhàng khi khách thấy giá cao; không lặp lại danh sách tiện ích phụ mà khắc họa sâu trải nghiệm ấn mở cơ và cảm giác thư thái.",
+      "trigger_signals": "PRICE_OBJECTION_FIRST_TIME,PRICE_OBJECTION",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách vừa nghe mức giá liệu trình chủ lực và thoáng băn khoăn cảm thấy chi phí hơi cao -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Đồng cảm nhẹ nhàng, không tranh cãi hơn thua và không tự ý đổi sang liệu trình khác ở lần băn khoăn đầu tiên; áp dụng Conversational Delta: không đọc lại danh sách tiện ích ăn nhẹ hay rèm che vừa nói ở lượt trước mà khắc họa sâu bàn tay kỹ thuật viên chăm chút ấn mở từng điểm cơ căng cứng và cảm giác nhẹ bẫng, dễ ngủ sâu sau buổi làm (không cam kết chữa khỏi hẳn bệnh lý) -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Khác với việc chỉ xoa lướt qua bên ngoài, kỹ thuật viên bên em dành trọn thời gian miết ấm và ấn mở từng thớ cơ đang bó cứng\", \"Làm xong đầu óc nhẹ bẫng, cơ thể thả lỏng sâu để tối về dễ chìm vào giấc ngủ êm hơn ạ.\"",
+      "good_example": "Dạ em hiểu cảm giác mình cân nhắc ạ. Giá trị sâu nhất của buổi chăm sóc này nằm ở việc kỹ thuật viên dành trọn thời gian ấn mở tỉ mỉ từng thớ cơ đang căng mỏi thay vì chỉ xoa bóp lướt qua, giúp cơ thể thả lỏng thật sự và tối về dễ chìm vào giấc ngủ sâu hơn ạ. Với tình trạng mỏi hiện tại, mình đang mong cảm giác giãn sâu vùng cơ căng hay thư thái nhẹ đầu hơn ạ?",
+      "anti_pattern": "Đọc lại nguyên văn danh sách buffet thực dưỡng và không gian vừa nói ở lượt báo giá trước như cái máy, hoặc lặp lại y hệt điệp khúc Mình thử một buổi nhé.",
+      "priority": 97,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "24000001-0000-4000-8000-000000000003",
+      "code": "soft_economical_bridge_and_compare",
+      "name": "Nhịp cầu lựa chọn vừa vặn & So sánh tinh tế (Nàng Sen)",
+      "category": "SALES_STRATEGY",
+      "description": "Bắc nhịp cầu mềm mại sang lựa chọn nhẹ nhàng hơn khi khách ngập ngừng hoặc đối chiếu tinh tế sự khác biệt phạm vi mà không dìm hàng gói nhỏ.",
+      "trigger_signals": "PRICE_HESITATION_AFTER_VALUE_DEFENSE,PRICE_OBJECTION_REPEAT_OR_DOWNSELL_REQUEST,SERVICE_OR_UNIT_DETAIL_QUESTION",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách ngập ngừng sau khi nghe giải thích giá trị (\"Biết thế\", \"ok xem đã\") hoặc hỏi điểm khác nhau giữa hai liệu trình -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Giải tỏa hoàn toàn áp lực và bắc một nhịp cầu êm ái sang lựa chọn vừa vặn ngân sách hơn trong danh mục được phép; khi so sánh, làm rõ trung thực sự khác biệt về phạm vi vùng chăm sóc (toàn thân so với tập trung vùng đầu – cổ vai gáy) nhưng khẳng định cả hai đều có không gian tĩnh lặng, mỗi giường đều có rèm che riêng kín đáo và sự chăm sóc tận tâm, tuyệt đối không dìm hàng liệu trình nhỏ -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Mình cứ thong thả cân nhắc, chưa cần vội quyết định ngay đâu ạ\", \"Dù chọn hướng chăm sóc toàn thân hay tập trung thư giãn vùng đầu – cổ vai gáy trước thì mình vẫn nằm trong không gian tĩnh lặng, rèm che riêng kín đáo và được chăm chút rất kỹ ạ.\"",
+      "good_example": "Dạ mình cứ thoải mái cân nhắc thêm, chưa cần vội đâu ạ. Điểm khác nhau chính nằm ở phạm vi vùng cơ được chăm sóc: một bên thả lỏng trọn vẹn toàn thân, còn một bên tập trung chuyên sâu giải tỏa căng mỏi vùng đầu – cổ vai gáy trong không gian tĩnh lặng có rèm che riêng kín đáo để mình nhẹ nhàng trải nghiệm trước ạ.",
+      "anti_pattern": "Chê liệu trình chi phí thấp là làm hời hợt qua loa, dùng cụm từ khô khốc không gian phòng chung, hoặc thúc ép khách phải chọn ngay.",
+      "priority": 96,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "24000001-0000-4000-8000-000000000004",
+      "code": "warm_nod_to_gentle_scheduling",
+      "name": "Đón nhận cái gật đầu ấm áp & Mời chọn khung giờ (Nàng Sen)",
+      "category": "COMMUNICATION",
+      "description": "Đón nhận tín hiệu đồng thuận ngắn (\"uk\", \"ừ\", \"ok\") sau lời mời trải nghiệm bằng sự trân trọng và nhẹ nhàng hỏi khung giờ thuận tiện.",
+      "trigger_signals": "POSITIVE_CONFIRMATION_SIGNAL,POSITIVE_INTEREST_READY_FOR_TRIAL_INVITE,PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách vừa gật đầu mở lòng đồng ý thử (\"uk\", \"ừ\", \"ok\") ngay sau khi chuyên viên gợi ý một liệu trình đã khớp đúng vùng mỏi -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Đón nhận cái gật đầu của khách bằng sự ấm áp, hào hứng vừa đủ; khóa đúng liệu trình vừa thống nhất và khéo léo hỏi xem hôm nay hay ngày mai khách tiện ghé khoảng mấy giờ để chuẩn bị giường ấm, rèm riêng chu đáo; tuyệt đối không chúc ngủ ngon hay đẩy trách nhiệm nhắn lại cho khách -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Dạ vâng ạ, để bên em chuẩn bị sẵn góc giường yên tĩnh có rèm riêng và thảo dược ấm đón mình nhé\", \"Hôm nay hay ngày mai mình tiện ghé khoảng mấy giờ để em sắp xếp kỹ thuật viên chu đáo nhất cho mình ạ?\"",
+      "good_example": "Dạ vâng ạ, vậy để em chuẩn bị sẵn góc giường tĩnh lặng có rèm riêng ấm cúng đón mình qua thả lỏng cơ nhé. Không biết hôm nay hay ngày mai mình tiện ghé khoảng mấy giờ để bên em sắp xếp chu đáo nhất cho mình ạ?",
+      "anti_pattern": "Chúc khách ngủ ngon rồi bảo khi nào rảnh nhắn lại làm đánh rơi khách ngay khoảnh khắc khách vừa gật đầu đồng ý thử.",
+      "priority": 95,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "24000001-0000-4000-8000-000000000005",
+      "code": "booking_careful_preparation",
+      "name": "Chuẩn bị đón tiếp chu đáo & Kiểm tra lịch trống thực tế (Nàng Sen)",
+      "category": "SALES_STRATEGY",
+      "description": "Ghi nhận trân trọng thông tin đặt lịch cùng lưu ý vùng mỏi/lực tay và hẹn kiểm tra lịch giường cùng kỹ thuật viên trống thực tế.",
+      "trigger_signals": "ACCEPTED_PROPOSED_TIME_SLOT,POST_BOOKING_CLOSING_ACK,PACKAGE_ACCEPTANCE_OR_BOOKING_PROGRESS",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách vừa đồng ý một khung giờ cụ thể hoặc cung cấp ngày giờ muốn ghé trải nghiệm -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Thể hiện sự trân trọng, chu đáo khi ghi nhận lại đúng liệu trình, khung giờ và các lưu ý chăm sóc riêng của khách; báo rõ bộ phận lễ tân sẽ kiểm tra giường và kỹ thuật viên trống thực tế ở khung giờ đó để xác nhận giữ chỗ tốt nhất ngay cho khách (không tự tuyên bố đã xác nhận lịch chính thức khi chưa kiểm tra chỗ trống) -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Em ghi nhận kỹ lưu ý vùng mỏi của mình để khi đón tiếp kỹ thuật viên chăm chút đúng điểm căng nhé ạ\", \"Để em báo lễ tân kiểm tra giường và kỹ thuật viên trống khung giờ này rồi xác nhận ngay cho mình ạ.\"",
+      "good_example": "Dạ em xin ghi nhận lịch hẹn cùng lưu ý vùng mỏi của mình để chuẩn bị không gian và thảo dược ấm chu đáo nhất ạ. Để em kiểm tra chỗ trống thực tế với lễ tân ở khung giờ này rồi gửi xác nhận chính thức ngay cho mình nhé ạ.",
+      "anti_pattern": "Tuyên bố sai sự thật rằng đã đặt lịch thành công chính thức khi mới ở bước chờ kiểm tra chỗ trống, hoặc nói quá khứ đã dặn kỹ thuật viên.",
+      "priority": 94,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "24000001-0000-4000-8000-000000000006",
+      "code": "graceful_pause_keep_warmth",
+      "name": "Tôn trọng khoảng nghỉ & Giữ hơi ấm thương hiệu (Nàng Sen)",
+      "category": "COMMUNICATION",
+      "description": "Tạo cảm giác thoải mái, không áp lực khi khách muốn suy nghĩ thêm và để lại ấn tượng ấm áp để khách dễ dàng quay lại.",
+      "trigger_signals": "POLITE_CLOSING_ACKNOWLEDGMENT,HESITATION_OR_DEFERRAL",
+      "tactical_instructions": "[Tình huống tâm lý khách] Khách báo đang bận hoặc muốn tự suy nghĩ, thu xếp thời gian thêm trước khi quyết định -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Tôn trọng trọn vẹn nhịp độ riêng của khách bằng thái độ dịu dàng, không một chút áp lực; xác nhận đã lưu lại đúng những liệu trình và lưu ý đã trò chuyện (tuyệt đối không lôi thêm liệu trình lạ chưa bàn tới) kèm lời chúc thư thái, ấm áp để khách luôn cảm thấy dễ chịu khi quay lại -> [Các hướng diễn đạt gợi cảm xúc theo ngữ cảnh] \"Em lưu lại các lưu ý chăm sóc hôm nay của mình rồi ạ, bất cứ khi nào cơ thể cần một khoảng nghỉ êm ái mình cứ nhắn em nhé\", \"Chúc mình một ngày thật nhẹ nhàng và nhiều năng lượng tích cực ạ!\"",
+      "good_example": "Dạ vâng ạ, em lưu lại các thông tin và lưu ý chăm sóc hôm nay của mình rồi, bất cứ khi nào thu xếp được khoảng thời gian thư thả cần thả lỏng cơ thể thì mình cứ nhắn em nhé. Chúc mình luôn thật nhiều sức khỏe và có những giây phút nghỉ ngơi thật êm ái ạ!",
+      "anti_pattern": "Cố chèo kéo thêm một liệu trình mới chưa từng xuất hiện trong cuộc trò chuyện hoặc hỏi gặng bao giờ khách mới quay lại.",
+      "priority": 93,
+      "active": true,
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    }
+  ],
+  "activeLearnedRules": [
+    {
+      "id": "1f844e08-2968-4418-a8bb-47a88ce0118c",
+      "rule_code": null,
+      "category": "PSYCHOLOGICAL_PERSUASION",
+      "trigger_condition": "Khách hàng có dấu hiệu hạ nhiệt / do dự ('để xem', 'nghĩ thêm') với temperature_delta <= -15",
+      "generalized_rule": "Hạ hoàn toàn áp lực chốt bán hàng; công nhận quyền cân nhắc của khách; đặt 1 câu hỏi vi mô để tìm rào cản thật sự.",
+      "confidence_score": 0.99,
+      "active": true,
+      "always_on": false,
+      "review_status": "APPROVED",
+      "page_id": null
+    },
+    {
+      "id": "ae110c0a-2cd7-45e5-a573-c479655dc8e7",
+      "rule_code": null,
+      "category": "POLICY",
+      "trigger_condition": "Khi khách hàng hỏi xác nhận khung giờ hẹn như tầm trưa có được không",
+      "generalized_rule": "Khi trả lời khách hàng nam chỉ sử dụng danh xưng 'Anh' và tuyệt đối không thêm từ 'Nam giới' vào sau danh xưng.",
+      "confidence_score": 0.99,
+      "active": true,
+      "always_on": false,
+      "review_status": "APPROVED",
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "0b964436-fccf-42f0-9bea-cfad44cc83e7",
+      "rule_code": null,
+      "category": "TEMPORAL_VALIDITY",
+      "trigger_condition": "Khi khách hàng xác nhận hoặc đề xuất khung giờ 12h30",
+      "generalized_rule": "Khi khách hàng đề cập khung giờ h thì mặc định hiểu là buổi trưa và xác nhận giữ lịch ngay, tuyệt đối không hỏi lại khách chọn sáng hay chiều.",
+      "confidence_score": 0.99,
+      "active": true,
+      "always_on": false,
+      "review_status": "APPROVED",
+      "page_id": "2850a8ef-ca4a-40eb-87fa-4f808640efee"
+    },
+    {
+      "id": "9e2533d8-cbb3-42aa-86b8-fd064cba6c63",
+      "rule_code": null,
+      "category": "PSYCHOLOGICAL_PERSUASION",
+      "trigger_condition": "Khách hàng đã hoàn tất đặt lịch (đã có SĐT & giờ hẹn) hoặc dặn 'tới giờ tự tới / tự sắp xếp / không cần gọi trước'",
+      "generalized_rule": "Khi khách đã hoàn tất đặt lịch (đã có SĐT + giờ hẹn) hoặc yêu cầu tự sắp xếp / không cần gọi xác nhận, chỉ xác nhận giữ đúng lịch hẹn và tôn trọng sự riêng tư của khách; tuyệt đối cấm chèn thêm câu hỏi 'Sáng hay Chiều' hay 'ngày thường hay cuối tuần' ở cuối.",
+      "confidence_score": 0.99,
+      "active": true,
+      "always_on": false,
+      "review_status": "APPROVED",
+      "page_id": null
+    }
+  ]
+}

@@ -1,0 +1,1520 @@
+{
+  "caseId" : "CASE-14",
+  "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+  "title" : "Chi nhánh Sài Gòn: Hỏi giá gói trị liệu chuyên sâu bên mình (không trộn giá chi nhánh Hà Nội)",
+  "isPrimaryMandatorySession" : false,
+  "scenarioCategories" : [ "Chi nhánh khác nhau", "Hỏi giá cụ thể" ],
+  "runsExecuted" : 3,
+  "casePass3Of3" : false,
+  "persistentFailures3Of3" : [ "T1:UNGROUNDED_CATALOG_PRICE:1270000 (3/3)" ],
+  "intermittentFailuresAcrossRuns" : [ "T1:BRANCH_PRICE_MIXING_HN_PRICE_IN_SG_TURN (1/3)" ],
+  "turnSummaries" : [ {
+    "turnId" : "T1",
+    "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+    "safetyPassRatio" : "0/3",
+    "taskPassRatio" : "3/3",
+    "qualityPassRatio" : "3/3",
+    "overallPassRatio" : "0/3",
+    "turnPass3Of3" : false,
+    "failureFrequency" : {
+      "UNGROUNDED_CATALOG_PRICE:1270000" : 3,
+      "BRANCH_PRICE_MIXING_HN_PRICE_IN_SG_TURN" : 1
+    },
+    "perRunOutputs" : [ {
+      "runIndex" : 1,
+      "rawBubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+      "postRefereeBubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+      "finalBubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+      "javaReflectionOverrides" : [ ],
+      "javaBubbleMutations" : [ ],
+      "totalTurnMs" : 683,
+      "llmDurationMs" : 277,
+      "safetyPass" : false,
+      "taskPass" : true,
+      "qualityPass" : true,
+      "failures" : [ "UNGROUNDED_CATALOG_PRICE:1270000" ]
+    }, {
+      "runIndex" : 2,
+      "rawBubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+      "postRefereeBubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+      "finalBubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+      "javaReflectionOverrides" : [ ],
+      "javaBubbleMutations" : [ ],
+      "totalTurnMs" : 29269,
+      "llmDurationMs" : 28857,
+      "safetyPass" : false,
+      "taskPass" : true,
+      "qualityPass" : true,
+      "failures" : [ "UNGROUNDED_CATALOG_PRICE:1270000", "BRANCH_PRICE_MIXING_HN_PRICE_IN_SG_TURN" ]
+    }, {
+      "runIndex" : 3,
+      "rawBubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+      "postRefereeBubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+      "finalBubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+      "javaReflectionOverrides" : [ ],
+      "javaBubbleMutations" : [ ],
+      "totalTurnMs" : 950,
+      "llmDurationMs" : 500,
+      "safetyPass" : false,
+      "taskPass" : true,
+      "qualityPass" : true,
+      "failures" : [ "UNGROUNDED_CATALOG_PRICE:1270000" ]
+    } ]
+  } ],
+  "runs" : [ {
+    "caseId" : "CASE-14",
+    "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+    "runIndex" : 1,
+    "senderId" : "sbr01-replay-case-14-run1-c541233a",
+    "totalTurns" : 1,
+    "safetyPassTurns" : 0,
+    "taskPassTurns" : 1,
+    "qualityPassTurns" : 1,
+    "runOverallPass" : false,
+    "turns" : [ {
+      "turnIndex" : 1,
+      "turnId" : "T1",
+      "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+      "historicalBotReply" : "Nàng Sen chào mình ạ, cảm ơn mình đã ghé qua và quan tâm đến các gói trị liệu chuyên sâu bên em.\n\nGói chuyên sâu nhất bên em là Silver – Massage phục hồi chuyên sâu 140 phút, giá 1.270.000đ, gồm ngâm bồn thảo dược, xông hơi, 90 phút massage và 35 phút gội đầu dưỡng sinh trong phòng VIP riêng khép kín. Mình muốn chọn gói chuyên sâu này hay cần em gợi ý thêm liệu trình nhẹ nhàng hơn trước ạ?",
+      "expectedBehavior" : {
+        "sectionRef" : "Mục 2.2 & Mục 5 (Chi nhánh khác nhau, Hỏi giá cụ thể)",
+        "mustHave" : [ "JSON hợp lệ đúng schema, giá/thời lượng đúng Catalog, không bịa ưu đãi hoặc chẩn đoán y tế.", "Trả lời đúng giá và thời lượng của chi nhánh khách nêu (Hà Nội vs Sài Gòn/Quận 1)." ],
+        "mustNotHave" : [ "Không tự bịa giá ngoài Catalog, không lặp mẫu xin lỗi/đồng cảm sáo rỗng, không giả vờ đã xác nhận lịch khi chưa đủ thông tin.", "Không trộn giá của chi nhánh khác và không lộ mã SKU nội bộ (NS01, NS02...)." ],
+        "evalRuleCode" : "BRANCH_SPECIFIC_PRICE"
+      },
+      "inputAndContext" : {
+        "caseId" : "CASE-14",
+        "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+        "runIndex" : 1,
+        "turnIndex" : 1,
+        "turnId" : "T1",
+        "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+        "conversationHistoryCount" : 0,
+        "conversationHistory" : [ ],
+        "pageId" : "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "branchContext" : {
+          "preferredRegionInTrace" : "SG",
+          "pageName" : "Nàng sen"
+        },
+        "catalogSnapshot" : [ {
+          "product_id" : "SG_NS01",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "70 phút"
+        }, {
+          "product_id" : "SG_NS02",
+          "branch" : "SG",
+          "price_display" : "670k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_NS03",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "100 phút"
+        }, {
+          "product_id" : "SG_NS04",
+          "branch" : "SG",
+          "price_display" : "970k",
+          "duration_label" : "120 phút"
+        }, {
+          "product_id" : "SG_NS05",
+          "branch" : "SG",
+          "price_display" : "1.270.000đ",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_NS06",
+          "branch" : "SG",
+          "price_display" : "2.150.000đ",
+          "duration_label" : "~160 phút"
+        }, {
+          "product_id" : "SG_DS01",
+          "branch" : "SG",
+          "price_display" : "129k",
+          "duration_label" : "30 phút"
+        }, {
+          "product_id" : "SG_DS02",
+          "branch" : "SG",
+          "price_display" : "260k",
+          "duration_label" : "60 phút"
+        }, {
+          "product_id" : "SG_DS03",
+          "branch" : "SG",
+          "price_display" : "370k",
+          "duration_label" : "80 phút"
+        }, {
+          "product_id" : "SG_DS04",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_DS05",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_DS06",
+          "branch" : "SG",
+          "price_display" : "1.100.000đ",
+          "duration_label" : "140 phút"
+        } ],
+        "systemPrompt" : {
+          "source" : "EXTERNAL_FILE:..\\config\\aci_v2_system_prompt.md",
+          "version" : "aci-v2.12-p2-response-policy",
+          "sha256" : "df02dd9ab614f201e6a6cefae2c6c44e4a0073877946d6eef230cb67160b2b1a"
+        },
+        "finalDynamicPromptCharLength" : 24079,
+        "finalDynamicPromptFile" : "benchmark/sbr01/results/prompts/CASE-14_run1_T1.txt",
+        "memoryBeforeTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "EXPLORE_SERVICES",
+          "conversationState" : "ACTIVE_CONSULTATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "priceObjectionCount" : 0
+        },
+        "memoryAfterTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+          "conversationState" : "ACTIVE_CONSULTATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "interestedPackageId" : "",
+          "bookingReadiness" : "EXPLORING",
+          "buyingSignal" : "WEAK",
+          "priorityPrimary" : "PRICE_INFORMATION",
+          "prioritySecondary" : [ ]
+        }
+      },
+      "skillAndDecision" : {
+        "availableSkills" : [ "discovery_empathy_and_scope", "price_objection_sensory_value", "soft_economical_bridge_and_compare", "warm_nod_to_gentle_scheduling", "booking_careful_preparation", "graceful_pause_keep_warmth" ],
+        "preselectedSkillsInPrompt" : [ "discovery_empathy_and_scope" ],
+        "activatedSkillCodes" : [ ],
+        "excludedSkills" : [ {
+          "reason" : "IN_PROMPT_BUT_NOT_ACTIVATED_BY_BRAIN_REFLECTION",
+          "code" : "discovery_empathy_and_scope"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "price_objection_sensory_value"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "soft_economical_bridge_and_compare"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "warm_nod_to_gentle_scheduling"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "booking_careful_preparation"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "graceful_pause_keep_warmth"
+        } ],
+        "goodExamplesInjectedIntoPrompt" : [ {
+          "skillCode" : "discovery_empathy_and_scope",
+          "goodExample" : "Dạ đi tập nặng về mà cơ khớp còn đang căng mỏi chắc người mình oải lắm ạ. Để em chọn đúng liệu trình thả lỏng vừa vặn nhất, hiện tại mình đang nhức mỏi nhiều nhất ở vùng nào, hay muốn chăm sóc giãn cơ toàn thân luôn ạ?"
+        } ],
+        "tacticalFocus" : "Direct Answer",
+        "responsePlan" : {
+          "objective" : "SPECIFIC_PRICE_INQUIRY",
+          "strategy" : "Direct Answer",
+          "tone" : "LEVEL_1_NATURAL",
+          "depth" : "CONCISE",
+          "nextAction" : "SPECIFIC_PRICE_ANSWER",
+          "ctaLevel" : "NO_CTA",
+          "adaptationMode" : "CONTINUATION",
+          "previousOutcome" : "NOT_APPLICABLE"
+        },
+        "nextAction" : "SPECIFIC_PRICE_ANSWER",
+        "ctaLevel" : "NO_CTA",
+        "thinkingMode" : "FAST_NO_THINK",
+        "turnContextSnapshotAction" : "SERVICE_RECOMMENDATION"
+      },
+      "retrieval" : {
+        "embeddingProvider" : "StubEmbeddingClient",
+        "embeddingModel" : "stub-384d (DOCMIND_EMBEDDING_PROVIDER=stub)",
+        "usedStubEmbedding" : true,
+        "catalogAnchorFallbackTriggered" : false,
+        "retrievalDurationMs" : 262,
+        "vectorCandidateCount" : 65,
+        "vectorCandidates" : [ {
+          "score" : 0.1543,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "e5f199b6-a298-4ff9-bfcc-9be4ab7838e2",
+          "page" : 1
+        }, {
+          "score" : 0.135,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9cbe55e8-72b9-464e-a97c-9584f570044f",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "c100351e-e215-4f7f-b0e1-5ce5f15fe5a5",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "4df73031-e381-4296-8fd1-5bf579a0a823",
+          "page" : 1
+        }, {
+          "score" : 0.1277,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 0.1218,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "page" : 1
+        }, {
+          "score" : 0.1195,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "25e4fd8e-8dcc-4224-9d45-a7e1735b431e",
+          "page" : 1
+        }, {
+          "score" : 0.1124,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "505920f9-2ebf-4617-a1f1-72fb037c4f90",
+          "page" : 1
+        }, {
+          "score" : 0.1084,
+          "headingPath" : [ "Quy trình Gội đầu dưỡng sinh" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "86dda2aa-6884-400f-bd72-f5e9900069ba",
+          "page" : 1
+        }, {
+          "score" : 0.1039,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d2b75b8c-cb20-440f-b107-e1016ccb1bcb",
+          "page" : 1
+        }, {
+          "score" : 0.098,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "5771f328-651f-455d-8e10-d9bd7aeb4a5c",
+          "page" : 1
+        }, {
+          "score" : 0.0968,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 0.0914,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d0e5ee21-0cae-488d-9441-6684ddc24ecc",
+          "page" : 1
+        } ],
+        "fulltextCandidateCount" : 40,
+        "fulltextCandidates" : [ {
+          "score" : 2.0,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "page" : 1
+        }, {
+          "score" : 1.6,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "08b309ad-1f28-480d-9a55-fcfb7e0960a2",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "911a5ca7-5217-4abd-91eb-b40d4a327163",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9a67fd46-8526-4b2a-9ab3-41aee09020f9",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "ffc359f9-f1ed-44fc-bbc9-cdd0e9b6aee5",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "55b9ee69-4ea6-461c-801a-a2b3a6d7bf20",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "a830a65b-b093-4d7d-91a3-aafb34ac9229",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9ebeb576-4b34-44ff-a250-70339f749855",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d9bb72c8-3ef2-4ce4-80d9-a57cfc2efa41",
+          "page" : 1
+        } ],
+        "fusedTotalCandidates" : 65,
+        "finalChunksUsed" : [ {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage có dùng tinh dầu không? | Dạ trong liệu trình bên em sẽ kết hợp tinh dầu dừa hoặc tinh dầu nha đam nhằm hỗ",
+          "page" : 1,
+          "rrfScore" : 0.0311,
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=538501441083395111",
+          "page" : 1,
+          "rrfScore" : 0.0296,
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có dễ ngủ không? | Dạ nhiều khách sau khi trị liệu đầu – cổ – vai – gáy thường ngủ sâu và dễ ngủ hơn ạ |\n| Có đỡ đ",
+          "page" : 1,
+          "rrfScore" : 0.0294,
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage ",
+          "page" : 1,
+          "rrfScore" : 0.0288,
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| ADD01 | Tẩy da chết toàn thân | Theo liệu trình | • Tẩy tế bào chết toàn thân• Làm sạch lớp d",
+          "page" : 1,
+          "rrfScore" : 0.0277,
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Quy trình như nào? | Dạ liệu trình bên Nàng Sen thường sẽ đi theo từng bước để cơ thể được phục hồi từ từ và liền ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "headingPath" : [ "Khách hỏi" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | ",
+          "page" : 1,
+          "rrfScore" : 0.0269,
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        } ]
+      },
+      "outputPipeline" : {
+        "raw_llm_output" : {
+          "parsedFromJson" : true,
+          "bubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+          "rawJsonText" : "{\"brain_reflection\":{\"conversational_context\":{\"current_topic\":\"giá gói trị liệu\",\"unresolved_requests\":[{\"request\":\"giá gói trị liệu\",\"status\":\"OPEN\"}]},\"customer_understanding\":{\"turn_intent\":\"SPECIFIC_PRICE_INQUIRY\",\"secondary_intents\":[\"BRANCH_SG\"],\"conversation_state\":\"ACTIVE_CONSULTATION\",\"conversation_goal\":\"BÁO GIÁ GÓI TRỊ LIỆU\",\"need_revision\":false,\"interaction_permission\":\"OPEN\",\"buying_signal\":\"WEAK\",\"confirmed_facts_delta\":[{\"key\":\"constraint\",\"value\":\"chi nhánh SG\",\"op\":\"ADD\",\"status\":\"CURRENT\"}],\"interested_package_id\":null,\"emotion\":\"NEUTRAL\",\"inferred_customer_pronoun\":null,\"pronoun_confidence\":0.0,\"cost_concern_expressed\":false,\"verified_symptom_duration\":null,\"booking_readiness\":\"EXPLORING\",\"communication_style_preference\":null},\"priority\":\"PRICE_INFORMATION\",\"working_hypothesis\":{\"hypothesis\":\"giá gói trị liệu SG\",\"barrier_type\":\"NONE\",\"confidence\":0.8,\"lifecycle_op\":\"MAINTAIN\"},\"response_plan\":{\"strategy\":\"Direct Answer\",\"tone\":\"LEVEL_1_NATURAL\",\"depth\":\"CONCISE\",\"cta_level\":\"NO_CTA\",\"next_action\":\"SPECIFIC_PRICE_ANSWER\",\"adaptation\":\"CONTINUATION\",\"previous_outcome\":\"NOT_APPLICABLE\"},\"activated_skill_codes\":[],\"handoff_request\":{\"requested\":false,\"reason\":null},\"proposed_booking_patch\":{\"selected_product_id\":null,\"proposed_date\":null,\"proposed_time\":null}},\"bubbles\":[\"Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?\"]}",
+          "rawBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "ACTIVE_CONSULTATION",
+            "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "post_referee_output" : {
+          "refereeDecision" : "PASS",
+          "refereeViolations" : [ ],
+          "repairApplied" : false,
+          "bubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+          "reconciledBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "ACTIVE_CONSULTATION",
+            "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "final_sent_output" : {
+          "bubbles" : [ "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?" ],
+          "replyText" : "Dạ em báo giá gói trị liệu tại chi nhánh Sài Gòn ạ: Silver – Massage phục hồi chuyên sâu 140 phút 1.270.000đ, Gold – Massage trị liệu phục hồi khoảng 160 phút 2.150.000đ. Mình quan tâm gói nào ạ?",
+          "typingDelaysMs" : [ 0 ],
+          "salesStage" : "VALUE_CONSULTATION"
+        },
+        "javaReflectionOverrides" : [ ],
+        "javaBubbleMutations" : [ ]
+      },
+      "latency" : {
+        "totalTurnMs" : 683,
+        "retrievalDurationMs" : 262,
+        "promptBuildDurationMs" : 6,
+        "llmDurationMs" : 277,
+        "refereeValidationDurationMs" : 30,
+        "repairDurationMs" : 0,
+        "retryCount" : 0,
+        "retryTriggerReason" : "NONE",
+        "fallbackDurationMs" : 0,
+        "promptTokens" : 8839,
+        "completionTokens" : 477,
+        "reasoningTokens" : 0,
+        "reflectionTokens" : 404
+      },
+      "rubricEvaluation" : {
+        "jsonValid" : true,
+        "safetyAndTruthPass" : false,
+        "safetyAndTruthFailures" : [ "UNGROUNDED_CATALOG_PRICE:1270000" ],
+        "taskFulfillmentPass" : true,
+        "taskFulfillmentFailures" : [ ],
+        "salesConversationQualityPass" : true,
+        "salesConversationQualityFailures" : [ ],
+        "turnOverallPass" : false
+      }
+    } ]
+  }, {
+    "caseId" : "CASE-14",
+    "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+    "runIndex" : 2,
+    "senderId" : "sbr01-replay-case-14-run2-0cb86650",
+    "totalTurns" : 1,
+    "safetyPassTurns" : 0,
+    "taskPassTurns" : 1,
+    "qualityPassTurns" : 1,
+    "runOverallPass" : false,
+    "turns" : [ {
+      "turnIndex" : 1,
+      "turnId" : "T1",
+      "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+      "historicalBotReply" : "Nàng Sen chào mình ạ, cảm ơn mình đã ghé qua và quan tâm đến các gói trị liệu chuyên sâu bên em.\n\nGói chuyên sâu nhất bên em là Silver – Massage phục hồi chuyên sâu 140 phút, giá 1.270.000đ, gồm ngâm bồn thảo dược, xông hơi, 90 phút massage và 35 phút gội đầu dưỡng sinh trong phòng VIP riêng khép kín. Mình muốn chọn gói chuyên sâu này hay cần em gợi ý thêm liệu trình nhẹ nhàng hơn trước ạ?",
+      "expectedBehavior" : {
+        "sectionRef" : "Mục 2.2 & Mục 5 (Chi nhánh khác nhau, Hỏi giá cụ thể)",
+        "mustHave" : [ "JSON hợp lệ đúng schema, giá/thời lượng đúng Catalog, không bịa ưu đãi hoặc chẩn đoán y tế.", "Trả lời đúng giá và thời lượng của chi nhánh khách nêu (Hà Nội vs Sài Gòn/Quận 1)." ],
+        "mustNotHave" : [ "Không tự bịa giá ngoài Catalog, không lặp mẫu xin lỗi/đồng cảm sáo rỗng, không giả vờ đã xác nhận lịch khi chưa đủ thông tin.", "Không trộn giá của chi nhánh khác và không lộ mã SKU nội bộ (NS01, NS02...)." ],
+        "evalRuleCode" : "BRANCH_SPECIFIC_PRICE"
+      },
+      "inputAndContext" : {
+        "caseId" : "CASE-14",
+        "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+        "runIndex" : 2,
+        "turnIndex" : 1,
+        "turnId" : "T1",
+        "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+        "conversationHistoryCount" : 0,
+        "conversationHistory" : [ ],
+        "pageId" : "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "branchContext" : {
+          "preferredRegionInTrace" : "SG",
+          "pageName" : "Nàng sen"
+        },
+        "catalogSnapshot" : [ {
+          "product_id" : "SG_NS01",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "70 phút"
+        }, {
+          "product_id" : "SG_NS02",
+          "branch" : "SG",
+          "price_display" : "670k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_NS03",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "100 phút"
+        }, {
+          "product_id" : "SG_NS04",
+          "branch" : "SG",
+          "price_display" : "970k",
+          "duration_label" : "120 phút"
+        }, {
+          "product_id" : "SG_NS05",
+          "branch" : "SG",
+          "price_display" : "1.270.000đ",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_NS06",
+          "branch" : "SG",
+          "price_display" : "2.150.000đ",
+          "duration_label" : "~160 phút"
+        }, {
+          "product_id" : "SG_DS01",
+          "branch" : "SG",
+          "price_display" : "129k",
+          "duration_label" : "30 phút"
+        }, {
+          "product_id" : "SG_DS02",
+          "branch" : "SG",
+          "price_display" : "260k",
+          "duration_label" : "60 phút"
+        }, {
+          "product_id" : "SG_DS03",
+          "branch" : "SG",
+          "price_display" : "370k",
+          "duration_label" : "80 phút"
+        }, {
+          "product_id" : "SG_DS04",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_DS05",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_DS06",
+          "branch" : "SG",
+          "price_display" : "1.100.000đ",
+          "duration_label" : "140 phút"
+        } ],
+        "systemPrompt" : {
+          "source" : "EXTERNAL_FILE:..\\config\\aci_v2_system_prompt.md",
+          "version" : "aci-v2.12-p2-response-policy",
+          "sha256" : "df02dd9ab614f201e6a6cefae2c6c44e4a0073877946d6eef230cb67160b2b1a"
+        },
+        "finalDynamicPromptCharLength" : 24079,
+        "finalDynamicPromptFile" : "benchmark/sbr01/results/prompts/CASE-14_run2_T1.txt",
+        "memoryBeforeTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "EXPLORE_SERVICES",
+          "conversationState" : "ACTIVE_CONSULTATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "priceObjectionCount" : 0
+        },
+        "memoryAfterTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "BÁO GIÁ DỊCH VỤ CHI NHÁNH",
+          "conversationState" : "ACTIVE_CONSULTATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "interestedPackageId" : "",
+          "bookingReadiness" : "EXPLORING",
+          "buyingSignal" : "WEAK",
+          "priorityPrimary" : "PRICE_INFORMATION",
+          "prioritySecondary" : [ ]
+        }
+      },
+      "skillAndDecision" : {
+        "availableSkills" : [ "discovery_empathy_and_scope", "price_objection_sensory_value", "soft_economical_bridge_and_compare", "warm_nod_to_gentle_scheduling", "booking_careful_preparation", "graceful_pause_keep_warmth" ],
+        "preselectedSkillsInPrompt" : [ "discovery_empathy_and_scope" ],
+        "activatedSkillCodes" : [ ],
+        "excludedSkills" : [ {
+          "reason" : "IN_PROMPT_BUT_NOT_ACTIVATED_BY_BRAIN_REFLECTION",
+          "code" : "discovery_empathy_and_scope"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "price_objection_sensory_value"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "soft_economical_bridge_and_compare"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "warm_nod_to_gentle_scheduling"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "booking_careful_preparation"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "graceful_pause_keep_warmth"
+        } ],
+        "goodExamplesInjectedIntoPrompt" : [ {
+          "skillCode" : "discovery_empathy_and_scope",
+          "goodExample" : "Dạ đi tập nặng về mà cơ khớp còn đang căng mỏi chắc người mình oải lắm ạ. Để em chọn đúng liệu trình thả lỏng vừa vặn nhất, hiện tại mình đang nhức mỏi nhiều nhất ở vùng nào, hay muốn chăm sóc giãn cơ toàn thân luôn ạ?"
+        } ],
+        "tacticalFocus" : "Direct Answer",
+        "responsePlan" : {
+          "objective" : "SPECIFIC_PRICE_INQUIRY",
+          "strategy" : "Direct Answer",
+          "tone" : "LEVEL_1_NATURAL",
+          "depth" : "CONCISE",
+          "nextAction" : "SPECIFIC_PRICE_ANSWER",
+          "ctaLevel" : "NO_CTA",
+          "adaptationMode" : "CONTINUATION",
+          "previousOutcome" : "NOT_APPLICABLE"
+        },
+        "nextAction" : "SPECIFIC_PRICE_ANSWER",
+        "ctaLevel" : "NO_CTA",
+        "thinkingMode" : "FAST_NO_THINK",
+        "turnContextSnapshotAction" : "SERVICE_RECOMMENDATION"
+      },
+      "retrieval" : {
+        "embeddingProvider" : "StubEmbeddingClient",
+        "embeddingModel" : "stub-384d (DOCMIND_EMBEDDING_PROVIDER=stub)",
+        "usedStubEmbedding" : true,
+        "catalogAnchorFallbackTriggered" : false,
+        "retrievalDurationMs" : 265,
+        "vectorCandidateCount" : 65,
+        "vectorCandidates" : [ {
+          "score" : 0.1543,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "e5f199b6-a298-4ff9-bfcc-9be4ab7838e2",
+          "page" : 1
+        }, {
+          "score" : 0.135,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9cbe55e8-72b9-464e-a97c-9584f570044f",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "c100351e-e215-4f7f-b0e1-5ce5f15fe5a5",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "4df73031-e381-4296-8fd1-5bf579a0a823",
+          "page" : 1
+        }, {
+          "score" : 0.1277,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 0.1218,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "page" : 1
+        }, {
+          "score" : 0.1195,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "25e4fd8e-8dcc-4224-9d45-a7e1735b431e",
+          "page" : 1
+        }, {
+          "score" : 0.1124,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "505920f9-2ebf-4617-a1f1-72fb037c4f90",
+          "page" : 1
+        }, {
+          "score" : 0.1084,
+          "headingPath" : [ "Quy trình Gội đầu dưỡng sinh" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "86dda2aa-6884-400f-bd72-f5e9900069ba",
+          "page" : 1
+        }, {
+          "score" : 0.1039,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d2b75b8c-cb20-440f-b107-e1016ccb1bcb",
+          "page" : 1
+        }, {
+          "score" : 0.098,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "5771f328-651f-455d-8e10-d9bd7aeb4a5c",
+          "page" : 1
+        }, {
+          "score" : 0.0968,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 0.0914,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d0e5ee21-0cae-488d-9441-6684ddc24ecc",
+          "page" : 1
+        } ],
+        "fulltextCandidateCount" : 40,
+        "fulltextCandidates" : [ {
+          "score" : 2.0,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "page" : 1
+        }, {
+          "score" : 1.6,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "08b309ad-1f28-480d-9a55-fcfb7e0960a2",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "911a5ca7-5217-4abd-91eb-b40d4a327163",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9a67fd46-8526-4b2a-9ab3-41aee09020f9",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "ffc359f9-f1ed-44fc-bbc9-cdd0e9b6aee5",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "55b9ee69-4ea6-461c-801a-a2b3a6d7bf20",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "a830a65b-b093-4d7d-91a3-aafb34ac9229",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9ebeb576-4b34-44ff-a250-70339f749855",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d9bb72c8-3ef2-4ce4-80d9-a57cfc2efa41",
+          "page" : 1
+        } ],
+        "fusedTotalCandidates" : 65,
+        "finalChunksUsed" : [ {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage có dùng tinh dầu không? | Dạ trong liệu trình bên em sẽ kết hợp tinh dầu dừa hoặc tinh dầu nha đam nhằm hỗ",
+          "page" : 1,
+          "rrfScore" : 0.0311,
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=538501441083395111",
+          "page" : 1,
+          "rrfScore" : 0.0296,
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có dễ ngủ không? | Dạ nhiều khách sau khi trị liệu đầu – cổ – vai – gáy thường ngủ sâu và dễ ngủ hơn ạ |\n| Có đỡ đ",
+          "page" : 1,
+          "rrfScore" : 0.0294,
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage ",
+          "page" : 1,
+          "rrfScore" : 0.0288,
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| ADD01 | Tẩy da chết toàn thân | Theo liệu trình | • Tẩy tế bào chết toàn thân• Làm sạch lớp d",
+          "page" : 1,
+          "rrfScore" : 0.0277,
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Quy trình như nào? | Dạ liệu trình bên Nàng Sen thường sẽ đi theo từng bước để cơ thể được phục hồi từ từ và liền ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "headingPath" : [ "Khách hỏi" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | ",
+          "page" : 1,
+          "rrfScore" : 0.0269,
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        } ]
+      },
+      "outputPipeline" : {
+        "raw_llm_output" : {
+          "parsedFromJson" : true,
+          "bubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+          "rawJsonText" : "{\"brain_reflection\":{\"conversational_context\":{\"current_topic\":\"GIÁ DỊCH VỤ\",\"unresolved_requests\":[{\"request\":\"BÁO GIÁ DỊCH VỤ\",\"status\":\"OPEN\"}]},\"customer_understanding\":{\"turn_intent\":\"SPECIFIC_PRICE_INQUIRY\",\"secondary_intents\":[\"BRANCH_SPECIFIC_PRICE\"],\"conversation_state\":\"ACTIVE_CONSULTATION\",\"conversation_goal\":\"BÁO GIÁ DỊCH VỤ CHI NHÁNH\",\"need_revision\":false,\"interaction_permission\":\"OPEN\",\"buying_signal\":\"WEAK\",\"confirmed_facts_delta\":[{\"key\":\"constraint\",\"value\":\"Chi nhánh Sài Gòn\",\"op\":\"ADD\",\"status\":\"CURRENT\"}],\"interested_package_id\":null,\"emotion\":\"NEUTRAL\",\"inferred_customer_pronoun\":null,\"pronoun_confidence\":0.0,\"cost_concern_expressed\":false,\"verified_symptom_duration\":null,\"booking_readiness\":\"EXPLORING\",\"communication_style_preference\":null},\"priority\":\"PRICE_INFORMATION\",\"working_hypothesis\":{\"hypothesis\":\"KHÁCH MUỐN GIÁ\",\"barrier_type\":\"NONE\",\"confidence\":0.9,\"lifecycle_op\":\"MAINTAIN\"},\"response_plan\":{\"strategy\":\"Direct Answer\",\"tone\":\"LEVEL_1_NATURAL\",\"depth\":\"CONCISE\",\"cta_level\":\"NO_CTA\",\"next_action\":\"SPECIFIC_PRICE_ANSWER\",\"adaptation\":\"CONTINUATION\",\"previous_outcome\":\"NOT_APPLICABLE\"},\"activated_skill_codes\":[],\"handoff_request\":{\"requested\":false,\"reason\":null},\"proposed_booking_patch\":{\"selected_product_id\":null,\"proposed_date\":null,\"proposed_time\":null}},\"bubbles\":[\"Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?\"]}",
+          "rawBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "ACTIVE_CONSULTATION",
+            "conversationGoal" : "BÁO GIÁ DỊCH VỤ CHI NHÁNH",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "post_referee_output" : {
+          "refereeDecision" : "PASS",
+          "refereeViolations" : [ ],
+          "repairApplied" : false,
+          "bubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+          "reconciledBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "ACTIVE_CONSULTATION",
+            "conversationGoal" : "BÁO GIÁ DỊCH VỤ CHI NHÁNH",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "final_sent_output" : {
+          "bubbles" : [ "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?" ],
+          "replyText" : "Dạ tại chi nhánh Sài Gòn, gói Massage cơ bản nâng cao 90 phút là 670k, gói Silver – Massage phục hồi chuyên sâu 140 phút là 1.270.000đ ạ. Mình quan tâm gói nào ạ?",
+          "typingDelaysMs" : [ 0 ],
+          "salesStage" : "VALUE_CONSULTATION"
+        },
+        "javaReflectionOverrides" : [ ],
+        "javaBubbleMutations" : [ ]
+      },
+      "latency" : {
+        "totalTurnMs" : 29269,
+        "retrievalDurationMs" : 265,
+        "promptBuildDurationMs" : 7,
+        "llmDurationMs" : 28857,
+        "refereeValidationDurationMs" : 32,
+        "repairDurationMs" : 0,
+        "retryCount" : 0,
+        "retryTriggerReason" : "NONE",
+        "fallbackDurationMs" : 0,
+        "promptTokens" : 8839,
+        "completionTokens" : 486,
+        "reasoningTokens" : 0,
+        "reflectionTokens" : 421
+      },
+      "rubricEvaluation" : {
+        "jsonValid" : true,
+        "safetyAndTruthPass" : false,
+        "safetyAndTruthFailures" : [ "UNGROUNDED_CATALOG_PRICE:1270000", "BRANCH_PRICE_MIXING_HN_PRICE_IN_SG_TURN" ],
+        "taskFulfillmentPass" : true,
+        "taskFulfillmentFailures" : [ ],
+        "salesConversationQualityPass" : true,
+        "salesConversationQualityFailures" : [ ],
+        "turnOverallPass" : false
+      }
+    } ]
+  }, {
+    "caseId" : "CASE-14",
+    "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+    "runIndex" : 3,
+    "senderId" : "sbr01-replay-case-14-run3-0f06e67a",
+    "totalTurns" : 1,
+    "safetyPassTurns" : 0,
+    "taskPassTurns" : 1,
+    "qualityPassTurns" : 1,
+    "runOverallPass" : false,
+    "turns" : [ {
+      "turnIndex" : 1,
+      "turnId" : "T1",
+      "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+      "historicalBotReply" : "Nàng Sen chào mình ạ, cảm ơn mình đã ghé qua và quan tâm đến các gói trị liệu chuyên sâu bên em.\n\nGói chuyên sâu nhất bên em là Silver – Massage phục hồi chuyên sâu 140 phút, giá 1.270.000đ, gồm ngâm bồn thảo dược, xông hơi, 90 phút massage và 35 phút gội đầu dưỡng sinh trong phòng VIP riêng khép kín. Mình muốn chọn gói chuyên sâu này hay cần em gợi ý thêm liệu trình nhẹ nhàng hơn trước ạ?",
+      "expectedBehavior" : {
+        "sectionRef" : "Mục 2.2 & Mục 5 (Chi nhánh khác nhau, Hỏi giá cụ thể)",
+        "mustHave" : [ "JSON hợp lệ đúng schema, giá/thời lượng đúng Catalog, không bịa ưu đãi hoặc chẩn đoán y tế.", "Trả lời đúng giá và thời lượng của chi nhánh khách nêu (Hà Nội vs Sài Gòn/Quận 1)." ],
+        "mustNotHave" : [ "Không tự bịa giá ngoài Catalog, không lặp mẫu xin lỗi/đồng cảm sáo rỗng, không giả vờ đã xác nhận lịch khi chưa đủ thông tin.", "Không trộn giá của chi nhánh khác và không lộ mã SKU nội bộ (NS01, NS02...)." ],
+        "evalRuleCode" : "BRANCH_SPECIFIC_PRICE"
+      },
+      "inputAndContext" : {
+        "caseId" : "CASE-14",
+        "originalSessionId" : "bc08c115-b904-4a91-a01c-3f735d38ed8b",
+        "runIndex" : 3,
+        "turnIndex" : 1,
+        "turnId" : "T1",
+        "customerMessage" : "Chi o Sai Gon, muon hoa gia goi tri lieu chuyen sau ben minh",
+        "conversationHistoryCount" : 0,
+        "conversationHistory" : [ ],
+        "pageId" : "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+        "branchContext" : {
+          "preferredRegionInTrace" : "SG",
+          "pageName" : "Nàng sen"
+        },
+        "catalogSnapshot" : [ {
+          "product_id" : "SG_NS01",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "70 phút"
+        }, {
+          "product_id" : "SG_NS02",
+          "branch" : "SG",
+          "price_display" : "670k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_NS03",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "100 phút"
+        }, {
+          "product_id" : "SG_NS04",
+          "branch" : "SG",
+          "price_display" : "970k",
+          "duration_label" : "120 phút"
+        }, {
+          "product_id" : "SG_NS05",
+          "branch" : "SG",
+          "price_display" : "1.270.000đ",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_NS06",
+          "branch" : "SG",
+          "price_display" : "2.150.000đ",
+          "duration_label" : "~160 phút"
+        }, {
+          "product_id" : "SG_DS01",
+          "branch" : "SG",
+          "price_display" : "129k",
+          "duration_label" : "30 phút"
+        }, {
+          "product_id" : "SG_DS02",
+          "branch" : "SG",
+          "price_display" : "260k",
+          "duration_label" : "60 phút"
+        }, {
+          "product_id" : "SG_DS03",
+          "branch" : "SG",
+          "price_display" : "370k",
+          "duration_label" : "80 phút"
+        }, {
+          "product_id" : "SG_DS04",
+          "branch" : "SG",
+          "price_display" : "570k",
+          "duration_label" : "90 phút"
+        }, {
+          "product_id" : "SG_DS05",
+          "branch" : "SG",
+          "price_display" : "870k",
+          "duration_label" : "140 phút"
+        }, {
+          "product_id" : "SG_DS06",
+          "branch" : "SG",
+          "price_display" : "1.100.000đ",
+          "duration_label" : "140 phút"
+        } ],
+        "systemPrompt" : {
+          "source" : "EXTERNAL_FILE:..\\config\\aci_v2_system_prompt.md",
+          "version" : "aci-v2.12-p2-response-policy",
+          "sha256" : "df02dd9ab614f201e6a6cefae2c6c44e4a0073877946d6eef230cb67160b2b1a"
+        },
+        "finalDynamicPromptCharLength" : 24079,
+        "finalDynamicPromptFile" : "benchmark/sbr01/results/prompts/CASE-14_run3_T1.txt",
+        "memoryBeforeTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "EXPLORE_SERVICES",
+          "conversationState" : "ACTIVE_CONSULTATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "priceObjectionCount" : 0
+        },
+        "memoryAfterTurn" : {
+          "confirmedFacts" : [ ],
+          "selfReportedSymptoms" : [ ],
+          "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+          "conversationState" : "OBJECTION_NEGOTIATION",
+          "bookingStatus" : "NONE",
+          "selectedProductId" : "",
+          "interestedPackageId" : "",
+          "bookingReadiness" : "EXPLORING",
+          "buyingSignal" : "WEAK",
+          "priorityPrimary" : "PRICE_INFORMATION",
+          "prioritySecondary" : [ ]
+        }
+      },
+      "skillAndDecision" : {
+        "availableSkills" : [ "discovery_empathy_and_scope", "price_objection_sensory_value", "soft_economical_bridge_and_compare", "warm_nod_to_gentle_scheduling", "booking_careful_preparation", "graceful_pause_keep_warmth" ],
+        "preselectedSkillsInPrompt" : [ "discovery_empathy_and_scope" ],
+        "activatedSkillCodes" : [ ],
+        "excludedSkills" : [ {
+          "reason" : "IN_PROMPT_BUT_NOT_ACTIVATED_BY_BRAIN_REFLECTION",
+          "code" : "discovery_empathy_and_scope"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "price_objection_sensory_value"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "soft_economical_bridge_and_compare"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "warm_nod_to_gentle_scheduling"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "booking_careful_preparation"
+        }, {
+          "reason" : "FILTERED_BY_PRE_LLM_TURN_RELEVANCE",
+          "code" : "graceful_pause_keep_warmth"
+        } ],
+        "goodExamplesInjectedIntoPrompt" : [ {
+          "skillCode" : "discovery_empathy_and_scope",
+          "goodExample" : "Dạ đi tập nặng về mà cơ khớp còn đang căng mỏi chắc người mình oải lắm ạ. Để em chọn đúng liệu trình thả lỏng vừa vặn nhất, hiện tại mình đang nhức mỏi nhiều nhất ở vùng nào, hay muốn chăm sóc giãn cơ toàn thân luôn ạ?"
+        } ],
+        "tacticalFocus" : "Direct Answer",
+        "responsePlan" : {
+          "objective" : "SPECIFIC_PRICE_INQUIRY",
+          "strategy" : "Direct Answer",
+          "tone" : "LEVEL_1_NATURAL",
+          "depth" : "CONCISE",
+          "nextAction" : "SPECIFIC_PRICE_ANSWER",
+          "ctaLevel" : "NO_CTA",
+          "adaptationMode" : "CONTINUATION",
+          "previousOutcome" : "NOT_APPLICABLE"
+        },
+        "nextAction" : "SPECIFIC_PRICE_ANSWER",
+        "ctaLevel" : "NO_CTA",
+        "thinkingMode" : "FAST_NO_THINK",
+        "turnContextSnapshotAction" : "SERVICE_RECOMMENDATION"
+      },
+      "retrieval" : {
+        "embeddingProvider" : "StubEmbeddingClient",
+        "embeddingModel" : "stub-384d (DOCMIND_EMBEDDING_PROVIDER=stub)",
+        "usedStubEmbedding" : true,
+        "catalogAnchorFallbackTriggered" : false,
+        "retrievalDurationMs" : 287,
+        "vectorCandidateCount" : 65,
+        "vectorCandidates" : [ {
+          "score" : 0.1543,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "e5f199b6-a298-4ff9-bfcc-9be4ab7838e2",
+          "page" : 1
+        }, {
+          "score" : 0.135,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9cbe55e8-72b9-464e-a97c-9584f570044f",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "c100351e-e215-4f7f-b0e1-5ce5f15fe5a5",
+          "page" : 1
+        }, {
+          "score" : 0.1296,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "4df73031-e381-4296-8fd1-5bf579a0a823",
+          "page" : 1
+        }, {
+          "score" : 0.1277,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 0.1218,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "page" : 1
+        }, {
+          "score" : 0.1195,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "25e4fd8e-8dcc-4224-9d45-a7e1735b431e",
+          "page" : 1
+        }, {
+          "score" : 0.1124,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "505920f9-2ebf-4617-a1f1-72fb037c4f90",
+          "page" : 1
+        }, {
+          "score" : 0.1084,
+          "headingPath" : [ "Quy trình Gội đầu dưỡng sinh" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "86dda2aa-6884-400f-bd72-f5e9900069ba",
+          "page" : 1
+        }, {
+          "score" : 0.1039,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d2b75b8c-cb20-440f-b107-e1016ccb1bcb",
+          "page" : 1
+        }, {
+          "score" : 0.098,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Long Biên — Địa chỉ: TTA11 – TTA12, Chung cư HC Golden – 319 Đường Hồng Tiến – Phường Bồ Đề – Long Biên – Hà Nội (Hotline: 070 711 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "5771f328-651f-455d-8e10-d9bd7aeb4a5c",
+          "page" : 1
+        }, {
+          "score" : 0.0968,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 0.0914,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Mỹ Đình (Hà Nội) — Địa chỉ: Vinhomes Gardenia – Mỹ Đình – Hà Nội (Hotline: 090 175 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d0e5ee21-0cae-488d-9441-6684ddc24ecc",
+          "page" : 1
+        } ],
+        "fulltextCandidateCount" : 40,
+        "fulltextCandidates" : [ {
+          "score" : 2.0,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "page" : 1
+        }, {
+          "score" : 1.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "page" : 1
+        }, {
+          "score" : 1.6,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "08b309ad-1f28-480d-9a55-fcfb7e0960a2",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "911a5ca7-5217-4abd-91eb-b40d4a327163",
+          "page" : 1
+        }, {
+          "score" : 1.4,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9a67fd46-8526-4b2a-9ab3-41aee09020f9",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Quy trình massage" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "ffc359f9-f1ed-44fc-bbc9-cdd0e9b6aee5",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "55b9ee69-4ea6-461c-801a-a2b3a6d7bf20",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "a830a65b-b093-4d7d-91a3-aafb34ac9229",
+          "page" : 1
+        }, {
+          "score" : 1.2,
+          "headingPath" : [ "Khách hỏi" ],
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "page" : 1
+        }, {
+          "score" : 1.0,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Bích Câu — Địa chỉ: 6 Bích Câu – Đống Đa – Hà Nội (Hotline: 070 838 5555 | Giờ hoạt động: 9:00 - 22:00)" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "9ebeb576-4b34-44ff-a250-70339f749855",
+          "page" : 1
+        }, {
+          "score" : 0.8,
+          "headingPath" : [ "FAQ" ],
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "chunkId" : "d9bb72c8-3ef2-4ce4-80d9-a57cfc2efa41",
+          "page" : 1
+        } ],
+        "fusedTotalCandidates" : 65,
+        "finalChunksUsed" : [ {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Massage có dùng tinh dầu không? | Dạ trong liệu trình bên em sẽ kết hợp tinh dầu dừa hoặc tinh dầu nha đam nhằm hỗ",
+          "page" : 1,
+          "rrfScore" : 0.0311,
+          "chunkId" : "5a6a35f7-e2d0-48c7-8234-6b15d72c16da",
+          "headingPath" : [ "LƯU_Ý_QUY_TRÌNH" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00 | https://maps.google.com/?cid=538501441083395111",
+          "page" : 1,
+          "rrfScore" : 0.0296,
+          "chunkId" : "0751d52a-5ec2-47f1-ab2c-e37bf8939820",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Có dễ ngủ không? | Dạ nhiều khách sau khi trị liệu đầu – cổ – vai – gáy thường ngủ sâu và dễ ngủ hơn ạ |\n| Có đỡ đ",
+          "page" : 1,
+          "rrfScore" : 0.0294,
+          "chunkId" : "f9b95e44-a3dc-4ba1-9494-48cba05aacca",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS05 | Silver – Massage ",
+          "page" : 1,
+          "rrfScore" : 0.0288,
+          "chunkId" : "d110a192-b191-468e-ba63-fb04d2f3996c",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Tổng thời gian | Quy trình chi tiết |\n| --- | --- | --- | --- |\n| ADD01 | Tẩy da chết toàn thân | Theo liệu trình | • Tẩy tế bào chết toàn thân• Làm sạch lớp d",
+          "page" : 1,
+          "rrfScore" : 0.0277,
+          "chunkId" : "73673fd3-cd4e-481e-a519-74d9443ba511",
+          "headingPath" : [ "FAQ" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS04 | Massage phục hồi ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "03eb3e77-4a38-481b-b663-f91b664fa349",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        }, {
+          "documentId" : "1a6f639e-6f57-44c9-bb7b-07c5f79cb0d0",
+          "textPreview" : "| Câu hỏi khách hàng | Câu trả lời tư vấn chuẩn |\n| --- | --- |\n| Quy trình như nào? | Dạ liệu trình bên Nàng Sen thường sẽ đi theo từng bước để cơ thể được phục hồi từ từ và liền ",
+          "page" : 1,
+          "rrfScore" : 0.0276,
+          "chunkId" : "cc3995ce-e0db-4b0e-beb3-70cb157d812b",
+          "headingPath" : [ "Khách hỏi" ]
+        }, {
+          "documentId" : "2a242cd6-fa2e-487d-b8fc-a682b5afd54b",
+          "textPreview" : "| Mã gói | Tên gói | Giá | Tổng thời gian | Bao gồm | Không gian | KTV | Điểm nổi bật | Phù hợp |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| NS01 | Massage cơ bản | ",
+          "page" : 1,
+          "rrfScore" : 0.0269,
+          "chunkId" : "f0794469-42d2-4515-b854-d810431e7f40",
+          "headingPath" : [ "MASSAGE", "Cơ sở Nàng Sen Quận 1 (TP.HCM) — Địa chỉ: 74 Nguyễn Công Trứ, Phường Nguyễn Thái Bình, Quận 1, TP Hồ Chí Minh (Hotline: 079 811 2255 | Giờ hoạt động: 9:00 - 22:00)" ]
+        } ]
+      },
+      "outputPipeline" : {
+        "raw_llm_output" : {
+          "parsedFromJson" : true,
+          "bubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+          "rawJsonText" : "{\"brain_reflection\":{\"conversational_context\":{\"current_topic\":\"giá gói trị liệu\",\"unresolved_requests\":[{\"request\":\"giá gói trị liệu\",\"status\":\"OPEN\"}]},\"customer_understanding\":{\"turn_intent\":\"SPECIFIC_PRICE_INQUIRY\",\"secondary_intents\":[\"COMPETITOR_COMPARISON\"],\"conversation_state\":\"ACTIVE_CONSULTATION\",\"conversation_goal\":\"BÁO GIÁ GÓI TRỊ LIỆU\",\"need_revision\":false,\"interaction_permission\":\"OPEN\",\"buying_signal\":\"WEAK\",\"confirmed_facts_delta\":[{\"key\":\"constraint\",\"value\":\"chi nhánh SG\",\"op\":\"ADD\",\"status\":\"CURRENT\"},{\"key\":\"need_scope\",\"value\":\"gói trị liệu\",\"op\":\"ADD\",\"status\":\"CURRENT\"}],\"interested_package_id\":null,\"emotion\":\"NEUTRAL\",\"inferred_customer_pronoun\":null,\"pronoun_confidence\":0.0,\"cost_concern_expressed\":false,\"verified_symptom_duration\":null,\"booking_readiness\":\"EXPLORING\",\"communication_style_preference\":null},\"priority\":\"PRICE_INFORMATION\",\"working_hypothesis\":{\"hypothesis\":\"giá trị liệu\",\"barrier_type\":\"COMPETITOR_COMPARISON\",\"confidence\":0.8,\"lifecycle_op\":\"MAINTAIN\"},\"response_plan\":{\"strategy\":\"Direct Answer\",\"tone\":\"LEVEL_1_NATURAL\",\"depth\":\"CONCISE\",\"cta_level\":\"NO_CTA\",\"next_action\":\"SPECIFIC_PRICE_ANSWER\",\"adaptation\":\"CONTINUATION\",\"previous_outcome\":\"NOT_APPLICABLE\"},\"activated_skill_codes\":[],\"handoff_request\":{\"requested\":false,\"reason\":null},\"proposed_booking_patch\":{\"selected_product_id\":null,\"proposed_date\":null,\"proposed_time\":null}},\"bubbles\":[\"Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?\"]}",
+          "rawBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "OBJECTION_NEGOTIATION",
+            "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "post_referee_output" : {
+          "refereeDecision" : "PASS",
+          "refereeViolations" : [ ],
+          "repairApplied" : false,
+          "bubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+          "reconciledBrainReflection" : {
+            "detectedIntent" : "SPECIFIC_PRICE_INQUIRY",
+            "conversationState" : "OBJECTION_NEGOTIATION",
+            "conversationGoal" : "BÁO GIÁ GÓI TRỊ LIỆU",
+            "bookingReadiness" : "EXPLORING",
+            "priorityPrimary" : "PRICE_INFORMATION",
+            "strategyChosen" : "Direct Answer",
+            "nextAction" : "SPECIFIC_PRICE_ANSWER",
+            "ctaLevel" : "NO_CTA"
+          }
+        },
+        "final_sent_output" : {
+          "bubbles" : [ "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?" ],
+          "replyText" : "Dạ gói trị liệu phục hồi chuyên sâu Silver 140 phút ở chi nhánh SG là 1.270.000đ ạ. Mình muốn trải nghiệm gói nào hay gói khác ạ?",
+          "typingDelaysMs" : [ 0 ],
+          "salesStage" : "VALUE_CONSULTATION"
+        },
+        "javaReflectionOverrides" : [ ],
+        "javaBubbleMutations" : [ ]
+      },
+      "latency" : {
+        "totalTurnMs" : 950,
+        "retrievalDurationMs" : 287,
+        "promptBuildDurationMs" : 8,
+        "llmDurationMs" : 500,
+        "refereeValidationDurationMs" : 47,
+        "repairDurationMs" : 0,
+        "retryCount" : 0,
+        "retryTriggerReason" : "NONE",
+        "fallbackDurationMs" : 0,
+        "promptTokens" : 8839,
+        "completionTokens" : 478,
+        "reasoningTokens" : 0,
+        "reflectionTokens" : 427
+      },
+      "rubricEvaluation" : {
+        "jsonValid" : true,
+        "safetyAndTruthPass" : false,
+        "safetyAndTruthFailures" : [ "UNGROUNDED_CATALOG_PRICE:1270000" ],
+        "taskFulfillmentPass" : true,
+        "taskFulfillmentFailures" : [ ],
+        "salesConversationQualityPass" : true,
+        "salesConversationQualityFailures" : [ ],
+        "turnOverallPass" : false
+      }
+    } ]
+  } ]
+}
