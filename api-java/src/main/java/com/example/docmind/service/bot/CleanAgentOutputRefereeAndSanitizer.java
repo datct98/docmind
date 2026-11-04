@@ -6413,9 +6413,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      * ("đã nhắc", "vừa nhắc", "nhắc sang", "nhắc tới", "hỏi sang", "hỏi lệch", "đoán nhầm sang",
      * "tự suy diễn") kèm tham chiếu nội dung mà {@code priorAssistantTexts} chưa từng chứa.
      *
-     * <p>Khi viết lại, câu xin lỗi trung thực được nối vế ghi nhận các triệu chứng khách đã chia sẻ
-     * ({@code knownSymptoms}); và nếu cả lượt không còn câu hỏi mở khám phá nào (đồng thời chính sách
-     * lượt cho phép hỏi) thì bổ sung một câu hỏi mở tự nhiên bám sát đúng các triệu chứng đó.</p>
+     * <p>SBR-01 FIX-1: chỉ câu (sentence) chứa tham chiếu sai lịch sử được thay bằng một lời xin lỗi trung thực
+     * tối thiểu; các câu khác của LLM (kể cả câu hỏi) được giữ nguyên. Java KHÔNG còn tự chèn vế ghi nhận
+     * triệu chứng và KHÔNG tự nối câu hỏi khám phá cố định. {@code knownSymptoms} và {@code customerMessage}
+     * được giữ trong chữ ký để tương thích caller, không còn dùng để sinh câu chữ.</p>
      */
     public static List<FanpageBotResponse.ReplyBubble> enforceGroundedApologyAgainstHistoryInPlace(
             List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -6441,108 +6442,63 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         String historyLow = historyBuf.toString();
         String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
         String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
-        List<String> safeSymptoms = sanitizeKnownSymptomsForEcho(knownSymptoms);
-        boolean anyRewritten = false;
-        int firstRewrittenIdx = -1;
+        boolean honestApologyEmitted = false;
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) {
                 continue;
             }
             String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
-            boolean hasFalseReference = false;
-            Matcher m = APOLOGY_CONTENT_REFERENCE_PATTERN.matcher(norm);
-            while (m.find()) {
-                String refLow = normalizeApologyContentReference(m.group("ref"));
-                if (refLow == null) {
+            if (!containsFalseApologyReference(norm, historyLow)) {
+                out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
+                continue;
+            }
+            String[] sentences = norm.split("(?<=[.!?？])\\s+");
+            List<String> kept = new ArrayList<>();
+            for (String s : sentences) {
+                String st = s.strip();
+                if (st.isEmpty()) {
                     continue;
                 }
-                if (!historyLow.contains(refLow)) {
-                    hasFalseReference = true;
-                    break;
+                if (containsFalseApologyReference(st, historyLow)) {
+                    if (!honestApologyEmitted) {
+                        kept.add(buildHonestCorrectionApologyText(safeSelf, safeCust));
+                        honestApologyEmitted = true;
+                    }
+                    continue;
                 }
+                kept.add(st);
             }
-            if (!hasFalseReference && APOLOGY_SELF_BLAME_MENTION_CUE_PATTERN.matcher(norm).find()) {
-                Matcher m2 = APOLOGY_SECONDARY_CONTENT_REFERENCE_PATTERN.matcher(norm);
-                while (m2.find()) {
-                    String refLow = normalizeApologyContentReference(m2.group("ref"));
-                    if (refLow == null) {
-                        continue;
-                    }
-                    if (!historyLow.contains(refLow)) {
-                        hasFalseReference = true;
-                        break;
-                    }
-                }
+            if (kept.isEmpty() && !honestApologyEmitted) {
+                kept.add(buildHonestCorrectionApologyText(safeSelf, safeCust));
+                honestApologyEmitted = true;
             }
-            if (hasFalseReference) {
-                if (firstRewrittenIdx < 0) {
-                    firstRewrittenIdx = out.size();
-                }
-                anyRewritten = true;
-                out.add(new FanpageBotResponse.ReplyBubble(
-                        buildHonestCorrectionApologyText(safeSelf, safeCust, safeSymptoms),
-                        b.typingDelayMs()));
-            } else {
-                out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
-            }
-        }
-        // P3 Fix-A: lượt sửa sai phải khép lại tự nhiên — nếu không còn câu hỏi mở nào và lượt được phép hỏi
-        // thì nối 1 câu hỏi mở bám đúng triệu chứng khách đã chia sẻ.
-        if (anyRewritten && firstRewrittenIdx >= 0
-                && (customerMessage == null || customerMessage.isBlank()
-                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage))) {
-            boolean anyQuestion = out.stream().anyMatch(x -> x != null && x.text() != null
-                    && (x.text().contains("?") || x.text().contains("？")));
-            if (!anyQuestion) {
-                FanpageBotResponse.ReplyBubble rw = out.get(firstRewrittenIdx);
-                out.set(firstRewrittenIdx, new FanpageBotResponse.ReplyBubble(
-                        rw.text() + " " + buildSymptomAnchoredDiscoveryQuestion(safeSymptoms, safeSelf, safeCust),
-                        rw.typingDelayMs()));
-            }
-        }
-        // P3 Fix-A (tc5): lượt sửa sai phải nối lại đúng triệu chứng khách đã chia sẻ — kể cả khi lời
-        // xin lỗi có căn cứ (bot đã nói thật, không bị viết lại) mà cả lượt không nhắc lại triệu chứng
-        // nào thì chèn vế ghi nhận ngay sau câu xin lỗi (trước câu hỏi cuối nếu có).
-        if (!safeSymptoms.isEmpty()
-                && (customerMessage == null || customerMessage.isBlank()
-                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage))) {
-            String allText = out.stream()
-                    .map(FanpageBotResponse.ReplyBubble::text)
-                    .filter(java.util.Objects::nonNull)
-                    .collect(java.util.stream.Collectors.joining(" "))
-                    .toLowerCase(Locale.ROOT);
-            boolean anySymptomEchoed = safeSymptoms.stream()
-                    .anyMatch(s -> allText.contains(s.toLowerCase(Locale.ROOT)));
-            if (!anySymptomEchoed) {
-                for (int i = 0; i < out.size(); i++) {
-                    FanpageBotResponse.ReplyBubble ap = out.get(i);
-                    if (ap.text() == null || !ap.text().toLowerCase(Locale.ROOT).contains("xin lỗi")) {
-                        continue;
-                    }
-                    String clause = buildSymptomAcknowledgementClause(safeSelf, safeCust, safeSymptoms);
-                    String[] sentences = ap.text().split("(?<=[.!?？])\\s+");
-                    int apologySentenceIdx = -1;
-                    for (int s = 0; s < sentences.length; s++) {
-                        if (sentences[s].toLowerCase(Locale.ROOT).contains("xin lỗi")) {
-                            apologySentenceIdx = s;
-                            break;
-                        }
-                    }
-                    String merged;
-                    if (apologySentenceIdx >= 0 && apologySentenceIdx < sentences.length - 1) {
-                        List<String> parts = new ArrayList<>(List.of(sentences));
-                        parts.add(apologySentenceIdx + 1, clause);
-                        merged = String.join(" ", parts);
-                    } else {
-                        merged = ap.text() + " " + clause;
-                    }
-                    out.set(i, new FanpageBotResponse.ReplyBubble(merged, ap.typingDelayMs()));
-                    break;
-                }
+            if (!kept.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(String.join(" ", kept), b.typingDelayMs()));
             }
         }
         return out;
+    }
+
+    /** ACI V3 (P1 §3.5 + P3 Fix-A): text có lời xin lỗi tham chiếu nội dung mà lịch sử assistant chưa từng chứa. */
+    private static boolean containsFalseApologyReference(String norm, String historyLow) {
+        Matcher m = APOLOGY_CONTENT_REFERENCE_PATTERN.matcher(norm);
+        while (m.find()) {
+            String refLow = normalizeApologyContentReference(m.group("ref"));
+            if (refLow != null && !historyLow.contains(refLow)) {
+                return true;
+            }
+        }
+        if (APOLOGY_SELF_BLAME_MENTION_CUE_PATTERN.matcher(norm).find()) {
+            Matcher m2 = APOLOGY_SECONDARY_CONTENT_REFERENCE_PATTERN.matcher(norm);
+            while (m2.find()) {
+                String refLow = normalizeApologyContentReference(m2.group("ref"));
+                if (refLow != null && !historyLow.contains(refLow)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** ACI V3 (P3 Fix-A): chuẩn hóa tham chiếu nội dung trong lời xin lỗi; trả null nếu quá chung chung. */
@@ -6564,71 +6520,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     }
 
     /**
-     * ACI V3 (P3 Fix-A): câu xin lỗi trung thực sau khi cắt tham chiếu sai lịch sử — kèm vế ghi nhận
-     * đúng các triệu chứng khách đã chia sẻ (nếu có) để lượt sửa sai vẫn bám sát lời khách.
+     * ACI V3 (P3 Fix-A) / SBR-01 FIX-1: lời xin lỗi trung thực tối thiểu thay cho câu tự nhận lỗi sai lịch sử
+     * (hoặc khi toàn bộ nội dung bị cắt). Không còn nối vế ghi nhận triệu chứng do Java tự soạn.
      */
-    private static String buildHonestCorrectionApologyText(String safeSelf, String safeCust, List<String> safeSymptoms) {
-        String base = "Dạ " + safeSelf + " xin lỗi vì câu trả lời trước chưa bám sát những gì "
+    private static String buildHonestCorrectionApologyText(String safeSelf, String safeCust) {
+        return "Dạ " + safeSelf + " xin lỗi vì câu trả lời trước chưa bám sát những gì "
                 + safeCust + " chia sẻ ạ.";
-        if (safeSymptoms == null || safeSymptoms.isEmpty()) {
-            return base;
-        }
-        return base + " " + buildSymptomAcknowledgementClause(safeSelf, safeCust, safeSymptoms);
-    }
-
-    /** ACI V3 (P3 Fix-A): vế ghi nhận đúng các triệu chứng khách đã chia sẻ. */
-    private static String buildSymptomAcknowledgementClause(String safeSelf, String safeCust, List<String> safeSymptoms) {
-        return BubbleTextSanitizer.capitalizeFirstLetter(
-                safeSelf + " ghi nhận đúng là " + safeCust + " đang gặp "
-                        + joinVietnameseEnumeration(safeSymptoms) + " ạ.");
-    }
-
-    /** ACI V3 (P3 Fix-A/B): câu hỏi mở khám phá tự nhiên bám sát đúng triệu chứng khách đã chia sẻ. */
-    private static String buildSymptomAnchoredDiscoveryQuestion(
-            List<String> safeSymptoms, String safeSelf, String safeCust) {
-        if (safeSymptoms == null || safeSymptoms.isEmpty()) {
-            return "Hiện tại " + safeCust + " đang thấy khó chịu nhất ở điểm nào để " + safeSelf
-                    + " lắng nghe và hỗ trợ đúng ý " + safeCust + " ạ?";
-        }
-        return "Hiện tại trong các tình trạng " + joinVietnameseEnumeration(safeSymptoms)
-                + " thì " + safeCust + " đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?";
-    }
-
-    /** ACI V3 (P3 Fix-A/B): chuẩn hóa danh sách triệu chứng khách đã nêu để echo lại (khử trùng, tối đa 6). */
-    private static List<String> sanitizeKnownSymptomsForEcho(List<String> knownSymptoms) {
-        if (knownSymptoms == null || knownSymptoms.isEmpty()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (String s : knownSymptoms) {
-            if (s == null) {
-                continue;
-            }
-            String norm = java.text.Normalizer.normalize(s.strip(), java.text.Normalizer.Form.NFC)
-                    .replaceAll("\\s+", " ").strip();
-            if (norm.length() < 2 || norm.length() > 60) {
-                continue;
-            }
-            if (out.stream().anyMatch(x -> x.equalsIgnoreCase(norm))) {
-                continue;
-            }
-            out.add(norm);
-            if (out.size() >= 6) {
-                break;
-            }
-        }
-        return out;
-    }
-
-    /** ACI V3 (P3 Fix-A/B): nối liệt kê tiếng Việt tự nhiên ("a, b và c"). */
-    private static String joinVietnameseEnumeration(List<String> items) {
-        if (items == null || items.isEmpty()) {
-            return "";
-        }
-        if (items.size() == 1) {
-            return items.get(0);
-        }
-        return String.join(", ", items.subList(0, items.size() - 1)) + " và " + items.get(items.size() - 1);
     }
 
     // =========================================================================
@@ -6668,11 +6565,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      * {@code OVER_INTRUSION} / {@code COMMUNICATION_COMPLAINT} mà khách KHÔNG có
      * {@code explicit_price_demand} (và không hỏi thẳng gói/giá), mọi câu/bong bóng chứa giá tiền,
      * tên gói, CTA đặt lịch hay câu hỏi chốt chi nhánh phục vụ báo giá do LLM tự ý chèn đều bị
-     * <b>strip</b>; phần còn lại được nối một câu hỏi mở nhẹ nhàng bám sát các triệu chứng khách
-     * đã chia sẻ (trừ nhánh OVER_INTRUSION — chính sách 0 câu hỏi).
+     * <b>strip</b>. SBR-01 FIX-1: Java không còn tự nối câu hỏi khám phá cố định bám triệu chứng sau khi cắt.
      *
-     * <p>Nếu toàn bộ nội dung đều là pitch bị cắt, thay bằng lời xin lỗi trung thực kèm ghi nhận
-     * triệu chứng (cùng hình thức với False Apology Guard ở §3.5).</p>
+     * <p>Nếu toàn bộ nội dung đều là pitch bị cắt, thay bằng lời xin lỗi trung thực tối thiểu (không kèm
+     * vế ghi nhận triệu chứng do Java soạn). {@code knownSymptoms} giữ trong chữ ký để tương thích caller.</p>
      */
     public static List<FanpageBotResponse.ReplyBubble> stripUnsolicitedPackagePitchOnNegativeReactionInPlace(
             List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -6700,8 +6596,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
         String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
-        List<String> safeSymptoms = sanitizeKnownSymptomsForEcho(knownSymptoms);
-        boolean strippedAny = false;
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) {
@@ -6716,7 +6610,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     continue;
                 }
                 if (isUnsolicitedPitchSentenceOnNegativeReaction(st)) {
-                    strippedAny = true;
                     continue;
                 }
                 kept.add(st);
@@ -6731,23 +6624,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         if (out.isEmpty()) {
             out.add(new FanpageBotResponse.ReplyBubble(
-                    buildHonestCorrectionApologyText(safeSelf, safeCust, safeSymptoms), 0));
-            strippedAny = true;
+                    buildHonestCorrectionApologyText(safeSelf, safeCust), 0));
         }
-        // Nối câu hỏi mở bám triệu chứng khi vừa cắt pitch mà lượt không còn câu hỏi nào;
-        // nhánh OVER_INTRUSION giữ nguyên chính sách 0 câu hỏi.
-        boolean questionAllowed = subtype != NegativeReactionSubtype.OVER_INTRUSION
-                && (customerMessage == null || customerMessage.isBlank()
-                    || isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage));
-        boolean anyQuestion = out.stream().anyMatch(x -> x != null && x.text() != null
-                && (x.text().contains("?") || x.text().contains("？")));
-        if (strippedAny && questionAllowed && !anyQuestion) {
-            int lastIdx = out.size() - 1;
-            FanpageBotResponse.ReplyBubble last = out.get(lastIdx);
-            out.set(lastIdx, new FanpageBotResponse.ReplyBubble(
-                    last.text() + " " + buildSymptomAnchoredDiscoveryQuestion(safeSymptoms, safeSelf, safeCust),
-                    last.typingDelayMs()));
-        }
+        // SBR-01 FIX-1: Java không còn tự nối câu hỏi khám phá cố định sau khi cắt pitch.
         return out;
     }
 

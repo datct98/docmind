@@ -1117,11 +1117,9 @@ class P38ForensicRegressionTest {
                 .doesNotContainIgnoringCase("cổ vai gáy")
                 .doesNotContainIgnoringCase("nhắc sang");
         assertThat(guarded.get(0).text())
-                .as("vế ghi nhận đúng triệu chứng khách đã chia sẻ được nối vào lời xin lỗi")
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("chóng mặt")
-                .containsIgnoringCase("tê chân")
-                .containsIgnoringCase("khó ngủ");
+                .as("SBR-01 FIX-1: Java không còn tự chèn vế ghi nhận triệu chứng / câu hỏi khám phá template")
+                .doesNotContainIgnoringCase("ghi nhận đúng là")
+                .doesNotContainIgnoringCase("ưu tiên ở phần nào");
         assertThat(guarded.get(1).text())
                 .as("bubble hỏi khám phá thuần của LLM được giữ nguyên, không sinh thêm câu hỏi thứ hai")
                 .contains("lúc hoa mắt chóng mặt");
@@ -1208,7 +1206,7 @@ class P38ForensicRegressionTest {
     // câu giá/gói/câu hỏi chốt chi nhánh, nối câu hỏi mở bám triệu chứng.
     // =========================================================================
     @Test
-    @DisplayName("P3-T36 Fix-B: lượt correction (0 explicit price demand) -> strip pitch giá/gói/chốt chi nhánh, nối câu hỏi mở bám triệu chứng")
+    @DisplayName("P3-T36 Fix-B (SBR-01 FIX-1): lượt correction (0 explicit price demand) -> strip pitch giá/gói/chốt chi nhánh, KHÔNG nối câu hỏi template")
     void test36_correctionTurnStripsUnsolicitedPricePitchAndAppendsSymptomQuestion() {
         List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
         List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
@@ -1226,12 +1224,11 @@ class P38ForensicRegressionTest {
                 .doesNotContainIgnoringCase("gói massage")
                 .doesNotContainIgnoringCase("khu vực nào");
         assertThat(joined)
-                .as("câu hỏi mở bám đúng 4 triệu chứng khách đã chia sẻ (gate tc5)")
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("chóng mặt")
-                .containsIgnoringCase("tê chân")
-                .containsIgnoringCase("khó ngủ");
-        assertThat(joined).contains("?");
+                .as("SBR-01 FIX-1: không còn câu hỏi khám phá do Java soạn bám danh sách triệu chứng")
+                .doesNotContainIgnoringCase("ưu tiên ở phần nào")
+                .doesNotContainIgnoringCase("ghi nhận đúng là")
+                .doesNotContain("?");
+        assertThat(joined.strip()).isEqualTo("Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ.");
     }
 
     // =========================================================================
@@ -1292,7 +1289,7 @@ class P38ForensicRegressionTest {
     // trung thực kèm ghi nhận triệu chứng + câu hỏi mở (không để lượt rỗng).
     // =========================================================================
     @Test
-    @DisplayName("P3-T39 Fix-B: mọi bubble đều là pitch -> fallback xin lỗi trung thực + ghi nhận triệu chứng + câu hỏi mở")
+    @DisplayName("P3-T39 Fix-B (SBR-01 FIX-1): mọi bubble đều là pitch -> fallback xin lỗi trung thực tối thiểu, không template triệu chứng/câu hỏi")
     void test39_allPitchOutputReplacedByHonestApologyAndQuestion() {
         List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
         List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
@@ -1307,11 +1304,12 @@ class P38ForensicRegressionTest {
         assertThat(joined)
                 .doesNotContain("399").doesNotContain("570")
                 .doesNotContainIgnoringCase("gói massage");
+        assertThat(joined).containsIgnoringCase("xin lỗi");
         assertThat(joined)
-                .containsIgnoringCase("xin lỗi")
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("khó ngủ");
-        assertThat(joined).contains("?");
+                .as("SBR-01 FIX-1: không còn vế ghi nhận triệu chứng / câu hỏi khám phá do Java soạn")
+                .doesNotContainIgnoringCase("ghi nhận đúng là")
+                .doesNotContainIgnoringCase("hoa mắt")
+                .doesNotContain("?");
     }
 
     // =========================================================================
@@ -1347,11 +1345,9 @@ class P38ForensicRegressionTest {
                 .doesNotContainIgnoringCase("gói massage")
                 .doesNotContainIgnoringCase("buổi vừa đủ");
         assertThat(joined)
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("chóng mặt")
-                .containsIgnoringCase("tê chân")
-                .containsIgnoringCase("khó ngủ");
-        assertThat(joined).contains("?");
+                .as("SBR-01 FIX-1: không còn vế ghi nhận triệu chứng / câu hỏi khám phá do Java soạn")
+                .doesNotContainIgnoringCase("ghi nhận đúng là")
+                .doesNotContainIgnoringCase("ưu tiên ở phần nào");
     }
 
     // =========================================================================
@@ -1360,35 +1356,23 @@ class P38ForensicRegressionTest {
     // nhận triệu chứng ngay sau câu xin lỗi, trước câu hỏi cuối.
     // =========================================================================
     @Test
-    @DisplayName("P3-T41 Fix-A: xin lỗi grounded thiếu echo triệu chứng -> chèn vế ghi nhận sau câu xin lỗi, giữ nguyên câu hỏi")
+    @DisplayName("P3-T41 (SBR-01 FIX-1): xin lỗi grounded thiếu echo triệu chứng -> giữ NGUYÊN văn LLM, Java không chèn vế ghi nhận")
     void test41_groundedApologyWithoutSymptomEchoGetsSymptomReconnect() {
         List<String> priorAssistantTexts = List.of(
                 "Dạ em nghe mình chia sẻ rồi ạ.",
                 "Dạ mình muốn ưu tiên thư giãn nhẹ nhàng vùng đầu cổ vai gáy hay dành thời gian cho toàn thân ạ?"
         );
         List<String> symptoms = List.of("hoa mắt", "chóng mặt", "tê chân", "khó ngủ");
-        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(
-                new FanpageBotResponse.ReplyBubble(
-                        "Em xin lỗi mình vì đã tự thêm vùng cổ vai gáy trong khi mình chưa hề nhắc tới ạ. Mình kể em nghe lúc này cơ thể mình đang khó chịu nhất ở đâu để em hiểu đúng ý mình không ạ?", 0)
-        );
+        String llmText = "Em xin lỗi mình vì đã tự thêm vùng cổ vai gáy trong khi mình chưa hề nhắc tới ạ. Mình kể em nghe lúc này cơ thể mình đang khó chịu nhất ở đâu để em hiểu đúng ý mình không ạ?";
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(new FanpageBotResponse.ReplyBubble(llmText, 0));
         List<FanpageBotResponse.ReplyBubble> guarded =
                 CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
                         bubbles, priorAssistantTexts, symptoms, "ơ bị dở à sao lại cổ vai gáy", "em", "mình");
         assertThat(guarded).hasSize(1);
-        String text = guarded.get(0).text();
-        assertThat(text)
-                .as("lời xin lỗi grounded được giữ nguyên (bot đã nhắc cổ vai gáy thật ở lượt trước)")
-                .containsIgnoringCase("tự thêm vùng cổ vai gáy");
-        assertThat(text)
-                .as("vế ghi nhận triệu chứng được chèn để lượt sửa sai nối lại đúng lời khách (gate tc5)")
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("chóng mặt")
-                .containsIgnoringCase("tê chân")
-                .containsIgnoringCase("khó ngủ");
-        assertThat(text.indexOf("ghi nhận"))
-                .as("vế ghi nhận đứng sau câu xin lỗi và trước câu hỏi cuối của LLM")
-                .isGreaterThan(text.indexOf("xin lỗi"))
-                .isLessThan(text.indexOf("để em hiểu đúng ý mình không ạ?"));
+        assertThat(guarded.get(0).text())
+                .as("lời xin lỗi grounded + câu hỏi của LLM được giữ nguyên văn; không có vế ghi nhận do Java chèn")
+                .isEqualTo(llmText)
+                .doesNotContainIgnoringCase("ghi nhận đúng là");
     }
 
     // =========================================================================
@@ -1443,11 +1427,48 @@ class P38ForensicRegressionTest {
                 .doesNotContainIgnoringCase("cổ vai gáy")
                 .doesNotContainIgnoringCase("nhắc nhầm");
         assertThat(guarded.get(0).text())
-                .containsIgnoringCase("hoa mắt")
-                .containsIgnoringCase("khó ngủ");
+                .as("SBR-01 FIX-1: không có vế ghi nhận triệu chứng do Java chèn")
+                .doesNotContainIgnoringCase("ghi nhận đúng là");
         assertThat(guarded.get(1).text())
                 .as("bubble hỏi khám phá của LLM giữ nguyên")
                 .contains("khó chịu nhất ở đâu");
+    }
+
+    // =========================================================================
+    // TEST 44 (SBR-01 FIX-1): câu tự nhận lỗi sai lịch sử nằm CHUNG bubble với câu hỏi của LLM ->
+    // chỉ câu sai bị thay, câu hỏi của LLM được giữ nguyên (không xóa rồi thay bằng câu hỏi template).
+    // =========================================================================
+    @Test
+    @DisplayName("SBR-01 FIX-1 T44: chỉ câu xin lỗi sai lịch sử bị thay; câu hỏi LLM trong cùng bubble được giữ nguyên")
+    void test44_falseApologySentenceReplacedButLlmQuestionInSameBubblePreserved() {
+        List<String> priorAssistantTexts = List.of("Dạ em nghe mình chia sẻ rồi ạ.");
+        List<FanpageBotResponse.ReplyBubble> bubbles = List.of(new FanpageBotResponse.ReplyBubble(
+                "Dạ em xin lỗi mình vì đã nhắc tới vùng cổ vai gáy ạ. Mình muốn em giới thiệu gói nào trước ạ?", 0));
+        List<FanpageBotResponse.ReplyBubble> guarded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        bubbles, priorAssistantTexts, List.of("ù tai", "mệt mỏi"), "Hỏi lại lắm thế", "em", "mình");
+        assertThat(guarded).hasSize(1);
+        assertThat(guarded.get(0).text())
+                .doesNotContainIgnoringCase("cổ vai gáy")
+                .endsWith("Mình muốn em giới thiệu gói nào trước ạ?")
+                .doesNotContainIgnoringCase("ù tai")
+                .doesNotContainIgnoringCase("ghi nhận đúng là");
+    }
+
+    // =========================================================================
+    // TEST 45 (SBR-01 FIX-1): không có xin lỗi sai lịch sử -> guard giữ nguyên văn LLM (kể cả khi
+    // knownSymptoms có giá trị) — trước FIX-1 Java chèn "Em ghi nhận đúng là mình đang gặp ...".
+    // =========================================================================
+    @Test
+    @DisplayName("SBR-01 FIX-1 T45: output không có xin lỗi sai lịch sử -> giữ nguyên văn (không chèn câu ghi nhận)")
+    void test45_noFalseApologyMeansUntouched() {
+        String llm = "Em xin lỗi nếu cách hỏi khiến mình bực ạ. Gói 399k là massage toàn thân 60 phút, chăm sóc cả cơ thể.";
+        List<FanpageBotResponse.ReplyBubble> guarded =
+                CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace(
+                        List.of(new FanpageBotResponse.ReplyBubble(llm, 0)), List.of("Dạ gói 239k và 399k ạ."),
+                        List.of("ù tai", "mệt mỏi"), "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn", "em", "mình");
+        assertThat(guarded).hasSize(1);
+        assertThat(guarded.get(0).text()).isEqualTo(llm);
     }
 
     private static List<AgentSkillDto> buildNangSenSixSkills() {
