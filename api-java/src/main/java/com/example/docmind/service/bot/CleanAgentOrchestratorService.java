@@ -6670,6 +6670,43 @@ public class CleanAgentOrchestratorService {
         CP3_THREE_TIER_BOOKING_ENABLED_OVERRIDE = enabled;
     }
 
+    private static volatile Boolean CP3_SKILL_AUDIT_ENABLED_OVERRIDE = null;
+
+    /**
+     * Cờ bật/tắt bộ 4 skill nguyên tắc mới của Nàng Sen (CP3.4).
+     * Có thể cấu hình qua JVM property {@code -Ddocmind.aci.cp3.skill-audit.enabled=false}
+     * hoặc biến môi trường {@code DOCMIND_ACI_CP3_SKILL_AUDIT_ENABLED=false}. Mặc định: {@code true}.
+     */
+    public static boolean isCp3SkillAuditEnabled() {
+        Boolean override = CP3_SKILL_AUDIT_ENABLED_OVERRIDE;
+        if (override != null) {
+            return override;
+        }
+        String sys = System.getProperty("docmind.aci.cp3.skill-audit.enabled");
+        if (sys != null && !sys.isBlank()) {
+            return !"false".equalsIgnoreCase(sys.strip()) && !"0".equals(sys.strip());
+        }
+        String env = System.getenv("DOCMIND_ACI_CP3_SKILL_AUDIT_ENABLED");
+        if (env != null && !env.isBlank()) {
+            return !"false".equalsIgnoreCase(env.strip()) && !"0".equals(env.strip());
+        }
+        return true;
+    }
+
+    public static void setCp3SkillAuditEnabled(Boolean enabled) {
+        CP3_SKILL_AUDIT_ENABLED_OVERRIDE = enabled;
+    }
+
+    private static boolean isCp3NewPrincipleSkillCode(String lowerCode) {
+        if (lowerCode == null || lowerCode.isBlank()) {
+            return false;
+        }
+        return lowerCode.equals("package_comparison_and_scope_clarity")
+                || lowerCode.equals("catalog_breadth_clarification")
+                || lowerCode.equals("service_recovery_to_consultation_pivot")
+                || lowerCode.equals("gentle_next_step_by_signal");
+    }
+
     public enum BookingSkillTier {
         NON_BOOKING,
         TIER_1_SCHEDULE_EXPLORATION,
@@ -7084,7 +7121,15 @@ public class CleanAgentOrchestratorService {
             return List.of();
         }
         String msg = currentMessage != null ? currentMessage.strip() : "";
-        if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+        String normLowerPre = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        boolean skillAuditEnabled = isCp3SkillAuditEnabled();
+        boolean isComplaintMsg = CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg)
+                || normLowerPre.matches("(?isU).*\\b(lặp\\s+lại\\s+(?:câu|lời|ý)|không\\s+hiểu\\s+ý\\s+(?:mình|tôi|anh|chị|khách)|hỏi\\s+lại\\s+mãi)\\b.*");
+        boolean isMixedComplaintWithBusinessDemand = skillAuditEnabled
+                && isComplaintMsg
+                && CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(msg);
+        if ((isComplaintMsg && !isMixedComplaintWithBusinessDemand)
                 || PromptSecurityGuard.isDirectJailbreakAttempt(msg)
                 || (AdaptiveConversationIntelligence.isExplicitGenderOrPronounCorrectionMessage(msg)
                     && AdaptiveConversationIntelligence.classifyPriceIntentSubMode(msg) == AdaptiveConversationIntelligence.PriceIntentSubMode.NONE
@@ -7095,7 +7140,7 @@ public class CleanAgentOrchestratorService {
         // — discovery_empathy_and_scope không được chi phối (tránh gợi ý vùng cơ thể giả định lần nữa),
         // đồng thời loại trừ mọi skill chốt lịch/bán hàng pushy. Phản hồi lượt này thuộc về xin lỗi
         // trung thực + bám lại đúng lời khách, không phải khai thác thêm nhu cầu.
-        if (!msg.isEmpty()) {
+        if (!msg.isEmpty() && !isMixedComplaintWithBusinessDemand) {
             VietnameseScopeSignalExtractor.ScopeSignalResult correctionSignal =
                     VietnameseScopeSignalExtractor.analyze(msg, List.of());
             if (correctionSignal.possibleCorrection() || correctionSignal.explicitCorrectionGroupD()
@@ -7122,9 +7167,30 @@ public class CleanAgentOrchestratorService {
                     || (!bookingActive && (isBareAcknowledgmentMessage(msg)
                         || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(msg)))));
         boolean priceObjection = !explicitStopRefusal && isConfirmedCustomerPriceObjection(msg, true);
-        boolean priceOrPackageQuery = normLower.matches(
+        boolean packageComparisonCue = normLower.matches(
+                "(?isU).*\\b(khác\\s+nhau|khác\\s+gì|so\\s+sánh|phân\\s+biệt|(?:2|hai)\\s+gói\\s+(?:này|đó)|gói\\s+.*\\s+với\\s+gói)\\b.*"
+        );
+        boolean catalogBreadthCue = normLower.matches(
+                "(?isU).*\\b(còn\\s+gói\\s+nào(?:\\s+khác)?|gói\\s+nào\\s+khác|còn\\s+liệu\\s+trình\\s+nào|chỉ\\s+có\\s+(?:1|2|một|hai)\\s+gói|mấy\\s+gói|những\\s+gói\\s+nào|tất\\s+cả\\s+các\\s+gói|danh\\s+sách\\s+gói|ngoài\\s+(?:2|hai)\\s+gói)\\b.*"
+        );
+        boolean priceOrPackageQuery = packageComparisonCue || catalogBreadthCue || normLower.matches(
                 "(?isU).*\\b(giá|bao\\s+nhiêu|mấy\\s+tiền|chi\\s+phí|gói|liệu\\s+trình|khác\\s+gì|so\\s+sánh|\\d{2,4}\\s*k)\\b.*"
         );
+        boolean hasPriorBotApologyInHistory = false;
+        if (history != null && !history.isEmpty()) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                FanpageBotRequest.ConversationTurn t = history.get(i);
+                if (t != null && ("assistant".equalsIgnoreCase(t.role()) || "bot".equalsIgnoreCase(t.role()))) {
+                    String botLow = t.content() != null
+                            ? java.text.Normalizer.normalize(t.content(), java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+                            : "";
+                    hasPriorBotApologyInHistory = botLow.contains("xin lỗi") || botLow.contains("sơ suất") || botLow.contains("nhầm lẫn");
+                    break;
+                }
+            }
+        }
+        boolean recoveryPivotCue = isMixedComplaintWithBusinessDemand
+                || (skillAuditEnabled && hasPriorBotApologyInHistory && priceOrPackageQuery);
         boolean hasPriorCustomerNeedInHistory = history != null && history.stream().anyMatch(t ->
                 t != null && t.content() != null && !t.content().isBlank()
                         && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())
@@ -7138,9 +7204,12 @@ public class CleanAgentOrchestratorService {
         for (AgentSkillDto s : availableSkills) {
             if (s == null || !s.active()) continue;
             String code = (s.code() != null ? s.code() : "").strip().toLowerCase(Locale.ROOT);
+            if (!skillAuditEnabled && isCp3NewPrincipleSkillCode(code)) {
+                continue;
+            }
             boolean isBookingSkill = isBookingOrSchedulingSkillCode(code);
             if (isBookingSkill) {
-                if (!explicitBookingCue) {
+                if (!explicitBookingCue || isMixedComplaintWithBusinessDemand) {
                     continue;
                 }
                 if (threeTierEnabled && !isSkillTierAllowedForCustomerSignal(classifyBookingSkillTier(code), preLlmBookingTier)) {
@@ -7149,25 +7218,52 @@ public class CleanAgentOrchestratorService {
             }
             boolean isPauseSkill = code.contains("pause") || code.contains("graceful") || code.contains("close");
             boolean isObjectionSkill = code.contains("objection") || code.contains("sensory_value");
+            boolean isPackageComparisonSkill = code.contains("package_comparison");
+            boolean isCatalogBreadthSkill = code.contains("catalog_breadth");
+            boolean isRecoveryPivotSkill = code.contains("service_recovery") || code.contains("recovery_to_consultation");
             boolean isCompareOrPriceSkill = !isObjectionSkill
+                    && !isPackageComparisonSkill
                     && (code.contains("economical") || code.contains("compare") || code.contains("price"));
-            boolean isDiscoverySkill = code.contains("discovery") || code.contains("empathy") || code.contains("scope");
-            boolean hasStandardTag = isBookingSkill || isPauseSkill || isObjectionSkill || isCompareOrPriceSkill || isDiscoverySkill;
+            boolean isDiscoverySkill = !isPackageComparisonSkill
+                    && (code.contains("discovery") || code.contains("empathy") || code.contains("scope"));
+            boolean hasStandardTag = isBookingSkill
+                    || isPauseSkill
+                    || isObjectionSkill
+                    || isPackageComparisonSkill
+                    || isCatalogBreadthSkill
+                    || isRecoveryPivotSkill
+                    || isCompareOrPriceSkill
+                    || isDiscoverySkill;
             if (!hasStandardTag) {
                 customFallback.add(s);
             }
 
             boolean keep = false;
-            if (deferOrBareClose) {
+            if (isMixedComplaintWithBusinessDemand) {
+                keep = isRecoveryPivotSkill
+                        || (catalogBreadthCue && isCatalogBreadthSkill)
+                        || (packageComparisonCue && isPackageComparisonSkill)
+                        || (!catalogBreadthCue && !packageComparisonCue && isCompareOrPriceSkill);
+            } else if (deferOrBareClose) {
                 keep = isPauseSkill;
             } else if (explicitBookingCue) {
-                keep = isBookingSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill) || (priceOrPackageQuery && isCompareOrPriceSkill);
+                if (preLlmBookingTier == CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION
+                        && skillAuditEnabled
+                        && code.contains("gentle_next_step")) {
+                    keep = true;
+                } else {
+                    keep = isBookingSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill) || (priceOrPackageQuery && (isCompareOrPriceSkill || isPackageComparisonSkill));
+                }
             } else if (priceObjection) {
                 keep = isObjectionSkill || isCompareOrPriceSkill;
+            } else if (packageComparisonCue) {
+                keep = isPackageComparisonSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
+            } else if (catalogBreadthCue) {
+                keep = isCatalogBreadthSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
             } else if (isScopeSelectionAfterNeedDiscovery) {
-                keep = isCompareOrPriceSkill;
+                keep = isCompareOrPriceSkill || isPackageComparisonSkill;
             } else if (priceOrPackageQuery) {
-                keep = isCompareOrPriceSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill);
+                keep = isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill) || (!hasPriorCustomerNeedInHistory && isDiscoverySkill);
             } else {
                 keep = isDiscoverySkill || (hasPriorCustomerNeedInHistory && isCompareOrPriceSkill);
             }
