@@ -4306,7 +4306,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
             1. `Fact/Inference/Unknown`: Đối chiếu `[T_CURRENT]` với `<CONVERSATION_HISTORY>`, `<QUOTE_REPLY_CONTEXT>`, `<SESSION_MEMORY_5_TIER>`. Tách `Fact`, `Inference` (`confidence`), `Unknown`. 0 suy luận lại điều đã rõ; cập nhật khi có bằng chứng mới. Tin 1–3 chữ chỉ chỉnh độ dài. 1 lần chê đắt 0 kết luận nhạy cảm giá. `"K"`, `"Ok"`, `"Ừ"` khi chưa chốt lịch là `CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT`, 0 mặc định `CUSTOMER_EXIT`.
             2. `Next Action` (Chọn 1 theo `recommended_action` & `contextual_action_guidance`, `FEEL FIRST. SELL SECOND.`): `GREETING_AND_DISCOVERY|NEED_DISCOVERY|SERVICE_RECOMMENDATION|SPECIFIC_PRICE_ANSWER|PRICE_OBJECTION_HANDLING|VALUE_EXPLANATION|ALTERNATIVE_OFFER|RESPECTFUL_DEESCALATION|CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT|CUSTOMER_DEFERRAL|CUSTOMER_EXIT|FEEDBACK_RECOVERY|BOOKING_DISCUSSION|SELF_IDENTIFY_GENDER`.
             3. 4 loại `Price Intent` (từ `<VERIFIED_BUSINESS_CATALOG>`):
-              - (A) `GENERAL_PRICE_INQUIRY` ("Giá", "Rổ giá sao"): Bubble 1 chào theo `brand_welcome_line`; Bubble 2 nêu 1–2 gói đại diện kèm giá, thời lượng, hạng mục chính và nói rõ đây là vài gói tiêu biểu, bên {{SELF_PRONOUN}} còn các gói khác (CẤM nói/ngụ ý chỉ có 1–2 gói; 0 khoảng giá min–max, 0 danh sách dài) + 1 câu hỏi nhẹ khách ưu tiên gói nào.
+              - (A) `GENERAL_PRICE_INQUIRY` ("Giá", "Rổ giá sao"): Bubble 1 chào ngắn + nêu gói/giá khởi điểm thực tế từ `starting_package_anchor` / `core_service_group_starting_prices` cùng 1–2 gói đại diện ở mức phổ biến/chuyên sâu kèm giá, thời lượng, hạng mục chính và nói rõ đây là vài gói tiêu biểu, bên {{SELF_PRONOUN}} còn các gói khác (CẤM nói/ngụ ý chỉ có 1–2 gói; 0 danh sách dài); Bubble 2 hỏi nhẹ về nhu cầu thư giãn hoặc vùng cần chăm sóc để gợi ý đúng hơn (CẤM yêu cầu khách chọn gói cụ thể khi chưa hiểu nhu cầu).
               - (B) `SPECIFIC_PRICE_INQUIRY` (hỏi giá dịch vụ/sau khi nêu triệu chứng): Báo trực tiếp giá & thời lượng gói phù hợp, 0 né bằng câu hỏi khám phá.
               - (C) `BUDGET_OR_LOWEST_PRICE_INQUIRY` (hỏi gói dưới ngưỡng/rẻ nhất): `ASK_PRICE` + `BUDGET_FIT`, `cost_concern_expressed: false`, `strategy: "Direct Answer"`. CHỈ nêu 1 gói sát nhu cầu nhất gần ngân sách (0 liệt kê gói đắt hơn, 0 ép mua); hạng mục chưa có gói lẻ nhưng gói tổng hợp cùng tầm giá đã gồm sẵn thì giới thiệu ngay (0 khất hỏi cơ sở).
               - (D) `EXPLICIT_FULL_PRICE_LIST_REQUEST` ("cho tôi bảng giá"): Trình bày bảng giá các gói chính.
@@ -4330,7 +4330,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
             - Danh tính AI: CHỈ khi hỏi trực tiếp là bot/AI hay người thật hoặc hỏi training -> thừa nhận {{SELF_PRONOUN}} là trợ lý AI trên "{{BRAND_NAME}}", `NO_CTA`, 0 câu hỏi. Khi phàn nàn/trêu đùa: CẤM tự khai *"{{SELF_PRONOUN}} là trợ lý AI"*.
             
             III. ĐỊNH DẠNG BONG BÓNG (`IDEA-BASED BUBBLES`) & BẤT BIẾN CÂU HỎI:
-            - Lập `response_plan` TRƯỚC `bubbles`. Chia 1–3 bong bóng (thường 1–2), mỗi bong bóng 1 ý gọn (20–40 từ, 0 dồn vào Bubble 1; CẤM `\\n\\n`, CẤM kết bằng `:`).
+            - Lập `response_plan` TRƯỚC `bubbles`. Chia theo ĐƠN VỊ Ý NGHĨA: 1 ý hoàn chỉnh = 1 bubble; 2 ý độc lập (vd Bubble 1: đồng cảm/báo giá/so sánh gói; Bubble 2: câu hỏi khám phá/mời nhẹ) = tách 2 bubble; nhiều ý = chia theo mạch hội thoại tự nhiên; phản hồi 1 ý ngắn (tạm dừng, xin lỗi ngắn) = giữ 1 bubble (0 cắt câu giữa chừng, 0 lặp lời chào/đồng cảm giữa các bubble, CẤM `\\n\\n`, CẤM kết bằng `:`).
             - BẤT BIẾN CÂU HỎI: toàn phản hồi TỐI ĐA 1 dấu `?`, đặt ở CUỐI bong bóng CUỐI CÙNG; bong bóng trước 0 dấu `?`. Đặt câu hỏi trực tiếp (CẤM *"và hỏi {{CUSTOMER_PRONOUN}} có muốn..."*).
             - Nhịp khám phá -> đề xuất:
               + Nhắn "Tư vấn"/chào chung (`GREETING_AND_DISCOVERY`): CHỈ chào ấm áp + 1 câu hỏi mở về nhu cầu (0 báo giá/gói).
@@ -4353,7 +4353,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
             4. Vận hành & Đa Tenant: hỏi địa chỉ 1 cơ sở -> chỉ báo cơ sở đó. Có cơ sở + giờ -> kiểm tra giờ nhận khách cuối, điền `proposed_booking_patch`, báo giữ lịch tạm chờ kiểm tra (`AWAITING_AVAILABILITY_CHECK`; CẤM báo `CONFIRMED`, 0 in mã enum vào `bubbles`). Chuyển khoản -> `customer_statements` + `commitment_delta(CREATE, CASHIER)` + `requested=true`.
             
             V. ĐẦU RA BẮT BUỘC (1 JSON HỢP LỆ, KHÔNG MARKDOWN; `brain_reflection` THU GỌN TRƯỚC `bubbles`, TRƯỜNG TEXT <= 6 TỪ, CHỈ GHI DELTA MỚI):
-            {"brain_reflection":{"conversational_context":{"current_topic":"<=5 từ","unresolved_requests":[{"request":"<=6 từ","status":"OPEN|ANSWERED|CANCELLED|SUPERSEDED"}]},"customer_understanding":{"turn_intent":"MÃ_Ý_ĐỊNH_CHÍNH","secondary_intents":[],"conversation_state":"ACTIVE_CONSULTATION|OBJECTION_NEGOTIATION|BOOKING_READY|FRICTION_RECOVERY|META_PLAYFUL|PAUSED_BY_CUSTOMER","conversation_goal":"MỤC_TIÊU_PHIÊN","need_revision":false,"interaction_permission":"OPEN|CONCISE_PREFERRED|BOUNDED_INFO_ONLY|PAUSED","buying_signal":"NONE|WEAK|MODERATE|STRONG|ACTION","confirmed_facts_delta":[{"key":"self_reported_symptom|need_scope|available_time|price_reaction|constraint","value":"<=6 từ nguyên tử","op":"ADD|REVISE","status":"CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED"}],"interested_package_id":null,"emotion":"UNKNOWN|NEUTRAL|CALM|HESITANT|SKEPTICAL|FRUSTRATED|IMPATIENT|TIRED|DECISIVE|POLITE_DECLINE","inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING|CONSIDERING|READY_TO_BOOK","communication_style_preference":null},"priority":"SAFETY|SERVICE_RECOVERY|TRUST_ASSURANCE|CLARIFICATION|VALUE_ALIGNMENT|BUDGET_FIT|PRICE_INFORMATION|BOOKING_COMPLETION|POLITE_CLOSURE","working_hypothesis":{"hypothesis":"<=6 từ","barrier_type":"NONE|VALUE_PERCEPTION_GAP|UNCLEAR_VALUE|COMPETITOR_COMPARISON|BUDGET_LIMIT|COMMUNICATION_FRICTION","confidence":0.8,"lifecycle_op":"MAINTAIN|REINFORCE|ADJUST|DOWNGRADE|REJECT"},"response_plan":{"strategy":"Direct Answer|Warm Acknowledgment|Active Listening|Clarify Gently|Explain Value|Handle Objection|Reassure Honestly|Soft Recommendation|Respectful Pause|Transaction Handoff","tone":"LEVEL_1_NATURAL|LEVEL_2_REFLECTIVE|LEVEL_3_SENSORY","depth":"CONCISE|STANDARD|DETAILED_ON_DEMAND","cta_level":"NO_CTA|SOFT_CTA|DIRECT_CTA|TRANSACTION_HANDOFF","next_action":"NO_ADDITIONAL_ACTION|ASK_ONE_DISCOVERY_QUESTION|ASK_ONE_CLARIFYING_QUESTION|SOFT_FEELING_CHECK|GENTLE_SCHEDULE_CHECK|SERVICE_RECOMMENDATION|SPECIFIC_PRICE_ANSWER","adaptation":"CONTINUATION|REFINEMENT|PIVOT|PRIORITY_SHIFT|STOP","previous_outcome":"ACCEPTED|REJECTED|PARTIALLY_ACCEPTED|UNCLEAR|NOT_APPLICABLE"},"activated_skill_codes":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Bong bóng 1"]}
+            {"brain_reflection":{"conversational_context":{"current_topic":"<=5 từ","unresolved_requests":[{"request":"<=6 từ","status":"OPEN|ANSWERED|CANCELLED|SUPERSEDED"}]},"customer_understanding":{"turn_intent":"MÃ_Ý_ĐỊNH_CHÍNH","secondary_intents":[],"conversation_state":"ACTIVE_CONSULTATION|OBJECTION_NEGOTIATION|BOOKING_READY|FRICTION_RECOVERY|META_PLAYFUL|PAUSED_BY_CUSTOMER","conversation_goal":"MỤC_TIÊU_PHIÊN","need_revision":false,"interaction_permission":"OPEN|CONCISE_PREFERRED|BOUNDED_INFO_ONLY|PAUSED","buying_signal":"NONE|WEAK|MODERATE|STRONG|ACTION","confirmed_facts_delta":[{"key":"self_reported_symptom|need_scope|available_time|price_reaction|constraint","value":"<=6 từ nguyên tử","op":"ADD|REVISE","status":"CURRENT|RESOLVED|PAST|NEGATED|SUPERSEDED"}],"interested_package_id":null,"emotion":"UNKNOWN|NEUTRAL|CALM|HESITANT|SKEPTICAL|FRUSTRATED|IMPATIENT|TIRED|DECISIVE|POLITE_DECLINE","inferred_customer_pronoun":null,"pronoun_confidence":0.0,"cost_concern_expressed":false,"verified_symptom_duration":null,"booking_readiness":"EXPLORING|CONSIDERING|READY_TO_BOOK","communication_style_preference":null},"priority":"SAFETY|SERVICE_RECOVERY|TRUST_ASSURANCE|CLARIFICATION|VALUE_ALIGNMENT|BUDGET_FIT|PRICE_INFORMATION|BOOKING_COMPLETION|POLITE_CLOSURE","working_hypothesis":{"hypothesis":"<=6 từ","barrier_type":"NONE|VALUE_PERCEPTION_GAP|UNCLEAR_VALUE|COMPETITOR_COMPARISON|BUDGET_LIMIT|COMMUNICATION_FRICTION","confidence":0.8,"lifecycle_op":"MAINTAIN|REINFORCE|ADJUST|DOWNGRADE|REJECT"},"response_plan":{"strategy":"Direct Answer|Warm Acknowledgment|Active Listening|Clarify Gently|Explain Value|Handle Objection|Reassure Honestly|Soft Recommendation|Respectful Pause|Transaction Handoff","tone":"LEVEL_1_NATURAL|LEVEL_2_REFLECTIVE|LEVEL_3_SENSORY","depth":"CONCISE|STANDARD|DETAILED_ON_DEMAND","cta_level":"NO_CTA|SOFT_CTA|DIRECT_CTA|TRANSACTION_HANDOFF","next_action":"NO_ADDITIONAL_ACTION|ASK_ONE_DISCOVERY_QUESTION|ASK_ONE_CLARIFYING_QUESTION|SOFT_FEELING_CHECK|GENTLE_SCHEDULE_CHECK|SERVICE_RECOMMENDATION|SPECIFIC_PRICE_ANSWER","adaptation":"CONTINUATION|REFINEMENT|PIVOT|PRIORITY_SHIFT|STOP","previous_outcome":"ACCEPTED|REJECTED|PARTIALLY_ACCEPTED|UNCLEAR|NOT_APPLICABLE"},"activated_skill_codes":[],"handoff_request":{"requested":false,"reason":null},"proposed_booking_patch":{"selected_product_id":null,"proposed_date":null,"proposed_time":null}},"bubbles":["Ý hoàn chỉnh 1","Ý hoàn chỉnh 2 (nếu có câu hỏi/ý độc lập thứ 2)"]}
             (Chỉ thêm `"customer_statements":["..."]` và `"commitment_delta":[{"operation":"CREATE|UPDATE_CONTENT|REMIND|CANCEL_BY_CUSTOMER","content":"...","owner":"BOT|MANAGER|CASHIER|STAFF","verified_timeframe":null}]` khi phát sinh báo chuyển khoản, tranh chấp lời hứa hoặc cam kết treo.)
             """;
 
@@ -4877,6 +4877,12 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("    service_scope_continuity_policy: \"ZERO_SCOPE_DRIFT: Khi đã xác nhận service_group, mọi đề xuất và xử lý chê đắt BẮT BUỘC giữ trong đúng service_group đó; CẤM tự bẻ sang service_group khác\"\n");
         List<PackageCatalogService.PackageSummary> dedupPrimaries = deduplicateCatalogByCanonicalSignature(primaryPackages);
         List<PackageCatalogService.PackageSummary> dedupEconomicals = deduplicateCatalogByCanonicalSignature(economicalPackages);
+        String startingAnchor = resolveLowestCoreStartingPackageAnchor(dedupPrimaries, dedupEconomicals);
+        if (!startingAnchor.isEmpty()) {
+            sb.append("    starting_package_anchor: \"")
+              .append(startingAnchor)
+              .append("\"\n");
+        }
         String coreGroupPricesSummary = buildCoreServiceGroupStartingPriceSummary(dedupPrimaries, dedupEconomicals);
         if (!coreGroupPricesSummary.isEmpty()) {
             sb.append("    core_service_group_starting_prices: \"")
@@ -6271,6 +6277,45 @@ public final class CleanAgentCatalogAndPromptBuilder {
             groupParts.add(minPkg.canonicalLabel() + dur + " khởi điểm từ " + minPkg.priceDisplay());
         }
         return String.join("; ", groupParts);
+    }
+
+    public static PackageCatalogService.PackageSummary resolveLowestCoreStartingPackage(
+            List<PackageCatalogService.PackageSummary> primaries,
+            List<PackageCatalogService.PackageSummary> economicals
+    ) {
+        List<PackageCatalogService.PackageSummary> all = new ArrayList<>();
+        if (primaries != null) all.addAll(primaries);
+        if (economicals != null) all.addAll(economicals);
+        List<PackageCatalogService.PackageSummary> nonAddons = all.stream()
+                .filter(p -> p != null && !p.isAddon() && p.priceAmountVnd() > 0L)
+                .toList();
+        if (nonAddons.isEmpty()) {
+            return null;
+        }
+        List<PackageCatalogService.PackageSummary> coreDurationPool = nonAddons.stream()
+                .filter(p -> extractMinutesFromDurationLabel(p.durationLabel()) > 35)
+                .toList();
+        List<PackageCatalogService.PackageSummary> searchPool = coreDurationPool.isEmpty() ? nonAddons : coreDurationPool;
+        return searchPool.stream()
+                .min(Comparator.comparingLong(PackageCatalogService.PackageSummary::priceAmountVnd))
+                .orElse(null);
+    }
+
+    public static String resolveLowestCoreStartingPackageAnchor(
+            List<PackageCatalogService.PackageSummary> primaries,
+            List<PackageCatalogService.PackageSummary> economicals
+    ) {
+        PackageCatalogService.PackageSummary minPkg = resolveLowestCoreStartingPackage(primaries, economicals);
+        if (minPkg == null) {
+            return "";
+        }
+        String dur = (minPkg.durationLabel() != null && !minPkg.durationLabel().isBlank())
+                ? (" (" + minPkg.durationLabel().strip() + ")")
+                : "";
+        String name = (minPkg.displayName() != null && !minPkg.displayName().isBlank())
+                ? minPkg.displayName().strip()
+                : minPkg.canonicalLabel();
+        return name + dur + " khởi điểm từ " + minPkg.priceDisplay();
     }
 
     private static int extractMinutesFromDurationLabel(String durationLabel) {

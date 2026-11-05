@@ -6184,7 +6184,7 @@ public final class AdaptiveConversationIntelligence {
                     } else {
                         unknowns.add("specific_service_or_symptom_need");
                         recommendedAction = !hasCustomerHistory ? TurnAction.GREETING_AND_DISCOVERY : TurnAction.SPECIFIC_PRICE_ANSWER;
-                        directive = "PRICE_INTENT_A (GENERAL_PRICE_INQUIRY): Trả lời ngắn gọn bằng khoảng giá tổng quan từ Catalog (từ gói cơ bản đến gói chuyên sâu), sau đó hỏi đúng 1 câu khám phá nhu cầu ngắn gọn. Cấm xả bảng giá dài nhiều gói kèm thời lượng chi tiết.";
+                        directive = "PRICE_INTENT_A (GENERAL_PRICE_INQUIRY): (1) Nêu rõ gói/mức giá khởi điểm thực tế từ starting_package_anchor / core_service_group_starting_prices trong <VERIFIED_BUSINESS_CATALOG> cùng 1–2 gói đại diện ở mức phổ biến/chuyên sâu (kèm giá, thời lượng và hạng mục chính), đồng thời nói rõ đây là các lựa chọn tiêu biểu chứ không phải toàn bộ danh mục của cơ sở; (2) Tách câu hỏi thành Bubble 2 riêng hỏi nhẹ về nhu cầu thư giãn hoặc vùng cơ thể khách đang muốn chăm sóc để gợi ý đúng hơn (TUYỆT ĐỐI KHÔNG yêu cầu khách chọn gói cụ thể khi chưa hiểu nhu cầu, CẤM xả bảng giá dài).";
                     }
                 }
                 case SPECIFIC_PRICE_INQUIRY -> {

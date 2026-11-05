@@ -7779,6 +7779,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         boolean isSecondConsecutivePriceObjection = action == AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION;
         boolean isSuitabilityHandoffTurn = action == AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF;
         boolean isExternalPriceComparison = action == AdaptiveConversationIntelligence.TurnAction.VALUE_EXPLANATION;
+        boolean isGeneralPriceInquiryWithoutPriorNeeds = lwPlan.actionExecutionDirective() != null
+                && lwPlan.actionExecutionDirective().startsWith("PRICE_INTENT_A (GENERAL_PRICE_INQUIRY)");
 
         List<FanpageBotResponse.ReplyBubble> processed = new ArrayList<>();
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
@@ -7811,6 +7813,26 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     }
                 }
 
+                // Post-CP3 Wave 2 (2.1): Khi khách mới chỉ hỏi "Giá" (chưa nêu nhu cầu), không yêu cầu khách chọn gói cụ thể
+                if (isGeneralPriceInquiryWithoutPriorNeeds
+                        && (st.endsWith("?") || st.endsWith("？"))
+                        && stLow.matches("(?isU).*\\b(?:ưu\\s+tiên\\s+gói\\s+nào|nghiêng\\s+về\\s+gói\\s+nào|(?:nên\\s+)?chọn\\s+gói\\s+nào|thử\\s+gói\\s+nào|thích\\s+gói\\s+nào|quan\\s+tâm\\s+(?:đến\\s+)?gói\\s+nào|gói\\s+nào\\s+phù\\s+hợp)\\b.*")) {
+                    String needDiscoveryQuestion = "Hiện " + safeCust + " đang muốn thư giãn nhẹ nhàng hay chăm sóc tập trung vùng cơ thể nào để " + safeSelf + " gợi ý gói phù hợp nhất ạ?";
+                    if (hasQuotedPriceInText(st)) {
+                        String priceClauseOnly = st.replaceAll(
+                                "(?isU)[,;\\s]+[^,;!?？]*\\b(?:ưu\\s+tiên\\s+gói\\s+nào|nghiêng\\s+về\\s+gói\\s+nào|(?:nên\\s+)?chọn\\s+gói\\s+nào|thử\\s+gói\\s+nào|thích\\s+gói\\s+nào|quan\\s+tâm\\s+(?:đến\\s+)?gói\\s+nào|gói\\s+nào\\s+phù\\s+hợp)[^!?？]*[?？]$",
+                                ""
+                        ).strip();
+                        if (!priceClauseOnly.isEmpty() && hasQuotedPriceInText(priceClauseOnly)) {
+                            if (!priceClauseOnly.endsWith(".") && !priceClauseOnly.endsWith("!")) {
+                                priceClauseOnly = priceClauseOnly + " ạ.";
+                            }
+                            keptSents.add(priceClauseOnly);
+                        }
+                    }
+                    st = needDiscoveryQuestion;
+                }
+
                 keptSents.add(st);
             }
 
@@ -7820,6 +7842,39 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .strip();
             if (!cleanedBubble.isEmpty()) {
                 processed.add(new FanpageBotResponse.ReplyBubble(cleanedBubble, b.typingDelayMs()));
+            }
+        }
+
+        // Post-CP3 Wave 2 (2.1): Bảo đảm giá khởi điểm thực tế từ Catalog hiện hành được nêu khi khách hỏi "Giá"
+        if (isGeneralPriceInquiryWithoutPriorNeeds && !processed.isEmpty() && eligibleCatalog != null && !eligibleCatalog.isEmpty()) {
+            PackageCatalogService.PackageSummary minCorePkg =
+                    CleanAgentCatalogAndPromptBuilder.resolveLowestCoreStartingPackage(eligibleCatalog, List.of());
+            if (minCorePkg != null && minCorePkg.priceDisplay() != null && !minCorePkg.priceDisplay().isBlank()) {
+                String combinedProcessed = processed.stream()
+                        .map(FanpageBotResponse.ReplyBubble::text)
+                        .filter(java.util.Objects::nonNull)
+                        .reduce("", (a, b2) -> a + " " + b2);
+                String combinedLow = combinedProcessed.toLowerCase(Locale.ROOT);
+                String minPriceLow = minCorePkg.priceDisplay().strip().toLowerCase(Locale.ROOT);
+                String minPriceShortK = minCorePkg.priceAmountVnd() >= 1000L
+                        ? (minCorePkg.priceAmountVnd() / 1000L) + "k"
+                        : minPriceLow;
+                boolean mentionsStartingPrice = combinedLow.contains(minPriceLow) || combinedLow.contains(minPriceShortK);
+                if (!mentionsStartingPrice) {
+                    String dur = (minCorePkg.durationLabel() != null && !minCorePkg.durationLabel().isBlank())
+                            ? (" (" + minCorePkg.durationLabel().strip() + ")")
+                            : "";
+                    String pkgName = (minCorePkg.displayName() != null && !minCorePkg.displayName().isBlank())
+                            ? minCorePkg.displayName().strip()
+                            : minCorePkg.canonicalLabel();
+                    String startingAnchorSentence = "Dạ các gói chăm sóc bên " + safeSelf + " khởi điểm từ "
+                            + pkgName + dur + " giá " + minCorePkg.priceDisplay() + " ạ.";
+                    FanpageBotResponse.ReplyBubble firstBubble = processed.get(0);
+                    processed.set(0, new FanpageBotResponse.ReplyBubble(
+                            startingAnchorSentence + " " + firstBubble.text(),
+                            firstBubble.typingDelayMs()
+                    ));
+                }
             }
         }
 
@@ -7835,27 +7890,82 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
         }
 
-        // Tách bong bóng theo đơn vị ý (Idea-Based Bubble Split) nếu chỉ có 1 bong bóng quá dài (> 45 từ và >= 2 câu)
-        if (processed.size() == 1) {
-            String singleTxt = processed.get(0).text().strip();
-            int words = singleTxt.split("\\s+").length;
+        // Post-CP3 Wave 2 (2.2): Chia và làm sạch reply_bubbles theo ĐƠN VỊ Ý NGHĨA (Semantic Discourse Units)
+        boolean isSingleBubbleMandatedTurn = action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT
+                || action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_DEFERRAL
+                || action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT
+                || action == AdaptiveConversationIntelligence.TurnAction.SELF_IDENTIFY_GENDER
+                || action == AdaptiveConversationIntelligence.TurnAction.FEEDBACK_RECOVERY
+                || isSuitabilityHandoffTurn;
+        processed = organizeBubblesBySemanticIdeaUnits(processed, isSingleBubbleMandatedTurn);
+
+        // SBR-01 FIX-3: đã gỡ bước Java tự đổi dấu '.' cuối câu thành '?' (dấu câu của LLM được bảo toàn).
+
+        processed = sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(processed, customerMessage, history);
+        return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
+    }
+
+    private static final Pattern DUPLICATE_GREETING_OR_EMPATHY_PREFIX_PATTERN = Pattern.compile(
+            "(?isU)^(?:dạ\\s+)?(?:chào\\s+[^,.!?？]{1,20}[,.!]?\\s*|em\\s+chào\\s+[^,.!?？]{1,20}[,.!]?\\s*|"
+                    + "(?:dạ\\s+)?(?:em|mình|shop)\\s+(?:rất\\s+)?(?:hiểu|thấu\\s+hiểu|đồng\\s+cảm)[^,.!?？]{0,40}[,.!]\\s*)+"
+    );
+
+    private static boolean hasSubstantiveExplanationOrCatalogContent(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(text.strip(), java.text.Normalizer.Form.NFC);
+        int words = norm.split("\\s+").length;
+        if (words < 12) {
+            return false;
+        }
+        String low = norm.toLowerCase(Locale.ROOT);
+        return hasQuotedPriceInText(norm)
+                || low.matches("(?isU).*\\b(gói|liệu\\s+trình|phút|massage|gội\\s+đầu|chăm\\s+sóc|thư\\s+giãn|khác\\s+nhau|y\\s+khoa|thăm\\s+khám|cơ\\s+sở|chi\\s+nhánh)\\b.*");
+    }
+
+    public static List<FanpageBotResponse.ReplyBubble> organizeBubblesBySemanticIdeaUnits(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            boolean isSingleBubbleMandatedTurn
+    ) {
+        if (bubbles == null || bubbles.isEmpty() || isSingleBubbleMandatedTurn) {
+            return bubbles;
+        }
+        List<FanpageBotResponse.ReplyBubble> result = new ArrayList<>(bubbles);
+        if (result.size() == 1) {
+            String singleTxt = result.get(0).text().strip();
             String[] sents = singleTxt.split("(?<=[.!?？])\\s+");
-            if (words > 75 && sents.length >= 2) {
+            if (sents.length >= 2) {
                 String lastSent = sents[sents.length - 1].strip();
                 String firstPart = String.join(" ", java.util.Arrays.copyOfRange(sents, 0, sents.length - 1)).strip();
-                if (!firstPart.isEmpty() && !lastSent.isEmpty() && firstPart.split("\\s+").length >= 10) {
-                    processed = new ArrayList<>(List.of(
+                boolean lastIsQuestionAct = lastSent.endsWith("?") || lastSent.endsWith("？");
+                boolean firstIsCompleteDeclarativeIdea = !firstPart.isEmpty()
+                        && !firstPart.contains("?")
+                        && !firstPart.contains("？")
+                        && hasSubstantiveExplanationOrCatalogContent(firstPart);
+                if (lastIsQuestionAct && firstIsCompleteDeclarativeIdea) {
+                    result = new ArrayList<>(List.of(
                             new FanpageBotResponse.ReplyBubble(firstPart, 0),
                             new FanpageBotResponse.ReplyBubble(lastSent, 2000)
                     ));
                 }
             }
         }
-
-        // SBR-01 FIX-3: đã gỡ bước Java tự đổi dấu '.' cuối câu thành '?' (dấu câu của LLM được bảo toàn).
-
-        processed = sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(processed, customerMessage, history);
-        return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
+        if (result.size() >= 2) {
+            String firstLow = result.get(0).text().strip().toLowerCase(Locale.ROOT);
+            boolean firstHasGreetingOrEmpathy = firstLow.matches("(?isU)^(?:dạ\\s+)?(?:chào|em\\s+chào|em\\s+rất\\s+hiểu|em\\s+hiểu|em\\s+chia\\s+sẻ).*");
+            for (int i = 1; i < result.size(); i++) {
+                String txt = result.get(i).text().strip();
+                if (firstHasGreetingOrEmpathy) {
+                    String stripped = DUPLICATE_GREETING_OR_EMPATHY_PREFIX_PATTERN.matcher(txt).replaceFirst("").strip();
+                    if (!stripped.isEmpty() && stripped.length() >= 8) {
+                        stripped = Character.toUpperCase(stripped.charAt(0)) + stripped.substring(1);
+                        result.set(i, new FanpageBotResponse.ReplyBubble(stripped, result.get(i).typingDelayMs()));
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     private static List<FanpageBotResponse.ReplyBubble> sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(
