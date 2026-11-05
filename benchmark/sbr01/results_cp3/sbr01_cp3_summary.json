@@ -1,0 +1,80 @@
+{
+  "wave": "SBR-01 Wave 1 — CP3 (Batch 2: Bán hàng và chuyển đổi Spa Nàng Sen)",
+  "targetPageId": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+  "negativeControlPageId": "59e68078-8327-4aa0-8cca-91410f783ad4",
+  "commits": {
+    "CP3_1_goalLifecycle": "dcf62678e525d935882179591dc9c3c937136b3b",
+    "CP3_2_threeTierBooking": "df82004a20ace2a80a684931437eabcc56b7e880",
+    "CP3_3a_goodExampleNeutralize": "738289af6e94ca4e771c8958b95a5ae19711743d",
+    "CP3_3b_goodExampleToggle": "598990719fb001a8f4068f2bddb2d535ec5245b5",
+    "CP3_4_skillAuditAndPrincipleSkills": "ef4557ca8e0cfe55e0e95a2e082cc1d378195b74"
+  },
+  "toggleFlags": {
+    "CP3_1": "docmind.aci.cp3.goal-lifecycle.enabled / DOCMIND_ACI_CP3_GOAL_LIFECYCLE_ENABLED",
+    "CP3_2": "docmind.aci.cp3.three-tier-booking.enabled / DOCMIND_ACI_CP3_THREE_TIER_BOOKING_ENABLED",
+    "CP3_3": "docmind.aci.cp3.skill-good-example.enabled / DOCMIND_ACI_CP3_SKILL_GOOD_EXAMPLE_ENABLED",
+    "CP3_4": "docmind.aci.cp3.skill-audit.enabled / DOCMIND_ACI_CP3_SKILL_AUDIT_ENABLED"
+  },
+  "unitAndRegressionTests": {
+    "Sbr01Cp3GoalLifecycleTest": "3/3 PASS",
+    "Sbr01Cp3ThreeTierBookingTest": "3/3 PASS",
+    "Sbr01Cp3GoodExampleToggleTest": "1/1 PASS",
+    "Sbr01Cp3SkillAuditAndIsolationTest": "3/3 PASS",
+    "Sbr01Fix5ServiceRecoveryStateTest": "4/4 PASS",
+    "Sbr01FixBatch1UnitTest": "9/9 PASS",
+    "AciV3ConsultativeQualityUpgradeTest": "40/40 PASS",
+    "totalUnitAndRegressionTests": "63/63 PASS"
+  },
+  "abExperiment": {
+    "cases": ["CASE-01", "CASE-02", "CASE-05", "CASE-06", "CASE-09", "CASE-15", "CASE-19"],
+    "runsPerCase": 3,
+    "primaryModel": "qwen3.8-max",
+    "configA_goodExampleEnabled": {
+      "totalTurns": 117,
+      "jsonValidTurns": 117,
+      "fallbackTurns": 0,
+      "providerErrorTurns": 0,
+      "safetyPassTurns": 116,
+      "safetyPassRatePct": 99.15,
+      "taskPassTurns": 111,
+      "taskPassRatePct": 94.87,
+      "qualityPassTurns": 105,
+      "qualityPassRatePct": 89.74,
+      "overallTurnPass": 100,
+      "overallTurnPassRatePct": 85.47,
+      "templateRepetitionTurns": 1,
+      "templateRepetitionRatePct": 0.85,
+      "tapNangOccurrences": 0,
+      "goalComplaintOverwrites": 0,
+      "maxQuestionsPerTurn": 1,
+      "turnsWithMoreThanOneQuestion": 0,
+      "bookingOpportunityTurns": 41,
+      "bookingOpportunityTurnsWithNextStep": 22,
+      "bookingOpportunityNextStepRatePct": 53.66
+    },
+    "configB_goodExampleDisabled": {
+      "totalTurns": 117,
+      "jsonValidTurns": 117,
+      "fallbackTurns": 0,
+      "providerErrorTurns": 0,
+      "safetyPassTurns": 116,
+      "safetyPassRatePct": 99.15,
+      "taskPassTurns": 113,
+      "taskPassRatePct": 96.58,
+      "qualityPassTurns": 109,
+      "qualityPassRatePct": 93.16,
+      "overallTurnPass": 104,
+      "overallTurnPassRatePct": 88.89,
+      "templateRepetitionTurns": 0,
+      "templateRepetitionRatePct": 0.0,
+      "tapNangOccurrences": 0,
+      "goalComplaintOverwrites": 0,
+      "maxQuestionsPerTurn": 1,
+      "turnsWithMoreThanOneQuestion": 0,
+      "bookingOpportunityTurns": 42,
+      "bookingOpportunityTurnsWithNextStep": 29,
+      "bookingOpportunityNextStepRatePct": 69.05
+    },
+    "recommendedDefault": "Config B (docmind.aci.cp3.skill-good-example.enabled=false) achieves 0.00% template repetition, +1.71% task relevance, +3.42% conversational quality, and +15.39% next-step progression on booking-opportunity turns while maintaining 99.15% safety."
+  }
+}
