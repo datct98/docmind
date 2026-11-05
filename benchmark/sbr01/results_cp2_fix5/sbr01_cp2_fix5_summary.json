@@ -1,0 +1,904 @@
+{
+  "checkpoint": "CP2",
+  "fixId": "FIX-5",
+  "title": "Service Recovery & Mixed Intent Refactor",
+  "toggleProperty": "docmind.aci.fix5.enabled",
+  "toggleEnv": "DOCMIND_ACI_FIX5_ENABLED",
+  "unitTests": {
+    "Sbr01Fix5ServiceRecoveryTransitionTest": "8/8 PASS",
+    "P38ForensicRegressionTest": "45/45 PASS",
+    "P37ADecisionIntegrityAndFallbackTest": "5/5 PASS",
+    "Sbr01Fix3PunctuationPreservationTest": "5/5 PASS"
+  },
+  "case01HistoricalTranscriptN3": {
+    "executedAtIso": "2026-11-05T02:20:28.873619600Z",
+    "gitHeadSha": "0a491af2143a259fcdd0e53cbf4c8443f6b48df3",
+    "historyMode": "HISTORICAL_TRANSCRIPT",
+    "runsPerCase": 3,
+    "totalCasesExecuted": 1,
+    "totalTurnExecutions": 24,
+    "casesPass3Of3": 0,
+    "benchmarkRunValid": true,
+    "modelTelemetrySummary": {
+      "requestedPrimaryModel": "qwen3.8-max",
+      "actualModelsObserved": [
+        "qwen3.8-max"
+      ],
+      "fallbackTurnsCount": 0,
+      "providerErrorTurnsCount": 0,
+      "jsonValidTurnsCount": 24,
+      "totalTurnExecutions": 24,
+      "benchmarkRunValid": true,
+      "benchmarkRunStatus": "VALID_BENCHMARK_RUN"
+    },
+    "safetyAndTruthPassTurns": 24,
+    "taskFulfillmentPassTurns": 23,
+    "salesQualityPassTurns": 18,
+    "postgresRowIntegrity": {
+      "conversationMessagesBefore": 11773,
+      "zeroMutationVerified": true,
+      "conversationMessagesAfter": 11773,
+      "conversationSessionsAfter": 44,
+      "conversationSessionsBefore": 44
+    },
+    "latencyStatsMs": {
+      "retrievalDurationP50": 323,
+      "retrievalDurationP95": 1248,
+      "totalTurnP50": 5571,
+      "totalTurnP95": 7668,
+      "llmDurationP50": 5052,
+      "llmDurationP95": 6170,
+      "validationDurationP50": 62,
+      "validationDurationP95": 141
+    },
+    "cases": [
+      {
+        "caseId": "CASE-01",
+        "sessionId": "",
+        "casePass3Of3": false,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "giá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 0,
+            "overallPass": 0,
+            "failures": {
+              "T1_SEPARATE_GREETING_ONLY_FIRST_BUBBLE": 3
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nEm có gói Massage cơ bản 60 phút 399k và Gói dưỡng sinh cơ bản 60 phút 239k, đây là vài gói tiêu biểu, bên em còn các gói khác. Mình ưu tiên gói nào ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "tôi hoa mát trong mắt ù tai mệt mỏi",
+            "safetyPass": 3,
+            "taskPass": 2,
+            "qualityPass": 3,
+            "overallPass": 2,
+            "failures": {
+              "T3_MISSING_PACKAGE_RECOMMENDATION_WITH_EXPLICIT_PRICE": 1
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy hoa mắt, ù tai và mệt mỏi ạ. Gói dưỡng sinh cơ bản 60 phút — 239k, gồm gội đầu cơ bản + massage cổ vai gáy, sẽ giúp mình thư giãn nhẹ nhàng ạ.\n\nMình muốn trải nghiệm vừa đủ hay chuyên sâu hơn một chút ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Nó khác j nhau",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 0,
+            "overallPass": 0,
+            "failures": {
+              "T5_UNNECESSARY_DISCOVERY_QUESTION_AFTER_COMPARISON": 3
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cơ bản 60 phút — 239k: gội đầu cơ bản + massage cổ vai gáy, phù hợp thư giãn nhẹ nhàng. Gói massage cơ bản 60 phút — 399k: massage trị liệu toàn thân, giúp giảm đau mỏi toàn thân. Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Hỏi lại lắm thế",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi vì đã hỏi nhiều, làm mình bực mình ạ. Em sẽ không hỏi thêm gì nữa. Mình cần em hỗ trợ thông tin gì thì cứ nói, em trả lời thẳng ạ."
+          },
+          {
+            "turnIndex": 5,
+            "customerMessage": "thế rốt cuộc 2 gói khác j nhau",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cơ bản 60 phút 239k: gội đầu cơ bản + massage cổ vai gáy, phòng chung có rèm riêng. Massage cơ bản 60 phút 399k: massage trị liệu toàn thân, ăn nhẹ thực dưỡng, phòng chung có rèm riêng. Mình muốn trải nghiệm hướng nào ạ?"
+          },
+          {
+            "turnIndex": 6,
+            "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi nếu cách diễn đạt khiến mình thấy khó chịu ạ. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+          },
+          {
+            "turnIndex": 7,
+            "customerMessage": "haizzz, ngoài 2 gói trên còn gói nào khác k",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Bên em còn nhiều gói khác ạ. Gói Massage phục hồi 100 phút 580k và Gói Massage phục hồi + dưỡng sinh 120 phút 670k đều chăm trọn vùng cổ, vai, gáy, tay, thích khi mình mệt mỏi ạ. Mình muốn tìm hiểu gói nào thêm không ạ?"
+          },
+          {
+            "turnIndex": 8,
+            "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi vì cách diễn đạt khiến mình tưởng chỉ có 2 gói ạ. Ngoài 2 gói trên, bên em còn có gói dưỡng sinh cao cấp 80 phút 339k, gói phục hồi 100 phút 580k và nhiều gói khác phù hợp với nhu cầu của mình ạ."
+          }
+        ]
+      }
+    ]
+  },
+  "case01LiveGeneratedN3": {
+    "executedAtIso": "2026-11-05T02:22:12.405201700Z",
+    "gitHeadSha": "0a491af2143a259fcdd0e53cbf4c8443f6b48df3",
+    "historyMode": "LIVE_GENERATED",
+    "runsPerCase": 3,
+    "totalCasesExecuted": 1,
+    "totalTurnExecutions": 24,
+    "casesPass3Of3": 0,
+    "benchmarkRunValid": true,
+    "modelTelemetrySummary": {
+      "requestedPrimaryModel": "qwen3.8-max",
+      "actualModelsObserved": [
+        "qwen3.8-max"
+      ],
+      "fallbackTurnsCount": 0,
+      "providerErrorTurnsCount": 0,
+      "jsonValidTurnsCount": 24,
+      "totalTurnExecutions": 24,
+      "benchmarkRunValid": true,
+      "benchmarkRunStatus": "VALID_BENCHMARK_RUN"
+    },
+    "safetyAndTruthPassTurns": 24,
+    "taskFulfillmentPassTurns": 22,
+    "salesQualityPassTurns": 18,
+    "postgresRowIntegrity": {
+      "conversationMessagesAfter": 11773,
+      "conversationSessionsAfter": 44,
+      "conversationSessionsBefore": 44,
+      "conversationMessagesBefore": 11773,
+      "zeroMutationVerified": true
+    },
+    "latencyStatsMs": {
+      "totalTurnP50": 6038,
+      "totalTurnP95": 8342,
+      "llmDurationP50": 5345,
+      "llmDurationP95": 7582,
+      "validationDurationP50": 54,
+      "validationDurationP95": 77,
+      "retrievalDurationP50": 276,
+      "retrievalDurationP95": 1372
+    },
+    "cases": [
+      {
+        "caseId": "CASE-01",
+        "sessionId": "",
+        "casePass3Of3": false,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "giá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 0,
+            "overallPass": 0,
+            "failures": {
+              "T1_SEPARATE_GREETING_ONLY_FIRST_BUBBLE": 3
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nEm có gói Massage cơ bản 60 phút 399k và Gói dưỡng sinh cơ bản 60 phút 239k, đây là vài gói tiêu biểu, bên em còn các gói khác. Mình ưu tiên gói nào ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "tôi hoa mát trong mắt ù tai mệt mỏi",
+            "safetyPass": 3,
+            "taskPass": 1,
+            "qualityPass": 3,
+            "overallPass": 1,
+            "failures": {
+              "T3_MISSING_PACKAGE_RECOMMENDATION_WITH_EXPLICIT_PRICE": 2
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy hoa mắt, ù tai và mệt mỏi ạ. Mình muốn thư giãn vùng nào nhất ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Nó khác j nhau",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 0,
+            "overallPass": 0,
+            "failures": {
+              "T5_UNNECESSARY_DISCOVERY_QUESTION_AFTER_COMPARISON": 3
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cơ bản 60 phút 239k: gội đầu + massage cổ vai gáy, phòng chung yên tĩnh, rèm riêng từng giường. Massage cơ bản 60 phút 399k: massage trị liệu toàn thân, ăn nhẹ thực dưỡng, phòng chung yên tĩnh, rèm riêng từng giường. Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Hỏi lại lắm thế",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bị dồn dập. Em sẽ không gợi ý thêm nữa và không hỏi thêm gì nữa. Mình cần hỗ trợ gì, em chỉ cần nghe."
+          },
+          {
+            "turnIndex": 5,
+            "customerMessage": "thế rốt cuộc 2 gói khác j nhau",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cơ bản 60 phút 239k: gội đầu cơ bản + massage cổ vai gáy, phòng chung yên tĩnh, rèm riêng từng giường. Gói massage cơ bản 60 phút 399k: massage trị liệu toàn thân, ăn nhẹ thực dưỡng, phòng chung yên tĩnh, rèm riêng từng giường. Mình muốn trải nghiệm hướng nào ạ?"
+          },
+          {
+            "turnIndex": 6,
+            "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi vì cách diễn đạt khiến mình cảm thấy bị dồn dập, em sẽ không hỏi thêm gì nữa. Gói dưỡng sinh cơ bản 60 phút 239k và massage cơ bản 60 phút 399k đều chăm toàn thân, không bỏ vùng nào."
+          },
+          {
+            "turnIndex": 7,
+            "customerMessage": "haizzz, ngoài 2 gói trên còn gói nào khác k",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Bên em còn có gói Silver – Gói dưỡng sinh phục hồi 90 phút 500k và Silver – Massage phục hồi chuyên sâu 120 phút 780k, cả hai đều chăm toàn thân, mình muốn trải nghiệm gói nào hơn ạ"
+          },
+          {
+            "turnIndex": 8,
+            "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em xin lỗi vì cách diễn đạt gây hiểu lầm ạ. Bên em còn nhiều gói hơn, ví dụ: Gói dưỡng sinh cơ bản 60 phút 239k, Massage cơ bản 60 phút 399k, Silver – Gói dưỡng sinh phục hồi 90 phút 500k và Silver – Massage phục hồi chuyên sâu 120 phút 780k. Mình muốn tìm hiểu thêm gói nào ạ"
+          }
+        ]
+      }
+    ]
+  },
+  "mixedCasesN3": {
+    "executedAtIso": "2026-11-05T02:27:30.011406200Z",
+    "gitHeadSha": "0a491af2143a259fcdd0e53cbf4c8443f6b48df3",
+    "historyMode": "HISTORICAL_TRANSCRIPT",
+    "runsPerCase": 3,
+    "totalCasesExecuted": 6,
+    "totalTurnExecutions": 111,
+    "casesPass3Of3": 5,
+    "benchmarkRunValid": true,
+    "modelTelemetrySummary": {
+      "requestedPrimaryModel": "qwen3.8-max",
+      "actualModelsObserved": [
+        "qwen3.8-max"
+      ],
+      "fallbackTurnsCount": 0,
+      "providerErrorTurnsCount": 0,
+      "jsonValidTurnsCount": 111,
+      "totalTurnExecutions": 111,
+      "benchmarkRunValid": true,
+      "benchmarkRunStatus": "VALID_BENCHMARK_RUN"
+    },
+    "safetyAndTruthPassTurns": 110,
+    "taskFulfillmentPassTurns": 111,
+    "salesQualityPassTurns": 111,
+    "postgresRowIntegrity": {
+      "conversationSessionsBefore": 44,
+      "conversationMessagesBefore": 11773,
+      "zeroMutationVerified": true,
+      "conversationMessagesAfter": 11773,
+      "conversationSessionsAfter": 44
+    },
+    "latencyStatsMs": {
+      "validationDurationP50": 51,
+      "validationDurationP95": 96,
+      "retrievalDurationP50": 284,
+      "retrievalDurationP95": 508,
+      "totalTurnP50": 5614,
+      "totalTurnP95": 12971,
+      "llmDurationP50": 4984,
+      "llmDurationP95": 8856
+    },
+    "cases": [
+      {
+        "caseId": "CASE-02",
+        "sessionId": "",
+        "casePass3Of3": false,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "Giá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nEm có vài gói tiêu biểu: Massage cơ bản 60 phút 399k, Massage phục hồi + dưỡng sinh 120 phút 670k. Bên em còn nhiều gói khác phù hợp nhiều nhu cầu hơn ạ. Mình quan tâm gói nào nhất ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "Đau đầu mỏi gối tê tay khó ngủ",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy mệt mỏi và khó ngủ ạ. Mình muốn thư giãn nhẹ nhàng hay cần chăm sóc kỹ vùng cổ vai gáy hơn ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Có gói nào hỗ trợ massage giúp dễ ngủ k",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu mình đang cần massage giúp dễ ngủ hơn ạ. Gói dưỡng sinh cơ bản 60 phút 239k gồm gội đầu, massage cổ vai gáy, thư giãn dịu nhẹ và dễ đi vào giấc hơn. Mình muốn thử gói vừa đủ hay chăm sâu hơn một chút ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Tôi muốn vừa đủ đẻ thử",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ. Gói dưỡng sinh cao cấp 80 phút 339k chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ. Mình muốn đặt lịch hôm nay hay ngày mai ạ?"
+          },
+          {
+            "turnIndex": 5,
+            "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu rồi ạ, mình muốn massage giúp dễ ngủ chứ không cần phục hồi tóc."
+          },
+          {
+            "turnIndex": 6,
+            "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+            "safetyPass": 2,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 2,
+            "failures": {
+              "UNSUPPORTED_SERVICE_CLAIM:dau_dau:giam": 1
+            },
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu rồi ạ, phần phục hồi tóc em sẽ không nhắc thêm nữa ạ. Để giảm đau đầu và giúp mình ngủ ngon hơn, em gợi ý gói Massage cơ bản 60 phút — 399k, massage trị liệu toàn thân, phòng chung yên tĩnh, mỗi giường có rèm riêng kín ạ."
+          },
+          {
+            "turnIndex": 7,
+            "customerMessage": "Mà đắt thế",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu cảm giác của mình ạ. Gói dưỡng sinh cao cấp 80 phút 339k có phần lớn thời gian dành cho massage cổ vai gáy êm dịu, giúp thả lỏng và dễ ngủ hơn.\n\nNếu mình muốn tập trung massage nhiều hơn, em có gói Massage cơ bản 60 phút 399k, toàn thân, giúp giảm đau mỏi và thư giãn gân cốt. Mình thấy hướng nào ổn hơn ạ?"
+          },
+          {
+            "turnIndex": 8,
+            "customerMessage": "Gội đầu bên ngoài có 50k",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gội đầu bên ngoài 50k là mức hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói dưỡng sinh cơ bản 60 phút 239k của bên em đã bao gồm gội đầu cơ bản, massage cổ vai gáy và ăn nhẹ, giúp thả lỏng vùng căng mỏi để dễ ngủ hơn. Mình muốn trải nghiệm gói này không ạ?"
+          },
+          {
+            "turnIndex": 9,
+            "customerMessage": "Để xem đã",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, mình yên tâm cân nhắc nhé. Khi mình muốn đặt lịch hoặc cần em tư vấn thêm, mình nhắn em bất cứ lúc nào ạ."
+          }
+        ]
+      },
+      {
+        "caseId": "CASE-05",
+        "sessionId": "",
+        "casePass3Of3": true,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "Giá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nEm có gói Massage cơ bản 60 phút 399k và Gói dưỡng sinh cơ bản 60 phút 239k ạ. Đây là vài gói tiêu biểu, bên em còn các gói khác. Mình ưu tiên gói nào ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "Đau đầu hoa mắt tróng mặt",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Mình muốn thư giãn vùng nào nhất ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Bị dở à mà cổ vai gáy",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy mệt mỏi, đau đầu và cổ vai gáy căng thẳng ạ."
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Rời ơi",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang mệt mỏi ạ. Khi mình sẵn sàng, em sẽ tư vấn gói thư giãn phù hợp cho mình nhé."
+          }
+        ]
+      },
+      {
+        "caseId": "CASE-06",
+        "sessionId": "",
+        "casePass3Of3": true,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "Giá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nEm có vài gói tiêu biểu: Gói dưỡng sinh cơ bản 60 phút 239k, Massage cơ bản 60 phút 399k, và Massage phục hồi + dưỡng sinh 120 phút 670k. Mình quan tâm gói nào ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "Tôi hoa mắt tróng mặt tê chân tay",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy hoa mắt, trông mặt và tê chân tay, thật khó chịu ạ. Mình muốn thư giãn nhẹ nhàng hay cần chăm sóc kỹ vùng vai gáy, lưng đang mỏi ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "đầu và vai gáy",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang mệt mỏi và cần thư giãn vùng đầu, vai gáy ạ. Gói dưỡng sinh cơ bản 60 phút — 239k, gồm gội đầu cơ bản + massage vai gáy, rất nhẹ nhàng cho vùng mình đang cần.\n\nMình muốn trải nghiệm vừa đủ hay chuyên sâu hơn một chút ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Ơ, dở hơi à",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu cảm giác dở hơi của mình ạ."
+          }
+        ]
+      },
+      {
+        "caseId": "CASE-09",
+        "sessionId": "",
+        "casePass3Of3": true,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "Chào em, tư vấn cho chị với",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nMình đang muốn tìm một chút thư giãn, chăm sóc cơ thể hay muốn hỏi Sen điều gì ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "Dạo này chị hay mất ngủ, đầu óc căng thẳng, người lúc nào cũng mệt mỏi",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, Chị đang cảm thấy mệt mỏi, đầu óc căng thẳng và mất ngủ, thật khó khăn quá ạ.\n\nChị muốn thư giãn vùng nào nhất ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Chị còn bị mỏi cổ vai gáy với tê tay do ngồi làm việc lâu nữa, bên em có gói nào phù hợp không?",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu Chị vừa chia sẻ thêm vùng mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu, em cảm thấy Chị đã gắng sức thật nhiều ạ.\n\nBên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vai gáy, cổ gáy và giúp thả lỏng stress, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay muốn tìm hiểu thêm về gói chăm sóc toàn thân ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn giúp dễ ngủ, không cần phần chăm sóc tóc. Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì Chị chia sẻ ạ.\n\nBên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phòng chung yên tĩnh có rèm che riêng từng giường."
+          },
+          {
+            "turnIndex": 5,
+            "customerMessage": "Giữa gói massage cổ vai gáy với massage body tinh dầu thì khác nhau thế nào em?",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói massage cổ vai gáy tập trung vùng cổ, vai, gáy để giảm cứng nhẹn, phù hợp khi Chị mỏi ở phần trên cơ thể. Gói massage body tinh dầu chăm sóc toàn thân, giúp thư giãn sâu và dễ ngủ hơn.\n\nChị muốn tập trung vùng nào nhiều hơn ạ?"
+          },
+          {
+            "turnIndex": 6,
+            "customerMessage": "Vậy cho chị chọn cái vừa đủ để thử tập trung vùng cổ vai gáy trước nhé",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580k, tập trung vùng vai, gáy, vai gáy, phù hợp để Chị gỡ mỏi sau giờ làm việc ạ. Chị muốn ghé vào lúc nào ạ?"
+          },
+          {
+            "turnIndex": 7,
+            "customerMessage": "À phòng làm bên mình có riêng tư không em? Chị hơi ngại ồn ào",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em đã ghi nhận thông tin của Chị và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho Chị nhé ạ."
+          },
+          {
+            "turnIndex": 8,
+            "customerMessage": "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu Chị đang lo lắng vì mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ, Chị cứ yên tâm ạ.\n\nPhần đánh giá tình trạng sức khỏe của Chị phù hợp làm dịch vụ hay không, kỹ thuật viên/chuyên viên tại cơ sở sẽ trực tiếp xem xét và tư vấn theo quy trình của Spa ạ."
+          },
+          {
+            "turnIndex": 9,
+            "customerMessage": "Ok để chị xem sắp xếp công việc chút đã nhé",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, Chị sắp xếp công việc nhẹ nhàng, em sẽ chờ Chị nhé."
+          },
+          {
+            "turnIndex": 10,
+            "customerMessage": "Em ơi tối mai lúc 18h30 giữ lịch cho chị gói vừa chọn lúc nãy nhé",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em ghi nhận Chị muốn giữ lịch gói dưỡng sinh cao cấp 80 phút vào tối mai lúc 18h30 ạ. Em sẽ kiểm tra chỗ trống và phản hồi lại Chị sớm nhất có thể nhé ✨"
+          }
+        ]
+      },
+      {
+        "caseId": "CASE-11",
+        "sessionId": "",
+        "casePass3Of3": true,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "Tư vấn giúp mình",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây.\n\nMình đang muốn tìm một chút thư giãn, chăm sóc cơ thể hay muốn hỏi Sen điều gì ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "Dạo này mình đau đầu, mỏi gối, tê tay, tối lại khó ngủ quá",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu mình đang cảm thấy mệt mỏi với đau đầu, mỏi gối, tê tay và khó ngủ ạ. Cảm ơn mình đã chia sẻ với em.\n\nMình muốn trải nghiệm buổi thư giãn vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Gói dưỡng sinh thì giá sao em?",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cơ bản 60 phút 239k và Gói dưỡng sinh cao cấp 80 phút 339k là hai gói tiêu biểu bên em, mỗi gói gồm gội đầu và massage cổ vai gáy, giúp mình thư giãn và dưỡng sinh. Bên em còn có nhiều gói khác phù hợp với nhu cầu của mình. Mình quan tâm gói nào hơn ạ?"
+          },
+          {
+            "turnIndex": 4,
+            "customerMessage": "Mình muốn vừa đủ để thử thôi",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 370k tại SG nhé. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, rất phù hợp để mình thử trải nghiệm vừa đủ trước. Mình có thể ghé vào lúc nào ạ?"
+          },
+          {
+            "turnIndex": 5,
+            "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em sẽ không gợi ý gói phục hồi tóc nữa ạ.\n\nMình có thể xem gói Massage cơ bản 60 phút 399k nhé, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp để mình ngủ ngon hơn ạ."
+          },
+          {
+            "turnIndex": 6,
+            "customerMessage": "Thế gói 339k gồm những gì? Có phục hồi tóc à?",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Gói dưỡng sinh cao cấp 80 phút 339k (HN) gồm gội đầu cao cấp, massage cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có thành phần chăm sóc tóc, nên có thể không phù hợp nếu mình chỉ muốn massage thôi ạ."
+          },
+          {
+            "turnIndex": 7,
+            "customerMessage": "Ok để mình xem thêm đã nhé",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Dạ em hiểu ạ, mình xem thêm thoải mái nhé. Khi mình đã quyết định, em sẽ luôn ở đây tư vấn ấm áp."
+          }
+        ]
+      },
+      {
+        "caseId": "CASE-19",
+        "sessionId": "",
+        "casePass3Of3": true,
+        "turns": [
+          {
+            "turnIndex": 1,
+            "customerMessage": "hoa mắt, chóng mặt, tê chân",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu mình đang cảm thấy hoa mắt, chóng mặt và tê chân, thật không dễ dàng ạ. Mình muốn thư giãn vùng nào nhất ạ?"
+          },
+          {
+            "turnIndex": 2,
+            "customerMessage": "khó ngủ",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu thêm khó ngủ nữa, cảm giác cơ thể rệu rã thật khó chịu ạ. Mình muốn ưu tiên thư giãn vùng chân đang tê hay dành thời gian chăm sóc cho cả cơ thể đang mệt mỏi ạ?"
+          },
+          {
+            "turnIndex": 3,
+            "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+            "safetyPass": 3,
+            "taskPass": 3,
+            "qualityPass": 3,
+            "overallPass": 3,
+            "failures": {},
+            "sampleState": null,
+            "sampleStrategy": null,
+            "sampleCta": null,
+            "sampleReply": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi, em cảm nhận được điều đó ạ."
+          }
+        ]
+      }
+    ]
+  }
+}

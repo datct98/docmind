@@ -2294,16 +2294,38 @@ public final class AdaptiveConversationIntelligence {
                     && CleanAgentOrchestratorService.isPoliteThankYouClosingAckMessage(rawUserMessage);
             boolean directBotIdentityQuestion = CleanAgentOutputRefereeAndSanitizer
                     .isDirectBotIdentityOrTrainingQuestion(rawUserMessage);
+            boolean fix5Enabled = CleanAgentOutputRefereeAndSanitizer.isFix5MixedIntentRecoveryEnabled();
+            boolean mixedComplaintWithBusinessDemand = fix5Enabled
+                    && !explicitStop
+                    && !politeThankYouClosingAck
+                    && !directBotIdentityQuestion
+                    && !explicitFullPriceListRequest
+                    && CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
+                    && (CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(rawUserMessage)
+                        || CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(rawUserMessage));
             boolean processFeedbackComplaint = !explicitStop
                     && !politeThankYouClosingAck
                     && !directBotIdentityQuestion
                     && !explicitFullPriceListRequest
+                    && !mixedComplaintWithBusinessDemand
                     && (CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
-                        || (customerUnderstanding.secondaryIntents() != null
+                        || (!fix5Enabled
+                            && customerUnderstanding.secondaryIntents() != null
                             && customerUnderstanding.secondaryIntents().stream().anyMatch(s ->
                                 s != null && (s.toUpperCase(Locale.ROOT).contains("PROCESS_FEEDBACK")
                                         || s.toUpperCase(Locale.ROOT).contains("CONSULTATION_FEEDBACK")
                                         || s.toUpperCase(Locale.ROOT).contains("STYLE_COMPLAINT")))));
+            boolean stickyFrictionOnNonComplaintTurn = fix5Enabled
+                    && !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !mixedComplaintWithBusinessDemand
+                    && !CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(rawUserMessage)
+                    && !isCustomerCorrectionOrComponentRejectionMessage(rawUserMessage)
+                    && !PrimaryActionRouter.isFrustrationMessage(rawUserMessage)
+                    && ("FRICTION_RECOVERY".equalsIgnoreCase(customerUnderstanding.conversationState())
+                        || "PROCESS_FEEDBACK".equalsIgnoreCase(customerUnderstanding.detectedIntent())
+                        || (priority != null && "SERVICE_RECOVERY".equalsIgnoreCase(priority.primary())));
             boolean pureBudgetBoundedInquiry = !explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
@@ -2388,6 +2410,8 @@ public final class AdaptiveConversationIntelligence {
             if (!explicitStop
                     && !politeThankYouClosingAck
                     && !processFeedbackComplaint
+                    && !mixedComplaintWithBusinessDemand
+                    && !stickyFrictionOnNonComplaintTurn
                     && !pureBudgetBoundedInquiry
                     && !competitorComparison
                     && !affirmativeBookingCue
@@ -2642,6 +2666,59 @@ public final class AdaptiveConversationIntelligence {
                         && ("need_scope".equalsIgnoreCase(d.key())
                             || "self_reported_symptom".equalsIgnoreCase(d.key())));
                 reconciledBookingPatch = ProposedBookingPatch.empty();
+            } else if (mixedComplaintWithBusinessDemand) {
+                boolean explicitPrice = CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(rawUserMessage);
+                if (secIntents.stream().noneMatch(s -> "PROCESS_FEEDBACK".equalsIgnoreCase(s))) {
+                    secIntents.add("PROCESS_FEEDBACK");
+                }
+                detIntent = explicitPrice ? "ASK_PRICE" : "SERVICE_OR_OPERATIONAL_INQUIRY";
+                String primaryEmo = emoState != null ? emoState.primary() : "";
+                if (primaryEmo == null || primaryEmo.isBlank()
+                        || "UNKNOWN".equalsIgnoreCase(primaryEmo)
+                        || "NEUTRAL".equalsIgnoreCase(primaryEmo)) {
+                    emoState = new EmotionalState(
+                            "FRUSTRATED",
+                            emoState != null ? emoState.secondary() : List.of(),
+                            0.90
+                    );
+                }
+                convState = "ACTIVE_CONSULTATION";
+                costConcern = Boolean.FALSE;
+                if (perm == InteractionPermission.PAUSED) {
+                    perm = InteractionPermission.OPEN;
+                }
+                prio = new PriorityFocus(explicitPrice ? "PRICE_INFORMATION" : "CLARIFICATION", List.of("TRUST_BUILDING"));
+                plan = new AdaptiveResponsePlan(
+                        "Acknowledge feedback briefly in one clause and directly clarify the service scope or catalog packages",
+                        "Direct Answer",
+                        "Sincere & Helpful",
+                        "MODERATE",
+                        "NO_ADDITIONAL_ACTION",
+                        CtaLevel.NO_CTA,
+                        StrategyAdaptationMode.PIVOT,
+                        plan.previousOutcome()
+                );
+                strat = new StrategyReflection(
+                        "Direct Answer",
+                        StrategyAdaptationMode.PIVOT,
+                        strat.previousOutcome(),
+                        strat.evidence()
+                );
+                reconciledSkills.removeIf(code -> code != null
+                        && code.toLowerCase(Locale.ROOT).contains("bot_identity"));
+            } else if (stickyFrictionOnNonComplaintTurn) {
+                if ("PROCESS_FEEDBACK".equalsIgnoreCase(detIntent)) {
+                    detIntent = "SERVICE_OR_OPERATIONAL_INQUIRY";
+                }
+                if ("FRICTION_RECOVERY".equalsIgnoreCase(convState)) {
+                    convState = "ACTIVE_CONSULTATION";
+                }
+                if (prio != null && "SERVICE_RECOVERY".equalsIgnoreCase(prio.primary())) {
+                    prio = new PriorityFocus("CLARIFICATION", List.of("DISCOVERY"));
+                }
+                if (perm == InteractionPermission.PAUSED || perm == InteractionPermission.CONCISE_PREFERRED) {
+                    perm = InteractionPermission.OPEN;
+                }
             } else if (pureBudgetBoundedInquiry) {
                 if (!"ASK_PRICE".equalsIgnoreCase(detIntent)) {
                     detIntent = "ASK_PRICE";
@@ -5391,8 +5468,15 @@ public final class AdaptiveConversationIntelligence {
                 && (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
                     || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg));
         if (isStyleOrProcessFeedback) {
-            intents.add(CanonicalTurnIntent.PROCESS_FEEDBACK);
-            return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
+            if (CleanAgentOutputRefereeAndSanitizer.isFix5MixedIntentRecoveryEnabled()
+                    && (CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(msg)
+                        || CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(msg))) {
+                intents.add(CanonicalTurnIntent.SERVICE_OR_OPERATIONAL_INQUIRY);
+                intents.add(CanonicalTurnIntent.PROCESS_FEEDBACK);
+            } else {
+                intents.add(CanonicalTurnIntent.PROCESS_FEEDBACK);
+                return Collections.unmodifiableSet(new LinkedHashSet<>(intents));
+            }
         }
 
         boolean explicitFullPriceList = EXPLICIT_FULL_PRICE_LIST_REQUEST_PATTERN.matcher(msgLow).matches();
@@ -5824,15 +5908,22 @@ public final class AdaptiveConversationIntelligence {
             // ("đừng nói vòng vo nữa, báo giá đi") -> PHẢI trả lời giá grounded, không chặn vì friction.
             boolean explicitPriceDemandThisTurn = priceSubMode != PriceIntentSubMode.NONE
                     || CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(msg);
+            boolean mixedBusinessOrCatalogClarification = CleanAgentOutputRefereeAndSanitizer.isFix5MixedIntentRecoveryEnabled()
+                    && CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(msg);
             boolean allowDiscoveryQ = CleanAgentOutputRefereeAndSanitizer.isDiscoveryQuestionAllowedOnProcessFeedback(msg);
             if (explicitPriceDemandThisTurn) {
                 directive = "FEEDBACK_RECOVERY (KÈM YÊU CẦU GIÁ TƯỜNG MINH TRONG CÙNG LƯỢT): Khách vừa phàn nàn cách trao đổi NHƯNG đồng thời yêu cầu báo giá ('" + msg + "'). "
                         + "BẮT BUỘC: (1) Đi thẳng NGAY câu đầu tiên vào báo giá cụ thể bằng đúng tên gói + mức giá + thời lượng grounded từ <VERIFIED_BUSINESS_CATALOG> gắn với vùng khách đang mỏi (TUYỆT ĐỐI KHÔNG mở đầu bằng câu xin lỗi dài dòng hay giải thích vòng vo); "
                         + "(2) Giữ đúng 1 bong bóng ngắn gọn súc tích, cta_level = NO_CTA, 0 ép chốt, 0 câu hỏi thăm dò thêm ('?' = 0).";
+            } else if (mixedBusinessOrCatalogClarification) {
+                directive = "FEEDBACK_RECOVERY (COMPLAINT_WITH_BUSINESS_OR_CATALOG_CLARIFICATION): Khách vừa góp ý/phàn nàn cách diễn đạt NHƯNG đồng thời cần làm rõ phạm vi dịch vụ hoặc danh mục gói trong <VERIFIED_BUSINESS_CATALOG> ('" + msg + "'). "
+                        + "BẮT BUỘC: (1) Nhận lỗi chân thành, ngắn gọn trong 1 vế đầu về cách diễn đạt gây hiểu lầm (cấm đổ lỗi khách hiểu nhầm, cấm lặp lại danh sách triệu chứng của khách); "
+                        + "(2) Giải thích/làm rõ TRỰC TIẾP ngay trong cùng lượt về phạm vi chăm sóc hoặc nêu rõ thêm 2–3 gói tiêu biểu khác trong <VERIFIED_BUSINESS_CATALOG> kèm thời lượng và mức giá cụ thể để giải tỏa hoàn toàn thắc mắc của khách; "
+                        + "(3) Giữ cta_level = NO_CTA, 0 câu hỏi ép chọn ('?' = 0), 0 mời đặt lịch.";
             } else {
                 directive = allowDiscoveryQ
                         ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
-                        : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá).";
+                        : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá, 0 lặp lại danh sách triệu chứng của khách).";
             }
         } else if (isExplicitRefusal) {
             communicationSignals.add("EXPLICIT_CONVERSATION_CLOSURE");

@@ -255,6 +255,10 @@ public final class VietnameseScopeSignalExtractor {
             return true;
         }
         if (GROUP_H_SPEECH_PERCEPTION_CONTRAST_PATTERN.matcher(lower).find()) {
+            if (CleanAgentOutputRefereeAndSanitizer.isFix5MixedIntentRecoveryEnabled()
+                    && CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(lower)) {
+                return false;
+            }
             return true;
         }
         return GROUP_H_COLLOQUIAL_PARTICLE_CORRECTION_PATTERN.matcher(lower).find();

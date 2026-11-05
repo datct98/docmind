@@ -89,8 +89,10 @@ import static org.mockito.Mockito.when;
  * <ul>
  *   <li>Verify fixtures &amp; harness wiring (always runs in {@code mvn test}):
  *       {@code mvn test -Dtest=Sbr01ReplayBenchmarkHarnessTest#verifySbr01FixturesAndHarnessWiring}</li>
- *   <li>Run single case (N=3):
+ *   <li>Run single case (N=3, default {@code HISTORICAL_TRANSCRIPT} mode):
  *       {@code mvn test -Dtest=Sbr01ReplayBenchmarkHarnessTest#executeSbr01ReplayBenchmarkSuite -Dsbr01.enabled=true -Dsbr01.caseId=CASE-01}</li>
+ *   <li>Run single case in {@code LIVE_GENERATED} history mode:
+ *       {@code mvn test -Dtest=Sbr01ReplayBenchmarkHarnessTest#executeSbr01ReplayBenchmarkSuite -Dsbr01.enabled=true -Dsbr01.caseId=CASE-01 -Dsbr01.historyMode=LIVE_GENERATED}</li>
  *   <li>Run full 20-case suite (N=3):
  *       {@code mvn test -Dtest=Sbr01ReplayBenchmarkHarnessTest#executeSbr01ReplayBenchmarkSuite -Dsbr01.enabled=true}</li>
  * </ul>

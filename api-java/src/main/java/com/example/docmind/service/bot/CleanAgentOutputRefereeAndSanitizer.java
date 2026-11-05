@@ -3833,10 +3833,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 || isExplicitConversationClosingDeferral(normMsg)) {
             return false;
         }
-        // ACI V3 P2 (§4.2): phàn nàn/bức xúc KHÔNG chặn nhận diện hỏi giá khi khách đang đòi giá tường minh
+        // ACI V3 P2 (§4.2) & SBR-01 FIX-5: phàn nàn/bức xúc KHÔNG chặn nhận diện hỏi giá/gói/phạm vi
+        // khi khách đang đòi giá tường minh hoặc hỏi thông tin/làm rõ danh mục gói trong cùng lượt.
         if ((isCommunicationStyleComplaintMessage(normMsg)
                 || PrimaryActionRouter.isFrustrationMessage(normMsg))
-                && !hasExplicitPriceDemandInMessage(normMsg)) {
+                && !hasExplicitPriceDemandInMessage(normMsg)
+                && !(isFix5MixedIntentRecoveryEnabled()
+                    && hasBusinessOrCatalogClarificationDemandOnComplaintTurn(normMsg))) {
             return false;
         }
         String lower = normMsg.toLowerCase(Locale.ROOT);
@@ -5490,11 +5493,99 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return DIRECT_BOT_IDENTITY_VERIFICATION_PATTERN.matcher(norm).find();
     }
 
+    private static volatile Boolean fix5MixedIntentRecoveryOverride = null;
+
+    public static void setFix5MixedIntentRecoveryEnabled(Boolean enabled) {
+        fix5MixedIntentRecoveryOverride = enabled;
+    }
+
+    /**
+     * SBR-01 FIX-5 (CP2): Cờ cấu hình bật/tắt cơ chế phân tách Mixed-Intent Complaint vs Pure Complaint
+     * và thoát trạng thái {@code SERVICE_RECOVERY} / {@code FRICTION_RECOVERY} theo sự kiện.
+     */
+    public static boolean isFix5MixedIntentRecoveryEnabled() {
+        Boolean override = fix5MixedIntentRecoveryOverride;
+        if (override != null) {
+            return override;
+        }
+        String prop = System.getProperty("docmind.aci.fix5.enabled");
+        if (prop != null && !prop.isBlank()) {
+            return Boolean.parseBoolean(prop.strip());
+        }
+        String env = System.getenv("DOCMIND_ACI_FIX5_ENABLED");
+        if (env != null && !env.isBlank()) {
+            return Boolean.parseBoolean(env.strip());
+        }
+        return true;
+    }
+
+    /**
+     * SBR-01 FIX-5: Nhận diện nhóm phàn nàn về tính đầy đủ của danh mục gói được giới thiệu
+     * hoặc thắc mắc phạm vi chăm sóc 1 vùng có bỏ qua các vùng khác không (cấp phạm trù ngữ nghĩa tổng quát,
+     * bao phủ nhiều cách diễn đạt của khách hàng).
+     */
+    private static final Pattern CATALOG_COMPLETENESS_OR_SCOPE_COVERAGE_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)(?:"
+            + "\\b(?:tưởng|nghĩ|ngỡ)\\s+(?:là\\s+|bên\\s+(?:em|mình|shop)\\s+|chỉ\\s+)?(?:chỉ\\s+có|có\\s+mỗi|chỉ\\s+mỗi)\\s*(?:\\d+|một|hai|ba|vài|mấy)\\s*(?:gói|dịch\\s+vụ|liệu\\s+trình|loại|mức\\s+giá)\\b"
+            + "|\\b(?:sao|tại\\s+sao|thế\\s+mà|vậy\\s+mà)\\b[^.!?\\n]{0,45}\\b(?:không|ko|chẳng|chả)\\s+(?:nói|giới\\s+thiệu|báo|liệt\\s+kê|đưa)\\s+(?:hết|đầy\\s+đủ|luôn|rõ|cả)\\b"
+            + "|\\b(?:giới\\s+thiệu|tư\\s+vấn|báo|liệt\\s+kê)\\s+(?:thiếu|sơ\\s+sài|nhỏ\\s+giọt|lấp\\s+lửng|mập\\s+mờ)\\b"
+            + "|\\b(?:chỉ\\s+(?:nêu|nói|giới\\s+thiệu|báo|đưa)|lúc\\s+giới\\s+thiệu\\s+nói)\\s+(?:có\\s+|mỗi\\s+)?(?:\\d+|một|hai|ba)\\s*(?:gói|dịch\\s+vụ|liệu\\s+trình)\\b"
+            + "|\\b(?:cách\\s+nói|giới\\s+thiệu|tư\\s+vấn)\\b[^.!?\\n]{0,45}\\b(?:gây\\s+hiểu\\s+lầm|dễ\\s+hiểu\\s+lầm|hiểu\\s+nhầm)\\b"
+            + "|\\b(?:chăm(?:\\s+sóc)?|làm|massage)\\s+(?:đúng\\s+)?(?:\\d+|một)\\s+vùng\\s+(?:rồi\\s+|xong\\s+)?(?:bỏ(?:\\s+qua)?|không\\s+làm)\\s+(?:các\\s+|những\\s+)?vùng\\s+khác\\b"
+            + ")"
+    );
+
+    private static final Pattern MIXED_INTENT_SERVICE_OR_PACKAGE_INQUIRY_ON_COMPLAINT_PATTERN = Pattern.compile(
+            "(?isU)(?:"
+            + "\\bkhác\\s+(?:gì|j|nhau|thế\\s+nào|như\\s+nào)\\b"
+            + "|\\b(?:gồm\\s+những\\s+gì|gồm\\s+gì|làm\\s+những\\s+(?:bước|gì)|bao\\s+nhiêu\\s+phút|mấy\\s+phút)\\b"
+            + "|\\b(?:còn\\s+gói\\s+nào|ngoài\\s+[^?]{1,35}\\s+còn\\s+(?:gói|loại|liệu\\s+trình)\\s+nào)\\b"
+            + "|\\bcó\\s+nhận\\s+(?:chăm\\s+sóc|làm|khách|bầu|mẹ\\s+bầu)\\b|\\bnhận\\s+chăm\\s+sóc\\b"
+            + "|\\b(?:chỉ\\s+(?:muốn|cần|thích|làm|chọn)|chủ\\s+yếu\\s+(?:là\\s+|muốn\\s+)?)\\s*(?:massage|mát\\s*xa)\\b"
+            + "|\\bđổi\\s+(?:sang\\s+)?gói\\s+khác\\b"
+            + ")"
+    );
+
+    public static boolean hasCatalogCompletenessOrProcessClarificationComplaint(String customerMessage) {
+        if (customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        if (isMissedDiscoveryFeedbackCue(norm)) {
+            return false;
+        }
+        return CATALOG_COMPLETENESS_OR_SCOPE_COVERAGE_COMPLAINT_PATTERN.matcher(norm).find();
+    }
+
+    /**
+     * SBR-01 FIX-5: Xác định lượt phản ứng tiêu cực/phàn nàn có đồng thời chứa yêu cầu nghiệp vụ
+     * (so sánh gói, hỏi gói khác, hỏi phạm vi vùng chăm sóc, hỏi giá, chọn hướng massage thay thế)
+     * hoặc cần đính chính hiểu lầm về số lượng gói trong Catalog ({@code COMPLAINT_WITH_BUSINESS_QUESTION}).
+     */
+    public static boolean hasBusinessOrCatalogClarificationDemandOnComplaintTurn(String customerMessage) {
+        if (!isFix5MixedIntentRecoveryEnabled() || customerMessage == null || customerMessage.isBlank()) {
+            return false;
+        }
+        String norm = java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC);
+        if (isMissedDiscoveryFeedbackCue(norm)) {
+            return false;
+        }
+        if (hasExplicitPriceDemandInMessage(norm)
+                || hasCatalogCompletenessOrProcessClarificationComplaint(norm)) {
+            return true;
+        }
+        return MIXED_INTENT_SERVICE_OR_PACKAGE_INQUIRY_ON_COMPLAINT_PATTERN.matcher(norm).find();
+    }
+
     public static boolean isProcessOrConsultationFeedbackComplaint(String customerMessage) {
         if (customerMessage == null || customerMessage.isBlank()) {
             return false;
         }
-        return isCommunicationStyleComplaintMessage(customerMessage)
+        boolean feedbackCue = isCommunicationStyleComplaintMessage(customerMessage)
+                || (isFix5MixedIntentRecoveryEnabled()
+                    && (isOverIntrusionFeedbackCue(customerMessage)
+                        || hasCatalogCompletenessOrProcessClarificationComplaint(customerMessage)));
+        return feedbackCue
                 && !isDirectBotIdentityOrTrainingQuestion(customerMessage);
     }
 
@@ -5974,7 +6065,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      */
     private static final Pattern OVER_ASKING_OR_VERBOSITY_COMPLAINT_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:có\\s+)?(?:hỏi|vặn|nói|giải\\s+thích|vòng\\s+vo)\\b|"
-            + "\\bhỏi\\s+(?:nhiều|dồn|lắm|mãi|hoài|vặn|vòng\\s+vo|liên\\s+tục)\\b|"
+            + "\\bhỏi\\s+(?:lại\\s+|đi\\s+hỏi\\s+lại\\s+)?(?:nhiều|dồn|lắm|mãi|hoài|vặn|vòng\\s+vo|liên\\s+tục)\\b|"
             + "\\b(?:nói|nhắn|viết|trả\\s+lời)\\s+(?:dài|nhiều|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng)\\b|"
             + "\\b(?:dài\\s+dòng|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng|rườm\\s+rà)\\b|"
             + "\\b(?:nói|trả\\s+lời|nhắn)\\s+(?:ngắn|gọn|thẳng)\\s+(?:thôi|đi|gọn|lại)\\b|"
@@ -6297,7 +6388,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
     /** ACI V3 P2 (§4.1): Phàn nàn bị hỏi dồn/ép chốt (OVER_INTRUSION) — tách khỏi phàn nàn độ dài/phong cách. */
     private static final Pattern OVER_INTRUSION_EXPLICIT_PATTERN = Pattern.compile(
-            "(?isU)(?:\\bhỏi\\s+(?:nhiều|dồn|lắm|mãi|hoài|liên\\s+tục)(?:\\s+(?:thế|quá|vậy|đi|nữa|hoài))*|"
+            "(?isU)(?:\\bhỏi\\s+(?:lại\\s+|đi\\s+hỏi\\s+lại\\s+)?(?:nhiều|dồn|lắm|mãi|hoài|liên\\s+tục)(?:\\s+(?:thế|quá|vậy|đi|nữa|hoài))*|"
             + "\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:có\\s+)?(?:hỏi|vặn|hỏi\\s+han)\\b|"
             + "\\b(?:ép|gạ|thúc|xúi)\\s+(?:chốt|đặt|mua|book|ký)\\b|"
             + "\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:ép|gạ|thúc|chốt|chèo\\s+kéo)\\b|"
@@ -6387,6 +6478,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
      */
     private static final Pattern APOLOGY_REF_GENERIC_OR_CUSTOMER_RELATIVE_PATTERN = Pattern.compile(
             "(?isU)(?:điều\\s+đó|vậy|thế|đó|nó|ý\\s+(?:của\\s+)?mình|chưa\\s+đúng(?:\\s+ý)?|"
+                    + "chưa\\s+(?:rõ|đầy\\s+đủ|kỹ|chu\\s+đáo|sát).*|thiếu.*|gây\\s+hiểu\\s+lầm.*|"
+                    + "khiến\\s+(?:mình|anh|chị|bạn)\\s+hiểu\\s+lầm.*|(?:\\d+|hai|vài)\\s+gói.*|"
                     + "(?:mình|anh|chị|bạn|em|tôi|khách)\\s+(?:không|chưa|chẳng|đâu|cần|đang|muốn)\\b.*|"
                     + "điều\\s+(?:mình|anh|chị|bạn)\\s+(?:nói|chia\\s+sẻ|quan\\s+tâm|cần|muốn).*)"
     );
@@ -6588,14 +6681,26 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (!guardedTurn) {
             return bubbles;
         }
-        // Ngoại lệ bắt buộc (§4.2): khách đang đòi giá / hỏi thẳng gói trong chính lượt này
-        // -> tuyệt đối không cắt nội dung trả lời giá/gói grounded.
-        if (hasExplicitPriceDemandInMessage(customerMessage)
-                || isDirectPriceOrPackageInquiryForFallback(customerMessage, null)) {
-            return bubbles;
+        // Ngoại lệ bắt buộc (§4.2 & SBR-01 FIX-5): khách đang đòi giá / hỏi thẳng gói / hỏi phạm vi dịch vụ
+        // hoặc phàn nàn việc giới thiệu làm hiểu lầm số lượng gói trong chính lượt này
+        // -> giữ nguyên nội dung trả lời giá/gói/phạm vi grounded, chỉ cắt câu CTA đặt lịch/chốt gói không được yêu cầu.
+        boolean explicitPriceOrDirectPkg = hasExplicitPriceDemandInMessage(customerMessage)
+                || isDirectPriceOrPackageInquiryForFallback(customerMessage, null);
+        boolean mixedBusinessOrCatalogClarification = isFix5MixedIntentRecoveryEnabled()
+                && hasBusinessOrCatalogClarificationDemandOnComplaintTurn(customerMessage);
+        if (explicitPriceOrDirectPkg || mixedBusinessOrCatalogClarification) {
+            if (!isFix5MixedIntentRecoveryEnabled()) {
+                return bubbles;
+            }
+            return stripOnlyUnsolicitedBookingCtaInPlace(bubbles, customerMessage);
         }
         String safeSelf = (selfPronoun != null && !selfPronoun.isBlank()) ? selfPronoun.strip() : "em";
         String safeCust = (customerPronoun != null && !customerPronoun.isBlank()) ? customerPronoun.strip() : "mình";
+        boolean disallowQuestionsOnPureComplaint = isFix5MixedIntentRecoveryEnabled()
+                && !isMissedDiscoveryFeedbackCue(customerMessage)
+                && (subtype == NegativeReactionSubtype.OVER_INTRUSION
+                    || !isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage)
+                    || PrimaryActionRouter.isFrustrationMessage(customerMessage));
         List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) {
@@ -6610,6 +6715,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     continue;
                 }
                 if (isUnsolicitedPitchSentenceOnNegativeReaction(st)) {
+                    continue;
+                }
+                if (disallowQuestionsOnPureComplaint && isQuestionSentence(st)) {
+                    continue;
+                }
+                if (isFix5MixedIntentRecoveryEnabled()
+                        && subtype == NegativeReactionSubtype.OVER_INTRUSION
+                        && !kept.isEmpty()
+                        && isRedundantSymptomEchoSentenceOnPureComplaint(st, knownSymptoms)) {
                     continue;
                 }
                 kept.add(st);
@@ -6628,6 +6742,98 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         // SBR-01 FIX-1: Java không còn tự nối câu hỏi khám phá cố định sau khi cắt pitch.
         return out;
+    }
+
+    private static boolean isRedundantSymptomEchoSentenceOnPureComplaint(String sentence, List<String> knownSymptoms) {
+        if (sentence == null || sentence.isBlank() || knownSymptoms == null || knownSymptoms.isEmpty()) {
+            return false;
+        }
+        String low = java.text.Normalizer.normalize(sentence.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        if (low.contains("xin lỗi") || low.contains("rút kinh nghiệm")) {
+            return false;
+        }
+        return knownSymptoms.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(s -> s.strip().toLowerCase(Locale.ROOT))
+                .filter(s -> !s.isEmpty())
+                .anyMatch(low::contains);
+    }
+
+    private static final Pattern TRAILING_COMMA_CTA_QUESTION_CLAUSE_PATTERN = Pattern.compile(
+            "(?isU),\\s*(?:dạ\\s+)?(?:vậy\\s+|thế\\s+)?(?:mình|anh|chị|bạn)\\s+"
+                    + "(?:muốn|thích|ưng|chọn|đặt|quan\\s+tâm|tìm\\s+hiểu|tham\\s+khảo|ưu\\s+tiên|thử)\\b[^,?!.\\n]*[?？]\\s*$"
+    );
+
+    /**
+     * SBR-01 FIX-5: Trên lượt {@code COMPLAINT_WITH_BUSINESS_QUESTION}, giữ nguyên nội dung giải thích
+     * phạm vi dịch vụ / danh mục gói / mức giá grounded, chỉ cắt câu CTA đặt lịch hoặc câu hỏi ép chọn gói ở cuối.
+     */
+    private static List<FanpageBotResponse.ReplyBubble> stripOnlyUnsolicitedBookingCtaInPlace(
+            List<FanpageBotResponse.ReplyBubble> bubbles,
+            String customerMessage
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        boolean hasComplaintOrCorrection = isProcessOrConsultationFeedbackComplaint(customerMessage)
+                || isCustomerCorrectionOrComponentRejectionMessageForSanitizer(customerMessage)
+                || PrimaryActionRouter.isFrustrationMessage(customerMessage);
+        List<FanpageBotResponse.ReplyBubble> out = new ArrayList<>(bubbles.size());
+        for (FanpageBotResponse.ReplyBubble b : bubbles) {
+            if (b == null || b.text() == null || b.text().isBlank()) {
+                continue;
+            }
+            String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
+            String[] sentences = norm.split("(?<=[.!?？])\\s+");
+            List<String> kept = new ArrayList<>();
+            for (String s : sentences) {
+                String st = s.strip();
+                if (st.isEmpty()) {
+                    continue;
+                }
+                String low = st.toLowerCase(Locale.ROOT);
+                boolean hasSubstantivePackageOrScopeInfo = hasQuotedPriceInText(st)
+                        || low.matches("(?isU).*\\b(?:\\d{2,3}\\s*phút|toàn\\s+thân|cổ\\s+vai\\s+gáy|gội\\s+đầu|nhiều\\s+gói|các\\s+gói\\s+khác|tiêu\\s+biểu)\\b.*");
+                // Nếu câu vừa giải thích gói/giá vừa nối mệnh đề câu hỏi chọn gói sau dấu phẩy -> chỉ cắt mệnh đề câu hỏi đuôi
+                if (hasSubstantivePackageOrScopeInfo && isQuestionSentence(st)) {
+                    Matcher trailingClauseM = TRAILING_COMMA_CTA_QUESTION_CLAUSE_PATTERN.matcher(st);
+                    if (trailingClauseM.find()) {
+                        String body = st.substring(0, trailingClauseM.start()).strip();
+                        if (!body.isEmpty()) {
+                            if (!body.endsWith(".") && !body.endsWith("!")) {
+                                body = body.endsWith("ạ") ? (body + ".") : (body + " ạ.");
+                            }
+                            kept.add(body);
+                            continue;
+                        }
+                    }
+                }
+                boolean isBookingOrChoiceCta = UNSOLICITED_BOOKING_OR_PACKAGE_CTA_PATTERN.matcher(low).find()
+                        || TRAILING_SALES_OR_BOOKING_CTA_ON_COMPLAINT_PATTERN.matcher(st).find()
+                        || (isQuestionSentence(st)
+                            && (PACKAGE_CHOICE_QUESTION_CUE_PATTERN.matcher(low).find()
+                                || BRANCH_ROUTING_FOR_PITCH_QUESTION_PATTERN.matcher(low).find()
+                                || hasComplaintOrCorrection));
+                if (isBookingOrChoiceCta) {
+                    continue;
+                }
+                kept.add(st);
+            }
+            String merged = String.join(" ", kept)
+                    .replaceAll("\\s+([,.!?？])", "$1")
+                    .replaceAll("[ \\t]{2,}", " ")
+                    .strip();
+            if (!merged.isEmpty()) {
+                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs()));
+            }
+        }
+        return out.isEmpty() ? bubbles : out;
+    }
+
+    private static boolean isCustomerCorrectionOrComponentRejectionMessageForSanitizer(String customerMessage) {
+        return customerMessage != null
+                && AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(customerMessage);
     }
 
     /** P3 Fix-B: nhận diện câu pitch gói/giá/CTA tự ý chèn trên lượt phản ứng tiêu cực. */
@@ -6681,7 +6887,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         boolean customerAlsoAskedServiceQuestion = custNorm.contains("giá")
                 || custNorm.contains("bao nhiêu")
                 || custNorm.contains("mấy tiền")
-                || custNorm.contains("ở đâu");
+                || custNorm.contains("ở đâu")
+                || (isFix5MixedIntentRecoveryEnabled()
+                    && hasBusinessOrCatalogClarificationDemandOnComplaintTurn(customerMessage));
         boolean endsWithQuestion = norm.endsWith("?") || norm.endsWith("？");
         if (!endsWithQuestion || customerAlsoAskedServiceQuestion) {
             return false;
@@ -6917,7 +7125,10 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 boolean isMissedDiscovery = isMissedDiscoveryFeedbackCue(customerMessage);
                 boolean prevTurnActuallyHadPrices = previousAssistantMessage != null && hasQuotedPriceInText(previousAssistantMessage);
                 boolean explicitPriceDemand = hasExplicitPriceDemandInMessage(customerMessage);
-                boolean customerAskedPrice = customerAskedPriceOrOperationalInfo(customerMessage) || explicitPriceDemand;
+                boolean customerAskedPrice = customerAskedPriceOrOperationalInfo(customerMessage)
+                        || explicitPriceDemand
+                        || (isFix5MixedIntentRecoveryEnabled()
+                            && hasBusinessOrCatalogClarificationDemandOnComplaintTurn(customerMessage));
                 boolean hasAnyPriceSentence = empathyCleaned.stream().anyMatch(x -> x != null && hasQuotedPriceInText(x.text()));
                 String[] sentences = txt.split("(?<=[.!?？])\\s+");
                 List<String> kept = new ArrayList<>();
