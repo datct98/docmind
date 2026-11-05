@@ -1,0 +1,881 @@
+{
+  "totalStoredTurns": 279,
+  "turnsWithRecordedFinalGateInput": 31,
+  "turnsReplayedFromOldFinalForIdempotence": 248,
+  "turnsWhoseFinalChanged": 30,
+  "turnsWhereRelevanceDroppedVsOldFinal": 11,
+  "turnsWhereRelevanceDroppedVsRawLlm": 13,
+  "oldFinalApologyOnlyTurnsAmong31GateTurns": 0,
+  "newFinalApologyOnlyTurnsAmong31GateTurns": 9,
+  "perTurnTrace": [
+    {
+      "caseId": "CASE-01",
+      "runIndex": 1,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Hỏi lại lắm thế",
+      "rawLlmOutput": "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ.",
+      "postRefereeOutput": "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ.",
+      "finalGateInput": "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ.",
+      "oldFinalOutput": "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ.",
+      "newFinalOutput": "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ.",
+      "relevanceRawLlm": 0.5,
+      "relevanceOldFinal": 0.5,
+      "relevanceNewFinal": 0.5,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "NO_RELEVANCE_LOSS (Template removed or sentence preserved with >= relevance)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 1,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "rawLlmOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ.",
+      "postRefereeOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ.",
+      "finalGateInput": "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?",
+      "oldFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?",
+      "newFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?",
+      "relevanceRawLlm": 0.5,
+      "relevanceOldFinal": 0.625,
+      "relevanceNewFinal": 0.5,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "JAVA_TEMPLATE_REMOVAL_ONLY (Substantive LLM reply preserved; lexical overlap dropped only because removed Java template artificially echoed historical symptom keywords)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Hỏi lại lắm thế",
+      "rawLlmOutput": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ.",
+      "postRefereeOutput": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ.",
+      "finalGateInput": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ.",
+      "oldFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ.",
+      "newFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ.",
+      "relevanceRawLlm": 0.5,
+      "relevanceOldFinal": 0.5,
+      "relevanceNewFinal": 0.5,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "NO_RELEVANCE_LOSS (Template removed or sentence preserved with >= relevance)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "rawLlmOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ.",
+      "postRefereeOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ.",
+      "finalGateInput": "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ.",
+      "oldFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm nữa ạ.",
+      "newFinalOutput": "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ.",
+      "relevanceRawLlm": 0.125,
+      "relevanceOldFinal": 0.25,
+      "relevanceNewFinal": 0.125,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "JAVA_TEMPLATE_REMOVAL_ONLY (Substantive LLM reply preserved; lexical overlap dropped only because removed Java template artificially echoed historical symptom keywords)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T15",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+      "rawLlmOutput": "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé.",
+      "postRefereeOutput": "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé.",
+      "finalGateInput": "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?",
+      "oldFinalOutput": "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ.",
+      "relevanceRawLlm": 0.333,
+      "relevanceOldFinal": 0.25,
+      "relevanceNewFinal": 0.25,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'",
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 3,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "rawLlmOutput": "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ.",
+      "postRefereeOutput": "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ.",
+      "finalGateInput": "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ.",
+      "oldFinalOutput": "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ.",
+      "newFinalOutput": "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ.",
+      "relevanceRawLlm": 0.125,
+      "relevanceOldFinal": 0.25,
+      "relevanceNewFinal": 0.125,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "JAVA_TEMPLATE_REMOVAL_ONLY (Substantive LLM reply preserved; lexical overlap dropped only because removed Java template artificially echoed historical symptom keywords)"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 3,
+      "turnId": "T15",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+      "rawLlmOutput": "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?",
+      "postRefereeOutput": "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?",
+      "finalGateInput": "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?",
+      "oldFinalOutput": "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ.",
+      "relevanceRawLlm": 0.167,
+      "relevanceOldFinal": 0.167,
+      "relevanceNewFinal": 0.167,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Mình muốn em nêu thêm gói nào không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'",
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "rawLlmOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ.",
+      "postRefereeOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ.",
+      "finalGateInput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ.",
+      "oldFinalOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa.",
+      "relevanceRawLlm": 0.4,
+      "relevanceOldFinal": 0.5,
+      "relevanceNewFinal": 0.3,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ."
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "rawLlmOutput": "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?",
+      "postRefereeOutput": "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?",
+      "finalGateInput": "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?",
+      "oldFinalOutput": "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ.",
+      "relevanceRawLlm": 0.429,
+      "relevanceOldFinal": 0.429,
+      "relevanceNewFinal": 0.286,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ.",
+        "Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "rawLlmOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?",
+      "oldFinalOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa.",
+      "relevanceRawLlm": 0.4,
+      "relevanceOldFinal": 0.5,
+      "relevanceNewFinal": 0.3,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ.",
+        "Mình muốn thử gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "rawLlmOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ",
+      "postRefereeOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ",
+      "finalGateInput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ",
+      "oldFinalOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn.",
+      "relevanceRawLlm": 0.429,
+      "relevanceOldFinal": 0.429,
+      "relevanceNewFinal": 0.286,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân.",
+        "Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 3,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "rawLlmOutput": "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?",
+      "oldFinalOutput": "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ.",
+      "relevanceRawLlm": 0.4,
+      "relevanceOldFinal": 0.2,
+      "relevanceNewFinal": 0.0,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa.",
+        "Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ.",
+        "Mình muốn thử gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'",
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 3,
+      "turnId": "T11",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "rawLlmOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?",
+      "oldFinalOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn.",
+      "relevanceRawLlm": 0.429,
+      "relevanceOldFinal": 0.429,
+      "relevanceNewFinal": 0.286,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt.",
+        "Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-04",
+      "runIndex": 1,
+      "turnId": "T15",
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION",
+      "customerMessage": "Có sale k",
+      "rawLlmOutput": "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?",
+      "postRefereeOutput": "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?",
+      "finalGateInput": "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?",
+      "oldFinalOutput": "Dạ em hiểu mình đang băn khoăn ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?",
+      "newFinalOutput": "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?",
+      "relevanceRawLlm": 0.0,
+      "relevanceOldFinal": 0.0,
+      "relevanceNewFinal": 0.0,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace (sentence-level preservation)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "NO_RELEVANCE_LOSS (Template removed or sentence preserved with >= relevance)"
+    },
+    {
+      "caseId": "CASE-04",
+      "runIndex": 3,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+      "rawLlmOutput": "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ.",
+      "postRefereeOutput": "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ.",
+      "finalGateInput": "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ.",
+      "oldFinalOutput": "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Em ghi nhận đúng là mình đang gặp hoa mắt, chóng mặt, tê chân và khó ngủ ạ. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ.",
+      "newFinalOutput": "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ.",
+      "relevanceRawLlm": 0.333,
+      "relevanceOldFinal": 0.333,
+      "relevanceNewFinal": 0.333,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'"
+      ],
+      "rootCauseAttribution": "NO_RELEVANCE_LOSS (Template removed or sentence preserved with >= relevance)"
+    },
+    {
+      "caseId": "CASE-05",
+      "runIndex": 1,
+      "turnId": "T5",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Bị dở à mà cổ vai gáy",
+      "rawLlmOutput": "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ. || Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?",
+      "postRefereeOutput": "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ. || Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?",
+      "finalGateInput": "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ. || Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?",
+      "oldFinalOutput": "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Hiện tại trong các tình trạng đau đầu và hoa mắt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ.",
+      "relevanceRawLlm": 0.5,
+      "relevanceOldFinal": 0.5,
+      "relevanceNewFinal": 0.5,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.",
+        "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-05",
+      "runIndex": 3,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION",
+      "customerMessage": "Rời ơi",
+      "rawLlmOutput": "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ",
+      "postRefereeOutput": "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ",
+      "finalGateInput": "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ",
+      "oldFinalOutput": "Dạ em hiểu mình đang băn khoăn. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ",
+      "newFinalOutput": "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ",
+      "relevanceRawLlm": 0.0,
+      "relevanceOldFinal": 0.0,
+      "relevanceNewFinal": 0.0,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.enforceGroundedApologyAgainstHistoryInPlace (sentence-level preservation)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "NO_RELEVANCE_LOSS (Template removed or sentence preserved with >= relevance)"
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 1,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION",
+      "customerMessage": "có gói nào rẻ hơn không",
+      "rawLlmOutput": "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn tìm gói rẻ nhất cho vùng nào ạ?",
+      "postRefereeOutput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ.",
+      "finalGateInput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ.",
+      "oldFinalOutput": "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ.",
+      "newFinalOutput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ.",
+      "relevanceRawLlm": 0.667,
+      "relevanceOldFinal": 0.0,
+      "relevanceNewFinal": 1.0,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy.",
+        "Mình muốn tìm gói rẻ nhất cho vùng nào ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 3,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION",
+      "customerMessage": "có gói nào rẻ hơn không",
+      "rawLlmOutput": "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn trải nghiệm gói này không ạ?",
+      "postRefereeOutput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?",
+      "finalGateInput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?",
+      "oldFinalOutput": "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ.",
+      "newFinalOutput": "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?",
+      "relevanceRawLlm": 0.667,
+      "relevanceOldFinal": 0.0,
+      "relevanceNewFinal": 0.667,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy.",
+        "Mình muốn trải nghiệm gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 1,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+      "rawLlmOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?",
+      "postRefereeOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?",
+      "finalGateInput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?",
+      "oldFinalOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ.",
+      "relevanceRawLlm": 0.714,
+      "relevanceOldFinal": 0.643,
+      "relevanceNewFinal": 0.643,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ.",
+        "Chị thấy gói này ổn không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 2,
+      "turnId": "T7",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+      "rawLlmOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. || Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?",
+      "postRefereeOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. || Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?",
+      "finalGateInput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. || Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?",
+      "oldFinalOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.",
+      "relevanceRawLlm": 0.714,
+      "relevanceOldFinal": 0.643,
+      "relevanceNewFinal": 0.643,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường.",
+        "Chị thấy gói này có hợp với nhu cầu của Chị không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 3,
+      "turnId": "T15",
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED",
+      "customerMessage": "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
+      "rawLlmOutput": "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ.",
+      "postRefereeOutput": "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ.",
+      "finalGateInput": "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. || Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ.",
+      "oldFinalOutput": "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. || Chị cứ yên tâm, gói dưỡng sinh cao cấp của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ.",
+      "newFinalOutput": "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. || Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ.",
+      "relevanceRawLlm": 0.813,
+      "relevanceOldFinal": 0.813,
+      "relevanceNewFinal": 0.813,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 1,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "rawLlmOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. || Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. || Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. || Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?",
+      "oldFinalOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.",
+      "relevanceRawLlm": 0.533,
+      "relevanceOldFinal": 0.667,
+      "relevanceNewFinal": 0.467,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng.",
+        "Mình thấy gói này ổn không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 2,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "rawLlmOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?",
+      "oldFinalOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi.",
+      "relevanceRawLlm": 0.533,
+      "relevanceOldFinal": 0.667,
+      "relevanceNewFinal": 0.467,
+      "relevanceDroppedVsOldFinal": true,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ.",
+        "Mình muốn thử gói này không ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 3,
+      "turnId": "T9",
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "rawLlmOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?",
+      "postRefereeOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?",
+      "finalGateInput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?",
+      "oldFinalOutput": "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Mình thấy ưu tiên vùng nào nhất ạ?",
+      "relevanceRawLlm": 0.533,
+      "relevanceOldFinal": 0.467,
+      "relevanceNewFinal": 0.467,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.buildHonestCorrectionApologyText (removed buildSymptomAcknowledgementClause)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Em xin lỗi vì đã gợi ý không phù hợp.",
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn."
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Em ghi nhận đúng là mình đang gặp <symptoms> ạ.'",
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 1,
+      "turnId": "T1",
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "rawLlmOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình.",
+      "postRefereeOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình.",
+      "finalGateInput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?",
+      "oldFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?",
+      "newFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?",
+      "relevanceRawLlm": 0.429,
+      "relevanceOldFinal": 0.286,
+      "relevanceNewFinal": 0.429,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 2,
+      "turnId": "T1",
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "rawLlmOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay.",
+      "postRefereeOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay.",
+      "finalGateInput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?",
+      "oldFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?",
+      "newFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?",
+      "relevanceRawLlm": 0.429,
+      "relevanceOldFinal": 0.286,
+      "relevanceNewFinal": 0.429,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 3,
+      "turnId": "T1",
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "rawLlmOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?",
+      "postRefereeOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?",
+      "finalGateInput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?",
+      "oldFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?",
+      "newFinalOutput": "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?",
+      "relevanceRawLlm": 0.714,
+      "relevanceOldFinal": 0.571,
+      "relevanceNewFinal": 0.714,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-19",
+      "runIndex": 2,
+      "turnId": "T5",
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY",
+      "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+      "rawLlmOutput": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?",
+      "postRefereeOutput": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?",
+      "finalGateInput": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?",
+      "oldFinalOutput": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Hiện tại trong các tình trạng hoa mắt, chóng mặt, tê chân và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?",
+      "newFinalOutput": "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi.",
+      "relevanceRawLlm": 0.333,
+      "relevanceOldFinal": 0.0,
+      "relevanceNewFinal": 0.0,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": true,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": true,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (removed buildSymptomAnchoredDiscoveryQuestion)",
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [
+        "Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?"
+      ],
+      "lostFromOldFinalToNewFinal": [
+        "Java template: 'Hiện tại trong các tình trạng <symptoms> thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?'"
+      ],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    },
+    {
+      "caseId": "CASE-20",
+      "runIndex": 2,
+      "turnId": "T5",
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED",
+      "customerMessage": "Có chương trình khuyến mãi hay ưu đãi giờ vàng nào không em?",
+      "rawLlmOutput": "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?",
+      "postRefereeOutput": "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?",
+      "finalGateInput": "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?",
+      "oldFinalOutput": "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?",
+      "newFinalOutput": "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?",
+      "relevanceRawLlm": 0.667,
+      "relevanceOldFinal": 0.667,
+      "relevanceNewFinal": 0.667,
+      "relevanceDroppedVsOldFinal": false,
+      "relevanceDroppedVsRawLlm": false,
+      "oldFinalApologyOnly": false,
+      "newFinalApologyOnly": false,
+      "javaMethodsInvolved": [
+        "CleanAgentOutputRefereeAndSanitizer.stripUnsolicitedPackagePitchOnNegativeReactionInPlace (stripped LLM package/explanation sentence matching UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN / hasQuotedPriceInText)"
+      ],
+      "lostFromRawLlmToNewFinal": [],
+      "lostFromOldFinalToNewFinal": [],
+      "rootCauseAttribution": "JAVA_SANITIZER_STRIP + JAVA_TEMPLATE_REMOVAL (Raw LLM had package/explanation content, Java stripped it on negative reaction, and FIX-1 stopped appending Java symptom template)"
+    }
+  ]
+}

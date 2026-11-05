@@ -202,7 +202,10 @@ public class Sbr01ReplayBenchmarkHarnessTest {
         Path convPath = repoRoot.resolve("benchmark/sbr01/fixtures/sbr01_20_conversations.json");
         Path snapPath = repoRoot.resolve("benchmark/sbr01/fixtures/sbr01_kb_catalog_skills_snapshot.json");
         Path outDir = repoRoot.resolve(System.getProperty("sbr01.outputDir", "benchmark/sbr01/results"));
-        Path promptsDir = outDir.resolve("prompts");
+        String customPromptsDirProp = System.getProperty("sbr01.promptsDir", "").strip();
+        Path promptsDir = customPromptsDirProp.isEmpty()
+                ? outDir.resolve("prompts")
+                : repoRoot.resolve(customPromptsDirProp);
         Path casesOutDir = outDir.resolve("cases");
         Files.createDirectories(promptsDir);
         Files.createDirectories(casesOutDir);
@@ -213,6 +216,9 @@ public class Sbr01ReplayBenchmarkHarnessTest {
         Map<String, String> dotEnv = loadDotEnv(repoRoot.resolve(".env"));
         LlmProperties llmProps = buildLlmProperties(dotEnv);
         JdbcTemplate jdbc = buildReadOnlyJdbcTemplate(dotEnv);
+
+        // CP1.1: Live Model/Provider Preflight Check before running benchmark
+        Map<String, Object> preflightTelemetry = runModelPreflightCheck(llmProps);
 
         // Verify PostgreSQL row counts BEFORE replay to prove zero mutation after replay
         long sessionsBefore = countRows(jdbc, "conversation_sessions");
@@ -304,6 +310,9 @@ public class Sbr01ReplayBenchmarkHarnessTest {
         List<Long> allTurnValidationMs = new ArrayList<>();
         int totalTurnExecutions = 0;
         int totalJsonValidTurns = 0;
+        int totalFallbackTurns = 0;
+        int totalProviderErrorTurns = 0;
+        Set<String> actualModelsObserved = new LinkedHashSet<>();
         int totalSafetyPassTurns = 0;
         int totalTaskPassTurns = 0;
         int totalQualityPassTurns = 0;
@@ -328,6 +337,16 @@ public class Sbr01ReplayBenchmarkHarnessTest {
                         allTurnValidationMs.add(((Number) lat.get("refereeValidationDurationMs")).longValue());
 
                         @SuppressWarnings("unchecked")
+                        Map<String, Object> modTel = (Map<String, Object>) t.get("modelTelemetry");
+                        if (modTel != null) {
+                            if (Boolean.TRUE.equals(modTel.get("fallback_used"))) totalFallbackTurns++;
+                            String pErr = String.valueOf(modTel.getOrDefault("provider_error", ""));
+                            if (!pErr.isBlank()) totalProviderErrorTurns++;
+                            String actMod = String.valueOf(modTel.getOrDefault("actual_model", ""));
+                            if (!actMod.isBlank()) actualModelsObserved.add(actMod);
+                        }
+
+                        @SuppressWarnings("unchecked")
                         Map<String, Object> rub = (Map<String, Object>) t.get("rubricEvaluation");
                         if (Boolean.TRUE.equals(rub.get("jsonValid"))) totalJsonValidTurns++;
                         if (Boolean.TRUE.equals(rub.get("safetyAndTruthPass"))) totalSafetyPassTurns++;
@@ -347,16 +366,36 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             Files.writeString(caseFile, jsonMapper.writeValueAsString(caseReport), StandardCharsets.UTF_8);
         }
 
+        boolean benchmarkRunValid = (totalProviderErrorTurns == 0)
+                && (totalFallbackTurns == 0)
+                && (totalJsonValidTurns == totalTurnExecutions);
+
         Map<String, Object> suiteSummary = new LinkedHashMap<>();
         suiteSummary.put("benchmarkId", "SBR-01-PHASE-1");
         suiteSummary.put("executedAtIso", Instant.now().toString());
+        suiteSummary.put("gitHeadSha", resolveGitHead(repoRoot));
         suiteSummary.put("baselineCommitSha", "1cd09e48d80db9bfc2f69c047933f67595d298d3");
+        suiteSummary.put("systemPromptSha256", sharedData.systemPromptSha256());
+        suiteSummary.put("preflightTelemetry", preflightTelemetry);
+        suiteSummary.put("modelTelemetrySummary", safeMap(
+                "requestedPrimaryModel", llmProps.resolveModel(),
+                "actualModelsObserved", List.copyOf(actualModelsObserved),
+                "fallbackTurnsCount", totalFallbackTurns,
+                "providerErrorTurnsCount", totalProviderErrorTurns,
+                "jsonValidTurnsCount", totalJsonValidTurns,
+                "totalTurnExecutions", totalTurnExecutions,
+                "benchmarkRunValid", benchmarkRunValid,
+                "benchmarkRunStatus", benchmarkRunValid ? "VALID_BENCHMARK_RUN" : "INVALID_BENCHMARK_RUN"
+        ));
         suiteSummary.put("historyMode", historyMode);
         suiteSummary.put("runsPerCase", runsPerCase);
         suiteSummary.put("totalCasesExecuted", selectedCases.size());
         suiteSummary.put("totalTurnExecutions", totalTurnExecutions);
         suiteSummary.put("casesPass3Of3", casesAll3Pass);
         suiteSummary.put("jsonValidTurns", totalJsonValidTurns);
+        suiteSummary.put("fallbackTurns", totalFallbackTurns);
+        suiteSummary.put("providerErrorTurns", totalProviderErrorTurns);
+        suiteSummary.put("benchmarkRunValid", benchmarkRunValid);
         suiteSummary.put("safetyAndTruthPassTurns", totalSafetyPassTurns);
         suiteSummary.put("taskFulfillmentPassTurns", totalTaskPassTurns);
         suiteSummary.put("salesQualityPassTurns", totalQualityPassTurns);
@@ -381,7 +420,15 @@ public class Sbr01ReplayBenchmarkHarnessTest {
 
         Path summaryFile = outDir.resolve("sbr01_baseline_summary.json");
         Files.writeString(summaryFile, jsonMapper.writeValueAsString(suiteSummary), StandardCharsets.UTF_8);
-        log.info("[SBR-01] Wrote complete baseline telemetry summary to {}", summaryFile);
+        log.info("[SBR-01] Wrote complete baseline telemetry summary to {} (benchmarkRunValid={}, jsonValid={}/{}, fallbackTurns={}, providerErrorTurns={})",
+                summaryFile, benchmarkRunValid, totalJsonValidTurns, totalTurnExecutions, totalFallbackTurns, totalProviderErrorTurns);
+
+        if (Boolean.parseBoolean(System.getProperty("sbr01.enforceValidBenchmarkRun", "true"))) {
+            assertThat(benchmarkRunValid)
+                    .as("CP1.1 Gate: Benchmark run must be VALID (0 provider errors, 0 fallbacks, 100%% valid JSON). Found providerErrorTurns=%d, fallbackTurns=%d, jsonValid=%d/%d",
+                            totalProviderErrorTurns, totalFallbackTurns, totalJsonValidTurns, totalTurnExecutions)
+                    .isTrue();
+        }
     }
 
     private Map<String, Object> executeSingleConversationRun(
@@ -533,17 +580,55 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             Path promptFilePath = promptsDir.resolve(promptFileName);
             Files.writeString(promptFilePath, finalDynamicPrompt, StandardCharsets.UTF_8);
 
-            // Reconstruct exact 3-stage output pipeline & Java mutations (Section 4.4)
-            List<LlmCallRecord> allLlmCalls = new ArrayList<>(primarySpyLlm.getTurnCalls());
-            if (fallbackSpyLlm != null) {
-                allLlmCalls.addAll(fallbackSpyLlm.getTurnCalls());
+            // Reconstruct exact 3-stage output pipeline & Java mutations (Section 4.4) + CP1.1 Model Telemetry
+            List<LlmCallRecord> primaryTurnCalls = primarySpyLlm.getTurnCalls();
+            List<LlmCallRecord> fallbackTurnCalls = fallbackSpyLlm != null ? fallbackSpyLlm.getTurnCalls() : List.of();
+            List<LlmCallRecord> allLlmCalls = new ArrayList<>(primaryTurnCalls);
+            allLlmCalls.addAll(fallbackTurnCalls);
+
+            boolean fallbackUsed = !fallbackTurnCalls.isEmpty();
+            LlmCallRecord effectiveCall = fallbackUsed
+                    ? fallbackTurnCalls.get(fallbackTurnCalls.size() - 1)
+                    : (!primaryTurnCalls.isEmpty() ? primaryTurnCalls.get(0) : null);
+
+            List<String> providerErrors = new ArrayList<>();
+            for (LlmCallRecord c : primaryTurnCalls) {
+                if (c.providerError() != null && !c.providerError().isBlank()) {
+                    providerErrors.add("primary(" + c.model() + "): " + c.providerError());
+                } else if (c.rawOutput() != null && c.rawOutput().startsWith("[" + c.provider() + "-error]")) {
+                    providerErrors.add("primary(" + c.model() + "): " + c.rawOutput());
+                }
             }
-            String initialRawLlmText = !allLlmCalls.isEmpty() ? allLlmCalls.get(0).rawOutput() : "";
+            for (LlmCallRecord c : fallbackTurnCalls) {
+                if (c.providerError() != null && !c.providerError().isBlank()) {
+                    providerErrors.add("fallback(" + c.model() + "): " + c.providerError());
+                } else if (c.rawOutput() != null && c.rawOutput().startsWith("[" + c.provider() + "-error]")) {
+                    providerErrors.add("fallback(" + c.model() + "): " + c.rawOutput());
+                }
+            }
+            String providerErrorJoined = String.join(" | ", providerErrors);
+
+            String initialRawLlmText = effectiveCall != null && effectiveCall.rawOutput() != null
+                    ? effectiveCall.rawOutput()
+                    : "";
             CleanAgentOutputRefereeAndSanitizer.StructuredLlmOutput initialStructured =
-                    (initialRawLlmText != null && !initialRawLlmText.isBlank())
+                    (!initialRawLlmText.isBlank())
                             ? CleanAgentOutputRefereeAndSanitizer.parseStructuredLlmJsonOutput(initialRawLlmText, 0)
                             : null;
-            boolean parsedFromJson = initialStructured != null && initialStructured.parsedFromJson();
+            boolean rawJsonParsed = initialStructured != null && initialStructured.parsedFromJson();
+            boolean parsedFromJson = rawJsonParsed && !fallbackUsed && providerErrorJoined.isEmpty();
+
+            Map<String, Object> modelTelemetry = new LinkedHashMap<>();
+            modelTelemetry.put("requested_model", llmProps.resolveModel());
+            modelTelemetry.put("actual_model", effectiveCall != null && effectiveCall.actualModel() != null && !effectiveCall.actualModel().isBlank()
+                    ? effectiveCall.actualModel()
+                    : (effectiveCall != null ? effectiveCall.model() : ""));
+            modelTelemetry.put("fallback_used", fallbackUsed);
+            modelTelemetry.put("provider_error", providerErrorJoined);
+            modelTelemetry.put("json_valid", parsedFromJson);
+            modelTelemetry.put("raw_json_parsed", rawJsonParsed);
+            modelTelemetry.put("provider_request_id", effectiveCall != null && effectiveCall.providerRequestId() != null ? effectiveCall.providerRequestId() : "");
+
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection rawLlmRef =
                     (initialStructured != null && initialStructured.aciReflection() != null)
                             ? initialStructured.aciReflection()
@@ -778,6 +863,7 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             turnRecord.put("customerMessage", customerMsg);
             turnRecord.put("historicalBotReply", turnNode.path("historicalBotReply").asText(""));
             turnRecord.put("expectedBehavior", turnNode.path("expectedBehavior"));
+            turnRecord.put("modelTelemetry", modelTelemetry);
             turnRecord.put("inputAndContext", inputAndContext);
             turnRecord.put("skillAndDecision", skillAndDecision);
             turnRecord.put("retrieval", retrievalTelemetry);
@@ -1280,6 +1366,7 @@ public class Sbr01ReplayBenchmarkHarnessTest {
 
                 Map<String, Object> runOutMap = new LinkedHashMap<>();
                 runOutMap.put("runIndex", run.get("runIndex"));
+                runOutMap.put("modelTelemetry", t.get("modelTelemetry"));
                 runOutMap.put("rawBubbles", rawOut.get("bubbles"));
                 runOutMap.put("postRefereeBubbles", postRefOut.get("bubbles"));
                 runOutMap.put("finalBubbles", finalOut.get("bubbles"));
@@ -1343,6 +1430,9 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             boolean isFallbackProvider,
             String provider,
             String model,
+            String actualModel,
+            String providerRequestId,
+            String providerError,
             String prompt,
             int maxTokens,
             boolean thinkingEnabled,
@@ -1381,13 +1471,31 @@ public class Sbr01ReplayBenchmarkHarnessTest {
             long t0 = System.nanoTime();
             String ts = Instant.now().toString();
             String out = super.complete(prompt, budget);
-            long elapsedMs = Math.max(1L, (System.nanoTime() - t0) / 1_000_000L);
             OpenAiCallTelemetry tel = super.getLastCallTelemetry();
+            if (!isFallback && tel != null && tel.providerError() != null
+                    && (tel.providerError().contains("Error while extracting response")
+                        || tel.providerError().contains("EOF")
+                        || tel.providerError().contains("Connection reset"))) {
+                log.warn("[SBR-01] Transient HTTP stream extraction error on primary model ({}), retrying once after 500ms...", tel.providerError());
+                try {
+                    Thread.sleep(500L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                t0 = System.nanoTime();
+                ts = Instant.now().toString();
+                out = super.complete(prompt, budget);
+                tel = super.getLastCallTelemetry();
+            }
+            long elapsedMs = Math.max(1L, (System.nanoTime() - t0) / 1_000_000L);
             turnCalls.add(new LlmCallRecord(
                     turnCalls.size() + 1,
                     isFallback,
                     tel != null ? tel.provider() : "openai_compatible",
                     tel != null ? tel.model() : "qwen3.8-max",
+                    tel != null && tel.actualModel() != null ? tel.actualModel() : "",
+                    tel != null && tel.providerRequestId() != null ? tel.providerRequestId() : "",
+                    tel != null && tel.providerError() != null ? tel.providerError() : "",
                     prompt,
                     budget != null ? budget.maxTokens() : 0,
                     budget != null && budget.thinkingMode() != null && budget.thinkingMode().thinkEnabled(),
@@ -1625,7 +1733,77 @@ public class Sbr01ReplayBenchmarkHarnessTest {
         );
 
         String promptSha = snapRoot.path("systemPrompt").path("sha256").asText("");
+        try {
+            Path activePromptPath = resolveRepoRoot().resolve("config/aci_v2_system_prompt.md");
+            if (Files.exists(activePromptPath)) {
+                promptSha = sha256Hex(Files.readString(activePromptPath, StandardCharsets.UTF_8));
+            }
+        } catch (Exception ignored) {
+        }
         return new SharedReadOnlySnapshotData(page, docs, chunks, skills, rules, promptSha);
+    }
+
+    private Map<String, Object> runModelPreflightCheck(LlmProperties llmProps) {
+        String preflightPrompt = "Trả lời duy nhất 1 JSON object hợp lệ: {\"bubbles\": [\"preflight_ok\"]}";
+        ReasoningBudget preflightBudget = new ReasoningBudget(
+                com.example.docmind.service.reasoning.QueryComplexity.SIMPLE,
+                "none",
+                30,
+                500,
+                3000,
+                64,
+                0.0,
+                0.9,
+                1.0,
+                ThinkingMode.FAST_NO_THINK
+        );
+        TelemetrySpyOpenAiLlmClient primaryClient = new TelemetrySpyOpenAiLlmClient(llmProps, jsonMapper, false);
+        String primaryOut = primaryClient.complete(preflightPrompt, preflightBudget);
+        OpenAiCompatibleLlmClient.OpenAiCallTelemetry pTel = primaryClient.getLastCallTelemetry();
+        String pErr = pTel != null && pTel.providerError() != null ? pTel.providerError() : "";
+        boolean pJsonValid = primaryOut != null && primaryOut.strip().startsWith("{") && primaryOut.contains("preflight_ok") && pErr.isEmpty();
+
+        Map<String, Object> primaryMap = new LinkedHashMap<>();
+        primaryMap.put("requested_model", llmProps.resolveModel());
+        primaryMap.put("actual_model", pTel != null && pTel.actualModel() != null ? pTel.actualModel() : "");
+        primaryMap.put("provider_request_id", pTel != null && pTel.providerRequestId() != null ? pTel.providerRequestId() : "");
+        primaryMap.put("provider_error", pErr);
+        primaryMap.put("json_valid", pJsonValid);
+        primaryMap.put("latency_ms", pTel != null ? pTel.latencyMs() : 0L);
+
+        Map<String, Object> fallbackMap = new LinkedHashMap<>();
+        if (llmProps.hasFallbackProvider()) {
+            LlmProperties fbProps = llmProps.toFallbackProperties();
+            TelemetrySpyOpenAiLlmClient fbClient = new TelemetrySpyOpenAiLlmClient(fbProps, jsonMapper, true);
+            String fbOut = fbClient.complete(preflightPrompt, preflightBudget);
+            OpenAiCompatibleLlmClient.OpenAiCallTelemetry fbTel = fbClient.getLastCallTelemetry();
+            String fbErr = fbTel != null && fbTel.providerError() != null ? fbTel.providerError() : "";
+            boolean fbJsonValid = fbOut != null && fbOut.strip().startsWith("{") && fbOut.contains("preflight_ok") && fbErr.isEmpty();
+            fallbackMap.put("requested_model", fbProps.resolveModel());
+            fallbackMap.put("actual_model", fbTel != null && fbTel.actualModel() != null ? fbTel.actualModel() : "");
+            fallbackMap.put("provider_request_id", fbTel != null && fbTel.providerRequestId() != null ? fbTel.providerRequestId() : "");
+            fallbackMap.put("provider_error", fbErr);
+            fallbackMap.put("json_valid", fbJsonValid);
+            fallbackMap.put("latency_ms", fbTel != null ? fbTel.latencyMs() : 0L);
+        }
+
+        log.info("[SBR-01 PREFLIGHT] Primary model={} actual={} jsonValid={} err='{}' | Fallback={}",
+                primaryMap.get("requested_model"), primaryMap.get("actual_model"), primaryMap.get("json_valid"),
+                primaryMap.get("provider_error"), fallbackMap);
+
+        assertThat(pErr)
+                .as("CP1.1 Preflight failed: Primary LLM (%s) returned provider_error: %s", llmProps.resolveModel(), pErr)
+                .isEmpty();
+        assertThat(pJsonValid)
+                .as("CP1.1 Preflight failed: Primary LLM (%s) did not return valid JSON. Output: %s", llmProps.resolveModel(), primaryOut)
+                .isTrue();
+
+        Map<String, Object> preflight = new LinkedHashMap<>();
+        preflight.put("executedAtIso", Instant.now().toString());
+        preflight.put("primary", primaryMap);
+        preflight.put("fallback", fallbackMap);
+        preflight.put("preflightPass", pJsonValid && pErr.isEmpty());
+        return preflight;
     }
 
     private KnowledgePageRepository buildReadOnlyPageRepo(KnowledgePageEntity page) {
@@ -2000,6 +2178,40 @@ public class Sbr01ReplayBenchmarkHarnessTest {
         assertThat(missingPrompt).as("every replayed turn must have its stored prompt file").isZero();
         log.info("[SBR-01 FIX-0] Rescore done: turns={} safetyOld={} safetyNew={} overallOld={} overallNew={} casesOld={} casesNew={} flips={}",
                 total, oldSafetyPass, newSafetyPass, oldOverall, newOverall, casesOld, casesNew, flips.size());
+    }
+
+    private static String sha256Hex(String input) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest((input != null ? input : "").getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String resolveGitHead(Path repoRoot) {
+        String prop = System.getProperty("sbr01.gitHead", "").strip();
+        if (!prop.isEmpty()) {
+            return prop;
+        }
+        try {
+            Process p = new ProcessBuilder("git", "rev-parse", "HEAD")
+                    .directory(repoRoot.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+            int code = p.waitFor();
+            if (code == 0 && !out.isEmpty()) {
+                return out;
+            }
+        } catch (Exception ignored) {
+        }
+        return "UNKNOWN";
     }
 
     private static String enumName(Enum<?> e, String fallback) {

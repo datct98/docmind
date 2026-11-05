@@ -1,6 +1,6 @@
 # SBR-01 FIX-3 — Offline punctuation replay (generated)
 
-- Git HEAD: `48b6c4e+FIX3-worktree` — LLM calls: 0
+- Git HEAD: `e2451e00518e0cf516e912a46b67db5c85608bfa` — LLM calls: 0
 - normalize step: recorded 9, with punctuation mutation old/new = 9/0
 - P37B2 step: recorded 26, with punctuation mutation old/new = 4/0
 

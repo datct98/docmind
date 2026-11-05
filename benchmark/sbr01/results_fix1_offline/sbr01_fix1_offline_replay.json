@@ -1,6 +1,6 @@
 {
   "fixId" : "FIX-1",
-  "gitHead" : "05012cb+FIX1-worktree",
+  "gitHead" : "e2451e00518e0cf516e912a46b67db5c85608bfa",
   "llmCallsMade" : 0,
   "replayScope" : "enforceGroundedApologyAgainstHistoryInPlace(6-arg) + stripUnsolicitedPackagePitchOnNegativeReactionInPlace",
   "totalStoredTurns" : 279,

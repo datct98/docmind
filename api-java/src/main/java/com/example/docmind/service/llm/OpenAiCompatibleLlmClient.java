@@ -59,8 +59,29 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             int promptTokens,
             int completionTokens,
             int reasoningTokens,
-            int cachedTokens
+            int cachedTokens,
+            String actualModel,
+            String providerRequestId,
+            String providerError
     ) {
+        public OpenAiCallTelemetry(
+                String provider,
+                String model,
+                ThinkingMode thinkingMode,
+                int maxTokens,
+                boolean containedThinkField,
+                String reasoningBrief,
+                long latencyMs,
+                int promptChars,
+                int promptTokens,
+                int completionTokens,
+                int reasoningTokens,
+                int cachedTokens
+        ) {
+            this(provider, model, thinkingMode, maxTokens, containedThinkField, reasoningBrief, latencyMs,
+                    promptChars, promptTokens, completionTokens, reasoningTokens, cachedTokens, model, "", "");
+        }
+
         public OpenAiCallTelemetry(
                 String provider,
                 String model,
@@ -70,7 +91,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 String reasoningBrief,
                 long latencyMs
         ) {
-            this(provider, model, thinkingMode, maxTokens, containedThinkField, reasoningBrief, latencyMs, 0, 0, 0, 0, 0);
+            this(provider, model, thinkingMode, maxTokens, containedThinkField, reasoningBrief, latencyMs,
+                    0, 0, 0, 0, 0, model, "", "");
         }
 
         public int thinkingChars() {
@@ -237,16 +259,20 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     parsed.promptTokens(),
                     parsed.completionTokens(),
                     parsed.reasoningTokens(),
-                    parsed.cachedTokens()
+                    parsed.cachedTokens(),
+                    parsed.actualModel(),
+                    parsed.providerRequestId(),
+                    parsed.providerError()
             );
             boolean isFallback = result != null && result.startsWith("[" + provider + "-error]");
-            log.info("[LLM] Response received from provider={}, model={}, latencyMs={}, promptTokens={}, completionTokens={}, reasoningTokens={}, cachedTokens={}, status={}",
-                    provider, model, latencyMs,
+            log.info("[LLM] Response received from provider={}, model={}, actualModel={}, reqId={}, latencyMs={}, promptTokens={}, completionTokens={}, reasoningTokens={}, cachedTokens={}, status={}",
+                    provider, model, parsed.actualModel(), parsed.providerRequestId(), latencyMs,
                     parsed.promptTokens(), parsed.completionTokens(), parsed.reasoningTokens(), parsed.cachedTokens(),
                     isFallback ? "fallback" : "ok");
             return result;
         } catch (Exception e) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000L;
+            String errMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             this.lastCallTelemetry = new OpenAiCallTelemetry(
                     provider,
                     model,
@@ -254,7 +280,15 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     targetTokens,
                     false,
                     "",
-                    latencyMs
+                    latencyMs,
+                    safePrompt.length(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    "",
+                    "",
+                    errMsg
             );
             log.warn("[LLM] Response received from provider={}, model={}, latencyMs={}, status=fallback (error={})",
                     provider, model, latencyMs, e.getMessage());
@@ -436,7 +470,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             int completionTokens,
             int reasoningTokens,
             int cachedTokens,
-            boolean emptyContentWithReasoning
+            boolean emptyContentWithReasoning,
+            String actualModel,
+            String providerRequestId,
+            String providerError
     ) {
     }
 
@@ -445,11 +482,14 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
      */
     private ParsedCompletion parseCompletion(String rawJson, String prompt) {
         if (rawJson == null || rawJson.isBlank()) {
-            return new ParsedCompletion(buildFallbackAnswer(prompt, "Phản hồi rỗng từ " + provider), 0, 0, 0, 0, false);
+            String err = "Phản hồi rỗng từ " + provider;
+            return new ParsedCompletion(buildFallbackAnswer(prompt, err), 0, 0, 0, 0, false, "", "", err);
         }
 
         try {
             JsonNode root = objectMapper.readTree(rawJson);
+            String actualModel = root.path("model").asText(this.model != null ? this.model : "");
+            String providerRequestId = root.path("id").asText("");
             JsonNode usage = root.path("usage");
             int promptTokens = usage.path("prompt_tokens").asInt(usage.path("input_tokens").asInt(0));
             int completionTokens = usage.path("completion_tokens").asInt(usage.path("output_tokens").asInt(0));
@@ -467,7 +507,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 }
                 String cleaned = anthropicText.toString().replaceAll("(?s)<think>.*?</think>", "").strip();
                 if (!cleaned.isEmpty()) {
-                    return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                    return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens,
+                            false, actualModel, providerRequestId, "");
                 }
             }
 
@@ -484,7 +525,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     }
                     String cleaned = geminiText.toString().replaceAll("(?s)<think>.*?</think>", "").strip();
                     if (!cleaned.isEmpty()) {
-                        return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                        return new ParsedCompletion(cleaned, promptTokens, completionTokens, reasoningTokens, cachedTokens,
+                                false, actualModel, providerRequestId, "");
                     }
                 }
             }
@@ -494,10 +536,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 JsonNode errorNode = root.path("error");
                 if (!errorNode.isMissingNode()) {
                     String msg = errorNode.path("message").asText("Lỗi API từ " + provider);
-                    return new ParsedCompletion(buildFallbackAnswer(prompt, msg), promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                    return new ParsedCompletion(buildFallbackAnswer(prompt, msg), promptTokens, completionTokens, reasoningTokens, cachedTokens,
+                            false, actualModel, providerRequestId, msg);
                 }
-                return new ParsedCompletion(buildFallbackAnswer(prompt, "Không tìm thấy trường 'choices' trong phản hồi từ " + provider),
-                        promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+                String err = "Không tìm thấy trường 'choices' trong phản hồi từ " + provider;
+                return new ParsedCompletion(buildFallbackAnswer(prompt, err),
+                        promptTokens, completionTokens, reasoningTokens, cachedTokens, false, actualModel, providerRequestId, err);
             }
 
             JsonNode choice0 = choices.get(0);
@@ -520,14 +564,17 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                         || !reasoning.isBlank()
                         || content.contains("<think>")
                         || "length".equalsIgnoreCase(finishReason);
-                return new ParsedCompletion(buildFallbackAnswer(prompt, "Nội dung trả lời bị cắt cụt/rỗng từ " + provider),
-                        promptTokens, completionTokens, reasoningTokens, cachedTokens, hadHiddenReasoning);
+                String err = "Nội dung trả lời bị cắt cụt/rỗng từ " + provider;
+                return new ParsedCompletion(buildFallbackAnswer(prompt, err),
+                        promptTokens, completionTokens, reasoningTokens, cachedTokens, hadHiddenReasoning, actualModel, providerRequestId, err);
             }
 
-            return new ParsedCompletion(text, promptTokens, completionTokens, reasoningTokens, cachedTokens, false);
+            return new ParsedCompletion(text, promptTokens, completionTokens, reasoningTokens, cachedTokens,
+                    false, actualModel, providerRequestId, "");
         } catch (Exception e) {
             log.warn("[{}] Lỗi parse JSON phản hồi LLM: {}", provider, e.getMessage());
-            return new ParsedCompletion(buildFallbackAnswer(prompt, "Lỗi giải mã JSON phản hồi: " + e.getMessage()), 0, 0, 0, 0, false);
+            String err = "Lỗi giải mã JSON phản hồi: " + e.getMessage();
+            return new ParsedCompletion(buildFallbackAnswer(prompt, err), 0, 0, 0, 0, false, "", "", err);
         }
     }
 
