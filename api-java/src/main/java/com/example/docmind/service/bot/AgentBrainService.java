@@ -52,6 +52,33 @@ public class AgentBrainService {
     public static final int MAX_CARE_NOTES_PER_CUSTOMER = 4;
     public static final int MAX_VERIFIED_FACTS_PER_CUSTOMER = 5;
 
+    /**
+     * SBR-01 Wave 1 CP3.1 toggle flag: enforce conversation_goal lifecycle so transient emotions/complaints
+     * never become long-term sticky goals, and goal updates occur when new customer need facts or explicit pivots arrive.
+     * Configurable via {@code -Ddocmind.aci.cp3.goal-lifecycle.enabled=true|false} or {@code DOCMIND_ACI_CP3_GOAL_LIFECYCLE_ENABLED}.
+     */
+    private static volatile Boolean cp3GoalLifecycleEnabledOverride = null;
+
+    public static boolean isCp3GoalLifecycleEnabled() {
+        Boolean override = cp3GoalLifecycleEnabledOverride;
+        if (override != null) {
+            return override;
+        }
+        String sysProp = System.getProperty("docmind.aci.cp3.goal-lifecycle.enabled");
+        if (sysProp != null && !sysProp.isBlank()) {
+            return !"false".equalsIgnoreCase(sysProp.strip()) && !"0".equals(sysProp.strip());
+        }
+        String envVal = System.getenv("DOCMIND_ACI_CP3_GOAL_LIFECYCLE_ENABLED");
+        if (envVal != null && !envVal.isBlank()) {
+            return !"false".equalsIgnoreCase(envVal.strip()) && !"0".equals(envVal.strip());
+        }
+        return true;
+    }
+
+    public static void setCp3GoalLifecycleEnabled(Boolean enabled) {
+        cp3GoalLifecycleEnabledOverride = enabled;
+    }
+
     /** 5 nhóm slot đa ngành chuẩn hóa (Checkpoint C3-A.2). */
     public enum FactSlotGroup {
         SLOT_TARGET_SCOPE("slot_target_scope"),
@@ -2029,14 +2056,45 @@ public class AgentBrainService {
                 || reflection.confirmedFactsDelta().stream().anyMatch(d ->
                         d != null && (d.op() == AdaptiveConversationIntelligence.FactMutationOp.REVISE
                                 || d.effectiveValidity() == AdaptiveConversationIntelligence.FactValidity.SUPERSEDED)
-                                && "need_scope".equals(d.key()));
+                                && ("need_scope".equals(d.key())
+                                    || "preferred_package".equals(d.key())
+                                    || "preferred_branch".equals(d.key())
+                                    || "available_time".equals(d.key())));
         String proposedGoal = reflection.conversationGoal();
-        boolean isEstablishedGoal = mem.draft2ConversationGoal != null
-                && !mem.draft2ConversationGoal.isBlank()
-                && !"EXPLORE_SERVICES".equalsIgnoreCase(mem.draft2ConversationGoal);
-        if (proposedGoal != null && !isSideTopicOrOperationalGoalString(proposedGoal)) {
-            if (!isEstablishedGoal || hasReviseOnNeed) {
-                mem.draft2ConversationGoal = proposedGoal;
+        if (isCp3GoalLifecycleEnabled()) {
+            if (isTransientEmotionOrComplaintGoalString(mem.draft2ConversationGoal)) {
+                mem.draft2ConversationGoal = "EXPLORE_SERVICES";
+            }
+            boolean isEstablishedGoal = mem.draft2ConversationGoal != null
+                    && !mem.draft2ConversationGoal.isBlank()
+                    && !isGenericDiscoveryPlaceholderGoal(mem.draft2ConversationGoal);
+            boolean pureComplaintTurn = CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(originalCustomerMessage)
+                    && !CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(originalCustomerMessage)
+                    && !(AdaptiveConversationIntelligence.classifyPriceIntentSubMode(originalCustomerMessage) != AdaptiveConversationIntelligence.PriceIntentSubMode.NONE);
+            boolean validLongTermProposal = proposedGoal != null
+                    && !proposedGoal.isBlank()
+                    && !isSideTopicOrOperationalGoalString(proposedGoal)
+                    && !isTransientEmotionOrComplaintGoalString(proposedGoal);
+            if (!pureComplaintTurn && validLongTermProposal) {
+                boolean hasNewNeedInfo = hasNewCustomerNeedFactInTurn(reflection, mem, originalCustomerMessage);
+                boolean hasExplicitPivot = hasReviseOnNeed
+                        || hasExplicitCustomerGoalPivotInTurn(reflection, originalCustomerMessage, authoritativeBookingState, mem);
+                boolean upgradingFromPlaceholder = !isEstablishedGoal
+                        || (isGenericDiscoveryPlaceholderGoal(mem.draft2ConversationGoal)
+                            && !isGenericDiscoveryPlaceholderGoal(proposedGoal));
+                if (upgradingFromPlaceholder
+                        || ((hasNewNeedInfo || hasExplicitPivot) && !isGenericDiscoveryPlaceholderGoal(proposedGoal))) {
+                    mem.draft2ConversationGoal = proposedGoal.strip();
+                }
+            }
+        } else {
+            boolean isEstablishedGoal = mem.draft2ConversationGoal != null
+                    && !mem.draft2ConversationGoal.isBlank()
+                    && !"EXPLORE_SERVICES".equalsIgnoreCase(mem.draft2ConversationGoal);
+            if (proposedGoal != null && !isSideTopicOrOperationalGoalString(proposedGoal)) {
+                if (!isEstablishedGoal || hasReviseOnNeed) {
+                    mem.draft2ConversationGoal = proposedGoal;
+                }
             }
         }
 
@@ -2405,6 +2463,148 @@ public class AgentBrainService {
                 || low.contains("ăn nhẹ")
                 || low.contains("ask_inclusion")
                 || low.contains("amenity");
+    }
+
+    static boolean isTransientEmotionOrComplaintGoalString(String rawGoal) {
+        if (rawGoal == null || rawGoal.isBlank()) {
+            return false;
+        }
+        String low = java.text.Normalizer.normalize(rawGoal.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT)
+                .replace('_', ' ');
+        return low.contains("cảm xúc")
+                || low.contains("bức xúc")
+                || low.contains("khó chịu")
+                || low.contains("bực mình")
+                || low.contains("phàn nàn")
+                || low.contains("khiếu nại")
+                || low.contains("góp ý")
+                || low.contains("complaint")
+                || low.contains("feedback")
+                || low.contains("friction")
+                || low.contains("recovery")
+                || low.contains("xin lỗi")
+                || low.contains("nhận lỗi")
+                || low.contains("xoa dịu")
+                || low.contains("trấn an")
+                || low.contains("khôi phục thiện cảm")
+                || low.contains("giải tỏa bức xúc")
+                || low.contains("giải thoát băn khoăn")
+                || low.contains("băn khoăn giá")
+                || low.contains("hiểu lầm")
+                || low.contains("cách nói chuyện")
+                || low.contains("thái độ")
+                || low.contains("polite closure")
+                || low.contains("tạm dừng")
+                || low.contains("chào tạm biệt");
+    }
+
+    static boolean isGenericDiscoveryPlaceholderGoal(String rawGoal) {
+        if (rawGoal == null || rawGoal.isBlank()) {
+            return true;
+        }
+        String low = java.text.Normalizer.normalize(rawGoal.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT)
+                .replace('_', ' ')
+                .replaceAll("\\s+", " ");
+        return low.equals("explore services")
+                || low.equals("general inquiry")
+                || low.equals("khám phá nhu cầu")
+                || low.equals("kham pha nhu cau")
+                || low.equals("khám phá nhu cầu thư giãn")
+                || low.equals("khám phá nhu cầu thư giãn/chăm sóc cơ thể")
+                || low.equals("khám phá nhu cầu thư giãn/chăm sóc cơ thể của khách")
+                || low.equals("tư vấn chung")
+                || low.equals("tìm hiểu dịch vụ")
+                || low.equals("cung cấp bảng giá")
+                || low.equals("cung cap bang gia")
+                || low.equals("cung cấp giá dịch vụ")
+                || low.equals("báo giá chung")
+                || low.equals("so sanh goi")
+                || low.equals("so sánh gói");
+    }
+
+    private static boolean hasNewCustomerNeedFactInTurn(
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            CustomerBrainMemory mem,
+            String originalCustomerMessage
+    ) {
+        if (reflection != null && reflection.confirmedFactsDelta() != null) {
+            for (AdaptiveConversationIntelligence.FactDeltaProposal d : reflection.confirmedFactsDelta()) {
+                if (d == null || d.key() == null || d.value() == null || d.value().isBlank()) {
+                    continue;
+                }
+                String k = d.key().strip();
+                boolean isNeedKey = "self_reported_symptom".equals(k)
+                        || "need_scope".equals(k)
+                        || "available_time".equals(k)
+                        || "preferred_branch".equals(k)
+                        || "preferred_package".equals(k)
+                        || "customer_budget".equals(k)
+                        || "service_interest".equals(k)
+                        || "care_area".equals(k);
+                if (!isNeedKey) {
+                    continue;
+                }
+                if (d.effectiveValidity() == AdaptiveConversationIntelligence.FactValidity.CURRENT) {
+                    if ("self_reported_symptom".equals(k)) {
+                        String canon = AdaptiveConversationIntelligence.canonicalSymptomKey(d.value());
+                        boolean exists = mem.draft2SelfReportedSymptoms.stream()
+                                .anyMatch(f -> f != null
+                                        && f.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT
+                                        && AdaptiveConversationIntelligence.canonicalSymptomKey(f.value()).equals(canon));
+                        if (!exists) {
+                            return true;
+                        }
+                    } else {
+                        boolean exists = mem.draft2ConfirmedFacts.stream()
+                                .anyMatch(f -> f != null
+                                        && f.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT
+                                        && k.equals(f.key())
+                                        && f.value().equalsIgnoreCase(d.value().strip()));
+                        if (!exists) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        if (originalCustomerMessage != null && !originalCustomerMessage.isBlank()) {
+            String low = java.text.Normalizer.normalize(originalCustomerMessage.strip(), java.text.Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            if (low.matches("(?isU).*\\b(toàn\\s+thân|cả\\s+người|chăm\\s+sóc\\s+cả|cổ\\s+vai\\s+gáy|đau\\s+đầu|mất\\s+ngủ|khó\\s+ngủ|hoa\\s+mắt|ù\\s+tai|chóng\\s+mặt|mệt\\s+mỏi|quận\\s+1|hà\\s+nội|sài\\s+gòn|chi\\s+nhánh|cơ\\s+sở|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|\\d{1,2}\\s*h\\d{0,2})\\b.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasExplicitCustomerGoalPivotInTurn(
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            String originalCustomerMessage,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            CustomerBrainMemory mem
+    ) {
+        if (authoritativeBookingState != null && authoritativeBookingState.status().isActiveOrConfirmed()) {
+            return true;
+        }
+        if (reflection != null && reflection.customerUnderstanding() != null
+                && (reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
+                    || reflection.customerUnderstanding().buyingSignal() == AdaptiveConversationIntelligence.BuyingSignal.ACTION
+                    || reflection.customerUnderstanding().buyingSignal() == AdaptiveConversationIntelligence.BuyingSignal.STRONG)) {
+            return true;
+        }
+        if (originalCustomerMessage != null && !originalCustomerMessage.isBlank()) {
+            if (CleanAgentOutputRefereeAndSanitizer.hasBusinessOrCatalogClarificationDemandOnComplaintTurn(originalCustomerMessage)) {
+                return true;
+            }
+            String low = java.text.Normalizer.normalize(originalCustomerMessage.strip(), java.text.Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            if (low.matches("(?isU).*\\b(ngoài\\s+\\d+\\s+gói|còn\\s+gói\\s+nào\\s+khác|đổi\\s+ý|chuyển\\s+sang|thử\\s+gói|chọn\\s+gói|đặt\\s+lịch|giữ\\s+chỗ)\\b.*")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int findMatchingPendingCommitmentIndex(
