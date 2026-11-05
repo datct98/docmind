@@ -114,6 +114,7 @@ public class CustomerInsightEngine {
     /**
      * Phân tích toàn diện tâm lý khách hàng, nỗi đau tích lũy qua lịch sử chat, rào cản ngầm và nhiệt độ mua hàng.
      */
+    @Deprecated
     public CustomerInsightDto analyzeInsight(
             String currentMessage,
             List<FanpageBotRequest.ConversationTurn> history,
@@ -127,6 +128,7 @@ public class CustomerInsightEngine {
      * Phân tích tâm lý khách hàng nâng cao với bộ đo Nhiệt độ Mua hàng trạng thái (Stateful Buying Temperature),
      * tự động tính toán độ suy giảm nhiệt khi khách im lặng (idle decay) hoặc nhắn đối phó / ngập ngừng (half-hearted cooling).
      */
+    @Deprecated
     public CustomerInsightDto analyzeInsight(
             String currentMessage,
             List<FanpageBotRequest.ConversationTurn> history,

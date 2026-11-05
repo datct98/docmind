@@ -2170,7 +2170,7 @@ public class CleanAgentOrchestratorService {
             return false;
         }
         String trimmed = message.strip();
-        if (trimmed.matches("(?isU).*\\b(\\d{1,2}\\s*(?:h|giờ)|(?:đặt|giữ|book|xếp)\\s+(?:lịch\\s+)?giúp\\s+(?:mình|chị|anh|em|tôi)|đặt\\s+lịch\\s+lúc)\\b.*")) {
+        if (trimmed.matches("(?isU).*\\b(\\d{1,2}\\s*(?:h|giờ)|(?:đặt|giữ|book|xếp)\\s+(?:lịch\\s+)?giúp\\s+(?:mình|chị|anh|em|tôi)|đặt\\s+lịch\\s+lúc|chưa\\s+biết\\s+(?:nên|chọn|gói|bắt\\s+đầu|làm|đi|loại|dịch\\s+vụ|cái\\s+nào|hướng\\s+nào|có\\s+hợp)|tư\\s+vấn\\s+giúp|báo\\s+giá\\s+giúp|cho\\s+(?:mình|chị|anh|em|tôi)\\s+(?:hỏi|xin))\\b.*")) {
             return false;
         }
         return HESITATION_OR_DEFERRAL_CLEAN_PATTERN.matcher(trimmed).matches();
@@ -5066,8 +5066,11 @@ public class CleanAgentOrchestratorService {
 
         // ACI V3: Pre-resolve lựa chọn tương đối/đính chính của khách NGAY lượt này (trước Snapshot & Prompt)
         // để LLM thấy selected_product_id đã khóa trong <SESSION_MEMORY_5_TIER>; loại gói có tóc nếu khách đã từ chối hair_care.
-        if (AdaptiveConversationIntelligence.isTrialOrRelativeOptionSelectionMessage(originalVerbatim)
-                || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(originalVerbatim)) {
+        boolean hasPriorOfferedPackagesContext = (prevBotTurnText != null && !prevBotTurnText.isBlank())
+                || (presentedPackagesInHistory != null && !presentedPackagesInHistory.isEmpty());
+        if (hasPriorOfferedPackagesContext
+                && (AdaptiveConversationIntelligence.isTrialOrRelativeOptionSelectionMessage(originalVerbatim)
+                    || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(originalVerbatim))) {
             boolean excludeHairCare = draft2Before != null
                     && draft2Before.businessCommitment() != null
                     && draft2Before.businessCommitment().negativePreferences() != null
@@ -6583,6 +6586,11 @@ public class CleanAgentOrchestratorService {
         );
     }
 
+    /**
+     * @deprecated P0.3/P1: Retained only for legacy compatibility; production runtime uses
+     * {@link #selectPreLlmTurnRelevantSkills} which exposes all active skills (0/all).
+     */
+    @Deprecated
     static List<AgentSkillDto> selectAciTurnCandidateSkills(
             List<AgentSkillDto> availableSkills,
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
@@ -6630,7 +6638,7 @@ public class CleanAgentOrchestratorService {
             } else {
                 match = code.contains("discovery") || code.contains("empathy") || code.contains("scope") || "PSYCHOLOGY".equals(cat);
             }
-            if (match && candidates.size() < 3) {
+            if (match) {
                 candidates.add(s);
             }
         }
@@ -7247,38 +7255,32 @@ public class CleanAgentOrchestratorService {
                         || (!catalogBreadthCue && !packageComparisonCue && isCompareOrPriceSkill);
             } else if (deferOrBareClose) {
                 keep = isPauseSkill;
-            } else if (explicitBookingCue) {
-                if (preLlmBookingTier == CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION
-                        && skillAuditEnabled
-                        && code.contains("gentle_next_step")) {
-                    keep = true;
-                } else {
-                    keep = isBookingSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill) || (priceOrPackageQuery && (isCompareOrPriceSkill || isPackageComparisonSkill));
-                }
-            } else if (priceObjection) {
-                keep = isObjectionSkill
-                        || (packageComparisonCue && isPackageComparisonSkill)
-                        || (catalogBreadthCue && isCatalogBreadthSkill)
-                        || isCompareOrPriceSkill;
-            } else if (packageComparisonCue) {
-                keep = isPackageComparisonSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
-            } else if (catalogBreadthCue) {
-                keep = isCatalogBreadthSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
-            } else if (isScopeSelectionAfterNeedDiscovery) {
-                keep = isCompareOrPriceSkill || isPackageComparisonSkill;
             } else if (isolatedNeurologicalTurn) {
                 keep = isDiscoverySkill;
-            } else if (priceOrPackageQuery) {
-                keep = isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill) || (!hasPriorCustomerNeedInHistory && isDiscoverySkill);
             } else {
-                keep = isDiscoverySkill || (hasPriorCustomerNeedInHistory && isCompareOrPriceSkill);
+                boolean isEligibleConsultativeSkill = isDiscoverySkill
+                        || isCompareOrPriceSkill
+                        || isObjectionSkill
+                        || isPackageComparisonSkill
+                        || isCatalogBreadthSkill
+                        || (recoveryPivotCue && isRecoveryPivotSkill);
+                if (explicitBookingCue) {
+                    if (preLlmBookingTier == CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION
+                            && skillAuditEnabled
+                            && code.contains("gentle_next_step")) {
+                        keep = true;
+                    } else {
+                        keep = isBookingSkill || isEligibleConsultativeSkill;
+                    }
+                } else {
+                    keep = isEligibleConsultativeSkill;
+                }
             }
-            if (keep && matched.size() < 3) {
+            if (keep) {
                 matched.add(s);
             }
         }
         for (AgentSkillDto custom : customFallback) {
-            if (matched.size() >= 3) break;
             if (!matched.contains(custom)) {
                 matched.add(custom);
             }
@@ -7318,13 +7320,15 @@ public class CleanAgentOrchestratorService {
                     || isExplicitConversationRefusalStopMessage(msg))) {
             return ThinkingMode.FAST_NO_THINK;
         }
+        int wordCount = msg.isEmpty() ? 0 : msg.split("\\s+").length;
+        boolean complexMultiClausePriceObjection = wordCount >= 18 && isConfirmedCustomerPriceObjection(msg, true);
         if (multiBubbleBurst
                 || hasPendingCommitments
                 || AdaptiveConversationIntelligence.isPaymentClaimMessage(msg)
                 || AdaptiveConversationIntelligence.isStaffPromiseClaimMessage(msg)
                 || AdaptiveConversationIntelligence.isConcreteServiceIncidentMessage(msg)
                 || PrimaryActionRouter.isFrustrationMessage(msg)
-                || isConfirmedCustomerPriceObjection(msg, true)) {
+                || complexMultiClausePriceObjection) {
             return ThinkingMode.OBJECTION_REFRAME_THINK;
         }
         return ThinkingMode.FAST_NO_THINK;

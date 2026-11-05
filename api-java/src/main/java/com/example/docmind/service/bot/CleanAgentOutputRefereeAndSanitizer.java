@@ -3579,7 +3579,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         // 2. Khách từ chối dứt khoát hoặc xin tạm dừng cân nhắc (STAGE_6 / EXPLICIT_REFUSAL / POLITE_DEFERRAL) — 0 chào gói, 0 câu hỏi
         if ("STAGE_6_POLITE_DEFERRAL_RESPECT_PAUSE".equals(cleanStage)
                 || CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
-                || isExplicitConversationClosingDeferral(normMsg)) {
+                || isExplicitConversationClosingDeferral(normMsg)
+                || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(normMsg)
+                || AdaptiveConversationIntelligence.isCustomerDeferralMessage(normMsg)) {
             return List.of(new FanpageBotResponse.ReplyBubble(
                     "Dạ vâng ạ, " + sp + " tôn trọng quyết định của " + cp
                             + " và xin phép tạm dừng tư vấn tại đây ạ. Khi nào " + cp
@@ -3613,7 +3615,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
 
         // 4. Bảo toàn 6 trạng thái Đặt lịch / Đặt hàng tường minh (hoặc khách chủ động yêu cầu đặt lịch khi timeout)
-        if (bookingState != null && bookingState.status() != null
+        // P0.3 Guard: Nếu lượt hiện tại khách đang phản đối giá ("Đắt") hoặc so sánh giá đối thủ mà không có yêu cầu đặt lịch mới,
+        // TUYỆT ĐỐI KHÔNG rơi vào nhánh FALLBACK_BOOKING_HOLD ("Dạ em hỗ trợ đặt gói...").
+        boolean isCurrentTurnPriceObjectionOrComparison = !isExplicitBookingRequestForFallback(lowerMsg)
+                && (AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(normMsg)
+                    || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(normMsg));
+        if (!isCurrentTurnPriceObjectionOrComparison
+                && bookingState != null && bookingState.status() != null
                 && bookingState.status() != ConversationState.BookingStatus.NONE) {
             ConversationState.BookingStatus st = bookingState.status();
             PackageCatalogService.PackageSummary selectedBookingPkg = (bookingState.selectedProductId() != null && allCatalog != null)
@@ -3775,7 +3783,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return "FALLBACK_QUOTED_CONTEXT";
         }
         if (CleanAgentOrchestratorService.isExplicitConversationRefusalStopMessage(normMsg)
-                || isExplicitConversationClosingDeferral(normMsg)) {
+                || isExplicitConversationClosingDeferral(normMsg)
+                || CleanAgentOrchestratorService.isHesitationOrDeferralMessage(normMsg)
+                || AdaptiveConversationIntelligence.isCustomerDeferralMessage(normMsg)) {
             return "FALLBACK_RESPECTED_PAUSE";
         }
         boolean draft2WasFrustrated = draft2Before != null
@@ -3791,7 +3801,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 && !hasExplicitPriceDemandInMessage(normMsg)) {
             return "FALLBACK_SERVICE_RECOVERY";
         }
-        if ((bookingState != null && bookingState.status() != null && bookingState.status() != ConversationState.BookingStatus.NONE)
+        boolean isCurrentTurnPriceObjectionOrComparison = !isExplicitBookingRequestForFallback(lowerMsg)
+                && (AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(normMsg)
+                    || CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(normMsg));
+        if ((!isCurrentTurnPriceObjectionOrComparison
+                && bookingState != null && bookingState.status() != null && bookingState.status() != ConversationState.BookingStatus.NONE)
                 || isExplicitBookingRequestForFallback(lowerMsg)) {
             return "FALLBACK_BOOKING_HOLD";
         }
@@ -7861,14 +7875,12 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         : minPriceLow;
                 boolean mentionsStartingPrice = combinedLow.contains(minPriceLow) || combinedLow.contains(minPriceShortK);
                 if (!mentionsStartingPrice) {
-                    String dur = (minCorePkg.durationLabel() != null && !minCorePkg.durationLabel().isBlank())
-                            ? (" (" + minCorePkg.durationLabel().strip() + ")")
-                            : "";
-                    String pkgName = (minCorePkg.displayName() != null && !minCorePkg.displayName().isBlank())
-                            ? minCorePkg.displayName().strip()
-                            : minCorePkg.canonicalLabel();
-                    String startingAnchorSentence = "Dạ các gói chăm sóc bên " + safeSelf + " khởi điểm từ "
-                            + pkgName + dur + " giá " + minCorePkg.priceDisplay() + " ạ.";
+                    String anchorText = CleanAgentCatalogAndPromptBuilder.resolveLowestCoreStartingPackageAnchor(
+                            eligibleCatalog, List.of());
+                    String startingAnchorSentence = !anchorText.isBlank()
+                            ? ("Dạ các gói chăm sóc bên " + safeSelf + " có " + anchorText + " ạ.")
+                            : ("Dạ các gói chăm sóc bên " + safeSelf + " khởi điểm từ "
+                                    + minCorePkg.canonicalLabel() + " giá " + minCorePkg.priceDisplay() + " ạ.");
                     FanpageBotResponse.ReplyBubble firstBubble = processed.get(0);
                     processed.set(0, new FanpageBotResponse.ReplyBubble(
                             startingAnchorSentence + " " + firstBubble.text(),

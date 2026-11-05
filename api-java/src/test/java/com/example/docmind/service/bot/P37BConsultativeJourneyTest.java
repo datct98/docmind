@@ -628,7 +628,7 @@ class P37BConsultativeJourneyTest {
                 + "}";
         var reconciledObj = AdaptiveConversationIntelligence.parseAndReconcileAdaptiveCognitiveReflection(
                 objectMapper.readTree(firstObjJson), "đắt");
-        assertThat(reconciledObj.barrierType()).isEqualTo("VALUE_PERCEPTION_GAP");
+        assertThat(reconciledObj.barrierType()).isEqualTo("BUDGET_LIMIT");
         assertThat(reconciledObj.responsePlan().nextAction()).isEqualTo("SOFT_FEELING_CHECK");
 
         String deferralJson = "{"
