@@ -727,9 +727,11 @@ public class Sbr01ReplayBenchmarkHarnessTest {
                 }
             }
             List<Map<String, String>> goodExamplesInPrompt = new ArrayList<>();
-            for (AgentSkillDto s : availSkills) {
-                if (s != null && s.code() != null && finalDynamicPrompt.contains(s.code()) && s.goodExample() != null && !s.goodExample().isBlank()) {
-                    goodExamplesInPrompt.add(Map.of("skillCode", s.code(), "goodExample", s.goodExample()));
+            if (CleanAgentCatalogAndPromptBuilder.isCp3SkillGoodExampleEnabled()) {
+                for (AgentSkillDto s : availSkills) {
+                    if (s != null && s.code() != null && finalDynamicPrompt.contains(s.code()) && s.goodExample() != null && !s.goodExample().isBlank()) {
+                        goodExamplesInPrompt.add(Map.of("skillCode", s.code(), "goodExample", s.goodExample()));
+                    }
                 }
             }
 

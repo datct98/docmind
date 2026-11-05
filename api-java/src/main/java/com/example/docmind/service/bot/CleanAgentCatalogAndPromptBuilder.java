@@ -2486,9 +2486,11 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("1. verified_customer_facts: ").append(verifiedFacts).append('\n')
           .append("2. current_stage_and_buying_state: ").append(buyingState).append('\n')
           .append("3. turn_tactical_focus: \"").append(tacticalFocus).append("\"\n")
-          .append("4. contrastive_reference:\n")
-          .append("   - good_example: \"").append(goodExample).append("\"\n")
-          .append("   - anti_pattern: \"").append(antiPattern).append("\"\n")
+          .append("4. contrastive_reference:\n");
+        if (isCp3SkillGoodExampleEnabled()) {
+            sb.append("   - good_example: \"").append(goodExample).append("\"\n");
+        }
+        sb.append("   - anti_pattern: \"").append(antiPattern).append("\"\n")
           .append("</AGENT_BRAIN_INSIGHT>\n\n");
     }
 
@@ -6074,12 +6076,19 @@ public final class CleanAgentCatalogAndPromptBuilder {
           .append("\\\"\"\n");
 
         if (!activeSkills.isEmpty()) {
+            boolean includeGoodExample = isCp3SkillGoodExampleEnabled();
             sb.append("    enabled_agent_skills:\n");
             for (AgentSkillDto s : activeSkills) {
                 String code = (s.code() != null && !s.code().isBlank()) ? s.code().strip() : "skill";
                 String coreDirective = extractCompactSkillDirective(s, 220);
                 String anti = compactCompleteClause(s.antiPattern(), 240);
                 sb.append("      - [").append(code).append("] ").append(coreDirective);
+                if (includeGoodExample && s.goodExample() != null && !s.goodExample().isBlank()) {
+                    String goodEx = compactCompleteClause(s.goodExample(), 180);
+                    if (!goodEx.isEmpty()) {
+                        sb.append(" | Mẫu tham khảo: ").append(goodEx);
+                    }
+                }
                 if (!anti.isEmpty()) {
                     sb.append(" | Tránh: ").append(anti);
                 }
@@ -6293,6 +6302,37 @@ public final class CleanAgentCatalogAndPromptBuilder {
         }
         // Hỏi thẳng thông tin vận hành cụ thể ở lượt 1 (địa chỉ, cơ sở, giờ mở/đóng cửa, chỗ đỗ xe)
         return norm.matches("(?isU).*\\b(địa\\s+chỉ|ở\\s+đâu|chi\\s+nhánh|cơ\\s+sở\\s+nào|mấy\\s+giờ\\s+(mở|đóng|nghỉ)|giờ\\s+mở\\s+cửa|đỗ\\s+(xe|ô\\s*tô)|gửi\\s+xe)\\b.*");
+    }
+
+    // =========================================================================
+    // SBR-01 Wave 1 — CP3.3: Toggle Flag for Skill good_example Injection
+    // =========================================================================
+
+    private static volatile Boolean CP3_SKILL_GOOD_EXAMPLE_ENABLED_OVERRIDE = null;
+
+    /**
+     * Cờ cấu hình bật/tắt việc đưa {@code good_example} của Agent Skills vào prompt (CP3.3).
+     * Có thể truyền qua JVM property {@code -Ddocmind.aci.cp3.skill-good-example.enabled=false}
+     * hoặc biến môi trường {@code DOCMIND_ACI_CP3_SKILL_GOOD_EXAMPLE_ENABLED=false}. Mặc định: {@code true}.
+     */
+    public static boolean isCp3SkillGoodExampleEnabled() {
+        Boolean override = CP3_SKILL_GOOD_EXAMPLE_ENABLED_OVERRIDE;
+        if (override != null) {
+            return override;
+        }
+        String sys = System.getProperty("docmind.aci.cp3.skill-good-example.enabled");
+        if (sys != null && !sys.isBlank()) {
+            return !"false".equalsIgnoreCase(sys.strip()) && !"0".equals(sys.strip());
+        }
+        String env = System.getenv("DOCMIND_ACI_CP3_SKILL_GOOD_EXAMPLE_ENABLED");
+        if (env != null && !env.isBlank()) {
+            return !"false".equalsIgnoreCase(env.strip()) && !"0".equals(env.strip());
+        }
+        return true;
+    }
+
+    public static void setCp3SkillGoodExampleEnabled(Boolean enabled) {
+        CP3_SKILL_GOOD_EXAMPLE_ENABLED_OVERRIDE = enabled;
     }
 
     private static String extractCompactSkillDirective(AgentSkillDto skill, int maxChars) {
