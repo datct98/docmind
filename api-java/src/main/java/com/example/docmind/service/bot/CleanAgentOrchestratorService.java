@@ -5960,7 +5960,8 @@ public class CleanAgentOrchestratorService {
                     handoffDecision,
                     false,
                     verifiedPageSlaPolicy,
-                    actualSentSpeechAct
+                    actualSentSpeechAct,
+                    combinedReplyText
             );
             agentBrainService.recordBookingState(pageId, senderId, authoritativeBookingState);
             agentBrainService.recordBookingExecutionMetadata(
@@ -7368,8 +7369,8 @@ public class CleanAgentOrchestratorService {
                 : com.example.docmind.service.reasoning.QueryComplexity.SIMPLE;
         // Unit P3.6 (P0): Đã kiểm nghiệm thực nghiệm A/B với qwen3.8-flash:
         // reasoning_effort="none" trên FAST_NO_THINK giảm ~64% reasoningTokens (~1200 tokens + ~650 tokens JSON < 2500 maxTokens)
-        // và reasoning_effort="low" trên DEEP_THINK (~2050 tokens + ~650 tokens JSON < 3200 maxTokens)
-        int maxTokens = deep ? 3200 : 2500;
+        // và reasoning_effort="low" + enable_thinking=true trên DEEP_THINK (~5790 reasoningTokens + ~500 tokens JSON <= 6400 maxTokens)
+        int maxTokens = deep ? 6400 : 2500;
         String effort = deep ? "low" : "none";
         int timeoutSec = deep ? 90 : 75;
         return new ReasoningBudget(

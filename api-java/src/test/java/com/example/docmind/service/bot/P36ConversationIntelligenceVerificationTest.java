@@ -86,7 +86,7 @@ class P36ConversationIntelligenceVerificationTest {
         gwServer.verify();
         gwServer.reset();
 
-        // OBJECTION_REFRAME_THINK on Qwen non-DashScope gateway also caps reasoning_effort='none'
+        // OBJECTION_REFRAME_THINK on Qwen non-DashScope gateway enables thinking and passes budget reasoning_effort ('low')
         ReasoningBudget objectionBudget = new ReasoningBudget(
                 QueryComplexity.DEEP_REASONING,
                 "low",
@@ -101,8 +101,8 @@ class P36ConversationIntelligenceVerificationTest {
         );
         gwServer.expect(requestTo("https://api.x-apikey.com/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
-                .andExpect(jsonPath("$.enable_thinking").value(false))
-                .andExpect(jsonPath("$.reasoning_effort").value("none"))
+                .andExpect(jsonPath("$.enable_thinking").value(true))
+                .andExpect(jsonPath("$.reasoning_effort").value("low"))
                 .andExpect(jsonPath("$.max_tokens").value(3200))
                 .andRespond(withSuccess(
                         "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"bubbles\\\":[\\\"Dạ gói 399k làm trọn 60 phút toàn thân ạ.\\\"]}\"}}],\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":380,\"completion_tokens_details\":{\"reasoning_tokens\":260}}}",

@@ -956,7 +956,7 @@ class OpenAiCompatibleLlmClientTest {
 
         server.expect(requestTo("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
-                .andExpect(jsonPath("$.enable_thinking").value(false))
+                .andExpect(jsonPath("$.enable_thinking").value(true))
                 .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
                 .andRespond(withSuccess(
                         "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"bubbles\\\":[\\\"Dạ gói 239k trọn gói 0 Tip ạ.\\\"]}\"}}]}",

@@ -1642,7 +1642,53 @@ public final class AdaptiveConversationIntelligence {
         s = SYMPTOM_TRAILING_CLAUSE_PATTERN.matcher(s).replaceAll("").strip();
         s = SYMPTOM_LEADING_FILLER_PATTERN.matcher(s).replaceFirst("").strip();
         s = SYMPTOM_TRAILING_CLAUSE_PATTERN.matcher(s).replaceAll("").strip();
+        s = s.replaceAll("(?iU)\\s+chết(?:\\s+đi\\s+được|\\s+mất|\\s+luôn|\\s+thật)?$", "").strip();
+        String low = s.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+        if (low.isEmpty()
+                || low.matches("(?isU)^(?:chết|ngại|ngại\\s+quá|ngại\\s+lắm|sợ|sợ\\s+quá|chịu|quá|lắm|luôn|được|thế|vậy|nhỉ|mơ\\s+hồ|đáp\\s+ứng\\s+mơ\\s+hồ|phản\\s+ứng\\s+mơ\\s+hồ|chưa\\s+rõ|không\\s+rõ)$")) {
+            return "";
+        }
         return s;
+    }
+
+    /**
+     * Post-CP3 Wave 3 (3.3): Chặn các mảnh cắt cụt ngữ nghĩa khẩu ngữ (như "chết" từ "ngại chết"/"mệt chết"),
+     * các từ cảm thán đơn lẻ, và các nhãn suy diễn mơ hồ ("đáp ứng mơ hồ", "chưa rõ") không được ghi vào confirmed_facts.
+     */
+    public static boolean isInvalidOrTruncatedFactValue(String rawKey, String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return true;
+        }
+        String norm = Normalizer.normalize(rawValue.strip(), Normalizer.Form.NFC)
+                .replaceAll("^[-•*+\\s]+", "")
+                .replaceAll("[.!?;,\\s]+$", "")
+                .replaceAll("\\s+", " ")
+                .strip();
+        if (norm.length() < 2) {
+            return true;
+        }
+        String low = norm.toLowerCase(Locale.ROOT);
+        if (low.matches("(?isU)^(?:chết|ngại\\s*chết|sợ\\s*chết|chịu\\s*chết|ngại|ngại\\s+quá|ngại\\s+lắm|sợ|sợ\\s+quá|quá|lắm|luôn|được|thế|vậy|nhỉ|à|ừ|ờ|ok|oke|dạ|vâng|không|chưa|rồi|thôi)$")) {
+            return true;
+        }
+        if (low.matches("(?isU).*(?:đáp\\s+ứng\\s+mơ\\s+hồ|phản\\s+ứng\\s+mơ\\s+hồ|thái\\s+độ\\s+mơ\\s+hồ|nhu\\s+cầu\\s+mơ\\s+hồ|ý\\s+định\\s+mơ\\s+hồ|\\bmơ\\s+hồ\\b|chưa\\s+rõ\\s+ràng|không\\s+rõ\\s+ràng|^chưa\\s+rõ$|^không\\s+rõ$|^chưa\\s+xác\\s+định$|^không\\s+xác\\s+định$|^đang\\s+phân\\s+vân$|^còn\\s+băn\\s+khoăn$|^băn\\s+khoăn$|^do\\s+dự$|^nghi\\s+ngờ$).*")) {
+            return true;
+        }
+        String k = rawKey != null ? rawKey.strip().toLowerCase(Locale.ROOT) : "";
+        if ("self_reported_symptom".equals(k)) {
+            String cleanedSym = cleanAtomicSymptomValue(norm);
+            if (cleanedSym.isBlank()) {
+                return true;
+            }
+        }
+        if ("price_reaction".equals(k)) {
+            boolean hasPriceOrCostSignal = isPriceObjectionFactValue(norm)
+                    || low.matches("(?isU).*\\b(giá|đắt|mắc|chát|cao|rẻ|chi\\s+phí|ngân\\s+sách|tiền|\\d+\\s*k)\\b.*");
+            if (!hasPriceOrCostSignal) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static String canonicalSymptomKey(String rawSymptom) {
@@ -2278,8 +2324,14 @@ public final class AdaptiveConversationIntelligence {
             List<FactDeltaProposal> groundedDelta = new ArrayList<>();
             boolean droppedUngrounded = false;
             for (FactDeltaProposal f : confirmedFactsDelta) {
-                if (f != null && f.op() == FactMutationOp.ADD
-                        && !("price_reaction".equals(f.key()) && hasGenuinePriceObjectionCue(rawUserMessage))
+                if (f == null || isInvalidOrTruncatedFactValue(f.key(), f.value())) {
+                    droppedUngrounded = true;
+                    continue;
+                }
+                if (f.op() == FactMutationOp.ADD
+                        && !("price_reaction".equals(f.key())
+                            && hasGenuinePriceObjectionCue(rawUserMessage)
+                            && isPriceObjectionFactValue(f.value()))
                         && !hasLexicalEvidenceInUtterance(f.value(), groundingEvidence)) {
                     droppedUngrounded = true;
                     continue;
@@ -3266,6 +3318,32 @@ public final class AdaptiveConversationIntelligence {
 
         // 1. Tầng 2: customer_understanding / consultative_profile (hỗ trợ primary_intent, secondary_intents, conversation_state)
         JsonNode cuNode = b.has("customer_understanding") ? b.get("customer_understanding") : b.get("consultative_profile");
+        if (unresolvedRequests.isEmpty()) {
+            JsonNode fallbackUrArr = b.has("unresolved_requests_delta")
+                    ? b.get("unresolved_requests_delta")
+                    : (b.has("unresolved_requests")
+                        ? b.get("unresolved_requests")
+                        : (cuNode != null && cuNode.has("unresolved_requests_delta")
+                            ? cuNode.get("unresolved_requests_delta")
+                            : (cuNode != null ? cuNode.get("unresolved_requests") : null)));
+            if (fallbackUrArr != null && fallbackUrArr.isArray()) {
+                for (JsonNode urEl : fallbackUrArr) {
+                    if (urEl == null || urEl.isNull()) continue;
+                    if (urEl.isObject()) {
+                        String item = readTextOrDefault(urEl, "request",
+                                readTextOrDefault(urEl, "item", readTextOrDefault(urEl, "content", "")));
+                        if (!item.isBlank()) {
+                            UnresolvedRequestStatus st = UnresolvedRequestStatus.fromString(
+                                    readTextOrDefault(urEl, "status", "OPEN"));
+                            unresolvedRequests.add(new UnresolvedRequestItem(item, st, "T_CURRENT", "T_CURRENT"));
+                        }
+                    } else if (urEl.isTextual() && !urEl.asText().isBlank()) {
+                        unresolvedRequests.add(new UnresolvedRequestItem(
+                                urEl.asText().strip(), UnresolvedRequestStatus.OPEN, "T_CURRENT", "T_CURRENT"));
+                    }
+                }
+            }
+        }
         String detectedIntent = "";
         List<String> secondaryIntents = new ArrayList<>();
         String rawConversationState = null;

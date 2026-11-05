@@ -1463,6 +1463,36 @@ public class AgentBrainService {
             String verifiedPageSlaPolicy,
             String actualSentSpeechAct
     ) {
+        applyAciTurnMemoryUpdates(
+                pageId,
+                senderId,
+                currentTurnId,
+                originalCustomerMessage,
+                unverifiedParserCandidates,
+                reflection,
+                authoritativeBookingState,
+                handoffDecision,
+                optedOut,
+                verifiedPageSlaPolicy,
+                actualSentSpeechAct,
+                null
+        );
+    }
+
+    public void applyAciTurnMemoryUpdates(
+            UUID pageId,
+            String senderId,
+            String currentTurnId,
+            String originalCustomerMessage,
+            List<AdaptiveConversationIntelligence.UnverifiedParserCandidate> unverifiedParserCandidates,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState authoritativeBookingState,
+            AdaptiveConversationIntelligence.ConditionalHandoffDecision handoffDecision,
+            boolean optedOut,
+            String verifiedPageSlaPolicy,
+            String actualSentSpeechAct,
+            String actualAssistantReplyText
+    ) {
         CustomerBrainMemory mem = getOrHydrateMemoryForMutation(pageId, senderId);
         String safeTurnId = (currentTurnId != null && !currentTurnId.isBlank()) ? currentTurnId.strip() : "T_CURRENT";
         String cleanVerifiedSla = (verifiedPageSlaPolicy != null && !verifiedPageSlaPolicy.isBlank())
@@ -1848,7 +1878,8 @@ public class AgentBrainService {
                     originalCustomerMessage,
                     reflection,
                     authoritativeBookingState,
-                    actualSentSpeechAct
+                    actualSentSpeechAct,
+                    actualAssistantReplyText
             );
         }
         persistMemoryToDbIfEnabled(pageId, senderId, null, mem);
@@ -1863,10 +1894,57 @@ public class AgentBrainService {
         return norm.equals("tư vấn")
                 || norm.equals("tư vấn chung")
                 || norm.equals("tư vấn dịch vụ")
-                || norm.equals("cần tư vấn")
-                || norm.equals("hỏi giá")
-                || norm.equals("hỏi giá chung")
-                || norm.equals("hỏi bảng giá");
+                || norm.equals("cần tư vấn");
+    }
+
+    private static boolean isPackageComparisonUnresolvedRequest(String item) {
+        if (item == null || item.isBlank()) {
+            return false;
+        }
+        if (AdaptiveConversationIntelligence.hasPackageComparisonCue(item)) {
+            return true;
+        }
+        String norm = Normalizer.normalize(item.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return norm.matches("(?isU).*\\b(khác\\s+nhau|khác\\s+gì|khác\\s+biệt|so\\s+sánh|phân\\s+biệt|compare|comparison)\\b.*");
+    }
+
+    private static boolean isPriceInquiryUnresolvedRequest(String item) {
+        if (item == null || item.isBlank()) {
+            return false;
+        }
+        if (isPackageComparisonUnresolvedRequest(item)) {
+            return false;
+        }
+        String norm = Normalizer.normalize(item.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return norm.matches("(?isU).*\\b(giá|bảng\\s+giá|chi\\s+phí|bao\\s+nhiêu\\s+tiền|mấy\\s+tiền|price|cost)\\b.*");
+    }
+
+    private static boolean doesAssistantReplyAnswerPriceInquiry(String assistantReplyText) {
+        return assistantReplyText != null
+                && !assistantReplyText.isBlank()
+                && CleanAgentOutputRefereeAndSanitizer.hasQuotedPriceInText(assistantReplyText);
+    }
+
+    private static boolean doesAssistantReplyExplainPackageComparison(String assistantReplyText, String requestOrUserText) {
+        if (assistantReplyText == null || assistantReplyText.isBlank()) {
+            return false;
+        }
+        String replyNorm = Normalizer.normalize(assistantReplyText.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        Set<Integer> replyAmounts = AdaptiveConversationIntelligence.extractNormalizedAmountsInThousands(assistantReplyText);
+        Set<Integer> askedAmounts = AdaptiveConversationIntelligence.extractNormalizedAmountsInThousands(requestOrUserText);
+        if (askedAmounts.size() >= 2) {
+            long matchedAsked = askedAmounts.stream().filter(replyAmounts::contains).count();
+            if (matchedAsked < 2) {
+                return false;
+            }
+        } else if (replyAmounts.size() < 2) {
+            boolean mentionsTwoPackages = replyNorm.matches("(?isU).*\\bgói\\b.*\\bgói\\b.*");
+            if (!mentionsTwoPackages) {
+                return false;
+            }
+        }
+        boolean hasDifferentiatingDetail = replyNorm.matches("(?isU).*\\b(\\d{2,3}\\s*phút|cơ\\s+bản|chuyên\\s+sâu|toàn\\s+diện|toàn\\s+thân|khác\\s+nhau|khác\\s+biệt|trong\\s+khi|còn\\s+gói|bổ\\s+sung|thêm\\s+bước|tập\\s+trung|bao\\s+gồm|gồm\\s+có)\\b.*");
+        return hasDifferentiatingDetail;
     }
 
     private static boolean containsPastOrNegatedSymptomQualifier(String rawMessage) {
@@ -1895,7 +1973,8 @@ public class AgentBrainService {
             String originalCustomerMessage,
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
             ConversationState.StructuredBookingState authoritativeBookingState,
-            String actualSentSpeechAct
+            String actualSentSpeechAct,
+            String actualAssistantReplyText
     ) {
         if (reflection == null) {
             return;
@@ -1967,6 +2046,25 @@ public class AgentBrainService {
         if (!reflection.unresolvedRequestsDelta().isEmpty()) {
             for (AdaptiveConversationIntelligence.UnresolvedRequestItem deltaReq : reflection.unresolvedRequestsDelta()) {
                 if (deltaReq == null || deltaReq.item().isBlank()) continue;
+                AdaptiveConversationIntelligence.UnresolvedRequestStatus effectiveStatus = deltaReq.status();
+                if (actualAssistantReplyText != null && !actualAssistantReplyText.isBlank()
+                        && effectiveStatus == AdaptiveConversationIntelligence.UnresolvedRequestStatus.ANSWERED) {
+                    boolean isComparisonItem = isPackageComparisonUnresolvedRequest(deltaReq.item())
+                            || (AdaptiveConversationIntelligence.hasPackageComparisonCue(originalCustomerMessage)
+                                && isPriceInquiryUnresolvedRequest(deltaReq.item()));
+                    if (isComparisonItem) {
+                        String refQuery = (originalCustomerMessage != null && AdaptiveConversationIntelligence.hasPackageComparisonCue(originalCustomerMessage))
+                                ? originalCustomerMessage
+                                : deltaReq.item();
+                        if (!doesAssistantReplyExplainPackageComparison(actualAssistantReplyText, refQuery)) {
+                            effectiveStatus = AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN;
+                        }
+                    } else if (isPriceInquiryUnresolvedRequest(deltaReq.item())) {
+                        if (!doesAssistantReplyAnswerPriceInquiry(actualAssistantReplyText)) {
+                            effectiveStatus = AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN;
+                        }
+                    }
+                }
                 int matchIdx = -1;
                 String normDeltaItem = Normalizer.normalize(deltaReq.item().strip(), Normalizer.Form.NFC)
                         .toLowerCase(Locale.ROOT);
@@ -1975,11 +2073,15 @@ public class AgentBrainService {
                     if (existing == null) continue;
                     String normExisting = Normalizer.normalize(existing.item().strip(), Normalizer.Form.NFC)
                             .toLowerCase(Locale.ROOT);
-                    boolean semanticCloseMatch = deltaReq.status() != AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                    boolean semanticCloseMatch = effectiveStatus != AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
                             && existing.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
                             && ((normExisting.contains(normDeltaItem) || normDeltaItem.contains(normExisting))
                                 || (isGenericOpeningPlaceholderRequest(normExisting)
-                                    && isGenericOpeningPlaceholderRequest(normDeltaItem)));
+                                    && isGenericOpeningPlaceholderRequest(normDeltaItem))
+                                || (isPriceInquiryUnresolvedRequest(normExisting)
+                                    && isPriceInquiryUnresolvedRequest(normDeltaItem))
+                                || (isPackageComparisonUnresolvedRequest(normExisting)
+                                    && isPackageComparisonUnresolvedRequest(normDeltaItem)));
                     if (normExisting.equals(normDeltaItem) || semanticCloseMatch) {
                         matchIdx = i;
                         break;
@@ -1989,9 +2091,9 @@ public class AgentBrainService {
                     AdaptiveConversationIntelligence.UnresolvedRequestItem existing = mem.draft2UnresolvedRequests.get(matchIdx);
                     mem.draft2UnresolvedRequests.set(matchIdx, new AdaptiveConversationIntelligence.UnresolvedRequestItem(
                             existing.item(),
-                            deltaReq.status(),
+                            effectiveStatus,
                             existing.sourceTurnId(),
-                            safeTurnId
+                            effectiveStatus == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN ? null : safeTurnId
                     ));
                 } else {
                     if (mem.draft2UnresolvedRequests.size() >= 10) {
@@ -1999,9 +2101,76 @@ public class AgentBrainService {
                     }
                     mem.draft2UnresolvedRequests.add(new AdaptiveConversationIntelligence.UnresolvedRequestItem(
                             deltaReq.item(),
-                            deltaReq.status(),
+                            effectiveStatus,
                             safeTurnId,
-                            safeTurnId
+                            effectiveStatus == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN ? null : safeTurnId
+                    ));
+                }
+            }
+        }
+        if (actualAssistantReplyText != null && !actualAssistantReplyText.isBlank()) {
+            for (int i = 0; i < mem.draft2UnresolvedRequests.size(); i++) {
+                AdaptiveConversationIntelligence.UnresolvedRequestItem oldReq = mem.draft2UnresolvedRequests.get(i);
+                if (oldReq == null || oldReq.status() != AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN) {
+                    continue;
+                }
+                if (isPackageComparisonUnresolvedRequest(oldReq.item())) {
+                    String refQuery = (originalCustomerMessage != null && AdaptiveConversationIntelligence.hasPackageComparisonCue(originalCustomerMessage))
+                            ? originalCustomerMessage
+                            : oldReq.item();
+                    if (doesAssistantReplyExplainPackageComparison(actualAssistantReplyText, refQuery)) {
+                        mem.draft2UnresolvedRequests.set(i, new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                                oldReq.item(),
+                                AdaptiveConversationIntelligence.UnresolvedRequestStatus.ANSWERED,
+                                oldReq.sourceTurnId(),
+                                safeTurnId
+                        ));
+                    }
+                } else if (isPriceInquiryUnresolvedRequest(oldReq.item())) {
+                    if (doesAssistantReplyAnswerPriceInquiry(actualAssistantReplyText)) {
+                        mem.draft2UnresolvedRequests.set(i, new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                                oldReq.item(),
+                                AdaptiveConversationIntelligence.UnresolvedRequestStatus.ANSWERED,
+                                oldReq.sourceTurnId(),
+                                safeTurnId
+                        ));
+                    }
+                }
+            }
+            if (originalCustomerMessage != null && AdaptiveConversationIntelligence.hasPackageComparisonCue(originalCustomerMessage)
+                    && !doesAssistantReplyExplainPackageComparison(actualAssistantReplyText, originalCustomerMessage)) {
+                boolean hasOpenComparison = mem.draft2UnresolvedRequests.stream()
+                        .anyMatch(r -> r != null
+                                && r.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                                && isPackageComparisonUnresolvedRequest(r.item()));
+                if (!hasOpenComparison) {
+                    if (mem.draft2UnresolvedRequests.size() >= 10) {
+                        mem.draft2UnresolvedRequests.remove(0);
+                    }
+                    mem.draft2UnresolvedRequests.add(new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                            "So sánh điểm khác nhau giữa các gói (" + originalCustomerMessage.strip() + ")",
+                            AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN,
+                            safeTurnId,
+                            null
+                    ));
+                }
+            } else if (originalCustomerMessage != null
+                    && AdaptiveConversationIntelligence.classifyPriceIntentSubMode(originalCustomerMessage)
+                        != AdaptiveConversationIntelligence.PriceIntentSubMode.NONE
+                    && !doesAssistantReplyAnswerPriceInquiry(actualAssistantReplyText)) {
+                boolean hasOpenPrice = mem.draft2UnresolvedRequests.stream()
+                        .anyMatch(r -> r != null
+                                && r.status() == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
+                                && isPriceInquiryUnresolvedRequest(r.item()));
+                if (!hasOpenPrice) {
+                    if (mem.draft2UnresolvedRequests.size() >= 10) {
+                        mem.draft2UnresolvedRequests.remove(0);
+                    }
+                    mem.draft2UnresolvedRequests.add(new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                            "Hỏi giá dịch vụ",
+                            AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN,
+                            safeTurnId,
+                            null
                     ));
                 }
             }
@@ -2101,7 +2270,10 @@ public class AgentBrainService {
 
         // Quản lý vòng đời 5 trạng thái triệu chứng nguyên tử (CURRENT | RESOLVED | PAST | NEGATED | SUPERSEDED) & Versioned Facts
         for (AdaptiveConversationIntelligence.FactDeltaProposal rawDelta : reflection.confirmedFactsDelta()) {
-            if (rawDelta == null || rawDelta.value().isBlank()) continue;
+            if (rawDelta == null || rawDelta.value().isBlank()
+                    || AdaptiveConversationIntelligence.isInvalidOrTruncatedFactValue(rawDelta.key(), rawDelta.value())) {
+                continue;
+            }
             final AdaptiveConversationIntelligence.FactDeltaProposal delta =
                     ("self_reported_symptom".equals(rawDelta.key())
                             && AdaptiveConversationIntelligence.isBareBodyAreaScopePhraseWithoutSymptoms(rawDelta.value()))
@@ -2281,9 +2453,10 @@ public class AgentBrainService {
             }
         }
 
-        // Khi khách chê "Đắt": Fact chỉ ghi nhận khách phản ứng giá đắt; lý do đằng sau bắt buộc lưu ở Hypothesis!
-        boolean llmCostConcern = Boolean.TRUE.equals(cu.costConcernExpressed())
-                || "Handle Objection".equalsIgnoreCase(plan.strategy());
+        // Khi khách chê "Đắt": Fact chỉ ghi nhận khách phản ứng giá đắt khi phát ngôn thực sự chứa tín hiệu chê đắt; lý do đằng sau bắt buộc lưu ở Hypothesis!
+        boolean llmCostConcern = (Boolean.TRUE.equals(cu.costConcernExpressed())
+                || "Handle Objection".equalsIgnoreCase(plan.strategy()))
+                && AdaptiveConversationIntelligence.hasGenuinePriceObjectionCue(originalCustomerMessage);
         if (llmCostConcern) {
             boolean hasPriceFact = mem.draft2ConfirmedFacts.stream()
                     .anyMatch(f -> f != null

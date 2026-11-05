@@ -197,7 +197,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 && !isOfficialDashScopeEndpoint()
                 && (this.reasoningEffort == null || this.reasoningEffort.isBlank())
                 && budget != null
-                && budget.thinkingMode() != null) {
+                && budget.thinkingMode() != null
+                && !budget.thinkingMode().thinkEnabled()) {
             return "none";
         }
         if (budget != null && budget.reasoningEffort() != null && !budget.reasoningEffort().isBlank()) {
@@ -230,7 +231,16 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             } catch (HttpClientErrorException.BadRequest badReq) {
                 if (body.containsKey("reasoning_effort") || body.containsKey("max_tokens") || body.containsKey("enable_thinking")) {
                     log.info("[LLM] Provider {} rejected optional reasoning_effort/max_tokens/enable_thinking (400), retrying standard payload", provider);
-                    rawJson = executePostWithRetry(buildRequestBody(safePrompt, false, budget), budget);
+                    Map<String, Object> retryBody = buildRequestBody(safePrompt, false, budget);
+                if (isQwenModelOrProvider()) {
+                    retryBody.put("enable_thinking", false);
+                    retryBody.put("chat_template_kwargs", Map.of("enable_thinking", false));
+                    if (!isOfficialDashScopeEndpoint()) {
+                        retryBody.put("reasoning_effort", "none");
+                    }
+                    retryBody.put("max_tokens", 2500);
+                }
+                rawJson = executePostWithRetry(retryBody, budget);
                 } else {
                     throw badReq;
                 }
@@ -240,7 +250,16 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             if (parsed.emptyContentWithReasoning()) {
                 log.info("[LLM] Provider {} returned empty content after {} reasoning tokens, retrying once without reasoning_effort",
                         provider, parsed.reasoningTokens());
-                rawJson = executePostWithRetry(buildRequestBody(safePrompt, false, budget), budget);
+                Map<String, Object> retryBody = buildRequestBody(safePrompt, false, budget);
+                if (isQwenModelOrProvider()) {
+                    retryBody.put("enable_thinking", false);
+                    retryBody.put("chat_template_kwargs", Map.of("enable_thinking", false));
+                    if (!isOfficialDashScopeEndpoint()) {
+                        retryBody.put("reasoning_effort", "none");
+                    }
+                    retryBody.put("max_tokens", 2500);
+                }
+                rawJson = executePostWithRetry(retryBody, budget);
                 parsed = parseCompletion(rawJson, prompt);
             }
 
@@ -324,8 +343,9 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             }
             ThinkingMode thinkingMode = budget != null ? budget.thinkingMode() : null;
             if (isQwenModelOrProvider()) {
-                body.put("enable_thinking", false);
-                body.put("chat_template_kwargs", Map.of("enable_thinking", false));
+                boolean enableThink = thinkingMode != null && thinkingMode.thinkEnabled();
+                body.put("enable_thinking", enableThink);
+                body.put("chat_template_kwargs", Map.of("enable_thinking", enableThink));
             }
             int maxToks = (budget != null && budget.maxTokens() > 0)
                     ? budget.maxTokens()
