@@ -619,10 +619,14 @@ public final class AdaptiveConversationIntelligence {
                     return r;
                 }
             }
+            if (u.contains("NOT_READY") || u.startsWith("NOT_") || u.equals("NONE") || u.equals("LOW")) {
+                return EXPLORING;
+            }
             if (u.contains("READY") || u.contains("BOOK") || u.contains("COMMIT")) {
                 return READY_TO_BOOK;
             }
-            if (u.contains("CONSIDER") || u.contains("COMPARE") || u.contains("WEIGH")) {
+            if (u.contains("CONSIDER") || u.contains("COMPARE") || u.contains("WEIGH")
+                    || u.contains("INTEREST") || u.contains("WARM") || u.contains("PREPAR") || u.contains("TRIAL")) {
                 return CONSIDERING;
             }
             if (u.contains("EXPLOR") || u.contains("INQUIR") || u.contains("DISCOVER")) {

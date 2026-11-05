@@ -5063,12 +5063,6 @@ public class CleanAgentOrchestratorService {
                                 : regionScopedEconomicals);
 
         List<AgentSkillDto> availableSkills = enabledPageSkills != null ? List.copyOf(enabledPageSkills) : List.of();
-        List<AgentSkillDto> preSelectedTurnSkills = selectPreLlmTurnRelevantSkills(
-                availableSkills,
-                originalVerbatim,
-                safeHistory,
-                priorBookingState
-        );
 
         // ACI V3: Pre-resolve lựa chọn tương đối/đính chính của khách NGAY lượt này (trước Snapshot & Prompt)
         // để LLM thấy selected_product_id đã khóa trong <SESSION_MEMORY_5_TIER>; loại gói có tóc nếu khách đã từ chối hair_care.
@@ -5100,6 +5094,13 @@ public class CleanAgentOrchestratorService {
                 );
             }
         }
+
+        List<AgentSkillDto> preSelectedTurnSkills = selectPreLlmTurnRelevantSkills(
+                availableSkills,
+                originalVerbatim,
+                safeHistory,
+                priorBookingState
+        );
 
         // ACI V3 Guardrail 2: Xây dựng Snapshot bất biến của lượt hiện tại đúng 1 lần, dùng chung cho Prompt Builder và Guard
         String sequentialTurnId = CleanAgentCatalogAndPromptBuilder.resolveCurrentSequentialTurnId(safeHistory);
@@ -6031,7 +6032,8 @@ public class CleanAgentOrchestratorService {
                         preSelectedTurnSkills,
                         preSelectedTurnSkills,
                         reflection,
-                        authoritativeBookingState
+                        authoritativeBookingState,
+                        originalVerbatim
                 );
         // Unit P2.3: Đồng bộ nhất quán selectedSkills <-> activatedSkills để chỉ ghi nhận đúng skill thực sự phục vụ lượt hiện tại
         List<AgentSkillDto> selectedSkills = activatedSkills;
@@ -6637,12 +6639,249 @@ public class CleanAgentOrchestratorService {
         return List.copyOf(candidates);
     }
 
+    // =========================================================================
+    // SBR-01 Wave 1 — CP3.2: 3-Tier Signal-Driven Booking Gate & Toggle
+    // =========================================================================
+
+    private static volatile Boolean CP3_THREE_TIER_BOOKING_ENABLED_OVERRIDE = null;
+
+    /**
+     * Cờ bật/tắt 3-Tier Signal-Driven Booking Gate (CP3.2).
+     * Có thể cấu hình qua JVM property {@code -Ddocmind.aci.cp3.three-tier-booking.enabled=false}
+     * hoặc biến môi trường {@code DOCMIND_ACI_CP3_THREE_TIER_BOOKING_ENABLED=false}. Mặc định: {@code true}.
+     */
+    public static boolean isCp3ThreeTierBookingEnabled() {
+        Boolean override = CP3_THREE_TIER_BOOKING_ENABLED_OVERRIDE;
+        if (override != null) {
+            return override;
+        }
+        String sys = System.getProperty("docmind.aci.cp3.three-tier-booking.enabled");
+        if (sys != null && !sys.isBlank()) {
+            return !"false".equalsIgnoreCase(sys.strip()) && !"0".equals(sys.strip());
+        }
+        String env = System.getenv("DOCMIND_ACI_CP3_THREE_TIER_BOOKING_ENABLED");
+        if (env != null && !env.isBlank()) {
+            return !"false".equalsIgnoreCase(env.strip()) && !"0".equals(env.strip());
+        }
+        return true;
+    }
+
+    public static void setCp3ThreeTierBookingEnabled(Boolean enabled) {
+        CP3_THREE_TIER_BOOKING_ENABLED_OVERRIDE = enabled;
+    }
+
+    public enum BookingSkillTier {
+        NON_BOOKING,
+        TIER_1_SCHEDULE_EXPLORATION,
+        TIER_2_BOOKING_PREPARATION,
+        TIER_3_BOOKING_EXECUTION
+    }
+
+    public enum CustomerBookingSignalTier {
+        NONE,
+        TIER_1_SCHEDULE_EXPLORATION,
+        TIER_2_BOOKING_PREPARATION,
+        TIER_3_BOOKING_EXECUTION
+    }
+
+    public record BookingGateDiagnostics(
+            AdaptiveConversationIntelligence.BookingReadiness bookingReadiness,
+            AdaptiveConversationIntelligence.BuyingSignal buyingSignal,
+            CustomerBookingSignalTier customerSignalTier,
+            List<String> requestedSkillCodes,
+            List<String> activatedSkillCodes,
+            Map<String, String> blockedSkillReasons
+    ) {
+    }
+
+    private static final Pattern CP3_TIER3_EXPLICIT_BOOKING_EXECUTION_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+                    + "đặt\\s+lịch|đặt\\s+chỗ|giữ\\s+chỗ|giữ\\s+lịch|book\\s+lịch|chốt\\s+lịch|"
+                    + "đăng\\s+ký(?:\\s+đặt)?(?:\\s+lịch|\\s+gói)?|"
+                    + "(?:qua|ghé|đến|đặt|làm)(?:\\s+[^.!?\\n]{0,25})?\\s+lúc\\s+\\d{1,2}\\s*(?:h|giờ)|"
+                    + "(?:tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|tối\\s+mai)\\s+\\d{1,2}\\s*(?:h|giờ)|"
+                    + "\\d{1,2}\\s*(?:h|giờ)\\d{0,2}\\s+(?:tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|tối\\s+mai|qua|ghé|đến|đặt)"
+                    + ")\\b.*"
+    );
+
+    private static final Pattern CP3_TIER2_BOOKING_PREPARATION_SIGNAL_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+                    + "(?:ok|ừ|vâng|dạ|thế|vậy)?\\s*(?:mình|tôi|anh|chị|em)?\\s*(?:muốn\\s+|định\\s+)?(?:thử|chốt|lấy|chọn|trải\\s+nghiệm(?:\\s+thử)?)\\s+gói|"
+                    + "(?:làm|thử|chốt|lấy)\\s+gói\\s+(?:đó|này|đầu\\s+tiên|thứ\\s+hai|cơ\\s+bản|chuyên\\s+sâu|\\d{2,4}\\s*k)|"
+                    + "vừa\\s+đủ\\s+để\\s+thử|muốn\\s+thử\\s+trước|chốt\\s+luôn\\s+gói"
+                    + ")\\b.*"
+    );
+
+    private static final Pattern CP3_TIER1_SCHEDULE_EXPLORATION_SIGNAL_PATTERN = Pattern.compile(
+            "(?isU).*\\b("
+                    + "còn\\s+lịch|còn\\s+giường|còn\\s+phòng|lịch\\s+trống|khung\\s+giờ|"
+                    + "mấy\\s+giờ\\s+(?:còn|mở\\s+cửa|đóng\\s+cửa|nhận\\s+khách|nghỉ)|"
+                    + "(?:mở\\s+cửa|đóng\\s+cửa|nhận\\s+khách)\\s+(?:đến|tới|lúc)?\\s*mấy\\s+giờ|"
+                    + "giờ\\s+làm\\s+việc|giờ\\s+mở\\s+cửa|"
+                    + "chi\\s+nhánh|cơ\\s+sở\\s+(?:ở\\s+đâu|nào|quận|hà\\s+nội|sài\\s+gòn|tp\\s*hcm|bên\\s+mình)|"
+                    + "địa\\s+chỉ\\s+(?:ở\\s+đâu|cơ\\s+sở|chi\\s+nhánh|bên\\s+mình|quán|spa)|"
+                    + "bên\\s+(?:mình|em|shop)\\s+ở\\s+đâu|"
+                    + "(?:tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay)\\s+(?:còn|có\\s+lịch|rảnh|qua\\s+được|làm\\s+được)|"
+                    + "đặt\\s+(?:lịch\\s+)?(?:thế\\s+nào|như\\s+thế\\s+nào|ra\\s+sao|sao\\s+vậy|trước\\s+không)|"
+                    + "cách\\s+đặt(?:\\s+lịch)?|cần\\s+đặt\\s+trước\\s+không|qua\\s+luôn\\s+được\\s+không"
+                    + ")\\b.*"
+    );
+
+    public static BookingSkillTier classifyBookingSkillTier(String rawCode) {
+        if (rawCode == null || rawCode.isBlank()) {
+            return BookingSkillTier.NON_BOOKING;
+        }
+        String lowerCode = rawCode.strip().toLowerCase(Locale.ROOT);
+        if (!isBookingOrSchedulingSkillCode(lowerCode)) {
+            return BookingSkillTier.NON_BOOKING;
+        }
+        if (lowerCode.contains("booking_careful_preparation")
+                || lowerCode.contains("booking_execution")
+                || lowerCode.contains("booking_confirm")
+                || (lowerCode.contains("booking") && !lowerCode.contains("warm_nod") && !lowerCode.contains("gentle"))) {
+            return BookingSkillTier.TIER_3_BOOKING_EXECUTION;
+        }
+        if (lowerCode.contains("warm_nod")
+                || lowerCode.contains("gentle_scheduling")
+                || lowerCode.contains("gentle_next_step")
+                || lowerCode.contains("booking_prep")) {
+            return BookingSkillTier.TIER_2_BOOKING_PREPARATION;
+        }
+        return BookingSkillTier.TIER_1_SCHEDULE_EXPLORATION;
+    }
+
+    public static boolean isSkillTierAllowedForCustomerSignal(
+            BookingSkillTier skillTier,
+            CustomerBookingSignalTier signalTier
+    ) {
+        if (skillTier == null || skillTier == BookingSkillTier.NON_BOOKING) {
+            return true;
+        }
+        if (signalTier == null || signalTier == CustomerBookingSignalTier.NONE) {
+            return false;
+        }
+        return switch (skillTier) {
+            case NON_BOOKING -> true;
+            case TIER_1_SCHEDULE_EXPLORATION, TIER_2_BOOKING_PREPARATION ->
+                    signalTier == CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION
+                            || signalTier == CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION
+                            || signalTier == CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
+            case TIER_3_BOOKING_EXECUTION ->
+                    signalTier == CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
+        };
+    }
+
+    public static CustomerBookingSignalTier classifyPreLlmCustomerBookingSignalTier(
+            String currentMessage,
+            ConversationState.StructuredBookingState priorBookingState
+    ) {
+        String msg = currentMessage != null ? currentMessage.strip() : "";
+        boolean bookingActive = priorBookingState != null && priorBookingState.status().isActiveOrConfirmed();
+        if (!msg.isEmpty()) {
+            if (isExplicitConversationRefusalStopMessage(msg)
+                    || AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(msg)
+                    || CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                    || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg)
+                    || isConfirmedCustomerPriceObjection(msg, true)
+                    || isHesitationOrDeferralMessage(msg)
+                    || AdaptiveConversationIntelligence.isCustomerDeferralMessage(msg)
+                    || (!bookingActive && (isBareAcknowledgmentMessage(msg)
+                        || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(msg)))) {
+                return CustomerBookingSignalTier.NONE;
+            }
+            VietnameseScopeSignalExtractor.ScopeSignalResult correctionSignal =
+                    VietnameseScopeSignalExtractor.analyze(msg, List.of());
+            if (correctionSignal.possibleCorrection()
+                    || correctionSignal.explicitCorrectionGroupD()
+                    || AdaptiveConversationIntelligence.isCustomerCorrectionOrComponentRejectionMessage(msg)) {
+                return CustomerBookingSignalTier.NONE;
+            }
+        }
+        if (bookingActive) {
+            return CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
+        }
+        if (msg.isEmpty()) {
+            return CustomerBookingSignalTier.NONE;
+        }
+        String normLower = java.text.Normalizer.normalize(msg, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        boolean isHowToBookQuestion = normLower.matches(
+                "(?isU).*\\b(đặt(?:\\s+lịch)?\\s+(?:thế\\s+nào|như\\s+thế\\s+nào|ra\\s+sao|sao\\s+vậy|trước\\s+không|thì\\s+làm\\s+thế\\s+nào|thì\\s+sao)|cách\\s+đặt(?:\\s+lịch)?|cần\\s+đặt\\s+trước\\s+không|qua\\s+luôn\\s+được\\s+không)\\b.*"
+        );
+        if (isHowToBookQuestion) {
+            return CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION;
+        }
+        if (CP3_TIER3_EXPLICIT_BOOKING_EXECUTION_PATTERN.matcher(normLower).matches()) {
+            return CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
+        }
+        if (AdaptiveConversationIntelligence.isTrialOrRelativeOptionSelectionMessage(msg)
+                || CP3_TIER2_BOOKING_PREPARATION_SIGNAL_PATTERN.matcher(normLower).matches()
+                || (priorBookingState != null
+                    && priorBookingState.selectedProductId() != null
+                    && !priorBookingState.selectedProductId().isBlank())) {
+            return CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION;
+        }
+        if (CP3_TIER1_SCHEDULE_EXPLORATION_SIGNAL_PATTERN.matcher(normLower).matches()) {
+            return CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION;
+        }
+        return CustomerBookingSignalTier.NONE;
+    }
+
+    public static CustomerBookingSignalTier classifyPostLlmCustomerBookingSignalTier(
+            String currentMessage,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState bookingState
+    ) {
+        String msg = currentMessage != null ? currentMessage.strip() : "";
+        boolean bookingActive = bookingState != null && bookingState.status().isActiveOrConfirmed();
+        if (!msg.isEmpty()) {
+            if (isExplicitConversationRefusalStopMessage(msg)
+                    || AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(msg)
+                    || CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(msg)
+                    || CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(msg)
+                    || isConfirmedCustomerPriceObjection(msg, true)
+                    || isHesitationOrDeferralMessage(msg)
+                    || AdaptiveConversationIntelligence.isCustomerDeferralMessage(msg)) {
+                return CustomerBookingSignalTier.NONE;
+            }
+        }
+        CustomerBookingSignalTier preTier = classifyPreLlmCustomerBookingSignalTier(msg, bookingState);
+        boolean readyToBook = bookingActive
+                || (reflection != null
+                    && ((reflection.customerUnderstanding() != null
+                            && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK)
+                        || (reflection.priority() != null
+                            && "BOOKING_COMPLETION".equalsIgnoreCase(reflection.priority().primary()))));
+        if (readyToBook || preTier == CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION) {
+            return CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
+        }
+        if (preTier == CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION) {
+            return CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION;
+        }
+        if (reflection != null && reflection.customerUnderstanding() != null) {
+            var cu = reflection.customerUnderstanding();
+            boolean reflectionShowsPreparation = !Boolean.TRUE.equals(cu.costConcernExpressed())
+                    && !"FRICTION_RECOVERY".equalsIgnoreCase(cu.conversationState())
+                    && !"PAUSED_BY_CUSTOMER".equalsIgnoreCase(cu.conversationState())
+                    && (cu.bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.CONSIDERING
+                        || ((cu.buyingSignal() == AdaptiveConversationIntelligence.BuyingSignal.MODERATE
+                                || cu.buyingSignal() == AdaptiveConversationIntelligence.BuyingSignal.STRONG
+                                || cu.buyingSignal() == AdaptiveConversationIntelligence.BuyingSignal.ACTION)
+                            && (msg.isEmpty()
+                                || preTier != CustomerBookingSignalTier.NONE
+                                || (reflection.interestedPackageId() != null && !reflection.interestedPackageId().isBlank()))));
+            if (reflectionShowsPreparation) {
+                return CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION;
+            }
+        }
+        return preTier;
+    }
+
     static List<AgentSkillDto> resolveAciTurnActivatedSkills(
             List<AgentSkillDto> availableSkills,
             List<AgentSkillDto> selectedSkills,
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection
     ) {
-        return resolveAciTurnActivatedSkills(availableSkills, selectedSkills, reflection, null);
+        return resolveAciTurnActivatedSkills(availableSkills, selectedSkills, reflection, null, null);
     }
 
     static List<AgentSkillDto> resolveAciTurnActivatedSkills(
@@ -6651,29 +6890,104 @@ public class CleanAgentOrchestratorService {
             AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
             ConversationState.StructuredBookingState bookingState
     ) {
+        return resolveAciTurnActivatedSkills(availableSkills, selectedSkills, reflection, bookingState, null);
+    }
+
+    static List<AgentSkillDto> resolveAciTurnActivatedSkills(
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState bookingState,
+            String currentMessage
+    ) {
         if (availableSkills == null || availableSkills.isEmpty()) {
             return List.of();
         }
-        boolean bookingActive = bookingState != null && bookingState.status().isActiveOrConfirmed();
-        boolean readyToBook = bookingActive
-                || (reflection != null
-                    && ((reflection.customerUnderstanding() != null
-                            && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK)
-                        || (reflection.priority() != null
-                            && "BOOKING_COMPLETION".equalsIgnoreCase(reflection.priority().primary()))));
+        if (!isCp3ThreeTierBookingEnabled()) {
+            boolean bookingActive = bookingState != null && bookingState.status().isActiveOrConfirmed();
+            boolean readyToBook = bookingActive
+                    || (reflection != null
+                        && ((reflection.customerUnderstanding() != null
+                                && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK)
+                            || (reflection.priority() != null
+                                && "BOOKING_COMPLETION".equalsIgnoreCase(reflection.priority().primary()))));
+
+            List<AgentSkillDto> activated = new ArrayList<>();
+            if (reflection != null && reflection.activatedSkillCodes() != null && !reflection.activatedSkillCodes().isEmpty()) {
+                for (String rawCode : reflection.activatedSkillCodes()) {
+                    if (rawCode == null || rawCode.isBlank()) continue;
+                    String normCode = rawCode.strip().toLowerCase(Locale.ROOT);
+                    for (AgentSkillDto sk : availableSkills) {
+                        if (sk == null) continue;
+                        String skCode = sk.code() != null ? sk.code().strip().toLowerCase(Locale.ROOT) : "";
+                        String skName = sk.name() != null ? sk.name().strip().toLowerCase(Locale.ROOT) : "";
+                        if ((!skCode.isEmpty() && (skCode.equals(normCode) || normCode.contains(skCode)))
+                                || (!skName.isEmpty() && skName.equals(normCode))) {
+                            if (!readyToBook && isBookingOrSchedulingSkillCode(skCode)) {
+                                break;
+                            }
+                            if (!activated.contains(sk)) {
+                                activated.add(sk);
+                            }
+                            break;
+                        }
+                    }
+                    if (activated.size() >= 2) {
+                        break;
+                    }
+                }
+            }
+            return activated.isEmpty() ? List.of() : List.copyOf(activated);
+        }
+
+        CustomerBookingSignalTier signalTier =
+                classifyPostLlmCustomerBookingSignalTier(currentMessage, reflection, bookingState);
+        List<AgentSkillDto> searchPool = new ArrayList<>(availableSkills);
+        if (selectedSkills != null) {
+            for (AgentSkillDto s : selectedSkills) {
+                if (s != null && !searchPool.contains(s)) {
+                    searchPool.add(s);
+                }
+            }
+        }
 
         List<AgentSkillDto> activated = new ArrayList<>();
         if (reflection != null && reflection.activatedSkillCodes() != null && !reflection.activatedSkillCodes().isEmpty()) {
             for (String rawCode : reflection.activatedSkillCodes()) {
                 if (rawCode == null || rawCode.isBlank()) continue;
                 String normCode = rawCode.strip().toLowerCase(Locale.ROOT);
-                for (AgentSkillDto sk : availableSkills) {
+                for (AgentSkillDto sk : searchPool) {
                     if (sk == null) continue;
                     String skCode = sk.code() != null ? sk.code().strip().toLowerCase(Locale.ROOT) : "";
                     String skName = sk.name() != null ? sk.name().strip().toLowerCase(Locale.ROOT) : "";
                     if ((!skCode.isEmpty() && (skCode.equals(normCode) || normCode.contains(skCode)))
                             || (!skName.isEmpty() && skName.equals(normCode))) {
-                        if (!readyToBook && isBookingOrSchedulingSkillCode(skCode)) {
+                        BookingSkillTier skillTier = classifyBookingSkillTier(skCode);
+                        if (!isSkillTierAllowedForCustomerSignal(skillTier, signalTier)) {
+                            boolean alreadyHasBookingSkill = activated.stream()
+                                    .anyMatch(a -> a != null && classifyBookingSkillTier(a.code()) != BookingSkillTier.NON_BOOKING);
+                            boolean requestedListHasPermittedBookingSkill = reflection.activatedSkillCodes().stream()
+                                    .filter(java.util.Objects::nonNull)
+                                    .map(c -> classifyBookingSkillTier(c))
+                                    .anyMatch(t -> t != BookingSkillTier.NON_BOOKING && isSkillTierAllowedForCustomerSignal(t, signalTier));
+                            if (!alreadyHasBookingSkill
+                                    && !requestedListHasPermittedBookingSkill
+                                    && skillTier == BookingSkillTier.TIER_3_BOOKING_EXECUTION
+                                    && (signalTier == CustomerBookingSignalTier.TIER_1_SCHEDULE_EXPLORATION
+                                        || signalTier == CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION)) {
+                                for (AgentSkillDto fallbackTier2 : searchPool) {
+                                    if (fallbackTier2 == null) continue;
+                                    String fbCode = fallbackTier2.code() != null ? fallbackTier2.code().strip().toLowerCase(Locale.ROOT) : "";
+                                    BookingSkillTier fbTier = classifyBookingSkillTier(fbCode);
+                                    if ((fbTier == BookingSkillTier.TIER_1_SCHEDULE_EXPLORATION
+                                            || fbTier == BookingSkillTier.TIER_2_BOOKING_PREPARATION)
+                                            && !activated.contains(fallbackTier2)
+                                            && activated.size() < 2) {
+                                        activated.add(fallbackTier2);
+                                        break;
+                                    }
+                                }
+                            }
                             break;
                         }
                         if (!activated.contains(sk)) {
@@ -6692,6 +7006,72 @@ public class CleanAgentOrchestratorService {
         }
         // Không tự động gán skill mặc định khi Brain không chọn hoặc chỉ trả lời vận hành / thông tin trực tiếp
         return List.of();
+    }
+
+    public static BookingGateDiagnostics evaluateAciTurnSkillGateDiagnostics(
+            List<AgentSkillDto> availableSkills,
+            List<AgentSkillDto> selectedSkills,
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection reflection,
+            ConversationState.StructuredBookingState bookingState,
+            String currentMessage
+    ) {
+        AdaptiveConversationIntelligence.BookingReadiness readiness =
+                (reflection != null && reflection.customerUnderstanding() != null && reflection.customerUnderstanding().bookingReadiness() != null)
+                        ? reflection.customerUnderstanding().bookingReadiness()
+                        : AdaptiveConversationIntelligence.BookingReadiness.EXPLORING;
+        AdaptiveConversationIntelligence.BuyingSignal buyingSignal =
+                (reflection != null && reflection.customerUnderstanding() != null && reflection.customerUnderstanding().buyingSignal() != null)
+                        ? reflection.customerUnderstanding().buyingSignal()
+                        : AdaptiveConversationIntelligence.BuyingSignal.NONE;
+        CustomerBookingSignalTier signalTier =
+                classifyPostLlmCustomerBookingSignalTier(currentMessage, reflection, bookingState);
+        List<String> requested = (reflection != null && reflection.activatedSkillCodes() != null)
+                ? List.copyOf(reflection.activatedSkillCodes())
+                : List.of();
+        List<AgentSkillDto> activatedDtos = resolveAciTurnActivatedSkills(
+                availableSkills, selectedSkills, reflection, bookingState, currentMessage);
+        List<String> activatedCodes = activatedDtos.stream()
+                .map(AgentSkillDto::code)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        Map<String, String> blockedReasons = new java.util.LinkedHashMap<>();
+        List<AgentSkillDto> pool = availableSkills != null ? availableSkills : List.of();
+        for (String rawCode : requested) {
+            if (rawCode == null || rawCode.isBlank()) continue;
+            String normCode = rawCode.strip().toLowerCase(Locale.ROOT);
+            for (AgentSkillDto sk : pool) {
+                if (sk == null || sk.code() == null) continue;
+                String skCode = sk.code().strip().toLowerCase(Locale.ROOT);
+                if (skCode.equals(normCode) || normCode.contains(skCode)) {
+                    if (!activatedCodes.contains(sk.code())) {
+                        BookingSkillTier skillTier = classifyBookingSkillTier(skCode);
+                        if (!isCp3ThreeTierBookingEnabled()) {
+                            blockedReasons.put(sk.code(), "LEGACY_GATE_NOT_READY_TO_BOOK (bookingReadiness=" + readiness + ")");
+                        } else if (skillTier == BookingSkillTier.TIER_3_BOOKING_EXECUTION
+                                && signalTier != CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION) {
+                            blockedReasons.put(sk.code(),
+                                    "BLOCKED_TIER_3_REQUIRES_EXPLICIT_BOOKING_REQUEST (bookingReadiness=" + readiness + ", signalTier=" + signalTier + ")");
+                        } else if (skillTier != BookingSkillTier.NON_BOOKING
+                                && signalTier == CustomerBookingSignalTier.NONE) {
+                            blockedReasons.put(sk.code(),
+                                    "BLOCKED_NO_CUSTOMER_BOOKING_SIGNAL (bookingReadiness=" + readiness + ", signalTier=NONE)");
+                        } else {
+                            blockedReasons.put(sk.code(), "EXCEEDED_MAX_ACTIVATED_SKILLS_LIMIT");
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        return new BookingGateDiagnostics(
+                readiness,
+                buyingSignal,
+                signalTier,
+                requested,
+                activatedCodes,
+                java.util.Collections.unmodifiableMap(blockedReasons)
+        );
     }
 
     static List<AgentSkillDto> selectPreLlmTurnRelevantSkills(
@@ -6727,9 +7107,15 @@ public class CleanAgentOrchestratorService {
         boolean bookingActive = priorBookingState != null && priorBookingState.status().isActiveOrConfirmed();
         boolean explicitStopRefusal = isExplicitConversationRefusalStopMessage(msg);
         boolean competitorPriceComparison = COMPETITOR_OR_EXTERNAL_PRICE_COMPARISON_PATTERN.matcher(msg).matches();
-        boolean explicitBookingCue = !explicitStopRefusal && (bookingActive || normLower.matches(
-                "(?isU).*\\b(đặt\\s+lịch|đăng\\s+ký(?:\\s+đặt)?(?:\\s+lịch|\\s+gói)?|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+lịch|còn\\s+giường|còn\\s+phòng|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay|\\d{1,2}\\s*h\\d{0,2}|mấy\\s+giờ\\s+còn)\\b.*"
-        ));
+        boolean threeTierEnabled = isCp3ThreeTierBookingEnabled();
+        CustomerBookingSignalTier preLlmBookingTier = threeTierEnabled
+                ? classifyPreLlmCustomerBookingSignalTier(msg, priorBookingState)
+                : CustomerBookingSignalTier.NONE;
+        boolean explicitBookingCue = threeTierEnabled
+                ? (preLlmBookingTier != CustomerBookingSignalTier.NONE)
+                : (!explicitStopRefusal && (bookingActive || normLower.matches(
+                        "(?isU).*\\b(đặt\\s+lịch|đăng\\s+ký(?:\\s+đặt)?(?:\\s+lịch|\\s+gói)?|giữ\\s+chỗ|giữ\\s+lịch|còn\\s+lịch|còn\\s+giường|còn\\s+phòng|tối\\s+nay|chiều\\s+nay|sáng\\s+mai|chiều\\s+mai|hôm\\s+nay|\\d{1,2}\\s*h\\d{0,2}|mấy\\s+giờ\\s+còn)\\b.*"
+                )));
         boolean deferOrBareClose = explicitStopRefusal
                 || (!competitorPriceComparison && (isHesitationOrDeferralMessage(msg)
                     || AdaptiveConversationIntelligence.isCustomerDeferralMessage(msg)
@@ -6753,8 +7139,13 @@ public class CleanAgentOrchestratorService {
             if (s == null || !s.active()) continue;
             String code = (s.code() != null ? s.code() : "").strip().toLowerCase(Locale.ROOT);
             boolean isBookingSkill = isBookingOrSchedulingSkillCode(code);
-            if (isBookingSkill && !explicitBookingCue) {
-                continue;
+            if (isBookingSkill) {
+                if (!explicitBookingCue) {
+                    continue;
+                }
+                if (threeTierEnabled && !isSkillTierAllowedForCustomerSignal(classifyBookingSkillTier(code), preLlmBookingTier)) {
+                    continue;
+                }
             }
             boolean isPauseSkill = code.contains("pause") || code.contains("graceful") || code.contains("close");
             boolean isObjectionSkill = code.contains("objection") || code.contains("sensory_value");
@@ -6799,7 +7190,8 @@ public class CleanAgentOrchestratorService {
         }
         return lowerCode.contains("booking")
                 || lowerCode.contains("schedul")
-                || lowerCode.contains("warm_nod");
+                || lowerCode.contains("warm_nod")
+                || lowerCode.contains("gentle_next_step");
     }
 
     static ThinkingMode selectAciAdaptiveThinkingMode(
