@@ -7167,9 +7167,7 @@ public class CleanAgentOrchestratorService {
                     || (!bookingActive && (isBareAcknowledgmentMessage(msg)
                         || AdaptiveConversationIntelligence.isBarePauseOrAcknowledgementMessage(msg)))));
         boolean priceObjection = !explicitStopRefusal && isConfirmedCustomerPriceObjection(msg, true);
-        boolean packageComparisonCue = normLower.matches(
-                "(?isU).*\\b(khác\\s+nhau|khác\\s+gì|so\\s+sánh|phân\\s+biệt|(?:2|hai)\\s+gói\\s+(?:này|đó)|gói\\s+.*\\s+với\\s+gói)\\b.*"
-        );
+        boolean packageComparisonCue = AdaptiveConversationIntelligence.hasPackageComparisonCue(msg);
         boolean catalogBreadthCue = normLower.matches(
                 "(?isU).*\\b(còn\\s+gói\\s+nào(?:\\s+khác)?|gói\\s+nào\\s+khác|còn\\s+liệu\\s+trình\\s+nào|chỉ\\s+có\\s+(?:1|2|một|hai)\\s+gói|mấy\\s+gói|những\\s+gói\\s+nào|tất\\s+cả\\s+các\\s+gói|danh\\s+sách\\s+gói|ngoài\\s+(?:2|hai)\\s+gói)\\b.*"
         );
@@ -7196,8 +7194,10 @@ public class CleanAgentOrchestratorService {
                         && !"assistant".equalsIgnoreCase(t.role()) && !"bot".equalsIgnoreCase(t.role())
                         && !CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(t.content())
                         && t.content().strip().split("\\s+").length >= 3);
-        boolean isScopeSelectionAfterNeedDiscovery = hasPriorCustomerNeedInHistory
-                && normLower.matches("(?isU)^\\s*(?:dạ\\s+)?(?:cả\\s*(?:2|hai)|làm\\s+cả\\s*(?:2|hai)|cả\\s+hai\\s+luôn|gói\\s+(?:cơ\\s+bản|chuyên\\s+sâu|đó|này))\\s*[.!]*\\s*$");
+        boolean isScopeSelectionAfterNeedDiscovery = AdaptiveConversationIntelligence.isContextualShortScopeSelectionReply(msg, history, null)
+                || (hasPriorCustomerNeedInHistory
+                    && normLower.matches("(?isU)^\\s*(?:dạ\\s+)?(?:cả\\s*(?:2|hai)|làm\\s+cả\\s*(?:2|hai)|cả\\s+hai\\s+luôn|gói\\s+(?:cơ\\s+bản|chuyên\\s+sâu|đó|này))\\s*[.!]*\\s*$"));
+        boolean isolatedNeurologicalTurn = AdaptiveConversationIntelligence.isIsolatedNeurologicalSymptomOnly(msg);
 
         List<AgentSkillDto> matched = new ArrayList<>();
         List<AgentSkillDto> customFallback = new ArrayList<>();
@@ -7255,13 +7255,18 @@ public class CleanAgentOrchestratorService {
                     keep = isBookingSkill || (!hasPriorCustomerNeedInHistory && isDiscoverySkill) || (priceOrPackageQuery && (isCompareOrPriceSkill || isPackageComparisonSkill));
                 }
             } else if (priceObjection) {
-                keep = isObjectionSkill || isCompareOrPriceSkill;
+                keep = isObjectionSkill
+                        || (packageComparisonCue && isPackageComparisonSkill)
+                        || (catalogBreadthCue && isCatalogBreadthSkill)
+                        || isCompareOrPriceSkill;
             } else if (packageComparisonCue) {
                 keep = isPackageComparisonSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
             } else if (catalogBreadthCue) {
                 keep = isCatalogBreadthSkill || isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill);
             } else if (isScopeSelectionAfterNeedDiscovery) {
                 keep = isCompareOrPriceSkill || isPackageComparisonSkill;
+            } else if (isolatedNeurologicalTurn) {
+                keep = isDiscoverySkill;
             } else if (priceOrPackageQuery) {
                 keep = isCompareOrPriceSkill || (recoveryPivotCue && isRecoveryPivotSkill) || (!hasPriorCustomerNeedInHistory && isDiscoverySkill);
             } else {

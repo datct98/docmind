@@ -5457,7 +5457,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             // ACI V3 P1 §5.2: phàn nàn vòng vo/lan man/dài dòng ("đừng nói vòng vo nữa, báo giá đi", "viết dài thế đọc thế quái nào được")
             + "\\b(?:nói|viết|nhắn|trả\\s+lời|noi|viet|nhan|tra\\s+loi)\\s+(?:vòng\\s+vo|vong\\s+vo|lòng\\s+vòng|long\\s+vong|lan\\s+man|dài\\s+(?:dòng|thế|quá|vậy|lắm)|dai\\s+dong)\\b|"
             + "\\b(?:đừng|dung)\\s+(?:nói|viết|noi|viet)\\s+(?:vòng\\s+vo|vong\\s+vo|lòng\\s+vòng|long\\s+vong|lan\\s+man|dài\\s+dòng|dai\\s+dong)\\b|"
-            + "\\brập\\s+khuôn\\s+(?:thế|quá|vậy)\\b)"
+            + "\\brập\\s+khuôn\\s+(?:thế|quá|vậy)\\b|"
+            // Post-CP3 Wave 1 (1.1): Phản ứng tiêu cực/bức xúc/ngơ ngác về cách tư vấn ("Ơ, dở hơi à", "bị dở à", "ngáo à", "tư vấn kiểu gì thế", "trả lời chẳng liên quan", "hỏi đi hỏi lại mãi")
+            + "^\\s*(?:(?:ơ|ủa|ơ\\s+hay|ơ\\s+kìa)\\s*[,!?.\\s]+)?(?:dở\\s+hơi|bị\\s+dở|ngáo)(?:\\s+(?:à|hả|vậy|thế|sao|chứ))?\\s*[.!?…]*\\s*$|"
+            + "\\b(?:tư\\s+vấn|trả\\s+lời|nói(?:\\s+chuyện)?|hỏi)\\s+(?:kiểu\\s+gì|cái\\s+kiểu\\s+gì|chẳng\\s+liên\\s+quan|không\\s+liên\\s+quan|chả\\s+liên\\s+quan|lạc\\s+đề|linh\\s+tinh)\\b|"
+            + "\\b(?:hỏi\\s+đi\\s+hỏi\\s+lại|hỏi\\s+lại\\s+mãi)\\b)"
     );
 
     private static final Pattern META_SCRIPT_TRAINING_REMARK_PATTERN = Pattern.compile(
@@ -5637,6 +5641,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (EXPLICIT_SERVICE_OR_PRICE_DEMAND_PATTERN.matcher(normCurrent).find()
                 || CleanAgentCatalogAndPromptBuilder.hasContextualWellnessOrLifestyleContext(normCurrent.toLowerCase(Locale.ROOT))) {
             return false;
+        }
+        if (AdaptiveConversationIntelligence.isIsolatedNeurologicalSymptomOnly(normCurrent)) {
+            return true;
         }
         if (conversationHistory != null) {
             for (FanpageBotRequest.ConversationTurn turn : conversationHistory) {
@@ -6066,10 +6073,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     private static final Pattern OVER_ASKING_OR_VERBOSITY_COMPLAINT_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:đừng|khỏi|thôi|bớt|ngừng|dừng)\\s+(?:có\\s+)?(?:hỏi|vặn|nói|giải\\s+thích|vòng\\s+vo)\\b|"
             + "\\bhỏi\\s+(?:lại\\s+|đi\\s+hỏi\\s+lại\\s+)?(?:nhiều|dồn|lắm|mãi|hoài|vặn|vòng\\s+vo|liên\\s+tục)\\b|"
-            + "\\b(?:nói|nhắn|viết|trả\\s+lời)\\s+(?:dài|nhiều|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng)\\b|"
+            + "\\bhỏi\\s+đi\\s+hỏi\\s+lại\\b|"
+            + "\\b(?:nói|nhắn|viết|trả\\s+lời)\\s+(?:dài|nhiều|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng|chẳng\\s+liên\\s+quan|không\\s+liên\\s+quan|lạc\\s+đề)\\b|"
             + "\\b(?:dài\\s+dòng|lan\\s+man|vòng\\s+vo|lằng\\s+nhằng|rườm\\s+rà)\\b|"
             + "\\b(?:nói|trả\\s+lời|nhắn)\\s+(?:ngắn|gọn|thẳng)\\s+(?:thôi|đi|gọn|lại)\\b|"
-            + "\\b(?:máy\\s+móc|rập\\s+khuôn|văn\\s+mẫu)\\b)"
+            + "\\b(?:máy\\s+móc|rập\\s+khuôn|văn\\s+mẫu)\\b|"
+            + "\\btư\\s+vấn\\s+kiểu\\s+gì\\b|"
+            + "(?:^|\\b(?:ơ|ủa|ô|này|ầy)\\s*,?\\s*)(?:bị\\s+)?(?:dở\\s+hơi|dở|ngáo|điên|khùng)\\s+(?:à|hả|hay\\s+sao|vậy|thế)\\b)"
     );
 
     /** P3.7-B: Dấu hiệu lời mời mua/trải nghiệm/đặt lịch trong một câu hỏi (SALES_CTA) — tổng quát đa ngành. */
@@ -6378,13 +6388,22 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         return NegativeReactionSubtype.NONE;
     }
 
-    /** ACI V3 P2 (§4.1): Phủ định fact trực tiếp của khách ("em có nói đau lưng đâu", "đâu có đau cổ vai gáy"). */
+    /** ACI V3 P2 (§4.1): Phủ định fact trực tiếp của khách ("em có nói đau lưng đâu", "đâu có đau cổ vai gáy", "ơ bị dở à sao lại cổ vai gáy"). */
     private static final Pattern EXPLICIT_FACTUAL_DENIAL_CORRECTION_PATTERN = Pattern.compile(
             "(?isU)(?:\\b(?:em|mình|tôi|tớ|anh|chị)\\s+(?:có|đâu\\s+có|đâu|chưa)\\s+(?:nói|bảo|kể|nhắc|chia\\s+sẻ)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
             + "\\b(?:có|đâu\\s+có|đã)\\s+(?:nói|bảo|nhắc)\\b[^.!?\\n]{0,50}\\bđâu\\b|"
             + "\\bđâu\\s+có\\s+(?:nói|bảo|nhắc|đau|bị|mỏi)\\b|"
-            + "\\b(?:dở\\s+hơi|bị\\s+dở|ngáo)\\s+à\\b)"
+            + "\\b(?:dở\\s+hơi|bị\\s+dở|ngáo)\\s+(?:à|hả)\\b[^.!?\\n]{0,40}\\b(?:sao\\s+lại|có\\s+nói|đâu\\s+có|chưa\\s+nói|ai\\s+nói|ai\\s+bảo)\\b)"
     );
+
+    public static boolean hasExplicitFactualDenialCorrection(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String low = java.text.Normalizer.normalize(rawMessage.strip(), java.text.Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT);
+        return EXPLICIT_FACTUAL_DENIAL_CORRECTION_PATTERN.matcher(low).find();
+    }
 
     /** ACI V3 P2 (§4.1): Phàn nàn bị hỏi dồn/ép chốt (OVER_INTRUSION) — tách khỏi phàn nàn độ dài/phong cách. */
     private static final Pattern OVER_INTRUSION_EXPLICIT_PATTERN = Pattern.compile(
@@ -6857,6 +6876,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (UNSOLICITED_BOOKING_OR_PACKAGE_CTA_PATTERN.matcher(low).find()) {
             return true;
         }
+        // Post-CP3 Wave 1 (1.1): Câu nhận lỗi / đính chính thuần túy (không chứa giá tiền, không chứa SKU, không phải câu hỏi/CTA)
+        // không bị cắt nhầm chỉ vì nhắc lại từ "gói" hoặc "chăm sóc" để giải thích sơ suất vừa rồi.
+        boolean isSincereApologyOrClarificationWithoutPitch = !question
+                && low.matches("(?isU).*\\b(?:xin\\s+lỗi|sơ\\s+suất|nhầm\\s+lẫn|tiếp\\s+thu|chưa\\s+rõ|chưa\\s+sát|lạc\\s+đề|khó\\s+hiểu)\\b.*")
+                && !low.matches("(?isU).*\\b(?:bên\\s+(?:em|mình)\\s+có\\s+gói|em\\s+(?:xin\\s+)?gợi\\s+ý\\s+gói|mình\\s+tham\\s+khảo\\s+gói)\\b.*");
+        if (isSincereApologyOrClarificationWithoutPitch) {
+            return false;
+        }
         // 4. Câu giới thiệu/chào gói không được yêu cầu
         if (UNSOLICITED_PACKAGE_OFFER_SENTENCE_PATTERN.matcher(low).find()) {
             return true;
@@ -7254,13 +7281,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
                 return List.of(new FanpageBotResponse.ReplyBubble(naturalAck, 0));
             }
-            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp / nhận xét kịch bản (SALES_CTA = NONE)
-            FanpageBotResponse.ReplyBubble single = out.get(0);
-            if (discoveryCandidate != null) {
-                String base = single.text().strip();
-                single = new FanpageBotResponse.ReplyBubble(base + " " + discoveryCandidate, single.typingDelayMs());
+            // Giữ đúng 1 bong bóng gọn gàng cho lượt phàn nàn giao tiếp / nhận xét kịch bản (SALES_CTA = NONE),
+            // bảo toàn đầy đủ các câu hợp lệ đã qua lọc từ mọi bong bóng thay vì chỉ lấy out.get(0).
+            String mergedOutText = out.stream()
+                    .map(b -> b.text() != null ? b.text().strip() : "")
+                    .filter(s -> !s.isEmpty())
+                    .reduce((a, b) -> a + " " + b)
+                    .orElse("");
+            if (discoveryCandidate != null && !discoveryCandidate.isBlank()) {
+                mergedOutText = (mergedOutText + " " + discoveryCandidate).strip();
             }
-            return List.of(single);
+            return List.of(new FanpageBotResponse.ReplyBubble(mergedOutText, out.get(0).typingDelayMs()));
         }
         return out;
     }
@@ -7871,10 +7902,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String[] sents = txt.split("(?<=[.!?？])\\s+");
             for (int i = 0; i < sents.length; i++) {
                 String s = sents[i];
-                if (s.toLowerCase(Locale.ROOT).matches("(?isU).*(?:tự\\s+thêm\\s+chữ\\s+cổ|nói\\s+thêm\\s+vùng\\s+cổ).*")) {
+                String sLow = s.toLowerCase(Locale.ROOT);
+                if (sLow.matches("(?isU).*(?:tự\\s+thêm\\s+chữ\\s+cổ|nói\\s+thêm\\s+vùng\\s+cổ).*")) {
                     continue;
                 }
-                boolean sentAlreadyHasHead = s.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(vùng\\s+đầu|mỏi\\s+đầu|đau\\s+đầu|gội\\s+đầu|đầu\\s+và)\\b.*");
+                // Post-CP3 Wave 1 (1.2): Không cắt chữ "cổ" khỏi tên/hạng mục chuẩn của gói trong Catalog (VD: "massage cổ vai gáy", "chăm sóc cổ vai gáy").
+                if (sLow.matches("(?isU).*\\b(?:massage|mát\\s*xa|chăm\\s+sóc|ấn\\s+huyệt|gói|liệu\\s+trình)\\s+(?:chuyên\\s+sâu\\s+|thư\\s+giãn\\s+|vùng\\s+)?cổ\\s+vai\\s+gáy\\b.*")) {
+                    continue;
+                }
+                boolean sentAlreadyHasHead = sLow.matches("(?isU).*\\b(vùng\\s+đầu|mỏi\\s+đầu|đau\\s+đầu|gội\\s+đầu|đầu\\s+và)\\b.*");
                 String rep = sentAlreadyHasHead ? "vai gáy" : "đầu và vai gáy";
                 sents[i] = s.replaceAll("(?iU)\\bcổ\\s+vai\\s+gáy\\b", rep);
             }

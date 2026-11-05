@@ -2060,7 +2060,8 @@ public class AgentBrainService {
                                     || "preferred_package".equals(d.key())
                                     || "preferred_branch".equals(d.key())
                                     || "available_time".equals(d.key())));
-        String proposedGoal = reflection.conversationGoal();
+        String proposedGoal = sanitizeMedicalTreatmentClaimFromConversationGoal(
+                reflection.conversationGoal(), originalCustomerMessage);
         if (isCp3GoalLifecycleEnabled()) {
             if (isTransientEmotionOrComplaintGoalString(mem.draft2ConversationGoal)) {
                 mem.draft2ConversationGoal = "EXPLORE_SERVICES";
@@ -2099,8 +2100,14 @@ public class AgentBrainService {
         }
 
         // Quản lý vòng đời 5 trạng thái triệu chứng nguyên tử (CURRENT | RESOLVED | PAST | NEGATED | SUPERSEDED) & Versioned Facts
-        for (AdaptiveConversationIntelligence.FactDeltaProposal delta : reflection.confirmedFactsDelta()) {
-            if (delta == null || delta.value().isBlank()) continue;
+        for (AdaptiveConversationIntelligence.FactDeltaProposal rawDelta : reflection.confirmedFactsDelta()) {
+            if (rawDelta == null || rawDelta.value().isBlank()) continue;
+            final AdaptiveConversationIntelligence.FactDeltaProposal delta =
+                    ("self_reported_symptom".equals(rawDelta.key())
+                            && AdaptiveConversationIntelligence.isBareBodyAreaScopePhraseWithoutSymptoms(rawDelta.value()))
+                    ? new AdaptiveConversationIntelligence.FactDeltaProposal(
+                            "need_scope", rawDelta.value(), rawDelta.op(), rawDelta.confidence(), rawDelta.explicitValidity())
+                    : rawDelta;
             AdaptiveConversationIntelligence.FactValidity targetValidity = delta.effectiveValidity();
             if ("self_reported_symptom".equals(delta.key())) {
                 List<String> atomicSymptoms = AdaptiveConversationIntelligence.splitAtomicHealthExpressions(delta.value());
@@ -2243,6 +2250,7 @@ public class AgentBrainService {
                 && !hasNonCurrentSymptomThisTurn
                 && originalCustomerMessage != null
                 && !originalCustomerMessage.isBlank()
+                && !AdaptiveConversationIntelligence.isBareBodyAreaScopePhraseWithoutSymptoms(originalCustomerMessage)
                 && !containsPastOrNegatedSymptomQualifier(originalCustomerMessage)) {
             List<String> verbatimClauses = AdaptiveConversationIntelligence.splitAtomicHealthExpressions(originalCustomerMessage);
             if (verbatimClauses.size() >= 2) {
@@ -2441,6 +2449,24 @@ public class AgentBrainService {
             mem.draft2LastOfferedPackageIds.clear();
             mem.draft2LastOfferedPackageIds.addAll(authoritativeBookingState.candidateProductIds());
         }
+    }
+
+    private static String sanitizeMedicalTreatmentClaimFromConversationGoal(String rawGoal, String originalCustomerMessage) {
+        if (rawGoal == null || rawGoal.isBlank()) {
+            return rawGoal;
+        }
+        String norm = java.text.Normalizer.normalize(rawGoal.strip(), java.text.Normalizer.Form.NFC);
+        String low = norm.toLowerCase(Locale.ROOT);
+        boolean claimsMedicalTreatment = low.matches("(?isU).*\\b(?:điều\\s+trị|chữa(?:\\s+trị|\\s+bệnh|\\s+khỏi)?|trị\\s+bệnh)\\b.*");
+        if (!claimsMedicalTreatment) {
+            return norm;
+        }
+        if (AdaptiveConversationIntelligence.isBareBodyAreaScopePhraseWithoutSymptoms(originalCustomerMessage)) {
+            return "Chăm sóc thư giãn vùng " + originalCustomerMessage.strip();
+        }
+        return norm.replaceAll("(?iU)\\b(?:điều\\s+trị|chữa(?:\\s+trị|\\s+bệnh|\\s+khỏi)?|trị\\s+bệnh)\\b", "Chăm sóc thư giãn")
+                .replaceAll("\\s{2,}", " ")
+                .strip();
     }
 
     private static boolean isSideTopicOrOperationalGoalString(String rawGoal) {

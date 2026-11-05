@@ -1654,6 +1654,9 @@ public final class AdaptiveConversationIntelligence {
         String k = rawKey != null ? rawKey.strip().toLowerCase(Locale.ROOT) : "";
         if (!k.isEmpty()) {
             if (k.contains("symptom") || k.contains("health_condition") || k.contains("health_issue")) {
+                if (isBareBodyAreaScopePhraseWithoutSymptoms(rawVal)) {
+                    return "need_scope";
+                }
                 return "self_reported_symptom";
             }
             if ("budget_note".equals(k)) {
@@ -2276,7 +2279,7 @@ public final class AdaptiveConversationIntelligence {
             boolean droppedUngrounded = false;
             for (FactDeltaProposal f : confirmedFactsDelta) {
                 if (f != null && f.op() == FactMutationOp.ADD
-                        && !("price_reaction".equals(f.key()) && hasGenuinePriceObjectionCue(groundingEvidence))
+                        && !("price_reaction".equals(f.key()) && hasGenuinePriceObjectionCue(rawUserMessage))
                         && !hasLexicalEvidenceInUtterance(f.value(), groundingEvidence)) {
                     droppedUngrounded = true;
                     continue;
@@ -2402,9 +2405,15 @@ public final class AdaptiveConversationIntelligence {
             boolean purePkgInfoInquiry = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
                     && !affirmativeBookingCue
                     && isPurePackageInformationInquiry(rawUserMessage);
+            boolean bareBodyAreaScopeReply = !explicitStop
+                    && !politeThankYouClosingAck
+                    && !processFeedbackComplaint
+                    && !affirmativeBookingCue
+                    && isBareBodyAreaScopePhraseWithoutSymptoms(rawUserMessage);
             boolean hasP33EvidenceOrPatchUpdate = explicitTargetBudget != null
                     || explicitBranch != null
                     || utteranceHasRevisionCue
+                    || bareBodyAreaScopeReply
                     || (purePkgInfoInquiry
                         && proposedBookingPatch != null
                         && proposedBookingPatch.selectedProductId() != null
@@ -2451,9 +2460,10 @@ public final class AdaptiveConversationIntelligence {
             boolean reconciledNeedRevision = needRevisionDetected;
             String reconciledInterestedPkgId = interestedPackageId;
 
-            // P3.3 TC05: Khi khách chỉ hỏi thông tin về gói ("Ok, gói đó gồm những gì?", "Gói 399k gồm những gì?"),
+            // P3.3 TC05 & Post-CP3 Wave 1 (1.2): Khi khách chỉ hỏi thông tin về gói ("Ok, gói đó gồm những gì?", "Gói 399k gồm những gì?")
+            // hoặc chỉ mới nêu vùng cơ thể cần chăm sóc ("Đầu và vai gáy", "Chân và lưng"),
             // không được ghi nhận thành selected_product_id; chỉ giữ ở interestedPackageId.
-            if (purePkgInfoInquiry
+            if ((purePkgInfoInquiry || bareBodyAreaScopeReply)
                     && reconciledBookingPatch != null
                     && reconciledBookingPatch.selectedProductId() != null
                     && reconciledBookingPatch.proposedDate() == null
@@ -2462,6 +2472,29 @@ public final class AdaptiveConversationIntelligence {
                     reconciledInterestedPkgId = reconciledBookingPatch.selectedProductId();
                 }
                 reconciledBookingPatch = ProposedBookingPatch.empty();
+            }
+            if (bareBodyAreaScopeReply) {
+                boolean hasNeedScopeDelta = false;
+                for (int i = 0; i < reconciledFactsDelta.size(); i++) {
+                    FactDeltaProposal d = reconciledFactsDelta.get(i);
+                    if (d == null) continue;
+                    if ("need_scope".equalsIgnoreCase(d.key())) {
+                        hasNeedScopeDelta = true;
+                    } else if ("self_reported_symptom".equalsIgnoreCase(d.key())
+                            && isBareBodyAreaScopePhraseWithoutSymptoms(d.value())) {
+                        reconciledFactsDelta.set(i, new FactDeltaProposal(
+                                "need_scope", d.value(), d.op(), d.confidence(), d.explicitValidity()));
+                        hasNeedScopeDelta = true;
+                    }
+                }
+                if (!hasNeedScopeDelta) {
+                    reconciledFactsDelta.add(new FactDeltaProposal(
+                            "need_scope",
+                            rawUserMessage.strip(),
+                            FactMutationOp.ADD,
+                            "HIGH"
+                    ));
+                }
             }
 
             // P3.3 TC01 & TC04: Ghi nhận ngân sách mục tiêu tường minh của khách và cơ sở/chi nhánh khách nêu
@@ -2668,7 +2701,8 @@ public final class AdaptiveConversationIntelligence {
                 reconciledFactsDelta.removeIf(d -> d != null
                         && d.effectiveValidity() == FactValidity.CURRENT
                         && ("need_scope".equalsIgnoreCase(d.key())
-                            || "self_reported_symptom".equalsIgnoreCase(d.key())));
+                            || "self_reported_symptom".equalsIgnoreCase(d.key())
+                            || ("price_reaction".equalsIgnoreCase(d.key()) && !hasGenuinePriceObjectionCue(rawUserMessage))));
                 reconciledBookingPatch = ProposedBookingPatch.empty();
             } else if (mixedComplaintWithBusinessDemand) {
                 boolean explicitPrice = CleanAgentOutputRefereeAndSanitizer.hasExplicitPriceDemandInMessage(rawUserMessage);
@@ -2938,10 +2972,16 @@ public final class AdaptiveConversationIntelligence {
                 );
             } else if (firstGenuinePriceObjection) {
                 costConcern = Boolean.TRUE;
+                boolean alsoAsksPackageComparison = hasPackageComparisonCue(rawUserMessage);
+                if (alsoAsksPackageComparison
+                        && secIntents.stream().noneMatch(s -> "PACKAGE_COMPARISON".equalsIgnoreCase(s))) {
+                    secIntents.add("PACKAGE_COMPARISON");
+                }
                 if (detIntent == null || detIntent.isBlank()
                         || "CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT".equalsIgnoreCase(detIntent)
                         || "POLITE_DEFERRAL".equalsIgnoreCase(detIntent)
-                        || "NEED_DISCOVERY".equalsIgnoreCase(detIntent)) {
+                        || "NEED_DISCOVERY".equalsIgnoreCase(detIntent)
+                        || "PACKAGE_COMPARISON".equalsIgnoreCase(detIntent)) {
                     detIntent = "PRICE_OBJECTION";
                     convState = "OBJECTION_NEGOTIATION";
                 }
@@ -4584,7 +4624,8 @@ public final class AdaptiveConversationIntelligence {
                 && !isTrialOrRelativeOptionSelectionMessage(originalCustomerMessage)
                 && (hasGenuinePriceObjectionCue(originalCustomerMessage)
                     || isDeferOrHesitation
-                    || isPurePackageInformationInquiry(originalCustomerMessage));
+                    || isPurePackageInformationInquiry(originalCustomerMessage)
+                    || isBareBodyAreaScopePhraseWithoutSymptoms(originalCustomerMessage));
         if (safePrior.status() == ConversationState.BookingStatus.NONE && !hasDateOrTimeProposal && !hasExplicitBookingCue) {
             if (nonSelectionMention) {
                 return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
@@ -5164,7 +5205,8 @@ public final class AdaptiveConversationIntelligence {
         SELF_IDENTIFY_GENDER,
         CUSTOMER_CORRECTION,
         TRIAL_COMMITMENT_SELECTION,
-        SUITABILITY_INQUIRY
+        SUITABILITY_INQUIRY,
+        PACKAGE_COMPARISON
     }
 
     /**
@@ -5351,7 +5393,109 @@ public final class AdaptiveConversationIntelligence {
         if (low.matches("(?isU).*\\bcó\\b[^?？]+\\b(?:không\\s+hay|hay\\s+chỉ|hay\\s+là)\\b.*")) {
             return false;
         }
-        return CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION_PATTERN.matcher(low).matches();
+        return CUSTOMER_CORRECTION_OR_COMPONENT_REJECTION_PATTERN.matcher(low).matches()
+                || CleanAgentOutputRefereeAndSanitizer.hasExplicitFactualDenialCorrection(rawMessage);
+    }
+
+    private static final Pattern PACKAGE_COMPARISON_CUE_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:khác\\s+nhau|khác\\s+gì|khác\\s+sao|so\\s+sánh|phân\\s+biệt|"
+                    + "(?:2|hai)\\s+gói\\s+(?:này|đó|kia)|"
+                    + "gói\\s+[^?]{1,35}\\s+(?:với|và|hay)\\s+gói|"
+                    + "\\d{2,4}(?:\\s*k|\\.[0-9]{3})\\s*đ?\\s+(?:với|và|hay)\\s+(?:gói\\s+)?\\d{2,4}(?:\\s*k|\\.[0-9]{3})).*"
+    );
+
+    public static boolean hasPackageComparisonCue(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String low = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        return PACKAGE_COMPARISON_CUE_PATTERN.matcher(low).matches();
+    }
+
+    private static final Pattern BARE_BODY_AREA_OR_DUAL_SCOPE_TOKEN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:đầu|cổ|vai|gáy|vau\\s+gáy|lưng|eo|thắt\\s+lưng|chân|bàn\\s+chân|bắp\\s+chân|tay|cánh\\s+tay|toàn\\s+thân|body|da\\s+mặt|mặt|da\\s+đầu|cả\\s*(?:2|hai))\\b.*"
+    );
+
+    private static final Pattern SYMPTOM_OR_MEDICAL_DISCOMFORT_VERB_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:đau|mỏi|nhức|căng|tê|buốt|ê\\s+ẩm|hoa\\s+mắt|chóng\\s+mặt|choáng|mất\\s+ngủ|khó\\s+ngủ|ngủ\\s+không\\s+sâu|stress|mệt|uể\\s+oải|nặng\\s+đầu|rụng\\s+tóc|gàu|ngứa|bệnh|huyết\\s+áp|tiền\\s+đình|thoát\\s+vị|bầu|mang\\s+thai|sưng|viêm|sốt|nôn)\\b.*"
+    );
+
+    private static final Pattern NON_SCOPE_PRICE_OR_BOOKING_TOKEN_PATTERN = Pattern.compile(
+            "(?isU).*\\b(?:giá|bao\\s+nhiêu|mấy\\s+tiền|\\d+\\s*k|đắt|rẻ|khác\\s+nhau|khác\\s+gì|so\\s+sánh|đặt\\s+lịch|book|mấy\\s+giờ|ở\\s+đâu|chi\\s+nhánh|cơ\\s+sở|gói\\s+(?:cơ\\s+bản|chuyên\\s+sâu|đó|này|thứ|đầu)|đầu\\s+tiên|ban\\s+đầu|lần\\s+đầu|bắt\\s+đầu|tư\\s+vấn|mặt\\s+bằng|chỉ\\s+định)\\b.*"
+    );
+
+    /**
+     * Post-CP3 Wave 1 (1.2): Nhận diện cụm từ ngắn chỉ nêu phạm vi vùng cơ thể hoặc "cả hai"
+     * mà KHÔNG chứa động từ triệu chứng/bệnh lý hay từ khóa hỏi giá/đặt lịch (VD: "Đầu và vai gáy", "Chân và lưng", "Cả hai").
+     */
+    public static boolean isBareBodyAreaScopePhraseWithoutSymptoms(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        if (norm.contains("?") || norm.contains("？")) {
+            return false;
+        }
+        String[] words = norm.split("\\s+");
+        if (words.length < 1 || words.length > 10) {
+            return false;
+        }
+        String low = norm.toLowerCase(Locale.ROOT);
+        if (!BARE_BODY_AREA_OR_DUAL_SCOPE_TOKEN_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        if (SYMPTOM_OR_MEDICAL_DISCOMFORT_VERB_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        if (NON_SCOPE_PRICE_OR_BOOKING_TOKEN_PATTERN.matcher(low).matches()) {
+            return false;
+        }
+        return !CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(norm)
+                && !CleanAgentOutputRefereeAndSanitizer.isProcessOrConsultationFeedbackComplaint(norm)
+                && !isCustomerCorrectionOrComponentRejectionMessage(norm);
+    }
+
+    public static boolean hasPriorBotScopeOrFocusQuestion(List<FanpageBotRequest.ConversationTurn> history) {
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            FanpageBotRequest.ConversationTurn t = history.get(i);
+            if (t == null || t.content() == null || t.content().isBlank()) continue;
+            String role = t.role() != null ? t.role().strip().toLowerCase(Locale.ROOT) : "";
+            if ("assistant".equals(role) || "bot".equals(role)) {
+                String botNorm = Normalizer.normalize(t.content().strip(), Normalizer.Form.NFC);
+                String botLow = botNorm.toLowerCase(Locale.ROOT);
+                boolean hasQuestion = botNorm.contains("?") || botNorm.contains("？")
+                        || botLow.matches("(?isU).*\\b(?:vùng\\s+nào|phần\\s+nào|chỗ\\s+nào|hướng\\s+nào|hay\\s+là)\\b.*");
+                boolean asksScopeOrFocus = botLow.matches(
+                        "(?isU).*\\b(?:vùng\\s+nào|vùng\\s+cơ\\s+thể\\s+nào|phần\\s+nào|ưu\\s+tiên|tập\\s+trung|chăm\\s+sóc|thư\\s+giãn|massage|gội\\s+đầu|cổ\\s+vai\\s+gáy|chân\\s+tay|lưng|toàn\\s+thân|vừa\\s+đủ\\s+hay|chuyên\\s+sâu)\\b.*"
+                );
+                return hasQuestion && asksScopeOrFocus;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isContextualShortScopeSelectionReply(
+            String rawMessage,
+            List<FanpageBotRequest.ConversationTurn> history,
+            CustomerUnderstandingDraft2Snapshot draft2Snapshot
+    ) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return false;
+        }
+        String norm = Normalizer.normalize(rawMessage.strip(), Normalizer.Form.NFC);
+        boolean priorNeedsEstablished = hasCustomerSharedNeedsOrSymptomsInHistory(history, draft2Snapshot);
+        if (priorNeedsEstablished && SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(norm).matches()) {
+            return true;
+        }
+        if (hasPriorBotScopeOrFocusQuestion(history)
+                && (isBareBodyAreaScopePhraseWithoutSymptoms(norm)
+                    || SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(norm).matches())) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -5521,9 +5665,13 @@ public final class AdaptiveConversationIntelligence {
         if (hasPriceObjection) {
             intents.add(CanonicalTurnIntent.PRICE_OBJECTION);
         }
+        boolean hasPkgComparison = hasPackageComparisonCue(msg);
+        if (hasPkgComparison) {
+            intents.add(CanonicalTurnIntent.PACKAGE_COMPARISON);
+        }
 
-        boolean isDeferral = !hasBookingCue && !isCompComparison && !hasPriceObjection && isCustomerDeferralMessage(msg);
-        boolean isBarePause = !hasBookingCue && !isCompComparison && !hasPriceObjection && !isDeferral
+        boolean isDeferral = !hasBookingCue && !isCompComparison && !hasPriceObjection && !hasPkgComparison && isCustomerDeferralMessage(msg);
+        boolean isBarePause = !hasBookingCue && !isCompComparison && !hasPriceObjection && !hasPkgComparison && !isDeferral
                 && isBarePauseOrAcknowledgementMessage(msg);
         if (isDeferral) {
             intents.add(CanonicalTurnIntent.CUSTOMER_DEFERRAL);
@@ -5534,6 +5682,7 @@ public final class AdaptiveConversationIntelligence {
         boolean isGenderSelfId = !hasBookingCue
                 && !isCompComparison
                 && !hasPriceObjection
+                && !hasPkgComparison
                 && !isDeferral
                 && !isBarePause
                 && classifyPriceIntentSubMode(msg) == PriceIntentSubMode.NONE
@@ -5543,7 +5692,7 @@ public final class AdaptiveConversationIntelligence {
         }
 
         boolean priorNeedsEstablished = hasCustomerSharedNeedsOrSymptomsInHistory(history, draft2Snapshot);
-        if (priorNeedsEstablished && SCOPE_OR_DUAL_SELECTION_CONFIRMATION_PATTERN.matcher(msg).matches()) {
+        if (isContextualShortScopeSelectionReply(msg, history, draft2Snapshot)) {
             intents.add(CanonicalTurnIntent.SCOPE_CONFIRMATION);
         }
 
@@ -5695,14 +5844,14 @@ public final class AdaptiveConversationIntelligence {
                 + "gội\\s+đầu|dưỡng\\s+sinh|massage|chăm\\s+sóc|thư\\s+giãn|trị\\s+liệu)\\b.*");
     }
 
-    private static boolean isIsolatedNeurologicalSymptomOnly(String rawText) {
+    public static boolean isIsolatedNeurologicalSymptomOnly(String rawText) {
         if (rawText == null || rawText.isBlank()) {
             return false;
         }
         String low = Normalizer.normalize(rawText.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
-        boolean hasDizzyOnly = low.matches("(?isU).*\\b(hoa\\s+mắt|chóng\\s+mặt|choáng\\s+váng|mất\\s+thăng\\s+bằng|huyết\\s+áp|tiền\\s+đình)\\b.*");
+        boolean hasDizzyOrNeuroVascularOnly = low.matches("(?isU).*\\b(hoa\\s+mắt|chóng\\s+mặt|choáng\\s+váng|mất\\s+thăng\\s+bằng|huyết\\s+áp|tiền\\s+đình|tê\\s+bì|tê\\s+(?:chân|tay|bàn\\s+tay|bàn\\s+chân|tứ\\s+chi)|buồn\\s+nôn|tức\\s+ngực|khó\\s+thở)\\b.*");
         boolean hasMusculoskeletalOrCareContext = low.matches("(?isU).*\\b(đau\\s+đầu|nhức\\s+đầu|mỏi|cổ|vai|vau\\s+gáy|gáy|lưng|ngồi\\s+lâu|máy\\s+tính|văn\\s+phòng|làm\\s+việc|mất\\s+ngủ|khó\\s+ngủ|gói|dịch\\s+vụ|liệu\\s+trình|thư\\s+giãn|dưỡng\\s+sinh|massage)\\b.*");
-        return hasDizzyOnly && !hasMusculoskeletalOrCareContext;
+        return hasDizzyOrNeuroVascularOnly && !hasMusculoskeletalOrCareContext;
     }
 
     /**
@@ -5861,6 +6010,7 @@ public final class AdaptiveConversationIntelligence {
         boolean isSuitabilityInquiry = detectedIntents.contains(CanonicalTurnIntent.SUITABILITY_INQUIRY);
         boolean isCustomerCorrection = detectedIntents.contains(CanonicalTurnIntent.CUSTOMER_CORRECTION);
         boolean isTrialCommitmentSelection = detectedIntents.contains(CanonicalTurnIntent.TRIAL_COMMITMENT_SELECTION);
+        boolean isPackageComparison = detectedIntents.contains(CanonicalTurnIntent.PACKAGE_COMPARISON);
 
         if (isPrivacyConcern) {
             concerns.add("PRIVACY_OR_SHARED_SPACE_CONCERN");
@@ -5927,7 +6077,7 @@ public final class AdaptiveConversationIntelligence {
             } else {
                 directive = allowDiscoveryQ
                         ? "FEEDBACK_RECOVERY (MISSED_DISCOVERY): Xin lỗi chân thành trực diện (cấm xin lỗi điều kiện 'Em xin lỗi nếu...'), 0 báo giá/gói, và hỏi đúng 1 câu mở ngắn gọn xem khách đang muốn chăm sóc vùng nào."
-                        : "FEEDBACK_RECOVERY (OVER_INTRUSION): Tiếp thu ngắn gọn trực diện (1 bong bóng, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá, 0 lặp lại danh sách triệu chứng của khách).";
+                        : "FEEDBACK_RECOVERY (OVER_INTRUSION / CONTEXTUAL_RECOVERY): Khách phản ứng tiêu cực về câu trả lời vừa rồi của bot ('" + msg + "'). BẮT BUỘC: Nhận lỗi chân thành, tự nhiên và sát ngữ cảnh cuộc trò chuyện vừa diễn ra (1 bong bóng gọn gàng, cta_level = NO_CTA, 0 câu hỏi '?', 0 tự khai AI khi không bị hỏi trực tiếp, 0 báo giá hay chào bán gói dịch vụ, 0 lặp lại danh sách triệu chứng của khách).";
             }
         } else if (isExplicitRefusal) {
             communicationSignals.add("EXPLICIT_CONVERSATION_CLOSURE");
@@ -5986,7 +6136,21 @@ public final class AdaptiveConversationIntelligence {
             frictionHistory.add("PRICE_OBJECTION_TURN_" + totalPriceObjections);
             boolean isAskingWhyOrAlternative = msg.contains("?") || msg.contains("？")
                     || msgLow.matches("(?isU).*\\b(sao|tại\\s+sao|vì\\s+sao|nhẹ\\s+hơn|nhẹ\\s+tiền\\s+hơn|rẻ\\s+hơn|mềm\\s+hơn|gói\\s+nào|lựa\\s+chọn\\s+nào)\\b.*");
-            if (priorPriceObjections >= 1 && !isAskingWhyOrAlternative) {
+            if (isPackageComparison) {
+                buyingSignals.add("PACKAGE_COMPARISON_INQUIRY");
+                inferences.add(new LightweightInferenceItem(
+                        "CUSTOMER_HAS_PRICE_CONCERN_AND_ASKS_DIRECT_PACKAGE_COMPARISON",
+                        0.75,
+                        List.of(msg)
+                ));
+                recommendedAction = TurnAction.ALTERNATIVE_OFFER;
+                directive = "PRICE_OBJECTION_WITH_PACKAGE_COMPARISON (LƯỢT PHẢN ĐỐI GIÁ KÈM CÂU HỎI SO SÁNH GÓI CỤ THỂ '" + msg + "'): "
+                        + "BẮT BUỘC xử lý đồng thời cả 2 vế: "
+                        + "(1) Đồng cảm tự nhiên, ngắn gọn với cảm nhận chi phí của khách ngay vế đầu; "
+                        + "(2) So sánh TRỰC TIẾP và CỤ THỂ đúng các gói/mức giá khách vừa hỏi dựa trên <VERIFIED_BUSINESS_CATALOG> (nêu rõ thời lượng, phạm vi vùng chăm sóc và các hạng mục khác biệt cốt lõi giữa các gói đó); "
+                        + "(3) TUYỆT ĐỐI KHÔNG né câu hỏi so sánh, KHÔNG chỉ lặp lại giá mà không giải thích điểm khác nhau, và KHÔNG tự ý lái sang một gói thứ ba không liên quan; "
+                        + "(4) Có thể hỏi nhẹ 1 câu xem khách nghiêng về trải nghiệm gói nào hơn.";
+            } else if (priorPriceObjections >= 1 && !isAskingWhyOrAlternative) {
                 emotions.add("HESITANT_UNDER_REPEATED_PRICE_FRICTION");
                 inferences.add(new LightweightInferenceItem(
                         "CUSTOMER_MAY_HAVE_PRICE_CONCERN",
@@ -6006,6 +6170,10 @@ public final class AdaptiveConversationIntelligence {
                         + "(1) Đồng cảm tự nhiên với cảm nhận chi phí của khách (VALUE_PERCEPTION_GAP); "
                         + "(2) Làm rõ giá trị thực tế gắn với triệu chứng khách đang gặp và gợi ý nhẹ nhàng phương án cơ bản dễ tiếp cận nhất trong <VERIFIED_BUSINESS_CATALOG> (0 upsell, 0 combo nhiều buổi, next_action = SOFT_FEELING_CHECK).";
             }
+        } else if (isPackageComparison) {
+            buyingSignals.add("PACKAGE_COMPARISON_INQUIRY");
+            recommendedAction = TurnAction.SPECIFIC_PRICE_ANSWER;
+            directive = "PACKAGE_COMPARISON (SO SÁNH GÓI CỤ THỂ '" + msg + "'): So sánh trực tiếp, rõ ràng đúng các gói khách đang hỏi dựa trên <VERIFIED_BUSINESS_CATALOG> (nêu đúng mức giá, thời lượng, phạm vi vùng chăm sóc và các bước khác biệt chính), không trả lời chung chung và không lái sang gói không liên quan.";
         } else if (priceSubMode != PriceIntentSubMode.NONE) {
             switch (priceSubMode) {
                 case GENERAL_PRICE_INQUIRY -> {
@@ -6050,9 +6218,15 @@ public final class AdaptiveConversationIntelligence {
             }
             unknowns.add("preferred_session_duration_or_experience_depth");
             recommendedAction = TurnAction.SERVICE_RECOMMENDATION;
-            directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH XÁC NHẬN PHẠM VI '" + msg + "'): Đề xuất trực tiếp gói phù hợp từ <VERIFIED_BUSINESS_CATALOG> (nêu tự nhiên giá + thời lượng + hạng mục chính, dùng từ 'chăm sóc chuyên sâu' thay vì 'massage điều trị'). Câu hỏi cuối ở Bubble 2 hỏi về thời lượng/trải nghiệm gói, không quay lại hỏi thời điểm/tần suất xuất hiện triệu chứng.";
-        } else if (!priorNeedsEstablished && isConfirmedNeedOrSymptomUtteranceForLightweightState(msg)) {
-            needs.add(msg);
+            directive = "SERVICE_RECOMMENDATION (SAU KHI KHÁCH XÁC NHẬN PHẠM VI '" + msg + "'): Khách vừa trả lời trực tiếp câu hỏi phạm vi chăm sóc của bot ('" + msg + "'). "
+                    + "BẮT BUỘC: (1) Ghi nhận đúng phạm vi '" + msg + "' vào need_scope (TUYỆT ĐỐI KHÔNG biến câu trả lời vùng cơ thể thành triệu chứng bệnh lý mới, KHÔNG đặt mục tiêu điều trị y khoa, KHÔNG tự gán selected_product_id); "
+                    + "(2) Đề xuất trực tiếp gói phù hợp từ <VERIFIED_BUSINESS_CATALOG> (nêu tự nhiên giá + thời lượng + hạng mục chính, dùng từ 'chăm sóc chuyên sâu' thay vì 'massage điều trị'); "
+                    + "(3) Câu hỏi cuối hỏi về thời lượng/trải nghiệm gói, không hỏi lại khách muốn chăm sóc vùng nào và không quay lại hỏi thời điểm/tần suất xuất hiện triệu chứng.";
+        } else if (isIsolatedNeurologicalSymptomOnly(msg)
+                || (!priorNeedsEstablished && isConfirmedNeedOrSymptomUtteranceForLightweightState(msg))) {
+            if (!needs.contains(msg)) {
+                needs.add(msg);
+            }
             emotions.add("PHYSICAL_FATIGUE_OR_DISCOMFORT");
             if (hasPriorPriceAsk
                     && !CleanAgentOutputRefereeAndSanitizer.isUnconfirmedHealthSymptomWithoutServiceDemand(msg, history)
@@ -6066,7 +6240,13 @@ public final class AdaptiveConversationIntelligence {
             } else {
                 unknowns.add("preferred_focus_area_or_session_intensity");
                 recommendedAction = TurnAction.NEED_DISCOVERY;
-                directive = "NEED_DISCOVERY (CHIA SẺ TRIỆU CHỨNG LẦN ĐẦU CHƯA HỎI GÓI/GIÁ): Đồng cảm tinh tế Cấp độ 3 với đầy đủ triệu chứng khách chia sẻ (1-2 câu tự nhiên, không sáo rỗng) và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn phù hợp, sau đó hỏi xem khách muốn ưu tiên vùng nào hoặc muốn trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn (chưa xả bảng giá chi tiết khi khách chưa hỏi giá).";
+                directive = isIsolatedNeurologicalSymptomOnly(msg)
+                        ? "NEED_DISCOVERY (ISOLATED_NEUROLOGICAL_OR_VASCULAR_SYMPTOM '" + msg + "'): "
+                                + "(1) Đồng cảm ấm áp, tự nhiên với tình trạng khách chia sẻ (1 câu ngắn gọn, không sáo rỗng); "
+                                + "(2) Giữ đúng ranh giới an toàn sức khỏe: nêu nhẹ nhàng rằng các liệu trình tại cơ sở hướng tới chăm sóc thư giãn cơ thể, không thay thế thăm khám hay điều trị y khoa đối với các triệu chứng thần kinh/mạch máu (như hoa mắt, chóng mặt, tê chân tay); "
+                                + "(3) TUYỆT ĐỐI KHÔNG tự ý chốt/chào bán gói dịch vụ hay báo giá gói cụ thể ở lượt này; "
+                                + "(4) Đặt đúng 1 câu hỏi nhẹ nhàng xem hiện khách đang muốn ưu tiên chăm sóc thư giãn vùng cơ thể nào nhất (như vùng đầu, cổ vai gáy hay chân tay) để tư vấn hướng thư giãn phù hợp."
+                        : "NEED_DISCOVERY (CHIA SẺ TRIỆU CHỨNG LẦN ĐẦU CHƯA HỎI GÓI/GIÁ): Đồng cảm tinh tế Cấp độ 3 với đầy đủ triệu chứng khách chia sẻ (1-2 câu tự nhiên, không sáo rỗng) và giới thiệu định hướng liệu trình chăm sóc kết hợp thư giãn phù hợp, sau đó hỏi xem khách muốn ưu tiên vùng nào hoặc muốn trải nghiệm buổi vừa đủ hay dành thêm thời gian chăm sóc kỹ hơn (chưa xả bảng giá chi tiết khi khách chưa hỏi giá).";
             }
         } else {
             if (!msg.isBlank() && isConfirmedNeedOrSymptomUtteranceForLightweightState(msg) && !needs.contains(msg)) {
