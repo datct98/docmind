@@ -1,503 +1,850 @@
 {
-  "fixId" : "FIX-1",
-  "gitHead" : "e2451e00518e0cf516e912a46b67db5c85608bfa",
-  "llmCallsMade" : 0,
-  "replayScope" : "enforceGroundedApologyAgainstHistoryInPlace(6-arg) + stripUnsolicitedPackagePitchOnNegativeReactionInPlace",
-  "totalStoredTurns" : 279,
-  "turnsWithRecordedFinalGateInput" : 31,
-  "turnsReplayedFromOldFinalForIdempotence" : 248,
-  "idempotenceMismatches" : 0,
-  "turnsWhoseFinalChanged" : 30,
-  "oldFinalTurnsWithJavaTemplate" : 21,
-  "newFinalTurnsWithJavaTemplate" : 0,
-  "changedTurnsWhereRelevanceBelowRawLlm" : 13,
-  "changedTurnsWhereRelevanceBelowOldFinal_templateEchoRemoved" : 11,
-  "changedTurnDiffCategories" : {
-    "TEMPLATE_SENTENCES_REMOVED_ONLY" : 20,
-    "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION" : 5,
-    "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED" : 5
+  "fixId": "FIX-1",
+  "gitHead": "0064dc632c40a92ff6bbb454f20ce446abc094cc",
+  "llmCallsMade": 0,
+  "replayScope": "enforceGroundedApologyAgainstHistoryInPlace(6-arg) + stripUnsolicitedPackagePitchOnNegativeReactionInPlace",
+  "totalStoredTurns": 279,
+  "turnsWithRecordedFinalGateInput": 31,
+  "turnsReplayedFromOldFinalForIdempotence": 248,
+  "idempotenceMismatches": 0,
+  "turnsWhoseFinalChanged": 30,
+  "oldFinalTurnsWithJavaTemplate": 21,
+  "newFinalTurnsWithJavaTemplate": 0,
+  "changedTurnsWhereRelevanceBelowRawLlm": 13,
+  "changedTurnsWhereRelevanceBelowOldFinal_templateEchoRemoved": 11,
+  "changedTurnDiffCategories": {
+    "TEMPLATE_SENTENCES_REMOVED_ONLY": 20,
+    "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION": 5,
+    "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED": 5
   },
-  "limitations" : [ "Gate input is the harness reconstruction recorded in javaBubbleMutations.beforeBubbles (post style-gate/normalize/P37B2), not a live capture.", "Live pipeline also runs enforceGroundedApology at an earlier stage (orchestrator ~5361); offline replay applies it once on the recorded gate input.", "knownSymptoms/pronouns are not needed anymore by the changed code; scope taxonomy is read from the persona snapshot." ],
-  "changedTurns" : [ {
-    "caseId" : "CASE-01",
-    "runIndex" : 1,
-    "turnId" : "T7",
-    "customerMessage" : "Hỏi lại lắm thế",
-    "raw_llm_output" : [ "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ." ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ." ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.5,
-    "customerRelevanceOldFinal" : 0.5,
-    "customerRelevanceNewFinal" : 0.5,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 1,
-    "turnId" : "T11",
-    "customerMessage" : "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
-    "raw_llm_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.5,
-    "customerRelevanceOldFinal" : 0.625,
-    "customerRelevanceNewFinal" : 0.5,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 2,
-    "turnId" : "T7",
-    "customerMessage" : "Hỏi lại lắm thế",
-    "raw_llm_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ." ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ." ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.5,
-    "customerRelevanceOldFinal" : 0.5,
-    "customerRelevanceNewFinal" : 0.5,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 2,
-    "turnId" : "T11",
-    "customerMessage" : "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
-    "raw_llm_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ." ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm nữa ạ." ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.125,
-    "customerRelevanceOldFinal" : 0.25,
-    "customerRelevanceNewFinal" : 0.125,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 2,
-    "turnId" : "T15",
-    "customerMessage" : "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
-    "raw_llm_output" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "post_referee_output" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?" ],
-    "final_sent_output_old" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.333,
-    "customerRelevanceOldFinal" : 0.25,
-    "customerRelevanceNewFinal" : 0.25,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 3,
-    "turnId" : "T11",
-    "customerMessage" : "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
-    "raw_llm_output" : [ "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ." ],
-    "final_gate_input_recorded" : [ "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ." ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ." ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.125,
-    "customerRelevanceOldFinal" : 0.25,
-    "customerRelevanceNewFinal" : 0.125,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 3,
-    "turnId" : "T15",
-    "customerMessage" : "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
-    "raw_llm_output" : [ "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?" ],
-    "post_referee_output" : [ "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?" ],
-    "final_gate_input_recorded" : [ "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?" ],
-    "final_sent_output_old" : [ "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.167,
-    "customerRelevanceOldFinal" : 0.167,
-    "customerRelevanceNewFinal" : 0.167,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 1,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ." ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ." ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ." ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.4,
-    "customerRelevanceOldFinal" : 0.5,
-    "customerRelevanceNewFinal" : 0.3,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 1,
-    "turnId" : "T11",
-    "customerMessage" : "Tôi muốn chủ yếu massage để dễ ngủ nữa",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.429,
-    "customerRelevanceOldFinal" : 0.429,
-    "customerRelevanceNewFinal" : 0.286,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 2,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.4,
-    "customerRelevanceOldFinal" : 0.5,
-    "customerRelevanceNewFinal" : 0.3,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 2,
-    "turnId" : "T11",
-    "customerMessage" : "Tôi muốn chủ yếu massage để dễ ngủ nữa",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ" ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.429,
-    "customerRelevanceOldFinal" : 0.429,
-    "customerRelevanceNewFinal" : 0.286,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 3,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.4,
-    "customerRelevanceOldFinal" : 0.2,
-    "customerRelevanceNewFinal" : 0.0,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 3,
-    "turnId" : "T11",
-    "customerMessage" : "Tôi muốn chủ yếu massage để dễ ngủ nữa",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.429,
-    "customerRelevanceOldFinal" : 0.429,
-    "customerRelevanceNewFinal" : 0.286,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-04",
-    "runIndex" : 1,
-    "turnId" : "T15",
-    "customerMessage" : "Có sale k",
-    "raw_llm_output" : [ "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu mình đang băn khoăn ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.0,
-    "customerRelevanceOldFinal" : 0.0,
-    "customerRelevanceNewFinal" : 0.0,
-    "diffCategory" : "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
-  }, {
-    "caseId" : "CASE-04",
-    "runIndex" : 3,
-    "turnId" : "T7",
-    "customerMessage" : "Ơ bị dở à sao lại cổ vai gáy",
-    "raw_llm_output" : [ "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ." ],
-    "post_referee_output" : [ "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ." ],
-    "final_gate_input_recorded" : [ "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ." ],
-    "final_sent_output_old" : [ "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Em ghi nhận đúng là mình đang gặp hoa mắt, chóng mặt, tê chân và khó ngủ ạ. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ." ],
-    "final_sent_output_new_offline" : [ "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.333,
-    "customerRelevanceOldFinal" : 0.333,
-    "customerRelevanceNewFinal" : 0.333,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-05",
-    "runIndex" : 1,
-    "turnId" : "T5",
-    "customerMessage" : "Bị dở à mà cổ vai gáy",
-    "raw_llm_output" : [ "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.", "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.", "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.", "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Hiện tại trong các tình trạng đau đầu và hoa mắt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.5,
-    "customerRelevanceOldFinal" : 0.5,
-    "customerRelevanceNewFinal" : 0.5,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-05",
-    "runIndex" : 3,
-    "turnId" : "T7",
-    "customerMessage" : "Rời ơi",
-    "raw_llm_output" : [ "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ" ],
-    "post_referee_output" : [ "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ" ],
-    "final_gate_input_recorded" : [ "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ" ],
-    "final_sent_output_old" : [ "Dạ em hiểu mình đang băn khoăn. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ" ],
-    "final_sent_output_new_offline" : [ "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.0,
-    "customerRelevanceOldFinal" : 0.0,
-    "customerRelevanceNewFinal" : 0.0,
-    "diffCategory" : "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
-  }, {
-    "caseId" : "CASE-08",
-    "runIndex" : 1,
-    "turnId" : "T9",
-    "customerMessage" : "có gói nào rẻ hơn không",
-    "raw_llm_output" : [ "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn tìm gói rẻ nhất cho vùng nào ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ." ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ." ],
-    "final_sent_output_old" : [ "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ." ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ." ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.667,
-    "customerRelevanceOldFinal" : 0.0,
-    "customerRelevanceNewFinal" : 1.0,
-    "diffCategory" : "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
-  }, {
-    "caseId" : "CASE-08",
-    "runIndex" : 3,
-    "turnId" : "T9",
-    "customerMessage" : "có gói nào rẻ hơn không",
-    "raw_llm_output" : [ "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn trải nghiệm gói này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?" ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?" ],
-    "final_sent_output_old" : [ "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ." ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.667,
-    "customerRelevanceOldFinal" : 0.0,
-    "customerRelevanceNewFinal" : 0.667,
-    "diffCategory" : "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 1,
-    "turnId" : "T7",
-    "customerMessage" : "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?" ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.714,
-    "customerRelevanceOldFinal" : 0.643,
-    "customerRelevanceNewFinal" : 0.643,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 2,
-    "turnId" : "T7",
-    "customerMessage" : "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.", "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.", "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?" ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.", "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.714,
-    "customerRelevanceOldFinal" : 0.643,
-    "customerRelevanceNewFinal" : 0.643,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 3,
-    "turnId" : "T15",
-    "customerMessage" : "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "final_gate_input_recorded" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói dưỡng sinh cao cấp của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "final_sent_output_new_offline" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.813,
-    "customerRelevanceOldFinal" : 0.813,
-    "customerRelevanceNewFinal" : 0.813,
-    "diffCategory" : "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 1,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.", "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.", "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.", "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.533,
-    "customerRelevanceOldFinal" : 0.667,
-    "customerRelevanceNewFinal" : 0.467,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 2,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.533,
-    "customerRelevanceOldFinal" : 0.667,
-    "customerRelevanceNewFinal" : 0.467,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 3,
-    "turnId" : "T9",
-    "customerMessage" : "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
-    "raw_llm_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?" ],
-    "post_referee_output" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?" ],
-    "final_sent_output_old" : [ "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Mình thấy ưu tiên vùng nào nhất ạ?" ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.533,
-    "customerRelevanceOldFinal" : 0.467,
-    "customerRelevanceNewFinal" : 0.467,
-    "diffCategory" : "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
-  }, {
-    "caseId" : "CASE-15",
-    "runIndex" : 1,
-    "turnId" : "T1",
-    "customerMessage" : "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
-    "raw_llm_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "post_referee_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "final_gate_input_recorded" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "final_sent_output_old" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "final_sent_output_new_offline" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.429,
-    "customerRelevanceOldFinal" : 0.286,
-    "customerRelevanceNewFinal" : 0.429,
-    "diffCategory" : "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
-  }, {
-    "caseId" : "CASE-15",
-    "runIndex" : 2,
-    "turnId" : "T1",
-    "customerMessage" : "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
-    "raw_llm_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "post_referee_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "final_gate_input_recorded" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "final_sent_output_old" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "final_sent_output_new_offline" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.429,
-    "customerRelevanceOldFinal" : 0.286,
-    "customerRelevanceNewFinal" : 0.429,
-    "diffCategory" : "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
-  }, {
-    "caseId" : "CASE-15",
-    "runIndex" : 3,
-    "turnId" : "T1",
-    "customerMessage" : "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
-    "raw_llm_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?" ],
-    "post_referee_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?" ],
-    "final_gate_input_recorded" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?" ],
-    "final_sent_output_old" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?" ],
-    "final_sent_output_new_offline" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.714,
-    "customerRelevanceOldFinal" : 0.571,
-    "customerRelevanceNewFinal" : 0.714,
-    "diffCategory" : "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
-  }, {
-    "caseId" : "CASE-19",
-    "runIndex" : 2,
-    "turnId" : "T5",
-    "customerMessage" : "Ơ bị dở à sao lại cổ vai gáy",
-    "raw_llm_output" : [ "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?" ],
-    "post_referee_output" : [ "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?" ],
-    "final_gate_input_recorded" : [ "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Hiện tại trong các tình trạng hoa mắt, chóng mặt, tê chân và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "final_sent_output_new_offline" : [ "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi." ],
-    "oldHasJavaTemplate" : true,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.333,
-    "customerRelevanceOldFinal" : 0.0,
-    "customerRelevanceNewFinal" : 0.0,
-    "diffCategory" : "TEMPLATE_SENTENCES_REMOVED_ONLY"
-  }, {
-    "caseId" : "CASE-20",
-    "runIndex" : 2,
-    "turnId" : "T5",
-    "customerMessage" : "Có chương trình khuyến mãi hay ưu đãi giờ vàng nào không em?",
-    "raw_llm_output" : [ "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?" ],
-    "post_referee_output" : [ "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?" ],
-    "final_gate_input_recorded" : [ "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?" ],
-    "final_sent_output_old" : [ "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?" ],
-    "final_sent_output_new_offline" : [ "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?" ],
-    "oldHasJavaTemplate" : false,
-    "newHasJavaTemplate" : false,
-    "customerRelevanceRaw" : 0.667,
-    "customerRelevanceOldFinal" : 0.667,
-    "customerRelevanceNewFinal" : 0.667,
-    "diffCategory" : "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
-  } ],
-  "idempotenceMismatchTurns" : [ ]
+  "limitations": [
+    "Gate input is the harness reconstruction recorded in javaBubbleMutations.beforeBubbles (post style-gate/normalize/P37B2), not a live capture.",
+    "Live pipeline also runs enforceGroundedApology at an earlier stage (orchestrator ~5361); offline replay applies it once on the recorded gate input.",
+    "knownSymptoms/pronouns are not needed anymore by the changed code; scope taxonomy is read from the persona snapshot."
+  ],
+  "changedTurns": [
+    {
+      "caseId": "CASE-01",
+      "runIndex": 1,
+      "turnId": "T7",
+      "customerMessage": "Hỏi lại lắm thế",
+      "raw_llm_output": [
+        "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi nếu em đã hỏi nhiều và khiến mình bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi nào cần em hỗ trợ ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.5,
+      "customerRelevanceOldFinal": 0.5,
+      "customerRelevanceNewFinal": 0.5,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 1,
+      "turnId": "T11",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "raw_llm_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.5,
+      "customerRelevanceOldFinal": 0.625,
+      "customerRelevanceNewFinal": 0.5,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T7",
+      "customerMessage": "Hỏi lại lắm thế",
+      "raw_llm_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi nếu cách tư vấn khiến mình cảm thấy bực bội ạ. Em sẽ không gợi ý hay hỏi thêm gì nữa, mình cứ nhắn khi cần em hỗ trợ ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.5,
+      "customerRelevanceOldFinal": 0.5,
+      "customerRelevanceNewFinal": 0.5,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T11",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "raw_llm_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Em sẽ không gợi ý hay hỏi thêm nữa ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bội. Em sẽ không gợi ý hay hỏi thêm nữa ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.125,
+      "customerRelevanceOldFinal": 0.25,
+      "customerRelevanceNewFinal": 0.125,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T15",
+      "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+      "raw_llm_output": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?"
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.333,
+      "customerRelevanceOldFinal": 0.25,
+      "customerRelevanceNewFinal": 0.25,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 3,
+      "turnId": "T11",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "raw_llm_output": [
+        "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi nếu cách hỏi khiến mình thấy bực. Gói 239k là gội đầu + massage cổ vai gáy 60 phút, gói 399k là massage trị liệu toàn thân 60 phút, cả hai đều yên tĩnh và có rèm riêng từng giường ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.125,
+      "customerRelevanceOldFinal": 0.25,
+      "customerRelevanceNewFinal": 0.125,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 3,
+      "turnId": "T15",
+      "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+      "raw_llm_output": [
+        "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?"
+      ],
+      "post_referee_output": [
+        "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Mình muốn em nêu thêm gói nào không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em xin lỗi vì đã khiến mình hiểu lầm ạ. Em chỉ muốn nêu gói phổ biến nhất, không phải liệt kê đầy đủ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.167,
+      "customerRelevanceOldFinal": 0.167,
+      "customerRelevanceNewFinal": 0.167,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ."
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tập trung massage toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với nhu cầu dễ ngủ của mình ạ."
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.4,
+      "customerRelevanceOldFinal": 0.5,
+      "customerRelevanceNewFinal": 0.3,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T11",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, giúp giảm đau mỏi và thư giãn gân cốt ạ. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ, em sẽ chỉ tập trung vào massage để giúp mình dễ ngủ hơn ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.429,
+      "customerRelevanceOldFinal": 0.429,
+      "customerRelevanceNewFinal": 0.286,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN phù hợp để giảm đau đầu, mỏi gối, tê tay và hỗ trợ dễ ngủ ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, em sẽ không đề xuất phục hồi tóc nữa."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.4,
+      "customerRelevanceOldFinal": 0.5,
+      "customerRelevanceNewFinal": 0.3,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T11",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, tập trung giảm đau mỏi toàn thân. Mình muốn thử gói này hay gói Massage phục hồi 100 phút — 580k, phòng VIP riêng, tập trung vai gáy để thư giãn sâu hơn ạ"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.429,
+      "customerRelevanceOldFinal": 0.429,
+      "customerRelevanceNewFinal": 0.286,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 3,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao lại phục hồi tóc, đang đau đầu kêu đi làm phục hối tóc",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, em sẽ chỉ tư vấn gói massage thuần cho mình, không nhắc đến phục hồi tóc nữa. Gói Massage cơ bản 60 phút 399k tại HN giúp thư giãn toàn thân, hỗ trợ dễ ngủ và giảm đau đầu nhẹ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.4,
+      "customerRelevanceOldFinal": 0.2,
+      "customerRelevanceNewFinal": 0.0,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 3,
+      "turnId": "T11",
+      "customerMessage": "Tôi muốn chủ yếu massage để dễ ngủ nữa",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Gói Massage cơ bản 60 phút — 399k, phòng chung yên tĩnh, mỗi giường có rèm riêng, massage trị liệu toàn thân giúp giảm đau mỏi và thư giãn gân cốt. Mình muốn đặt lịch cho gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, trọng tâm sẽ là massage để giúp mình dễ ngủ hơn."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.429,
+      "customerRelevanceOldFinal": 0.429,
+      "customerRelevanceNewFinal": 0.286,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-04",
+      "runIndex": 1,
+      "turnId": "T15",
+      "customerMessage": "Có sale k",
+      "raw_llm_output": [
+        "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu mình đang băn khoăn ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu mình đang cân nhắc ngân sách ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gội đầu + massage cổ vai gáy, phù hợp vùng đầu và chân mình đang nặng mỏi. Mình muốn tìm hiểu thêm gói này không ạ?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.0,
+      "customerRelevanceOldFinal": 0.0,
+      "customerRelevanceNewFinal": 0.0,
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
+    },
+    {
+      "caseId": "CASE-04",
+      "runIndex": 3,
+      "turnId": "T7",
+      "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+      "raw_llm_output": [
+        "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ."
+      ],
+      "post_referee_output": [
+        "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ."
+      ],
+      "final_sent_output_old": [
+        "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Em ghi nhận đúng là mình đang gặp hoa mắt, chóng mặt, tê chân và khó ngủ ạ. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu ạ, em xin lỗi nếu cách nói trước khiến mình bối rối. Mình thường thấy khó chịu nhất ở vùng cổ vai gáy hay lan xuống chân nhiều hơn ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.333,
+      "customerRelevanceOldFinal": 0.333,
+      "customerRelevanceNewFinal": 0.333,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-05",
+      "runIndex": 1,
+      "turnId": "T5",
+      "customerMessage": "Bị dở à mà cổ vai gáy",
+      "raw_llm_output": [
+        "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.",
+        "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.",
+        "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Gói dưỡng sinh cao cấp 80 phút 339k gồm gội đầu cao cấp + massage cổ vai gáy, phù hợp để thư giãn vùng mỏi ạ.",
+        "Mình muốn trải nghiệm gói này hay gói massage cơ bản 60 phút 399k cho toàn thân ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ. Hiện tại trong các tình trạng đau đầu và hoa mắt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu mình vừa mệt mỏi và cổ vai gáy đang căng thẳng ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.5,
+      "customerRelevanceOldFinal": 0.5,
+      "customerRelevanceNewFinal": 0.5,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-05",
+      "runIndex": 3,
+      "turnId": "T7",
+      "customerMessage": "Rời ơi",
+      "raw_llm_output": [
+        "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu mình đang băn khoăn. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu mình đang cân nhắc ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã gồm gội đầu + massage cổ vai gáy, phù hợp để giảm đau đầu và căng thẳng cổ vai. Mình muốn thử gói này hay muốn tìm hiểu thêm về gói khác ạ"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.0,
+      "customerRelevanceOldFinal": 0.0,
+      "customerRelevanceNewFinal": 0.0,
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 1,
+      "turnId": "T9",
+      "customerMessage": "có gói nào rẻ hơn không",
+      "raw_llm_output": [
+        "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn tìm gói rẻ nhất cho vùng nào ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, phù hợp nếu mình muốn thư giãn nhẹ nhàng. Gói Massage cơ bản 60 phút 399.000đ thì tập trung giảm đau mỏi toàn thân hơn ạ."
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.667,
+      "customerRelevanceOldFinal": 0.0,
+      "customerRelevanceNewFinal": 1.0,
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 3,
+      "turnId": "T9",
+      "customerMessage": "có gói nào rẻ hơn không",
+      "raw_llm_output": [
+        "Dạ Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội) là gói rẻ nhất bên em ạ, gồm gội đầu cơ bản + massage cổ vai gáy. Mình muốn trải nghiệm gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ. Gói rẻ nhất bên em là Gói dưỡng sinh cơ bản 60 phút 239.000đ (Hà Nội), gồm gội đầu cơ bản + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng đầu cổ vai. Mình muốn tìm gói cho vùng nào ạ?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.667,
+      "customerRelevanceOldFinal": 0.0,
+      "customerRelevanceNewFinal": 0.667,
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 1,
+      "turnId": "T7",
+      "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy và tê tay của Chị ạ. Chị thấy gói này ổn không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không gợi ý phần chăm sóc tóc nữa ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.714,
+      "customerRelevanceOldFinal": 0.643,
+      "customerRelevanceNewFinal": 0.643,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 2,
+      "turnId": "T7",
+      "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.",
+        "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.",
+        "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ.",
+        "Bên em có gói Massage cơ bản 60 phút, giá 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, không gian yên tĩnh, rèm che riêng từng giường. Chị thấy gói này có hợp với nhu cầu của Chị không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ. Hiện tại trong các tình trạng mất ngủ, căng thẳng, mệt mỏi, mỏi cổ vai gáy và tê tay thì Chị đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, em sẽ không đề xuất phần chăm sóc tóc nữa ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.714,
+      "customerRelevanceOldFinal": 0.643,
+      "customerRelevanceNewFinal": 0.643,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 3,
+      "turnId": "T15",
+      "customerMessage": "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "final_gate_input_recorded": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói dưỡng sinh cao cấp của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.813,
+      "customerRelevanceOldFinal": 0.813,
+      "customerRelevanceNewFinal": 0.813,
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 1,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.",
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.",
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ.",
+        "Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, kèm ăn nhẹ thực dưỡng. Mình thấy gói này ổn không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã nhầm ạ."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.533,
+      "customerRelevanceOldFinal": 0.667,
+      "customerRelevanceNewFinal": 0.467,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 2,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, dễ ngủ hơn ạ. Mình muốn thử gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.533,
+      "customerRelevanceOldFinal": 0.667,
+      "customerRelevanceNewFinal": 0.467,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 3,
+      "turnId": "T9",
+      "customerMessage": "Ủa sao đang đau đầu khó ngủ lại làm phục hồi tóc? Mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi",
+      "raw_llm_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Em xin lỗi vì đã gợi ý không phù hợp. Gói Massage cơ bản 60 phút 399k, massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, hỗ trợ ngủ ngon hơn. Mình thấy ưu tiên vùng nào nhất ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Em ghi nhận đúng là mình đang gặp đau đầu, mỏi, tê tay và khó ngủ ạ. Hiện tại trong các tình trạng đau đầu, mỏi, tê tay và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu rồi ạ, mình không muốn chăm sóc tóc, chỉ muốn massage để dễ ngủ thôi. Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ. Mình thấy ưu tiên vùng nào nhất ạ?"
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.533,
+      "customerRelevanceOldFinal": 0.467,
+      "customerRelevanceNewFinal": 0.467,
+      "diffCategory": "TEMPLATE_REMOVED_PLUS_SENTENCE_LEVEL_PRESERVATION"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 1,
+      "turnId": "T1",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "raw_llm_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "post_referee_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "final_gate_input_recorded": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "final_sent_output_old": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "final_sent_output_new_offline": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.429,
+      "customerRelevanceOldFinal": 0.286,
+      "customerRelevanceNewFinal": 0.429,
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 2,
+      "turnId": "T1",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "raw_llm_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "post_referee_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "final_gate_input_recorded": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "final_sent_output_old": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "final_sent_output_new_offline": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.429,
+      "customerRelevanceOldFinal": 0.286,
+      "customerRelevanceNewFinal": 0.429,
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 3,
+      "turnId": "T1",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "raw_llm_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?"
+      ],
+      "post_referee_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, trong hệ thống Nàng Sen hiện chưa có mã gói NS01, nên em không thể báo chính xác giá và nội dung gói này cho mình ạ. Mình có thể cho em biết tên gói mình quan tâm không ạ?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.714,
+      "customerRelevanceOldFinal": 0.571,
+      "customerRelevanceNewFinal": 0.714,
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
+    },
+    {
+      "caseId": "CASE-19",
+      "runIndex": 2,
+      "turnId": "T5",
+      "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+      "raw_llm_output": [
+        "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Nếu chọn gói chăm sóc cổ vai gáy, mình muốn tập trung vào vùng nào nhất ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi. Hiện tại trong các tình trạng hoa mắt, chóng mặt, tê chân và khó ngủ thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Em hiểu ạ, mình vừa chia sẻ nhiều điều cơ thể đang mệt mỏi."
+      ],
+      "oldHasJavaTemplate": true,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.333,
+      "customerRelevanceOldFinal": 0.0,
+      "customerRelevanceNewFinal": 0.0,
+      "diffCategory": "TEMPLATE_SENTENCES_REMOVED_ONLY"
+    },
+    {
+      "caseId": "CASE-20",
+      "runIndex": 2,
+      "turnId": "T5",
+      "customerMessage": "Có chương trình khuyến mãi hay ưu đãi giờ vàng nào không em?",
+      "raw_llm_output": [
+        "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?"
+      ],
+      "final_gate_input_recorded": [
+        "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?"
+      ],
+      "final_sent_output_new_offline": [
+        "Dạ hiện nay bên em chưa có chương trình khuyến mãi giờ vàng riêng ạ. Gói Massage phục hồi 100 phút (HN_NS03) hiện là 580.000đ, đã kèm buffet thực dưỡng cao cấp sau liệu trình. Mình muốn trải nghiệm tại cơ sở nào để em hỗ trợ thêm ạ?"
+      ],
+      "oldHasJavaTemplate": false,
+      "newHasJavaTemplate": false,
+      "customerRelevanceRaw": 0.667,
+      "customerRelevanceOldFinal": 0.667,
+      "customerRelevanceNewFinal": 0.667,
+      "diffCategory": "REPLAY_SCOPE_ARTEFACT_SKU_STRIP_NOT_REPLAYED"
+    }
+  ],
+  "idempotenceMismatchTurns": []
 }

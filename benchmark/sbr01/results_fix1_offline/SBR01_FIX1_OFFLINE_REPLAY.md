@@ -1,6 +1,6 @@
 # SBR-01 FIX-1 — Offline replay report (generated)
 
-- Git HEAD: `e2451e00518e0cf516e912a46b67db5c85608bfa` — LLM calls: 0
+- Git HEAD: `0064dc632c40a92ff6bbb454f20ce446abc094cc` — LLM calls: 0
 - Stored turns: 279; with recorded final-gate input: 31; replayed from old final (idempotence): 248 (mismatches: 0)
 - Turns whose final changed: 30
 - Turns with Java template text — old final: 21, new final: 0

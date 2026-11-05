@@ -1,504 +1,1065 @@
 {
-  "fixId" : "FIX-3",
-  "gitHead" : "e2451e00518e0cf516e912a46b67db5c85608bfa",
-  "llmCallsMade" : 0,
-  "totalStoredTurns" : 279,
-  "recordedNormalizeSteps" : 9,
-  "normalizeStepsWithPunctuationMutation_old" : 9,
-  "normalizeStepsWithPunctuationMutation_new" : 0,
-  "recordedP37B2Steps" : 26,
-  "p37B2StepsWithPunctuationMutation_old" : 4,
-  "p37B2StepsWithPunctuationMutation_new" : 0,
-  "limitations" : [ "Only turns where the baseline harness recorded a mutation for these steps carry a step input; other turns had no mutation from these steps.", "P37B2 is replayed without live bookingState/eligibleCatalog/prebuilt plan (plan rebuilt from customer message + stored history); non-punctuation behaviour of P37B2 may differ from live.", "Metric counts only sentences whose text is unchanged while the terminal mark changed (punctuation-only mutation)." ],
-  "steps" : [ {
-    "caseId" : "CASE-01",
-    "runIndex" : 1,
-    "turnId" : "T11",
-    "customerMessage" : "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "post_referee_output" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "final_sent_output_old" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "before" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "oldAfter" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "newAfter" : [ "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ." ],
-    "oldPunctuationMutations" : [ ".->? :: Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?" ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 2,
-    "turnId" : "T15",
-    "customerMessage" : "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "post_referee_output" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "final_sent_output_old" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?" ],
-    "before" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "oldAfter" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?" ],
-    "newAfter" : [ "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé." ],
-    "oldPunctuationMutations" : [ ".->? :: Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?" ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-01",
-    "runIndex" : 3,
-    "turnId" : "T5",
-    "customerMessage" : "Nó khác j nhau",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.", "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "before" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "oldAfter" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.", "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "newAfter" : [ "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.", "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 1,
-    "turnId" : "T13",
-    "customerMessage" : "Mà đắt thế",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ." ],
-    "before" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "oldAfter" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ." ],
-    "newAfter" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.", "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 1,
-    "turnId" : "T15",
-    "customerMessage" : "Gội đầu bên ngoài có 50k",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "post_referee_output" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "final_sent_output_old" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.", "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "before" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "oldAfter" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.", "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "newAfter" : [ "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.", "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 2,
-    "turnId" : "T7",
-    "customerMessage" : "Tôi muốn vừa đủ đẻ thử",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.", "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 2,
-    "turnId" : "T13",
-    "customerMessage" : "Mà đắt thế",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ." ],
-    "before" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "oldAfter" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ." ],
-    "newAfter" : [ "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.", "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-02",
-    "runIndex" : 3,
-    "turnId" : "T7",
-    "customerMessage" : "Tôi muốn vừa đủ đẻ thử",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-05",
-    "runIndex" : 1,
-    "turnId" : "T3",
-    "customerMessage" : "Đau đầu hoa mắt tróng mặt",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?" ],
-    "post_referee_output" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ." ],
-    "before" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?" ],
-    "oldAfter" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ." ],
-    "newAfter" : [ "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-07",
-    "runIndex" : 1,
-    "turnId" : "T5",
-    "customerMessage" : "Chịu chết",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "before" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "newAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-07",
-    "runIndex" : 2,
-    "turnId" : "T5",
-    "customerMessage" : "Chịu chết",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "before" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "newAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-07",
-    "runIndex" : 3,
-    "turnId" : "T5",
-    "customerMessage" : "Chịu chết",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "before" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "newAfter" : [ "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-08",
-    "runIndex" : 2,
-    "turnId" : "T3",
-    "customerMessage" : "tôi muosn thử trải nghiệm trước",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ." ],
-    "before" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ." ],
-    "newAfter" : [ "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-08",
-    "runIndex" : 3,
-    "turnId" : "T3",
-    "customerMessage" : "tôi muosn thử trải nghiệm trước",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ." ],
-    "before" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ." ],
-    "newAfter" : [ "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 1,
-    "turnId" : "T9",
-    "customerMessage" : "Giữa gói massage cổ vai gáy với massage body tinh dầu thì khác nhau thế nào em?",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?" ],
-    "post_referee_output" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?" ],
-    "final_sent_output_old" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ." ],
-    "before" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?" ],
-    "oldAfter" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ." ],
-    "newAfter" : [ "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 1,
-    "turnId" : "T15",
-    "customerMessage" : "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "before" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "newAfter" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 3,
-    "turnId" : "T5",
-    "customerMessage" : "Chị còn bị mỏi cổ vai gáy với tê tay do ngồi làm việc lâu nữa, bên em có gói nào phù hợp không?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.", "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "before" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.", "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "newAfter" : [ "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.", "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 3,
-    "turnId" : "T7",
-    "customerMessage" : "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó.", "Chị thấy hướng này ổn không ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị.", "Chị thấy hướng này ổn không ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị.", "Chị thấy hướng này ổn không ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-09",
-    "runIndex" : 3,
-    "turnId" : "T15",
-    "customerMessage" : "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói dưỡng sinh cao cấp của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "before" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "newAfter" : [ "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.", "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-10",
-    "runIndex" : 2,
-    "turnId" : "T1",
-    "customerMessage" : "Mình muốn hỏi giá gội đầu dưỡng sinh",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "post_referee_output" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "final_sent_output_old" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "before" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "oldAfter" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "newAfter" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-10",
-    "runIndex" : 2,
-    "turnId" : "T3",
-    "customerMessage" : "Sao bên mình 239k mà tiệm gần nhà chị có 90k thôi?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.", "Mình thấy ổn với gói này không ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.", "Mình thấy ổn với gói này không ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.", "Mình thấy ổn với gói này không ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-10",
-    "runIndex" : 3,
-    "turnId" : "T1",
-    "customerMessage" : "Mình muốn hỏi giá gội đầu dưỡng sinh",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "post_referee_output" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "final_sent_output_old" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "before" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "oldAfter" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "newAfter" : [ "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 1,
-    "turnId" : "T7",
-    "customerMessage" : "Mình muốn vừa đủ để thử thôi",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.", "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 1,
-    "turnId" : "T11",
-    "customerMessage" : "Thế gói 339k gồm những gì? Có phục hồi tóc à?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?" ],
-    "post_referee_output" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?" ],
-    "final_sent_output_old" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.", "Mình thấy hướng này ổn chưa ạ?" ],
-    "before" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?" ],
-    "oldAfter" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.", "Mình thấy hướng này ổn chưa ạ?" ],
-    "newAfter" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.", "Mình thấy hướng này ổn chưa ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 2,
-    "turnId" : "T7",
-    "customerMessage" : "Mình muốn vừa đủ để thử thôi",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "post_referee_output" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "before" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ." ],
-    "oldAfter" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.", "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-11",
-    "runIndex" : 3,
-    "turnId" : "T11",
-    "customerMessage" : "Thế gói 339k gồm những gì? Có phục hồi tóc à?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "post_referee_output" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "final_sent_output_old" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.", "Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "before" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "oldAfter" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.", "Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "newAfter" : [ "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.", "Mình thấy hướng này ổn với mình chưa ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-12",
-    "runIndex" : 2,
-    "turnId" : "T3",
-    "customerMessage" : "Tình trạng của mình như vậy có làm massage được không em?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "post_referee_output" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "final_sent_output_old" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "before" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "oldAfter" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "newAfter" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-12",
-    "runIndex" : 3,
-    "turnId" : "T3",
-    "customerMessage" : "Tình trạng của mình như vậy có làm massage được không em?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "post_referee_output" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "final_sent_output_old" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "before" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?" ],
-    "oldAfter" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "newAfter" : [ "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-15",
-    "runIndex" : 1,
-    "turnId" : "T1",
-    "customerMessage" : "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "post_referee_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "final_sent_output_old" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "before" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "oldAfter" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "newAfter" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình." ],
-    "oldPunctuationMutations" : [ ".->? :: Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?" ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-15",
-    "runIndex" : 2,
-    "turnId" : "T1",
-    "customerMessage" : "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "post_referee_output" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "final_sent_output_old" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "before" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "oldAfter" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "newAfter" : [ "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay." ],
-    "oldPunctuationMutations" : [ ".->? :: Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?" ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-16",
-    "runIndex" : 2,
-    "turnId" : "T5",
-    "customerMessage" : "Bên mình có ưu đãi mua liệu trình từ 5 buổi hay voucher gì không và gói 670k gồm những gì?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "post_referee_output" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "final_sent_output_old" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.", "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "before" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "oldAfter" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.", "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "newAfter" : [ "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.", "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ." ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-17",
-    "runIndex" : 2,
-    "turnId" : "T5",
-    "customerMessage" : "Bên mình có ưu đãi mua liệu trình hay voucher gì không em?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "post_referee_output" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "final_sent_output_old" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "before" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "oldAfter" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "newAfter" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-17",
-    "runIndex" : 3,
-    "turnId" : "T5",
-    "customerMessage" : "Bên mình có ưu đãi mua liệu trình hay voucher gì không em?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "post_referee_output" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "final_sent_output_old" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "before" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "oldAfter" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "newAfter" : [ "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.", "Mình quan tâm gói massage phục hồi nào ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-19",
-    "runIndex" : 1,
-    "turnId" : "T5",
-    "customerMessage" : "Ơ bị dở à sao lại cổ vai gáy",
-    "step" : "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
-    "raw_llm_output" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?" ],
-    "post_referee_output" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?" ],
-    "final_sent_output_old" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ." ],
-    "before" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?" ],
-    "oldAfter" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ." ],
-    "newAfter" : [ "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?" ],
-    "oldPunctuationMutations" : [ "?->. :: Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ." ],
-    "newPunctuationMutations" : [ ]
-  }, {
-    "caseId" : "CASE-20",
-    "runIndex" : 3,
-    "turnId" : "T3",
-    "customerMessage" : "Gói massage phục hồi giá bao nhiêu?",
-    "step" : "P37B2_TURN_ACTION_DISCIPLINE",
-    "raw_llm_output" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "post_referee_output" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "final_sent_output_old" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.", "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "before" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "oldAfter" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.", "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "newAfter" : [ "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.", "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?" ],
-    "oldPunctuationMutations" : [ ],
-    "newPunctuationMutations" : [ ]
-  } ]
+  "fixId": "FIX-3",
+  "gitHead": "f650c3f03f259dba8b03fa187d209b9621bad1dc",
+  "llmCallsMade": 0,
+  "totalStoredTurns": 279,
+  "recordedNormalizeSteps": 9,
+  "normalizeStepsWithPunctuationMutation_old": 9,
+  "normalizeStepsWithPunctuationMutation_new": 0,
+  "recordedP37B2Steps": 26,
+  "p37B2StepsWithPunctuationMutation_old": 4,
+  "p37B2StepsWithPunctuationMutation_new": 0,
+  "limitations": [
+    "Only turns where the baseline harness recorded a mutation for these steps carry a step input; other turns had no mutation from these steps.",
+    "P37B2 is replayed without live bookingState/eligibleCatalog/prebuilt plan (plan rebuilt from customer message + stored history); non-punctuation behaviour of P37B2 may differ from live.",
+    "Metric counts only sentences whose text is unchanged while the terminal mark changed (punctuation-only mutation)."
+  ],
+  "steps": [
+    {
+      "caseId": "CASE-01",
+      "runIndex": 1,
+      "turnId": "T11",
+      "customerMessage": "Đã mệt rồi còn hỏi vùng nào chăm sóc hơn, chăm 1 vùng rồi bỏ các vùng khác à",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Em ghi nhận đúng là mình đang gặp ù tai và mệt mỏi ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "before": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "oldAfter": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "newAfter": [
+        "Em xin lỗi nếu cách tư vấn khiến mình bực bực ạ. Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ."
+      ],
+      "oldPunctuationMutations": [
+        ".->? :: Gói 399k massage trị liệu toàn thân 60 phút sẽ chăm sóc cả cơ thể, không bỏ vùng nào ạ?"
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 2,
+      "turnId": "T15",
+      "customerMessage": "thế mà lúc giới thiệu nói có 2 gói, làm người ta tưởng chỉ có 2 gói , cách nói rất gây hiểu lầm",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "post_referee_output": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "final_sent_output_old": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em ghi nhận đúng là mình đang gặp ù tai, mệt mỏi và mệt ạ. Hiện tại trong các tình trạng ù tai, mệt mỏi và mệt thì mình đang thấy mệt và muốn được chăm sóc ưu tiên ở phần nào trước ạ?"
+      ],
+      "before": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "oldAfter": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?"
+      ],
+      "newAfter": [
+        "Em xin lỗi vì cách nói khiến mình hiểu lầm ạ. Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé."
+      ],
+      "oldPunctuationMutations": [
+        ".->? :: Em sẽ không gợi ý thêm nữa, mình muốn tìm hiểu gói nào thì cứ nói cho em biết nhé?"
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-01",
+      "runIndex": 3,
+      "turnId": "T5",
+      "customerMessage": "Nó khác j nhau",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.",
+        "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "before": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân. | Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.",
+        "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "newAfter": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và không thoải mái ạ. | Gói dưỡng sinh cơ bản 60 phút — 239k tập trung gội đầu + massage cổ vai gáy, thích hợp khi mình cần thư giãn nhẹ nhàng. | Gói massage cơ bản 60 phút — 399k là massage trị liệu toàn thân, giúp giảm đau mỏi và thư giãn gân cốt toàn thân.",
+        "| Mình muốn trải nghiệm vừa đủ hay chuyên sâu hơn ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T13",
+      "customerMessage": "Mà đắt thế",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "before": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "newAfter": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giảm đau đầu, mỏi gối, tê tay và hỗ trợ ngủ sâu hơn ạ.",
+        "Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Mình muốn em xem thêm lựa chọn massage tập trung nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 1,
+      "turnId": "T15",
+      "customerMessage": "Gội đầu bên ngoài có 50k",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "post_referee_output": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "final_sent_output_old": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.",
+        "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "before": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần. Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "oldAfter": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.",
+        "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "newAfter": [
+        "Mình so sánh gội đầu bên ngoài 50k là hợp lý cho nhu cầu gội nhanh thông thường ạ. Gói massage của em dành 60–80 phút cho trị liệu toàn thân, tập trung thả lỏng cổ vai gáy để giảm đau đầu, mỏi gối, tê tay và giúp ngủ sâu hơn, không chỉ gội đầu đơn thuần.",
+        "Nếu mình chỉ cần gội đầu nhẹ nhàng, gói dưỡng sinh cơ bản 60 phút 239k đã có gội đầu và massage cổ vai gáy, mình xem sao ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T7",
+      "customerMessage": "Tôi muốn vừa đủ đẻ thử",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Mình có thể ghé vào buổi nào ạ? Em kiểm tra lịch cho mình."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cao cấp 80 phút 339k vừa đủ để thử nhé. Gói này chăm kỹ cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn.",
+        "Em kiểm tra lịch cho mình. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 2,
+      "turnId": "T13",
+      "customerMessage": "Mà đắt thế",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "before": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "newAfter": [
+        "Em hiểu mình cảm thấy chi phí hơi cao ạ. Gói dưỡng sinh cao cấp 80 phút 339k tập trung massage cổ vai gáy êm dịu để giúp mình dễ ngủ hơn, phần gội đầu chỉ là bước nhẹ nhàng cuối buổi.",
+        "Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Mình muốn em xem thêm lựa chọn tập trung massage nhiều hơn, hay giữ gói 339k này ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-02",
+      "runIndex": 3,
+      "turnId": "T7",
+      "customerMessage": "Tôi muốn vừa đủ đẻ thử",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, Gói dưỡng sinh cao cấp 80 phút 339k là lựa chọn vừa đủ để mình thử ạ. Gói này gội đầu cao cấp kết hợp massage chăm sóc chuyên sâu cổ vai gáy, giúp đầu nhẹ và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-05",
+      "runIndex": 1,
+      "turnId": "T3",
+      "customerMessage": "Đau đầu hoa mắt tróng mặt",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ."
+      ],
+      "before": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ."
+      ],
+      "newAfter": [
+        "Em hiểu mình đang cảm thấy mệt mỏi và khó chịu ạ. Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Để em tư vấn gói phù hợp, mình ưu tiên chăm sóc vùng đầu hay cổ vai gáy hơn ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-07",
+      "runIndex": 1,
+      "turnId": "T5",
+      "customerMessage": "Chịu chết",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "before": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "newAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-07",
+      "runIndex": 2,
+      "turnId": "T5",
+      "customerMessage": "Chịu chết",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "before": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "newAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-07",
+      "runIndex": 3,
+      "turnId": "T5",
+      "customerMessage": "Chịu chết",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "before": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi. Mình có muốn tìm gói vừa đủ này không ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "newAfter": [
+        "Dạ em hiểu cảm giác của mình ạ. Gói dưỡng sinh cơ bản 60 phút 239k đã bao gồm gội đầu + massage cổ vai gáy, giúp thư giãn nhẹ nhàng vùng mỏi."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 2,
+      "turnId": "T3",
+      "customerMessage": "tôi muosn thử trải nghiệm trước",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ."
+      ],
+      "before": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ."
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ. Gói Massage cơ bản 60 phút 399.000đ là lựa chọn vừa đủ để mình trải nghiệm trước ạ. | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: | Mình muốn dùng tại cơ sở Hà Nội hay Quận 1 TP.HCM ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-08",
+      "runIndex": 3,
+      "turnId": "T3",
+      "customerMessage": "tôi muosn thử trải nghiệm trước",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ."
+      ],
+      "before": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ."
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, mình muốn trải nghiệm trước thì hoàn toàn được ạ. Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Mình có thể đến cơ sở Hà Nội hay Quận 1 TP.HCM để trải nghiệm gói Massage cơ bản 60 phút 399.000đ ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 1,
+      "turnId": "T9",
+      "customerMessage": "Giữa gói massage cổ vai gáy với massage body tinh dầu thì khác nhau thế nào em?",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?"
+      ],
+      "post_referee_output": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?"
+      ],
+      "final_sent_output_old": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ."
+      ],
+      "before": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?"
+      ],
+      "oldAfter": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ."
+      ],
+      "newAfter": [
+        "Gói massage cổ vai gáy tập trung vùng mỏi cứng do ngồi làm việc lâu, giúp Chị thư giãn nhẹ nhàng và dễ ngủ hơn. Gói massage body tinh dầu chăm sóc toàn thân, dịu nhẹ toàn cơ thể. Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Chị muốn tập trung vùng cổ vai gáy hay toàn thân ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 1,
+      "turnId": "T15",
+      "customerMessage": "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "before": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lắm. Phần đánh giá mức độ phù hợp với sức khỏe để kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói Chị đang chọn vẫn giữ không gian yên tĩnh, mỗi giường có rèm che riêng kín đáo ạ."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 3,
+      "turnId": "T5",
+      "customerMessage": "Chị còn bị mỏi cổ vai gáy với tê tay do ngồi làm việc lâu nữa, bên em có gói nào phù hợp không?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.",
+        "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ. Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.",
+        "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu Chị vừa chia sẻ ạ. Mỏi cổ vai gáy kèm tê tay do ngồi làm việc lâu thật là khó chịu, em cảm nhận được Chị cần được nghỉ ngơi thật sâu. | Bên em có gói Massage phục hồi 100 phút — 580k, chuyên chăm sóc vùng vai gáy, đầu óc và thả lỏng cơ thể, rất phù hợp với nhu cầu của Chị ạ.",
+        "Chị muốn trải nghiệm gói này hay cần em tư vấn thêm gói khác ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 3,
+      "turnId": "T7",
+      "customerMessage": "Chị không muốn làm phần chăm sóc tóc hay phục hồi tóc đâu nhé, chị chỉ muốn massage thư giãn cho dễ ngủ thôi",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó.",
+        "Chị thấy hướng này ổn không ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị. Chị thấy hướng này ổn không ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị.",
+        "Chị thấy hướng này ổn không ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, Chị chỉ muốn massage thư giãn để dễ ngủ, không cần phần chăm sóc tóc. Em xin lỗi vì gói trước đã nêu thêm thành phần đó. Bên em có gói Massage cơ bản 60 phút, giá 399k, tập trung massage trị liệu toàn thân giúp giảm đau mỏi, thư giãn gân cốt, phù hợp với vùng cổ vai gáy mỏi kèm tê tay của Chị.",
+        "Chị thấy hướng này ổn không ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-09",
+      "runIndex": 3,
+      "turnId": "T15",
+      "customerMessage": "Mà chị hay bị mỏi cổ vai gáy kèm hơi choáng nhẹ khi thiếu ngủ thì tình trạng của chị như vậy có làm massage được không?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói dưỡng sinh cao cấp của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "before": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ. Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, tình trạng mỏi cổ vai gáy kèm cảm giác choáng nhẹ khi thiếu ngủ của Chị em ghi nhận kỹ lưỡng ạ. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của Chị sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của Spa ạ.",
+        "Chị cứ yên tâm, gói HN_DS03 của Chị không có phần chăm sóc hay phục hồi tóc, chỉ tập trung massage vùng cổ vai gáy để Chị thư giãn và dễ ngủ hơn ạ."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-10",
+      "runIndex": 2,
+      "turnId": "T1",
+      "customerMessage": "Mình muốn hỏi giá gội đầu dưỡng sinh",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "before": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "oldAfter": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "newAfter": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-10",
+      "runIndex": 2,
+      "turnId": "T3",
+      "customerMessage": "Sao bên mình 239k mà tiệm gần nhà chị có 90k thôi?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.",
+        "Mình thấy ổn với gói này không ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ. Mình thấy ổn với gói này không ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.",
+        "Mình thấy ổn với gói này không ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, 90k là mức giá hợp lý cho nhu cầu gội đầu nhanh gọn ở tiệm gần nhà mình ạ. Gói 239k bên em là dưỡng sinh 60 phút, gồm gội đầu kèm massage cổ vai gáy, ăn nhẹ trái cây theo mùa, không gian yên tĩnh, rèm che riêng từng giường ạ. Nếu mình chỉ cần gội nhẹ nhàng thì 90k là lựa chọn vừa vặn ạ.",
+        "Mình thấy ổn với gói này không ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-10",
+      "runIndex": 3,
+      "turnId": "T1",
+      "customerMessage": "Mình muốn hỏi giá gội đầu dưỡng sinh",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "before": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "oldAfter": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "newAfter": [
+        "Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Dạ gội đầu dưỡng sinh bên em có gói 60 phút 239k và gói 80 phút 339k ạ, mình ở khu vực Hà Nội hay Sài Gòn ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 1,
+      "turnId": "T7",
+      "customerMessage": "Mình muốn vừa đủ để thử thôi",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Mình có thể ghé vào lúc nào ạ? Em sẽ kiểm tra chỗ trống cho mình."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, mình chọn gói dưỡng sinh cơ bản 60 phút 260k tại SG nhé. Gói này gồm gội đầu cơ bản và massage cổ vai gáy, vừa đủ để thư giãn đầu, cổ, vai gáy cho mình.",
+        "Em sẽ kiểm tra chỗ trống cho mình. Mình có thể ghé vào lúc nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 1,
+      "turnId": "T11",
+      "customerMessage": "Thế gói 339k gồm những gì? Có phục hồi tóc à?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "post_referee_output": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "final_sent_output_old": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.",
+        "Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "before": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn. Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "oldAfter": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.",
+        "Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "newAfter": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy, chăm sóc phục hồi tóc và ăn nhẹ trái cây theo mùa ạ. Gói này có phục hồi tóc nên không phù hợp nếu mình chỉ muốn massage thôi. Em có thể tư vấn gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, giúp dễ ngủ hơn.",
+        "Mình thấy hướng này ổn chưa ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 2,
+      "turnId": "T7",
+      "customerMessage": "Mình muốn vừa đủ để thử thôi",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Mình có thể ghé vào buổi nào ạ? Em sẽ kiểm tra chỗ trống cho mình ạ."
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ, mình muốn vừa đủ để thử thì gói dưỡng sinh cao cấp 80 phút 370k sẽ phù hợp ạ. Gói này gồm gội đầu cao cấp và massage chăm sóc chuyên sâu cổ vai gáy, giúp giảm đau đầu, tê tay và dễ ngủ hơn ạ.",
+        "Em sẽ kiểm tra chỗ trống cho mình ạ. Mình có thể ghé vào buổi nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-11",
+      "runIndex": 3,
+      "turnId": "T11",
+      "customerMessage": "Thế gói 339k gồm những gì? Có phục hồi tóc à?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "post_referee_output": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "final_sent_output_old": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.",
+        "Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "before": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn. Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "oldAfter": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.",
+        "Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "newAfter": [
+        "Gói 339k là Gói dưỡng sinh cao cấp 80 phút, gồm gội đầu cao cấp, massage chăm sóc chuyên sâu cổ vai gáy và phục hồi tóc kèm ăn nhẹ trái cây theo mùa ạ. Mình không muốn chăm sóc tóc thì gói này không phù hợp. Bên em có gói massage cơ bản 60 phút 399k, tập trung thư giãn toàn thân, phù hợp để mình thả lỏng và dễ ngủ hơn.",
+        "Mình thấy hướng này ổn với mình chưa ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-12",
+      "runIndex": 2,
+      "turnId": "T3",
+      "customerMessage": "Tình trạng của mình như vậy có làm massage được không em?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "before": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "newAfter": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-12",
+      "runIndex": 3,
+      "turnId": "T3",
+      "customerMessage": "Tình trạng của mình như vậy có làm massage được không em?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "post_referee_output": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "before": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ. Mình có muốn em chuyển thông tin này cho kỹ thuật viên để được tư vấn chi tiết hơn không?"
+      ],
+      "oldAfter": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "newAfter": [
+        "Em hiểu mình đang lo lắng vì cổ, vai, gáy mỏi và đôi khi đứng dậy hơi hoa mắt. Phần đánh giá mức độ phù hợp với tình trạng sức khỏe của mình sẽ do kỹ thuật viên/chuyên viên Spa trực tiếp xem xét và tư vấn theo quy trình của bên em ạ."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 1,
+      "turnId": "T1",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "post_referee_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "final_sent_output_old": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "before": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "oldAfter": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "newAfter": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình."
+      ],
+      "oldPunctuationMutations": [
+        ".->? :: Mình có thể cho em biết mình quan tâm đến gói nào hay dịch vụ gì không ạ, em sẽ tư vấn chi tiết cho mình?"
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-15",
+      "runIndex": 2,
+      "turnId": "T1",
+      "customerMessage": "Chị ở Quận 1 thì gói NS01 giá bao nhiêu và gồm những gì?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "post_referee_output": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "final_sent_output_old": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "before": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "oldAfter": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "newAfter": [
+        "Nàng Sen chào mình ạ 🌷 Rất vui vì hôm nay mình ghé qua đây. Em xin lỗi ạ, em chưa có thông tin về gói NS01 tại Quận 1 trong hệ thống hiện tại. Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay."
+      ],
+      "oldPunctuationMutations": [
+        ".->? :: Mình có thể cho em biết mình đang quan tâm đến dịch vụ gì không ạ, em sẽ tư vấn gói phù hợp ngay?"
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-16",
+      "runIndex": 2,
+      "turnId": "T5",
+      "customerMessage": "Bên mình có ưu đãi mua liệu trình từ 5 buổi hay voucher gì không và gói 670k gồm những gì?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "post_referee_output": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "final_sent_output_old": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.",
+        "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "before": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ. Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "oldAfter": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.",
+        "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "newAfter": [
+        "Dạ em xin giải thích gói 670k cho mình nhé: Gói 670k (Massage phục hồi + dưỡng sinh 120 phút) gồm 90 phút ngâm bồn xông hơi massage và 30 phút gội đầu dưỡng sinh, buffet thực dưỡng, rất phù hợp với vùng cổ vai gáy mỏi của mình ạ.",
+        "Về ưu đãi, bên em có giảm 10% khi mua liệu trình từ 5 buổi hoặc từ 5 voucher, áp dụng tại cơ sở mình mua và sử dụng ạ."
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-17",
+      "runIndex": 2,
+      "turnId": "T5",
+      "customerMessage": "Bên mình có ưu đãi mua liệu trình hay voucher gì không em?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "before": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-17",
+      "runIndex": 3,
+      "turnId": "T5",
+      "customerMessage": "Bên mình có ưu đãi mua liệu trình hay voucher gì không em?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "before": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ. Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "newAfter": [
+        "Dạ em xin gửi bảng ưu đãi của bên em ạ: Mua liệu trình từ 5 buổi giảm 10% tổng giá trị liệu trình; mua từ 5 voucher trở lên giảm 10% tổng giá trị voucher. Áp dụng cho các gói massage trị liệu, gội dưỡng sinh và combo đủ điều kiện tại cơ sở. Mua tại cơ sở nào sử dụng tại cơ sở đó, thẻ không hoàn, không hủy, có thể dùng cho người thân bạn bè ạ.",
+        "Mình quan tâm gói massage phục hồi nào ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-19",
+      "runIndex": 1,
+      "turnId": "T5",
+      "customerMessage": "Ơ bị dở à sao lại cổ vai gáy",
+      "step": "NORMALIZE_DECLARATIVE_QUESTION_MARKS (now capitalizeFirstLetter only)",
+      "raw_llm_output": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?"
+      ],
+      "post_referee_output": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?"
+      ],
+      "final_sent_output_old": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ."
+      ],
+      "before": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?"
+      ],
+      "oldAfter": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ."
+      ],
+      "newAfter": [
+        "Em hiểu ạ, mình vừa chia sẻ hoa mắt, chóng mặt, tê chân và khó ngủ, cơ thể như đang cần được nghỉ ngơi thật sâu. Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ?"
+      ],
+      "oldPunctuationMutations": [
+        "?->. :: Mình muốn em tập trung chăm sóc vùng cổ, vai, gáy hay toàn thân hơn ạ."
+      ],
+      "newPunctuationMutations": []
+    },
+    {
+      "caseId": "CASE-20",
+      "runIndex": 3,
+      "turnId": "T3",
+      "customerMessage": "Gói massage phục hồi giá bao nhiêu?",
+      "step": "P37B2_TURN_ACTION_DISCIPLINE",
+      "raw_llm_output": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "post_referee_output": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "final_sent_output_old": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.",
+        "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "before": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng. | Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "oldAfter": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.",
+        "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "newAfter": [
+        "Dạ em hiểu ạ. Gói Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, buffet thực dưỡng. | Gói Massage phục hồi + dưỡng sinh 120 phút — 670.000đ, gồm 90 phút ngâm bồn xông hơi massage + 30 phút gội đầu dưỡng sinh, buffet thực dưỡng.",
+        "| Mình muốn gói nào để em hỗ trợ thêm chi tiết ạ?"
+      ],
+      "oldPunctuationMutations": [],
+      "newPunctuationMutations": []
+    }
+  ]
 }
