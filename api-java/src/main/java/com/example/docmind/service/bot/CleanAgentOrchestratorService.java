@@ -36,6 +36,62 @@ public class CleanAgentOrchestratorService {
 
     private static final Logger log = LoggerFactory.getLogger(CleanAgentOrchestratorService.class);
 
+    private static final java.util.concurrent.ExecutorService TURN_DEADLINE_EXECUTOR =
+            java.util.concurrent.Executors.newCachedThreadPool(r -> {
+                Thread t = new Thread(r, "aci-turn-deadline-worker");
+                t.setDaemon(true);
+                return t;
+            });
+
+    private volatile long configuredTurnDeadlineMs = 65_000L;
+
+    public void setTurnDeadlineMs(long deadlineMs) {
+        this.configuredTurnDeadlineMs = Math.max(50L, deadlineMs);
+    }
+
+    public long getTurnDeadlineMs() {
+        return this.configuredTurnDeadlineMs;
+    }
+
+    private String completeLlmBoundedByTurnDeadline(
+            LlmClient client,
+            String prompt,
+            ReasoningBudget budget,
+            long turnDeadlineEpochNs
+    ) throws java.util.concurrent.TimeoutException {
+        if (client == null) {
+            return null;
+        }
+        long remainingNs = turnDeadlineEpochNs - System.nanoTime();
+        if (remainingNs <= 0L) {
+            throw new java.util.concurrent.TimeoutException("TURN_DEADLINE_EXCEEDED_BEFORE_CALL");
+        }
+        long remainingMs = Math.max(1L, remainingNs / 1_000_000L);
+        java.util.concurrent.CompletableFuture<String> future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            String res = budget != null ? client.complete(prompt, budget) : client.complete(prompt);
+            if (res == null && budget != null) {
+                res = client.complete(prompt);
+            }
+            return res;
+        }, TURN_DEADLINE_EXECUTOR);
+        try {
+            return future.get(remainingMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException te) {
+            future.cancel(true);
+            throw te;
+        } catch (java.util.concurrent.ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new RuntimeException(cause != null ? cause.getMessage() : "LLM_EXECUTION_ERROR", cause);
+        } catch (InterruptedException ie) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new java.util.concurrent.TimeoutException("TURN_INTERRUPTED");
+        }
+    }
+
     public static final String SPEECH_ACT_RESPECTED_PAUSE = "RESPECTED_PAUSE_WITH_SOFT_OPTION";
     public static final String SPEECH_ACT_OFFERED_DETAILS = "OFFERED_PACKAGE_DETAILS";
     public static final String SPEECH_ACT_INVITED_TRIAL_OR_TIME = "INVITED_TRIAL_OR_ASKED_TIME";
@@ -2714,7 +2770,8 @@ public class CleanAgentOrchestratorService {
                 : ConversationState.StructuredBookingState.none();
 
         // 0. Explicit cancellation / refusal resets booking state and invalidates any prior mock availability
-        if (AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(customerMessage)
+        boolean explicitCancelMsg = AdaptiveConversationIntelligence.isExplicitBookingCancelOrRefusalMessage(customerMessage);
+        if (explicitCancelMsg
                 || (safePrior.status() != ConversationState.BookingStatus.NONE
                     && safeCurrent.status() == ConversationState.BookingStatus.NONE)) {
             if (bookingGateway != null) {
@@ -2723,7 +2780,9 @@ public class CleanAgentOrchestratorService {
             return new BookingLifecycleEvaluation(
                     ConversationState.StructuredBookingState.none(),
                     BookingExecutionResult.disabled(),
-                    safePrior.status() != ConversationState.BookingStatus.NONE ? "EXPLICIT_BOOKING_CANCEL" : "NONE",
+                    (explicitCancelMsg && safePrior.status() != ConversationState.BookingStatus.NONE)
+                            ? "EXPLICIT_BOOKING_CANCEL"
+                            : "NONE",
                     null
             );
         }
@@ -3019,7 +3078,9 @@ public class CleanAgentOrchestratorService {
             ));
             case "MULTI_PRODUCT_SELECTION_REQUIRED" -> {
                 List<PackageCatalogService.PackageSummary> distinct = deduplicateNonAddonProducts(presentedPackagesInHistory);
-                if (distinct.size() >= 2) {
+                boolean hasDateOrTimeSlot = (st.bookingDate() != null && !st.bookingDate().isBlank())
+                        || (st.bookingTime() != null && !st.bookingTime().isBlank());
+                if (hasDateOrTimeSlot && distinct.size() >= 2) {
                     String optionsList = distinct.stream()
                             .map(p -> p.canonicalLabel() + " (" + p.priceDisplay() + ")")
                             .reduce((a, b) -> a + " hay " + b)
@@ -4894,6 +4955,44 @@ public class CleanAgentOrchestratorService {
                 }
             }
         }
+        String preResolvedBranchRegion = ConversationState.resolveExplicitRegionAcrossTurns(
+                originalVerbatim,
+                safeHistory,
+                safeConv.preferredRegion()
+        );
+        if (preResolvedBranchRegion == null && agentBrainService != null && pageId != null && request != null && request.senderId() != null) {
+            AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot preDraft2 =
+                    agentBrainService.getCustomerUnderstandingDraft2Snapshot(pageId, request.senderId());
+            if (preDraft2 != null && preDraft2.consultativeProfile() != null && preDraft2.consultativeProfile().confirmedFacts() != null) {
+                for (AdaptiveConversationIntelligence.VersionedCustomerFact f : preDraft2.consultativeProfile().confirmedFacts()) {
+                    if (f != null && f.validity() == AdaptiveConversationIntelligence.FactValidity.CURRENT
+                            && ("preferred_branch".equalsIgnoreCase(f.key()) || "branch".equalsIgnoreCase(f.key()))
+                            && f.value() != null && !f.value().isBlank()) {
+                        String fromFact = ConversationState.resolveExplicitRegionAcrossTurns(f.value(), List.of(), null);
+                        if (fromFact != null) {
+                            preResolvedBranchRegion = fromFact;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        List<PackageCatalogService.PackageSummary> fullUnfilteredCatalog = List.copyOf(allCatalog);
+        List<PackageCatalogService.PackageSummary> crossBranchExcludedPackages = new ArrayList<>();
+        if (preResolvedBranchRegion != null && !preResolvedBranchRegion.isBlank()) {
+            final String activeBranchCode = preResolvedBranchRegion.strip().toUpperCase(Locale.ROOT);
+            List<PackageCatalogService.PackageSummary> strictlyScoped =
+                    PackageCatalogService.filterByRegion(allCatalog, activeBranchCode);
+            if (!strictlyScoped.isEmpty()) {
+                for (PackageCatalogService.PackageSummary p : allCatalog) {
+                    if (p != null && p.region() != null && !p.region().isBlank()
+                            && !p.region().equalsIgnoreCase(activeBranchCode)) {
+                        crossBranchExcludedPackages.add(p);
+                    }
+                }
+                allCatalog = new ArrayList<>(strictlyScoped);
+            }
+        }
         CleanAgentCatalogAndPromptBuilder.TieredCatalogResult tieredCatalog =
                 CleanAgentCatalogAndPromptBuilder.rankAndTierCatalogForCleanAgent(
                         allCatalog,
@@ -4938,7 +5037,7 @@ public class CleanAgentOrchestratorService {
         }
         List<PackageCatalogService.PackageSummary> unblindedEligibleCatalog = new ArrayList<>(unblindedPrimaries);
         unblindedEligibleCatalog.addAll(unblindedEconomicals);
-        List<PackageCatalogService.PackageSummary> excludedAddonsOnly = new ArrayList<>();
+        List<PackageCatalogService.PackageSummary> excludedAddonsOnly = new ArrayList<>(crossBranchExcludedPackages);
         for (PackageCatalogService.PackageSummary p : allCatalog) {
             if (p != null && p.isAddon()) {
                 excludedAddonsOnly.add(p);
@@ -4982,6 +5081,33 @@ public class CleanAgentOrchestratorService {
                 && (priorFromSession.status() != ConversationState.BookingStatus.NONE
                     || (priorFromSession.selectedProductId() != null && !priorFromSession.selectedProductId().isBlank()))) {
             priorBookingState = priorFromSession;
+        }
+        if (preResolvedBranchRegion != null && !preResolvedBranchRegion.isBlank()
+                && priorBookingState != null
+                && priorBookingState.candidateProductIds() != null
+                && !priorBookingState.candidateProductIds().isEmpty()
+                && !crossBranchExcludedPackages.isEmpty()) {
+            Set<String> excludedProductIds = new LinkedHashSet<>();
+            for (PackageCatalogService.PackageSummary ex : crossBranchExcludedPackages) {
+                if (ex != null && ex.productId() != null) {
+                    excludedProductIds.add(ex.productId().toUpperCase(Locale.ROOT));
+                }
+            }
+            List<String> branchScopedCandidates = priorBookingState.candidateProductIds().stream()
+                    .filter(cid -> cid != null && !excludedProductIds.contains(cid.toUpperCase(Locale.ROOT)))
+                    .toList();
+            if (branchScopedCandidates.size() != priorBookingState.candidateProductIds().size()) {
+                priorBookingState = new ConversationState.StructuredBookingState(
+                        priorBookingState.selectedProductId(),
+                        priorBookingState.selectedProductLabel(),
+                        priorBookingState.bookingDate(),
+                        priorBookingState.resolvedIsoDate(),
+                        priorBookingState.bookingTime(),
+                        priorBookingState.timezoneId(),
+                        priorBookingState.status(),
+                        branchScopedCandidates
+                );
+            }
         }
 
         List<AdaptiveConversationIntelligence.CustomerStatementRecord> tier1Statements =
@@ -5042,11 +5168,48 @@ public class CleanAgentOrchestratorService {
         );
         // ACI V3 P2 (§4.7, cấm #6): vùng prompt chỉ đến từ cue tường minh (lượt hiện tại -> lịch sử user -> session);
         // khách chưa nêu chi nhánh -> null (giữ đủ biến thể đa chi nhánh + nhãn branch="..."), TUYỆT ĐỐI không default "HN".
-        String effectivePromptRegion = ConversationState.resolveExplicitRegionAcrossTurns(
-                originalVerbatim,
-                safeHistory,
-                safeConv.preferredRegion()
-        );
+        String effectivePromptRegion = preResolvedBranchRegion != null
+                ? preResolvedBranchRegion
+                : ConversationState.resolveExplicitRegionAcrossTurns(
+                        originalVerbatim,
+                        safeHistory,
+                        safeConv.preferredRegion()
+                );
+        if (effectivePromptRegion != null && !effectivePromptRegion.isBlank() && priorBookingState != null) {
+            final String branchPrefix = effectivePromptRegion.strip().toUpperCase(Locale.ROOT) + ":";
+            List<String> branchFilteredCandidates = priorBookingState.candidateProductIds() != null
+                    ? priorBookingState.candidateProductIds().stream()
+                            .filter(id -> id != null && (!id.contains(":") || id.toUpperCase(Locale.ROOT).startsWith(branchPrefix)))
+                            .toList()
+                    : List.of();
+            String priorSelId = priorBookingState.selectedProductId();
+            String priorSelLabel = priorBookingState.selectedProductLabel();
+            if (priorSelId != null && priorSelId.contains(":") && !priorSelId.toUpperCase(Locale.ROOT).startsWith(branchPrefix)) {
+                PackageCatalogService.PackageSummary branchEquivalent = AdaptiveConversationIntelligence
+                        .resolveCatalogProductByFlexibleIdentifier(priorSelId, allCatalog, allCatalog);
+                if (branchEquivalent != null && branchEquivalent.region() != null
+                        && branchEquivalent.region().equalsIgnoreCase(effectivePromptRegion)) {
+                    priorSelId = branchEquivalent.productId();
+                    priorSelLabel = branchEquivalent.canonicalLabel();
+                } else {
+                    priorSelId = null;
+                    priorSelLabel = null;
+                }
+            }
+            if (!java.util.Objects.equals(priorSelId, priorBookingState.selectedProductId())
+                    || !java.util.Objects.equals(branchFilteredCandidates, priorBookingState.candidateProductIds())) {
+                priorBookingState = new ConversationState.StructuredBookingState(
+                        priorSelId,
+                        priorSelLabel,
+                        priorBookingState.bookingDate(),
+                        priorBookingState.resolvedIsoDate(),
+                        priorBookingState.bookingTime(),
+                        priorBookingState.timezoneId(),
+                        priorBookingState.status(),
+                        branchFilteredCandidates
+                );
+            }
+        }
         List<PackageCatalogService.PackageSummary> regionScopedPrimaries = effectivePromptRegion != null
                 ? PackageCatalogService.filterByRegion(unblindedPrimaries, effectivePromptRegion)
                 : unblindedPrimaries;
@@ -5160,7 +5323,9 @@ public class CleanAgentOrchestratorService {
         String rawReply = null;
         int llmRegenerationCount = 0;
         int llmCallCount = 0;
-        final long turnDeadlineMs = 65_000L;
+        final long turnDeadlineMs = this.configuredTurnDeadlineMs;
+        final long turnDeadlineEpochNs = turnStartNs + (turnDeadlineMs * 1_000_000L);
+        boolean turnDeadlineExceeded = false;
         String retryTriggerReason = "NONE";
         LlmTokenUsageSnapshot tokenUsage = LlmTokenUsageSnapshot.zero();
         long modelLatencyMs = 0L;
@@ -5170,10 +5335,7 @@ public class CleanAgentOrchestratorService {
                 FanpageBotService.markCurrentTurnLlmStarted();
                 llmCallCount++;
                 long callStartNs = System.nanoTime();
-                rawReply = llmClient.complete(aciPrompt, aciBudget);
-                if (rawReply == null) {
-                    rawReply = llmClient.complete(aciPrompt);
-                }
+                rawReply = completeLlmBoundedByTurnDeadline(llmClient, aciPrompt, aciBudget, turnDeadlineEpochNs);
                 modelLatencyMs += Math.max(1L, (System.nanoTime() - callStartNs) / 1_000_000L);
                 tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                 if (isUpstreamLlmClientErrorPayload(rawReply)) {
@@ -5182,9 +5344,9 @@ public class CleanAgentOrchestratorService {
                     log.warn("[ACI-V2] Upstream LLM network/gateway error on initial call (msg='{}') — skipping redundant JSON retry",
                             originalVerbatim);
                 } else if (rawReply == null || rawReply.isBlank()) {
-                    long elapsedBeforeRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
-                    if (elapsedBeforeRetryMs >= 65_000L) {
+                    if (System.nanoTime() >= turnDeadlineEpochNs) {
                         initialUpstreamError = true;
+                        turnDeadlineExceeded = true;
                         retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
                     } else {
                         retryTriggerReason = "EMPTY_INITIAL_RESPONSE";
@@ -5193,10 +5355,8 @@ public class CleanAgentOrchestratorService {
                         llmRegenerationCount++;
                         llmCallCount++;
                         long fallbackStartNs = System.nanoTime();
-                        rawReply = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
-                        if (rawReply == null) {
-                            rawReply = llmClient.complete(aciPrompt);
-                        }
+                        rawReply = completeLlmBoundedByTurnDeadline(
+                                llmClient, aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK), turnDeadlineEpochNs);
                         modelLatencyMs += Math.max(1L, (System.nanoTime() - fallbackStartNs) / 1_000_000L);
                         tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                         if (rawReply == null || rawReply.isBlank() || isUpstreamLlmClientErrorPayload(rawReply)) {
@@ -5205,6 +5365,14 @@ public class CleanAgentOrchestratorService {
                     }
                 }
             }
+        } catch (java.util.concurrent.TimeoutException te) {
+            initialUpstreamError = true;
+            turnDeadlineExceeded = true;
+            rawReply = null;
+            modelLatencyMs += Math.max(1L, (System.nanoTime() - turnStartNs) / 1_000_000L);
+            retryTriggerReason = "TURN_DEADLINE_EXCEEDED";
+            log.warn("[ACI-V2] Turn deadline ({} ms) exceeded on primary LLM call — cancelling in-flight request and activating read-only fallback",
+                    turnDeadlineMs);
         } catch (Exception e) {
             initialUpstreamError = true;
             retryTriggerReason = "UPSTREAM_ERROR_OR_TIMEOUT";
@@ -5232,11 +5400,14 @@ public class CleanAgentOrchestratorService {
                         ? rawReply
                         : PromptSecurityGuard.sanitizeModelOutput(rawReply));
         String effectiveStructuredOutputForProfiling = sanitizedReply;
+        boolean hasStructuredBubblesOrSegments = structured != null && structured.parsedFromJson()
+                && ((structured.bubbles() != null && !structured.bubbles().isEmpty())
+                    || (structured.messageSegments() != null && !structured.messageSegments().isEmpty()));
         if (!initialUpstreamError
-                && (structured == null || !structured.parsedFromJson() || structured.bubbles() == null || structured.bubbles().isEmpty())
+                && !hasStructuredBubblesOrSegments
                 && llmRegenerationCount < 1) {
-            long elapsedBeforeJsonRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
-            if (elapsedBeforeJsonRetryMs >= 65_000L) {
+            if (System.nanoTime() >= turnDeadlineEpochNs) {
+                turnDeadlineExceeded = true;
                 retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
             } else {
                 retryTriggerReason = (structured == null || !structured.parsedFromJson())
@@ -5252,10 +5423,8 @@ public class CleanAgentOrchestratorService {
                         llmRegenerationCount++;
                         llmCallCount++;
                         long retryStartNs = System.nanoTime();
-                        String retryRaw = llmClient.complete(aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
-                        if (retryRaw == null) {
-                            retryRaw = llmClient.complete(aciPrompt);
-                        }
+                        String retryRaw = completeLlmBoundedByTurnDeadline(
+                                llmClient, aciPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK), turnDeadlineEpochNs);
                         modelLatencyMs += Math.max(1L, (System.nanoTime() - retryStartNs) / 1_000_000L);
                         tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                         if (retryRaw != null && !retryRaw.isBlank() && !isUpstreamLlmClientErrorPayload(retryRaw)) {
@@ -5297,32 +5466,73 @@ public class CleanAgentOrchestratorService {
             safeHonorific = reflection.customerUnderstanding().inferredCustomerPronoun();
         }
 
+        List<String> structuredCatalogClaimViolations = new ArrayList<>();
+        List<FanpageBotResponse.ReplyBubble> segmentRenderedBubbles = List.of();
+        if (structured != null && structured.messageSegments() != null && !structured.messageSegments().isEmpty()) {
+            CleanAgentOutputRefereeAndSanitizer.CatalogClaimValidationResult segRes =
+                    CleanAgentOutputRefereeAndSanitizer.validateAndRenderCatalogClaimSegments(
+                            structured.messageSegments(),
+                            fullUnfilteredCatalog,
+                            effectivePromptRegion
+                    );
+            if (segRes.valid()) {
+                segmentRenderedBubbles = segRes.renderedBubbles();
+            } else {
+                structuredCatalogClaimViolations.addAll(segRes.violations());
+            }
+        }
         List<FanpageBotResponse.ReplyBubble> candidateBubbles =
-                (isUpstreamLlmClientErrorPayload(sanitizedReply) || isLeakedReasoningWithoutJsonContract(structured, sanitizedReply))
+                !structuredCatalogClaimViolations.isEmpty()
                         ? List.of()
-                        : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, 0);
+                        : (!segmentRenderedBubbles.isEmpty()
+                            ? segmentRenderedBubbles
+                            : ((isUpstreamLlmClientErrorPayload(sanitizedReply) || isLeakedReasoningWithoutJsonContract(structured, sanitizedReply))
+                                ? List.of()
+                                : CleanAgentOutputRefereeAndSanitizer.extractCleanBubblesFromOutput(structured, sanitizedReply, 0)));
         List<String> rawLlmBubbleTexts = candidateBubbles.stream()
                 .map(FanpageBotResponse.ReplyBubble::text)
                 .filter(java.util.Objects::nonNull)
                 .toList();
-        boolean llmOutputUnavailable = candidateBubbles.isEmpty();
+        boolean llmOutputUnavailable = candidateBubbles.isEmpty() && structuredCatalogClaimViolations.isEmpty();
         boolean usedStructuredFallbackOnLlmFailure = false;
-        if (candidateBubbles.isEmpty()) {
+        if (!structuredCatalogClaimViolations.isEmpty()) {
+            log.warn("[ACI-V2] Structured catalog_claim validation failed ({}) -> returning safe non-price clarification fallback",
+                    structuredCatalogClaimViolations);
+            String safeClarifyText = (effectivePromptRegion == null || effectivePromptRegion.isBlank())
+                    ? ("Dạ để " + selfPronoun + " báo chính xác gói dịch vụ và mức giá niêm yết, " + safeHonorific
+                        + " đang muốn tham khảo tại cơ sở Hà Nội hay TP.HCM ạ?")
+                    : ("Dạ hiện thông tin gói dịch vụ " + safeHonorific + " hỏi chưa có trong danh mục áp dụng tại cơ sở "
+                        + ("HCM".equalsIgnoreCase(effectivePromptRegion) ? "TP.HCM" : "Hà Nội")
+                        + " ạ. " + BubbleTextSanitizer.capitalizeFirstLetter(safeHonorific)
+                        + " muốn " + selfPronoun + " gửi các gói đang áp dụng tại cơ sở mình để " + safeHonorific + " dễ chọn hơn không ạ?");
+            candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(safeClarifyText, 0));
+            usedStructuredFallbackOnLlmFailure = true;
+        } else if (candidateBubbles.isEmpty()) {
             log.warn("[ACI-V2] Empty/unreachable LLM output (msg='{}') -> activating Context-Safe Fallback (LLM_OUTPUT_UNAVAILABLE)", originalVerbatim);
-            candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
-                    quotedReplyResolution,
-                    priorBookingState,
-                    "ACI_COGNITIVE_V2",
-                    !unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null,
-                    unblindedEligibleCatalog,
-                    allCatalog,
-                    effectivePersonaConfig,
-                    originalVerbatim,
-                    selfPronoun,
-                    safeHonorific,
-                    draft2Before,
-                    fused != null ? fused : List.of()
-            );
+            long remainingForFallbackNs = turnDeadlineEpochNs - System.nanoTime();
+            if (turnDeadlineExceeded && remainingForFallbackNs < -500_000_000L) {
+                candidateBubbles = List.of(new FanpageBotResponse.ReplyBubble(
+                        "Dạ " + selfPronoun + " xin phép phản hồi " + safeHonorific
+                                + " ngay ạ: hệ thống đang xử lý hơi chậm một chút, " + safeHonorific
+                                + " vui lòng nhắn lại nội dung cần ưu tiên để " + selfPronoun + " hỗ trợ chính xác nhé ạ.",
+                        0
+                ));
+            } else {
+                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.buildContextSafeAciV2Fallback(
+                        quotedReplyResolution,
+                        priorBookingState,
+                        "ACI_COGNITIVE_V2",
+                        !unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null,
+                        unblindedEligibleCatalog,
+                        allCatalog,
+                        effectivePersonaConfig,
+                        originalVerbatim,
+                        selfPronoun,
+                        safeHonorific,
+                        draft2Before,
+                        fused != null ? fused : List.of()
+                );
+            }
             usedStructuredFallbackOnLlmFailure = true;
         } else {
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenersInPlace(
@@ -5367,27 +5577,37 @@ public class CleanAgentOrchestratorService {
             }
         }
 
+        List<String> postReconciliationBubbleTexts = candidateBubbles.stream()
+                .map(FanpageBotResponse.ReplyBubble::text)
+                .filter(java.util.Objects::nonNull)
+                .toList();
         // Áp dụng ProposedBookingPatch qua cổng thẩm quyền Java Core & đánh giá Conditional Handoff (Mục 3.4 & Mục 4)
+        // Stage 1 Workstream 4 (Section VI.4): When fallback is used due to LLM failure/timeout, booking state is strictly READ-ONLY!
         ConversationState.StructuredBookingState rawAuthoritativeBookingState =
-                AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
-                        priorBookingState,
-                        reflection.proposedBookingPatch(),
-                        originalVerbatim,
-                        prevBotTurnText,
-                        allCatalog,
-                        presentedPackagesInHistory,
-                        pageZoneId,
-                        reflection.customerUnderstanding().bookingReadiness(),
-                        reflection.priority().primary()
-                );
-        BookingLifecycleEvaluation bookingLifecycleEval = applyBookingGatewayLifecycle(
-                pageId,
-                senderId,
-                priorBookingState,
-                rawAuthoritativeBookingState,
-                originalVerbatim,
-                effectivePromptRegion
-        );
+                (llmOutputUnavailable || turnDeadlineExceeded || usedStructuredFallbackOnLlmFailure)
+                        ? priorBookingState
+                        : AdaptiveConversationIntelligence.applyAuthoritativeBookingPatch(
+                                priorBookingState,
+                                reflection.proposedBookingPatch(),
+                                originalVerbatim,
+                                prevBotTurnText,
+                                allCatalog,
+                                presentedPackagesInHistory,
+                                pageZoneId,
+                                reflection.customerUnderstanding().bookingReadiness(),
+                                reflection.priority().primary()
+                        );
+        BookingLifecycleEvaluation bookingLifecycleEval =
+                (llmOutputUnavailable || turnDeadlineExceeded || usedStructuredFallbackOnLlmFailure)
+                        ? new BookingLifecycleEvaluation(priorBookingState, BookingExecutionResult.disabled(), "NONE", null)
+                        : applyBookingGatewayLifecycle(
+                                pageId,
+                                senderId,
+                                priorBookingState,
+                                rawAuthoritativeBookingState,
+                                originalVerbatim,
+                                effectivePromptRegion
+                        );
         ConversationState.StructuredBookingState authoritativeBookingState = bookingLifecycleEval.bookingState();
         candidateBubbles = alignBubblesWithBookingLifecycle(
                 candidateBubbles,
@@ -5493,8 +5713,8 @@ public class CleanAgentOrchestratorService {
                     : (quotedReplyResolution.quotedPackage() != null
                         ? quotedReplyResolution.quotedPackage()
                         : (!unblindedPrimaries.isEmpty() ? unblindedPrimaries.get(0) : null));
-            long elapsedBeforeRefereeRetryMs = Math.max(0L, (System.nanoTime() - turnStartNs) / 1_000_000L);
-            if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError && elapsedBeforeRefereeRetryMs >= 65_000L) {
+            if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError && System.nanoTime() >= turnDeadlineEpochNs) {
+                turnDeadlineExceeded = true;
                 retryTriggerReason = "SKIPPED_RETRY_DEADLINE_EXCEEDED";
             } else if (llmClient != null && llmRegenerationCount < 1 && !initialUpstreamError) {
                 retryTriggerReason = "REFEREE_VIOLATION:" + refereeViolations.get(0);
@@ -5506,10 +5726,8 @@ public class CleanAgentOrchestratorService {
                     llmRegenerationCount++;
                     llmCallCount++;
                     long repairCallStartNs = System.nanoTime();
-                    String repairedRaw = llmClient.complete(repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK));
-                    if (repairedRaw == null) {
-                        repairedRaw = llmClient.complete(repairPrompt);
-                    }
+                    String repairedRaw = completeLlmBoundedByTurnDeadline(
+                            llmClient, repairPrompt, buildAciReasoningBudget(ThinkingMode.FAST_NO_THINK), turnDeadlineEpochNs);
                     modelLatencyMs += Math.max(1L, (System.nanoTime() - repairCallStartNs) / 1_000_000L);
                     tokenUsage = tokenUsage.plus(extractLlmTokenUsage(llmClient));
                     if (repairedRaw == null || repairedRaw.isBlank() || isUpstreamLlmClientErrorPayload(repairedRaw)) {
@@ -5921,7 +6139,9 @@ public class CleanAgentOrchestratorService {
                     : generatedSpeechAct);
         // P3.3 Mục 2.4 (TC05): Ghi nhận các gói bot vừa giới thiệu ở lượt hiện tại vào candidateProductIds (BOT_PROPOSED / lastOfferedPackageIds)
         // nhưng tuyệt đối không gán vào selectedProductId khi khách chưa chọn.
-        if (!combinedReplyText.isBlank() && allCatalog != null && !allCatalog.isEmpty() && authoritativeBookingState != null) {
+        // Stage 1 Workstream 4: Không cập nhật candidateProductIds hoặc booking_state khi lượt đang chạy chế độ Fallback read-only!
+        boolean isReadOnlyFallbackTurn = llmOutputUnavailable || turnDeadlineExceeded || usedStructuredFallbackOnLlmFailure;
+        if (!isReadOnlyFallbackTurn && !combinedReplyText.isBlank() && allCatalog != null && !allCatalog.isEmpty() && authoritativeBookingState != null) {
             List<PackageCatalogService.PackageSummary> newlyOffered =
                     CleanAgentCatalogAndPromptBuilder.extractPresentedPackagesFromHistory(
                             List.of(new FanpageBotRequest.ConversationTurn("assistant", combinedReplyText)),
@@ -5951,7 +6171,8 @@ public class CleanAgentOrchestratorService {
             }
         }
         // Ghi nhận nguyên tử 5 tầng bộ nhớ, vòng đời Working Hypothesis, chiến thuật lượt trước & Session Commitments (Mục 4)
-        if (agentBrainService != null) {
+        // Stage 1 Workstream 4 (Section VI.4): Khi chạy Fallback read-only do timeout/lỗi LLM, không ghi đè booking_state hay memory!
+        if (agentBrainService != null && !isReadOnlyFallbackTurn) {
             agentBrainService.applyAciTurnMemoryUpdates(
                     pageId,
                     senderId,
@@ -5990,7 +6211,7 @@ public class CleanAgentOrchestratorService {
                         : reflection.priority().primary(),
                 null
         );
-        if (!finalBubbles.isEmpty()) {
+        if (!finalBubbles.isEmpty() && !isReadOnlyFallbackTurn) {
             String verifiedSymptomDurationAfterSync = agentBrainService != null
                     ? agentBrainService.getVerifiedSymptomDuration(pageId, senderId)
                     : reflection.customerUnderstanding().verifiedSymptomDuration();
@@ -6001,7 +6222,7 @@ public class CleanAgentOrchestratorService {
             String authoritativeRegionForSession = (effectivePromptRegion != null && !effectivePromptRegion.isBlank())
                     ? effectivePromptRegion
                     : safeConv.preferredRegion();
-            ConversationState safeConvWithCatalogAndRegion = safeConv.withCatalogAndRegion(allCatalog, authoritativeRegionForSession);
+            ConversationState safeConvWithCatalogAndRegion = safeConv.withCatalogAndRegion(fullUnfilteredCatalog, authoritativeRegionForSession);
             ConversationState.recordAciV2TurnMinimalState(
                     pageId,
                     senderId,
@@ -6348,6 +6569,96 @@ public class CleanAgentOrchestratorService {
                 usedSafeHandoffFallback,
                 effectivePersonaConfig.resolvedScopeTaxonomy()
         );
+        String catalogSnapshotId = (effectivePromptRegion != null ? effectivePromptRegion : "ALL")
+                + ":" + allCatalog.size() + "_PKGS";
+        String stateTransitionReason = java.util.Objects.equals(priorBookingState.status(), authoritativeBookingState.status())
+                ? "UNCHANGED:" + authoritativeBookingState.status().name()
+                : (bookingLifecycleEval.lifecycleAction() != null && !"NONE".equals(bookingLifecycleEval.lifecycleAction())
+                    ? bookingLifecycleEval.lifecycleAction()
+                    : (reflection.proposedBookingPatch() != null && !reflection.proposedBookingPatch().actionType().isBlank()
+                        ? "LLM_PROPOSAL:" + reflection.proposedBookingPatch().actionType()
+                        : "RECONCILED:" + priorBookingState.status().name() + "->" + authoritativeBookingState.status().name()));
+        if (!structuredCatalogClaimViolations.isEmpty()) {
+            refereeViolations.addAll(structuredCatalogClaimViolations);
+        }
+        DecisionTrace.SanitizerMutationAudit mutationAudit = computeSanitizerMutationAudit(
+                rawLlmBubbleTexts,
+                finalBubbleTexts,
+                decisionTrace.sanitizerMutations(),
+                repairApplied,
+                usedStructuredFallbackOnLlmFailure || usedSafeHandoffFallback
+        );
+        DecisionTrace.Stage1ExecutionTrace stage1Trace = new DecisionTrace.Stage1ExecutionTrace(
+                FanpageBotService.getCurrentTurnId() != null ? FanpageBotService.getCurrentTurnId() : sequentialTurnId,
+                sequentialTurnId,
+                llmClient != null ? llmClient.name() : "none",
+                "openai-compatible",
+                CleanAgentCatalogAndPromptBuilder.getActiveAciPromptVersion(),
+                effectivePromptRegion != null ? effectivePromptRegion : "UNSPECIFIED",
+                catalogSnapshotId,
+                rawLlmBubbleTexts,
+                structured != null && structured.parsedFromJson()
+                        ? ("intent=" + reflection.customerUnderstanding().detectedIntent()
+                            + ",readiness=" + (reflection.customerUnderstanding().bookingReadiness() != null
+                                ? reflection.customerUnderstanding().bookingReadiness().name() : "EXPLORING")
+                            + ",strategy=" + reflection.responsePlan().strategy())
+                        : "UNPARSED_OR_FALLBACK",
+                postReconciliationBubbleTexts,
+                refereeDecision + (refereeViolations.isEmpty() ? "" : ":" + refereeViolations),
+                mutationAudit.mutated() ? "MUTATED:" + mutationAudit.mutationReasons() : "UNCHANGED",
+                finalBubbleTexts,
+                reflection.customerUnderstanding().bookingReadiness() != null
+                        ? reflection.customerUnderstanding().bookingReadiness().name()
+                        : "EXPLORING",
+                priorBookingState.status().name(),
+                authoritativeBookingState.status().name(),
+                stateTransitionReason,
+                new DecisionTrace.StepTimings(
+                        retrievalMs,
+                        promptBuildMs,
+                        llmElapsedMs,
+                        validationMs,
+                        totalTurnMs,
+                        turnDeadlineMs
+                ),
+                tokenUsage.promptTokens(),
+                tokenUsage.completionTokens(),
+                tokenUsage.reasoningTokens(),
+                llmRegenerationCount,
+                retryTriggerReason,
+                isReadOnlyFallbackTurn || usedSafeHandoffFallback,
+                turnDeadlineExceeded ? "TURN_DEADLINE_EXCEEDED" : fallbackReason,
+                "SYSTEM_PROCESSED",
+                "DELIVERY_REQUESTED",
+                List.of("LLM_GENERATED", "SYSTEM_PROCESSED", "DELIVERY_REQUESTED"),
+                mutationAudit
+        );
+        decisionTrace = decisionTrace.withStage1ExecutionTrace(stage1Trace);
+        log.info("[STAGE1-TURN-TRACE] correlationId={} turn={} model={} promptVersion={} branchId={} catalogSnapshotId={} buyingReadiness={} bookingBefore={} bookingAfter={} transitionReason={} refereeResult={} fallbackUsed={} fallbackReason={} mutated={} changedChars={} changedSegments={} mutationReasons={} mutatingComponents={} timingsMs={{retrieval={},prompt={},llm={},validation={},total={},deadline={}}}",
+                stage1Trace.correlationId(),
+                stage1Trace.turnId(),
+                stage1Trace.model(),
+                stage1Trace.promptVersion(),
+                stage1Trace.branchId(),
+                stage1Trace.catalogSnapshotId(),
+                stage1Trace.buyingReadiness(),
+                stage1Trace.bookingStateBefore(),
+                stage1Trace.bookingStateAfter(),
+                stage1Trace.stateTransitionReason(),
+                stage1Trace.refereeResult(),
+                stage1Trace.fallbackUsed(),
+                stage1Trace.fallbackReason(),
+                mutationAudit.mutated(),
+                mutationAudit.changedCharCount(),
+                mutationAudit.changedSegmentCount(),
+                mutationAudit.mutationReasons(),
+                mutationAudit.mutatingComponents(),
+                retrievalMs,
+                promptBuildMs,
+                llmElapsedMs,
+                validationMs,
+                totalTurnMs,
+                turnDeadlineMs);
         return new FanpageBotResponse(
                 combinedReplyText,
                 finalBubbles,
@@ -6890,14 +7201,24 @@ public class CleanAgentOrchestratorService {
                 return CustomerBookingSignalTier.NONE;
             }
         }
+        if (!bookingActive && reflection != null && reflection.customerUnderstanding() != null
+                && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.NOT_READY) {
+            return CustomerBookingSignalTier.NONE;
+        }
         CustomerBookingSignalTier preTier = classifyPreLlmCustomerBookingSignalTier(msg, bookingState);
+        boolean llmExplicitlyNotReadyForBooking = !bookingActive
+                && reflection != null
+                && reflection.customerUnderstanding() != null
+                && reflection.customerUnderstanding().bookingReadiness() != null
+                && reflection.customerUnderstanding().bookingReadiness() != AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK
+                && (reflection.proposedBookingPatch() == null || !reflection.proposedBookingPatch().hasAnyProposal());
         boolean readyToBook = bookingActive
                 || (reflection != null
                     && ((reflection.customerUnderstanding() != null
                             && reflection.customerUnderstanding().bookingReadiness() == AdaptiveConversationIntelligence.BookingReadiness.READY_TO_BOOK)
                         || (reflection.priority() != null
                             && "BOOKING_COMPLETION".equalsIgnoreCase(reflection.priority().primary()))));
-        if (readyToBook || preTier == CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION) {
+        if (readyToBook || (!llmExplicitlyNotReadyForBooking && preTier == CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION)) {
             return CustomerBookingSignalTier.TIER_3_BOOKING_EXECUTION;
         }
         if (preTier == CustomerBookingSignalTier.TIER_2_BOOKING_PREPARATION) {
@@ -7704,6 +8025,79 @@ public class CleanAgentOrchestratorService {
         int unchangedChars = commonPrefix + commonSuffix;
         double rate = 1.0 - ((double) unchangedChars / (double) maxLen);
         return Math.max(0.0, Math.min(1.0, rate));
+    }
+
+    public static DecisionTrace.SanitizerMutationAudit computeSanitizerMutationAudit(
+            List<String> rawBubbles,
+            List<String> finalBubbles,
+            DecisionTrace.SanitizerMutations flags,
+            boolean refereeRepairApplied,
+            boolean fallbackApplied
+    ) {
+        List<String> safeRaw = rawBubbles != null ? rawBubbles : List.of();
+        List<String> safeFinal = finalBubbles != null ? finalBubbles : List.of();
+        String rawJoined = String.join(" ", safeRaw).replaceAll("\s+", " ").strip();
+        String finalJoined = String.join(" ", safeFinal).replaceAll("\s+", " ").strip();
+        if (rawJoined.equals(finalJoined)
+                || (rawJoined.equalsIgnoreCase(finalJoined) && rawJoined.length() == finalJoined.length())) {
+            return new DecisionTrace.SanitizerMutationAudit(
+                    false, 0, 0, "NO_MUTATION", List.of(), List.of()
+            );
+        }
+        int changedSegments = 0;
+        int maxSegs = Math.max(safeRaw.size(), safeFinal.size());
+        for (int i = 0; i < maxSegs; i++) {
+            String r = i < safeRaw.size() && safeRaw.get(i) != null ? safeRaw.get(i).strip() : "";
+            String f = i < safeFinal.size() && safeFinal.get(i) != null ? safeFinal.get(i).strip() : "";
+            if (!r.equals(f)) {
+                changedSegments++;
+            }
+        }
+        int commonPrefix = 0;
+        int minLen = Math.min(rawJoined.length(), finalJoined.length());
+        while (commonPrefix < minLen && rawJoined.charAt(commonPrefix) == finalJoined.charAt(commonPrefix)) {
+            commonPrefix++;
+        }
+        int commonSuffix = 0;
+        while (commonSuffix < (minLen - commonPrefix)
+                && rawJoined.charAt(rawJoined.length() - 1 - commonSuffix) == finalJoined.charAt(finalJoined.length() - 1 - commonSuffix)) {
+            commonSuffix++;
+        }
+        int changedChars = Math.max(rawJoined.length(), finalJoined.length()) - (commonPrefix + commonSuffix);
+        List<String> reasons = new ArrayList<>();
+        List<String> components = new ArrayList<>();
+        if (fallbackApplied) {
+            reasons.add("FALLBACK_REPLACEMENT");
+            components.add("ContextSafeFallbackBuilder");
+        }
+        if (refereeRepairApplied && !fallbackApplied) {
+            reasons.add("REFEREE_REPAIR_OR_CATALOG_REBUILD");
+            components.add("CleanAgentOutputReferee");
+        }
+        if (flags != null) {
+            if (flags.falseApologyRewritten()) {
+                reasons.add("FALSE_APOLOGY_REWRITTEN");
+                components.add("FalseApologyGuard");
+            }
+            if (flags.clicheEmpathyStripped()) {
+                reasons.add("CLICHE_EMPATHY_STRIPPED");
+                components.add("AntiClicheSanitizer");
+            }
+        }
+        if (reasons.isEmpty()) {
+            reasons.add("FORMAT_OR_PRONOUN_NORMALIZATION");
+            components.add("BubbleTextSanitizer");
+        }
+        String diffSummary = "rawLen=" + rawJoined.length() + ",finalLen=" + finalJoined.length()
+                + ",changedChars=" + changedChars + ",changedSegments=" + changedSegments;
+        return new DecisionTrace.SanitizerMutationAudit(
+                true,
+                Math.max(1, changedChars),
+                Math.max(1, changedSegments),
+                diffSummary,
+                reasons,
+                components
+        );
     }
 
     private static List<FanpageBotResponse.ReplyBubble> buildSafeAciAuthorityFallbackBubbles(

@@ -605,9 +605,15 @@ public final class AdaptiveConversationIntelligence {
     }
 
     public enum BookingReadiness {
+        DISCOVERING,
         EXPLORING,
         CONSIDERING,
-        READY_TO_BOOK;
+        READY_TO_BOOK,
+        NOT_READY;
+
+        public boolean isReadyToBook() {
+            return this == READY_TO_BOOK;
+        }
 
         public static BookingReadiness fromString(String raw) {
             if (raw == null || raw.isBlank()) {
@@ -620,7 +626,7 @@ public final class AdaptiveConversationIntelligence {
                 }
             }
             if (u.contains("NOT_READY") || u.startsWith("NOT_") || u.equals("NONE") || u.equals("LOW")) {
-                return EXPLORING;
+                return NOT_READY;
             }
             if (u.contains("READY") || u.contains("BOOK") || u.contains("COMMIT")) {
                 return READY_TO_BOOK;
@@ -629,7 +635,10 @@ public final class AdaptiveConversationIntelligence {
                     || u.contains("INTEREST") || u.contains("WARM") || u.contains("PREPAR") || u.contains("TRIAL")) {
                 return CONSIDERING;
             }
-            if (u.contains("EXPLOR") || u.contains("INQUIR") || u.contains("DISCOVER")) {
+            if (u.contains("DISCOVER")) {
+                return DISCOVERING;
+            }
+            if (u.contains("EXPLOR") || u.contains("INQUIR")) {
                 return EXPLORING;
             }
             return null;
@@ -689,6 +698,7 @@ public final class AdaptiveConversationIntelligence {
     }
 
     public record UnresolvedRequestItem(
+            String requestId,
             String item,
             UnresolvedRequestStatus status,
             String sourceTurnId,
@@ -699,6 +709,28 @@ public final class AdaptiveConversationIntelligence {
             status = status != null ? status : UnresolvedRequestStatus.OPEN;
             sourceTurnId = (sourceTurnId != null && !sourceTurnId.isBlank()) ? sourceTurnId.strip() : "T_CURRENT";
             updatedTurnId = (updatedTurnId != null && !updatedTurnId.isBlank()) ? updatedTurnId.strip() : sourceTurnId;
+            requestId = (requestId != null && !requestId.isBlank())
+                    ? requestId.strip()
+                    : computeStableRequestId(item);
+        }
+
+        public UnresolvedRequestItem(
+                String item,
+                UnresolvedRequestStatus status,
+                String sourceTurnId,
+                String updatedTurnId
+        ) {
+            this(computeStableRequestId(item), item, status, sourceTurnId, updatedTurnId);
+        }
+
+        public static String computeStableRequestId(String rawItem) {
+            String norm = rawItem != null
+                    ? Normalizer.normalize(rawItem.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT)
+                    : "";
+            if (norm.isEmpty()) {
+                return "REQ_EMPTY";
+            }
+            return "REQ_" + Integer.toHexString(norm.hashCode() & 0x7fffffff);
         }
 
         public String requestSummary() {
@@ -1265,7 +1297,7 @@ public final class AdaptiveConversationIntelligence {
         DEFERRAL
     }
 
-    /** Tầng 3 — Business &amp; Commitment State (Tách biệt interested_package vs selected_package). */
+    /** Tầng 3 — Business &amp; Commitment State (Tách biệt interested_package vs selected_package và tách buyingReadiness tư vấn khỏi bookingStatus giao dịch). */
     public record BusinessCommitmentLayer(
             String interestedPackageId,
             String selectedPackageId,
@@ -1275,7 +1307,8 @@ public final class AdaptiveConversationIntelligence {
             CommitmentLevel commitmentLevel,
             String commitmentEvidence,
             List<String> lastOfferedPackageIds,
-            List<NegativePreferenceEntry> negativePreferences
+            List<NegativePreferenceEntry> negativePreferences,
+            String explicitBuyingReadiness
     ) {
         public BusinessCommitmentLayer {
             interestedPackageId = cleanNullable(interestedPackageId);
@@ -1291,6 +1324,23 @@ public final class AdaptiveConversationIntelligence {
             negativePreferences = negativePreferences != null
                     ? negativePreferences.stream().filter(Objects::nonNull).toList()
                     : List.of();
+            explicitBuyingReadiness = cleanNullable(explicitBuyingReadiness);
+        }
+
+        /** Constructor tương thích ngược 9 tham số. */
+        public BusinessCommitmentLayer(
+                String interestedPackageId,
+                String selectedPackageId,
+                String bookingStatus,
+                HandoffLifecycleStatus handoffStatus,
+                int pendingCommitmentCount,
+                CommitmentLevel commitmentLevel,
+                String commitmentEvidence,
+                List<String> lastOfferedPackageIds,
+                List<NegativePreferenceEntry> negativePreferences
+        ) {
+            this(interestedPackageId, selectedPackageId, bookingStatus, handoffStatus, pendingCommitmentCount,
+                    CommitmentLevel.NONE, commitmentEvidence, lastOfferedPackageIds, negativePreferences, null);
         }
 
         /** Constructor tương thích ngược 5 tham số cho mọi chỗ gọi hiện hữu. */
@@ -1302,7 +1352,7 @@ public final class AdaptiveConversationIntelligence {
                 int pendingCommitmentCount
         ) {
             this(interestedPackageId, selectedPackageId, bookingStatus, handoffStatus, pendingCommitmentCount,
-                    CommitmentLevel.NONE, null, List.of(), List.of());
+                    CommitmentLevel.NONE, null, List.of(), List.of(), null);
         }
 
         public static BusinessCommitmentLayer initial() {
@@ -1314,10 +1364,15 @@ public final class AdaptiveConversationIntelligence {
         }
 
         public String bookingReadiness() {
-            if (!"NONE".equalsIgnoreCase(bookingStatus) || selectedPackageId != null) {
+            if (explicitBuyingReadiness != null && !explicitBuyingReadiness.isBlank()) {
+                return explicitBuyingReadiness;
+            }
+            if ("CONFIRMED".equalsIgnoreCase(bookingStatus)
+                    || "AWAITING_CUSTOMER_CONFIRMATION".equalsIgnoreCase(bookingStatus)
+                    || "AWAITING_AVAILABILITY_CHECK".equalsIgnoreCase(bookingStatus)) {
                 return "READY_TO_BOOK";
             }
-            return interestedPackageId != null ? "CONSIDERING" : "EXPLORING";
+            return (interestedPackageId != null || selectedPackageId != null) ? "CONSIDERING" : "EXPLORING";
         }
     }
 
@@ -1497,11 +1552,11 @@ public final class AdaptiveConversationIntelligence {
     }
 
     private static final Pattern EXPLICIT_CUSTOMER_BRANCH_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:cơ\\s+sở|chi\\s+nhánh|ở|bên|qua|ghé|sang|tại|khu\\s+vực)\\s+"
+            "(?isU)\\b(?:cơ\\s+sở|chi\\s+nhánh|ở|bên|qua|ghé|sang|tại|khu\\s+vực|ra|vào)\\s+"
                     + "(?:cơ\\s+sở\\s+|chi\\s+nhánh\\s+)?"
                     + "(quận\\s*\\d{1,2}|q\\.?\\s*\\d{1,2}|cầu\\s+giấy|đống\\s+đa|ba\\s+đình|hoàn\\s+kiếm|thanh\\s+xuân|tây\\s+hồ|"
                     + "hai\\s+bà\\s+trưng|hà\\s+đông|long\\s+biên|nam\\s+từ\\s+liêm|bắc\\s+từ\\s+liêm|bình\\s+thạnh|phú\\s+nhuận|"
-                    + "tân\\s+bình|thủ\\s+đức|gò\\s+vấp|hà\\s+nội|tp\\.?\\s*hcm|sài\\s+gòn|đà\\s+nẵng)\\b"
+                    + "tân\\s+bình|thủ\\s+đức|gò\\s+vấp|hà\\s+nội|ha\\s+noi|hn|tp\\.?\\s*hcm|hcm|sg|hồ\\s+chí\\s+minh|sài\\s+gòn|sai\\s+gon|đà\\s+nẵng)\\b"
     );
 
     public static String extractExplicitCustomerBranch(String rawUserMessage) {
@@ -2143,20 +2198,53 @@ public final class AdaptiveConversationIntelligence {
     public record ProposedBookingPatch(
             String selectedProductId,
             String proposedDate,
-            String proposedTime
+            String proposedTime,
+            String actionType,
+            String detectedIntent,
+            String customerQuoteEvidence,
+            String branchId,
+            List<String> missingSlots
     ) {
         public ProposedBookingPatch {
             selectedProductId = cleanNullable(selectedProductId);
             proposedDate = cleanNullable(proposedDate);
             proposedTime = cleanNullable(proposedTime);
+            String cleanedAction = cleanNullable(actionType);
+            actionType = cleanedAction != null ? cleanedAction : "";
+            String cleanedIntent = cleanNullable(detectedIntent);
+            detectedIntent = cleanedIntent != null ? cleanedIntent : "";
+            String cleanedEvidence = cleanNullable(customerQuoteEvidence);
+            customerQuoteEvidence = cleanedEvidence != null ? cleanedEvidence : "";
+            String cleanedBranch = cleanNullable(branchId);
+            branchId = cleanedBranch != null ? cleanedBranch : "";
+            missingSlots = missingSlots != null
+                    ? missingSlots.stream().filter(s -> s != null && !s.isBlank()).map(String::strip).toList()
+                    : List.of();
+        }
+
+        public ProposedBookingPatch(
+                String selectedProductId,
+                String proposedDate,
+                String proposedTime
+        ) {
+            this(selectedProductId, proposedDate, proposedTime, null, null, null, null, List.of());
         }
 
         public static ProposedBookingPatch empty() {
-            return new ProposedBookingPatch(null, null, null);
+            return new ProposedBookingPatch(null, null, null, "NONE", null, null, null, List.of());
         }
 
         public boolean hasAnyProposal() {
-            return selectedProductId != null || proposedDate != null || proposedTime != null;
+            if ((actionType == null || actionType.isBlank() || "NONE".equalsIgnoreCase(actionType))
+                    && selectedProductId == null
+                    && proposedDate == null
+                    && proposedTime == null) {
+                return false;
+            }
+            return selectedProductId != null
+                    || proposedDate != null
+                    || proposedTime != null
+                    || (actionType != null && !actionType.isBlank() && !"NONE".equalsIgnoreCase(actionType));
         }
     }
 
@@ -2397,9 +2485,16 @@ public final class AdaptiveConversationIntelligence {
                     && !explicitFullPriceListRequest
                     && CleanAgentOrchestratorService.hasCompetitorOrExternalPriceComparisonCue(rawUserMessage);
             boolean negatedBooking = normLower.matches(
-                    "(?isU).*\\b(?:không|ko|chưa|khỏi|đừng|chẳng)\\s+(?:muốn\\s+|cần\\s+|vội\\s+|định\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
+                    "(?isU).*\\b(không|ko|chưa|khỏi|đừng|chẳng)\\s*(?:muốn\\s+|cần\\s+|vội\\s+)?(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch\\b.*"
             );
-            boolean affirmativeBookingCue = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint && !negatedBooking && normLower.matches(
+            boolean llmAllowsBookingPromotion = customerUnderstanding.bookingReadiness() != BookingReadiness.NOT_READY
+                    && customerUnderstanding.interactionPermission() != InteractionPermission.PAUSED
+                    && !Boolean.TRUE.equals(customerUnderstanding.costConcernExpressed())
+                    && (customerUnderstanding.bookingReadiness() == BookingReadiness.READY_TO_BOOK
+                        || (conversationGoal != null && conversationGoal.toLowerCase(Locale.ROOT).contains("đặt lịch"))
+                        || (proposedBookingPatch != null && proposedBookingPatch.hasAnyProposal()));
+            boolean affirmativeBookingCue = !explicitStop && !politeThankYouClosingAck && !processFeedbackComplaint
+                    && !negatedBooking && llmAllowsBookingPromotion && normLower.matches(
                     "(?isU).*\\b(đăng\\s+ký\\s+đặt\\s+lịch|(?:rồi\\s+)?(?:anh|chị|mình|tôi|em|a)\\s+(?:đăng\\s+ký\\s+)?(?:đặt|book|chốt)\\s+lịch|đặt\\s+lịch\\s+(?:nhé|nha|giúp|cho)|chốt\\s+lịch\\s+(?:nhé|nha|luôn))\\b.*"
             );
             boolean barePauseOrAck = !explicitStop
@@ -2718,7 +2813,9 @@ public final class AdaptiveConversationIntelligence {
                 }
                 convState = "FRICTION_RECOVERY";
                 costConcern = Boolean.FALSE;
-                readiness = BookingReadiness.EXPLORING;
+                if (readiness != BookingReadiness.NOT_READY) {
+                    readiness = BookingReadiness.EXPLORING;
+                }
                 buySig = BuyingSignal.NONE;
                 if (perm != InteractionPermission.PAUSED) {
                     perm = InteractionPermission.CONCISE_PREFERRED;
@@ -2827,7 +2924,8 @@ public final class AdaptiveConversationIntelligence {
                     perm = InteractionPermission.OPEN;
                 }
                 prio = new PriorityFocus("BUDGET_FIT", List.of("DISCOVERY"));
-                String reconciledStrat = ("Respectful Pause".equalsIgnoreCase(plan.strategy())
+                String reconciledStrat = ("Explain Value".equalsIgnoreCase(plan.strategy())
+                        || "Respectful Pause".equalsIgnoreCase(plan.strategy())
                         || plan.strategy().isBlank())
                         ? "Direct Answer"
                         : plan.strategy();
@@ -3330,12 +3428,15 @@ public final class AdaptiveConversationIntelligence {
                 for (JsonNode urEl : urArr) {
                     if (urEl == null || urEl.isNull()) continue;
                     if (urEl.isObject()) {
+                        String reqId = cleanNullable(readTextOrDefault(urEl, "request_id",
+                                readTextOrDefault(urEl, "id", null)));
                         String item = readTextOrDefault(urEl, "request",
                                 readTextOrDefault(urEl, "item", readTextOrDefault(urEl, "content", "")));
-                        if (!item.isBlank()) {
+                        if (!item.isBlank() || reqId != null) {
                             UnresolvedRequestStatus st = UnresolvedRequestStatus.fromString(
                                     readTextOrDefault(urEl, "status", "OPEN"));
-                            unresolvedRequests.add(new UnresolvedRequestItem(item, st, "T_CURRENT", "T_CURRENT"));
+                            unresolvedRequests.add(new UnresolvedRequestItem(
+                                    reqId, item, st, "T_CURRENT", "T_CURRENT"));
                         }
                     } else if (urEl.isTextual() && !urEl.asText().isBlank()) {
                         unresolvedRequests.add(new UnresolvedRequestItem(
@@ -3362,12 +3463,15 @@ public final class AdaptiveConversationIntelligence {
                 for (JsonNode urEl : fallbackUrArr) {
                     if (urEl == null || urEl.isNull()) continue;
                     if (urEl.isObject()) {
+                        String reqId = cleanNullable(readTextOrDefault(urEl, "request_id",
+                                readTextOrDefault(urEl, "id", null)));
                         String item = readTextOrDefault(urEl, "request",
                                 readTextOrDefault(urEl, "item", readTextOrDefault(urEl, "content", "")));
-                        if (!item.isBlank()) {
+                        if (!item.isBlank() || reqId != null) {
                             UnresolvedRequestStatus st = UnresolvedRequestStatus.fromString(
                                     readTextOrDefault(urEl, "status", "OPEN"));
-                            unresolvedRequests.add(new UnresolvedRequestItem(item, st, "T_CURRENT", "T_CURRENT"));
+                            unresolvedRequests.add(new UnresolvedRequestItem(
+                                    reqId, item, st, "T_CURRENT", "T_CURRENT"));
                         }
                     } else if (urEl.isTextual() && !urEl.asText().isBlank()) {
                         unresolvedRequests.add(new UnresolvedRequestItem(
@@ -3463,7 +3567,11 @@ public final class AdaptiveConversationIntelligence {
             }
             verifiedSymptomDuration = readTextOrDefault(cuNode, "verified_symptom_duration", null);
             bookingReadiness = BookingReadiness.fromString(
-                    readTextOrDefault(cuNode, "booking_readiness", readTextOrDefault(b, "booking_readiness", null)));
+                    readTextOrDefault(cuNode, "buying_readiness",
+                            readTextOrDefault(cuNode, "booking_readiness",
+                                    readTextOrDefault(b, "buying_readiness",
+                                            readTextOrDefault(b, "booking_readiness",
+                                                    rootNode != null ? readTextOrDefault(rootNode, "buying_readiness", null) : null)))));
             communicationStylePreference = normalizeCommunicationStylePreference(
                     readTextOrDefault(cuNode, "communication_preference",
                             readTextOrDefault(cuNode, "communication_style_preference",
@@ -3479,7 +3587,10 @@ public final class AdaptiveConversationIntelligence {
                     readTextOrDefault(b, "turn_intent", readTextOrDefault(b, "detected_customer_intent", "")));
             secondaryIntents.addAll(readStringList(b.get("secondary_intents")));
             rawConversationState = cleanNullable(readTextOrDefault(b, "conversation_state", null));
-            bookingReadiness = BookingReadiness.fromString(readTextOrDefault(b, "booking_readiness", null));
+            bookingReadiness = BookingReadiness.fromString(
+                    readTextOrDefault(b, "buying_readiness",
+                            readTextOrDefault(b, "booking_readiness",
+                                    rootNode != null ? readTextOrDefault(rootNode, "buying_readiness", null) : null)));
             communicationStylePreference = normalizeCommunicationStylePreference(
                     readTextOrDefault(b, "communication_style_preference", null));
             interactionPermission = InteractionPermission.parseExplicit(
@@ -3809,16 +3920,41 @@ public final class AdaptiveConversationIntelligence {
                     readTextOrDefault(bsNode, "interested_package_id", null)));
         }
         ProposedBookingPatch bookingPatch = ProposedBookingPatch.empty();
-        JsonNode pbpNode = b.get("proposed_booking_patch");
+        JsonNode bapNode = b.has("booking_action_proposal")
+                ? b.get("booking_action_proposal")
+                : (rootNode != null && rootNode.has("booking_action_proposal")
+                    ? rootNode.get("booking_action_proposal")
+                    : null);
+        JsonNode pbpNode = bapNode != null && bapNode.isObject()
+                ? bapNode
+                : (b.has("proposed_booking_patch")
+                    ? b.get("proposed_booking_patch")
+                    : (rootNode != null ? rootNode.get("proposed_booking_patch") : null));
         if (pbpNode != null && pbpNode.isObject()) {
             if (interestedPackageId == null) {
                 interestedPackageId = cleanNullable(readTextOrDefault(pbpNode, "interested_package",
                         readTextOrDefault(pbpNode, "interested_package_id", null)));
             }
+            String actionType = readTextOrDefault(pbpNode, "action_type", null);
+            String propIntent = readTextOrDefault(pbpNode, "detected_intent", null);
+            String quoteEv = readTextOrDefault(pbpNode, "customer_quote_evidence", null);
+            String branchIdProp = readTextOrDefault(pbpNode, "branch_id", null);
+            List<String> missingSlots = readStringList(pbpNode.get("missing_slots"));
+            String pkgProp = readTextOrDefault(pbpNode, "selected_product_id",
+                    readTextOrDefault(pbpNode, "package_id", null));
+            String dateProp = readTextOrDefault(pbpNode, "proposed_date",
+                    readTextOrDefault(pbpNode, "date", null));
+            String timeProp = readTextOrDefault(pbpNode, "proposed_time",
+                    readTextOrDefault(pbpNode, "time", null));
             bookingPatch = new ProposedBookingPatch(
-                    readTextOrDefault(pbpNode, "selected_product_id", null),
-                    readTextOrDefault(pbpNode, "proposed_date", null),
-                    readTextOrDefault(pbpNode, "proposed_time", null)
+                    pkgProp,
+                    dateProp,
+                    timeProp,
+                    actionType,
+                    propIntent,
+                    quoteEv,
+                    branchIdProp,
+                    missingSlots
             );
         }
         // Nếu khách mới ở EXPLORING / CONSIDERING mà LLM ghi mã gói vào selected_product_id (không có ngày/giờ),
@@ -4635,8 +4771,25 @@ public final class AdaptiveConversationIntelligence {
                 priorState != null ? priorState : ConversationState.StructuredBookingState.none();
         ZoneId safeZone = pageZoneId != null ? pageZoneId : ZoneId.of("Asia/Ho_Chi_Minh");
 
-        if (isExplicitBookingCancelOrRefusalMessage(originalCustomerMessage)) {
+        if (isExplicitBookingCancelOrRefusalMessage(originalCustomerMessage)
+                || (patch != null && "CANCEL_BOOKING".equalsIgnoreCase(patch.actionType()))) {
             return ConversationState.StructuredBookingState.none();
+        }
+
+        // Stage 1 Section IV.3 & IV.4: Nếu booking_action_proposal có customer_quote_evidence nhưng câu trích dẫn
+        // không nằm trong phát ngôn thực tế của khách (bịa đặt bằng chứng), hủy bỏ đề xuất đặt lịch ngay lập tức.
+        if (patch != null
+                && patch.customerQuoteEvidence() != null
+                && !patch.customerQuoteEvidence().isBlank()
+                && originalCustomerMessage != null
+                && !originalCustomerMessage.isBlank()) {
+            String normMsgForQuote = Normalizer.normalize(originalCustomerMessage.strip(), Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            String normQuote = Normalizer.normalize(patch.customerQuoteEvidence().strip(), Normalizer.Form.NFC)
+                    .toLowerCase(Locale.ROOT);
+            if (!normMsgForQuote.contains(normQuote)) {
+                patch = ProposedBookingPatch.empty();
+            }
         }
 
         // ACI V3 Guardrail 4: Ưu tiên an toàn y tế tuyệt đối (Cấp 3 hậu phẫu/chống chỉ định & Cấp 4 cấp cứu 115) —
@@ -4678,15 +4831,24 @@ public final class AdaptiveConversationIntelligence {
         if (isDeferOrHesitation && safePrior.status() == ConversationState.BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
             return withCandidateProducts(safePrior, earlyCandidateIds, safeZone);
         }
-        // P0.3 Guard: Nếu trạng thái trước đó mới ở mức AWAITING_DATE_OR_TIME (hoặc chưa có ngày/giờ xác nhận)
-        // nhưng ở lượt này khách phản đối giá ("Đắt"), so sánh đối thủ, phàn nàn hoặc xin tạm hoãn mà không hẹn ngày/giờ,
-        // hạ ngay trạng thái đặt lịch về NONE và xóa selectedProductId chưa xác nhận để tránh rò rỉ sang FALLBACK_BOOKING_HOLD.
-        if ((isObjectionOrComplaintTurn || isDeferOrHesitation)
-                && !CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(originalCustomerMessage)
+        boolean isSarcasmOrDismissalProposal = patch != null
+                && ("SARCASM_OR_DISMISSAL".equalsIgnoreCase(patch.detectedIntent())
+                    || "SARCASTIC_DISMISSAL".equalsIgnoreCase(patch.detectedIntent())
+                    || "OBJECTION".equalsIgnoreCase(patch.detectedIntent()));
+        boolean llmExplicitlyNotReady = bookingReadiness == BookingReadiness.NOT_READY
+                || isSarcasmOrDismissalProposal;
+        boolean hasSlotInPatch = patch != null
+                && (patch.selectedProductId() != null || patch.proposedDate() != null || patch.proposedTime() != null);
+
+        // Stage 1 Section IV: Nếu trạng thái trước đó chưa CONFIRMED và chưa có ngày/giờ hẹn,
+        // mà ở lượt này khách phản đối giá, so sánh đối thủ, phàn nàn, mỉa mai ("ai rảnh đặt lịch"), hoãn quyết định,
+        // hoặc LLM đánh giá NOT_READY -> hạ ngay trạng thái đặt lịch về NONE!
+        if ((isObjectionOrComplaintTurn || isDeferOrHesitation || llmExplicitlyNotReady)
+                && !hasSlotInPatch
                 && safePrior.status() != ConversationState.BookingStatus.CONFIRMED
                 && safePrior.bookingDate() == null
                 && safePrior.bookingTime() == null) {
-            ConversationState.StructuredBookingState clearedUnconfirmed = new ConversationState.StructuredBookingState(
+            return new ConversationState.StructuredBookingState(
                     null,
                     null,
                     null,
@@ -4696,7 +4858,25 @@ public final class AdaptiveConversationIntelligence {
                     ConversationState.BookingStatus.NONE,
                     List.copyOf(earlyCandidateIds)
             );
-            return clearedUnconfirmed;
+        }
+        // Nếu trạng thái trước đó bị kẹt ở AWAITING_PRODUCT_SELECTION (chưa có sản phẩm và chưa có ngày/giờ)
+        // mà lượt hiện tại không phải READY_TO_BOOK và không có đề xuất slot nào -> trả về NONE.
+        if (safePrior.status() == ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION
+                && (safePrior.selectedProductId() == null || safePrior.selectedProductId().isBlank())
+                && safePrior.bookingDate() == null
+                && safePrior.bookingTime() == null
+                && !hasSlotInPatch
+                && bookingReadiness != BookingReadiness.READY_TO_BOOK) {
+            return new ConversationState.StructuredBookingState(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    safeZone.getId(),
+                    ConversationState.BookingStatus.NONE,
+                    List.copyOf(earlyCandidateIds)
+            );
         }
 
         // ACI V3: Phân giải lựa chọn tương đối của khách ("vừa đủ để thử", "cái thứ hai", "chỉ muốn massage", "gói đó"...)
@@ -4717,7 +4897,15 @@ public final class AdaptiveConversationIntelligence {
 
         PackageCatalogService.PackageSummary explicitPkgInMsg = resolveCatalogProductByFlexibleIdentifier(
                 originalCustomerMessage, presentedPackagesInHistory, allCatalog);
-        boolean hasExplicitBookingCue = CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(originalCustomerMessage);
+        boolean llmAllowsBookingIntent = !llmExplicitlyNotReady
+                && !isObjectionOrComplaintTurn
+                && !isDeferOrHesitation
+                && (bookingReadiness == BookingReadiness.READY_TO_BOOK
+                    || "BOOKING_COMPLETION".equalsIgnoreCase(primaryPriority != null ? primaryPriority.strip() : "")
+                    || (patch != null && patch.hasAnyProposal())
+                    || (bookingReadiness == null && primaryPriority == null));
+        boolean hasExplicitBookingCue = llmAllowsBookingIntent
+                && CleanAgentOrchestratorService.hasProactiveBookingOrPackageSelectionInMessage(originalCustomerMessage);
         boolean activeBookingSession = safePrior.status() != ConversationState.BookingStatus.NONE;
         ConversationState.ParsedBookingDateTime parsedDirectFromMsg = (activeBookingSession || hasExplicitBookingCue)
                 ? ConversationState.parseBookingDateTime(
@@ -4878,7 +5066,9 @@ public final class AdaptiveConversationIntelligence {
 
         ConversationState.BookingStatus nextStatus;
         if (nextProductId == null || nextProductId.isBlank()) {
-            if (nextDate != null || nextTime != null || (hasExplicitBookingCue && distinctPresented.size() >= 2)) {
+            // Stage 1 Section IV: Chỉ chuyển sang AWAITING_PRODUCT_SELECTION khi khách đã cung cấp ngày/giờ hẹn cụ thể
+            // nhưng chưa chọn gói trong >= 2 gói. Tuyệt đối KHÔNG mở AWAITING_PRODUCT_SELECTION chỉ từ từ khóa "đặt lịch"!
+            if (nextDate != null || nextTime != null) {
                 nextStatus = ConversationState.BookingStatus.AWAITING_PRODUCT_SELECTION;
             } else {
                 nextStatus = ConversationState.BookingStatus.NONE;

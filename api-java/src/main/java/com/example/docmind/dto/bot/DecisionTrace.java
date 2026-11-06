@@ -59,7 +59,10 @@ public record DecisionTrace(
         ResponsePlanTrace responsePlan,
 
         @JsonProperty("sanitizer_mutations")
-        SanitizerMutations sanitizerMutations
+        SanitizerMutations sanitizerMutations,
+
+        @JsonProperty("stage1_trace")
+        Stage1ExecutionTrace stage1Trace
 ) {
     public DecisionTrace {
         scopesBefore = scopesBefore != null ? List.copyOf(scopesBefore) : List.of();
@@ -68,6 +71,55 @@ public record DecisionTrace(
         excludedSkillsOrRulesOnCorrection = excludedSkillsOrRulesOnCorrection != null
                 ? List.copyOf(excludedSkillsOrRulesOnCorrection) : List.of();
         catalogCandidates = catalogCandidates != null ? List.copyOf(catalogCandidates) : List.of();
+    }
+
+    public DecisionTrace(
+            String turnId,
+            String customerMessageHash,
+            String detectedIntent,
+            String negativeReactionSubtype,
+            FactChanges factChanges,
+            List<String> scopesBefore,
+            List<String> scopesAfter,
+            List<SkillSelection> selectedSkills,
+            List<String> excludedSkillsOrRulesOnCorrection,
+            List<CatalogCandidate> catalogCandidates,
+            ResponsePlanTrace responsePlan,
+            SanitizerMutations sanitizerMutations
+    ) {
+        this(
+                turnId,
+                customerMessageHash,
+                detectedIntent,
+                negativeReactionSubtype,
+                factChanges,
+                scopesBefore,
+                scopesAfter,
+                selectedSkills,
+                excludedSkillsOrRulesOnCorrection,
+                catalogCandidates,
+                responsePlan,
+                sanitizerMutations,
+                null
+        );
+    }
+
+    public DecisionTrace withStage1ExecutionTrace(Stage1ExecutionTrace trace) {
+        return new DecisionTrace(
+                turnId,
+                customerMessageHash,
+                detectedIntent,
+                negativeReactionSubtype,
+                factChanges,
+                scopesBefore,
+                scopesAfter,
+                selectedSkills,
+                excludedSkillsOrRulesOnCorrection,
+                catalogCandidates,
+                responsePlan,
+                sanitizerMutations,
+                trace
+        );
     }
 
     public record FactChanges(
@@ -143,6 +195,149 @@ public record DecisionTrace(
             @JsonProperty("price_grounding_applied")
             boolean priceGroundingApplied
     ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Stage1ExecutionTrace(
+            @JsonProperty("correlation_id")
+            String correlationId,
+
+            @JsonProperty("turn_id")
+            String turnId,
+
+            @JsonProperty("model")
+            String model,
+
+            @JsonProperty("provider")
+            String provider,
+
+            @JsonProperty("prompt_version")
+            String promptVersion,
+
+            @JsonProperty("branch_id")
+            String branchId,
+
+            @JsonProperty("catalog_snapshot_id")
+            String catalogSnapshotId,
+
+            @JsonProperty("raw_llm_output")
+            List<String> rawLlmOutput,
+
+            @JsonProperty("parsed_structured_output")
+            String parsedStructuredOutput,
+
+            @JsonProperty("post_reconciliation_output")
+            List<String> postReconciliationOutput,
+
+            @JsonProperty("referee_result")
+            String refereeResult,
+
+            @JsonProperty("sanitizer_result")
+            String sanitizerResult,
+
+            @JsonProperty("final_output")
+            List<String> finalOutput,
+
+            @JsonProperty("buying_readiness")
+            String buyingReadiness,
+
+            @JsonProperty("booking_state_before")
+            String bookingStateBefore,
+
+            @JsonProperty("booking_state_after")
+            String bookingStateAfter,
+
+            @JsonProperty("state_transition_reason")
+            String stateTransitionReason,
+
+            @JsonProperty("step_timings")
+            StepTimings stepTimings,
+
+            @JsonProperty("input_tokens")
+            int inputTokens,
+
+            @JsonProperty("output_tokens")
+            int outputTokens,
+
+            @JsonProperty("reasoning_tokens")
+            int reasoningTokens,
+
+            @JsonProperty("retry_count")
+            int retryCount,
+
+            @JsonProperty("retry_reason")
+            String retryReason,
+
+            @JsonProperty("fallback_used")
+            boolean fallbackUsed,
+
+            @JsonProperty("fallback_reason")
+            String fallbackReason,
+
+            @JsonProperty("processing_stage")
+            String processingStage,
+
+            @JsonProperty("delivery_stage")
+            String deliveryStage,
+
+            @JsonProperty("lifecycle_stages")
+            List<String> lifecycleStages,
+
+            @JsonProperty("sanitizer_mutation_audit")
+            SanitizerMutationAudit sanitizerMutationAudit
+    ) {
+        public Stage1ExecutionTrace {
+            rawLlmOutput = rawLlmOutput != null ? List.copyOf(rawLlmOutput) : List.of();
+            postReconciliationOutput = postReconciliationOutput != null ? List.copyOf(postReconciliationOutput) : List.of();
+            finalOutput = finalOutput != null ? List.copyOf(finalOutput) : List.of();
+            lifecycleStages = lifecycleStages != null ? List.copyOf(lifecycleStages) : List.of();
+        }
+    }
+
+    public record StepTimings(
+            @JsonProperty("retrieval_ms")
+            long retrievalMs,
+
+            @JsonProperty("prompt_build_ms")
+            long promptBuildMs,
+
+            @JsonProperty("llm_ms")
+            long llmMs,
+
+            @JsonProperty("validation_ms")
+            long validationMs,
+
+            @JsonProperty("total_turn_ms")
+            long totalTurnMs,
+
+            @JsonProperty("turn_deadline_ms")
+            long turnDeadlineMs
+    ) {
+    }
+
+    public record SanitizerMutationAudit(
+            @JsonProperty("mutated")
+            boolean mutated,
+
+            @JsonProperty("changed_char_count")
+            int changedCharCount,
+
+            @JsonProperty("changed_segment_count")
+            int changedSegmentCount,
+
+            @JsonProperty("diff_summary")
+            String diffSummary,
+
+            @JsonProperty("mutation_reasons")
+            List<String> mutationReasons,
+
+            @JsonProperty("mutating_components")
+            List<String> mutatingComponents
+    ) {
+        public SanitizerMutationAudit {
+            mutationReasons = mutationReasons != null ? List.copyOf(mutationReasons) : List.of();
+            mutatingComponents = mutatingComponents != null ? List.copyOf(mutatingComponents) : List.of();
+        }
     }
 
     /**

@@ -228,8 +228,8 @@ public record ConversationState(
     );
 
     private static final Pattern EXPLICIT_CLOCK_TIME_PATTERN = Pattern.compile(
-            "(?iU)(?:\\b(?:lúc|vào|tầm|khoảng|khung(?:\\s+giờ)?)\\s+)?"
-            + "\\b([01]?\\d|2[0-3])\\s*(?:giờ|(?:g|h)(?=\\d|\\b)|:)\\s*([0-5]?\\d|rưỡi)?(?:\\s*(sáng|trưa|chiều|tối|đêm|am|pm))?(?=\\s|$|[.,!?;:)])"
+            "(?iU)(?<!\\d)(?:\\b(?:lúc|vào|tầm|khoảng|khung(?:\\s+giờ)?)\\s+)?"
+            + "\\b([01]?\\d|2[0-3])\\s*(?:giờ(?!\\s*(?:lại|mới|thì|sao))|(?:g|h)(?=\\d|\\b)|:)\\s*([0-5]?\\d|rưỡi)?(?:\\s*(sáng|trưa|chiều|tối|đêm|am|pm))?(?=\\s|$|[.,!?;:)])"
     );
 
     /**
@@ -690,13 +690,10 @@ public record ConversationState(
             }
         }
         List<PackageCatalogService.PackageSummary> mergedCatalog = new ArrayList<>(mergedByUid.values());
-        // ACI V3 P2 (§4.7, cấm #6): không mặc định "HN" — filterByRegion(null) giữ đủ biến thể đa chi nhánh
+        // ACI V3 P2 (§4.7, cấm #6): không mặc định "HN" — giữ nguyên mergedCatalog đa chi nhánh trong state phiên;
+        // việc lọc theo chi nhánh hiệu lực của từng lượt do CleanAgentOrchestratorService thực thi tại đầu lượt.
         String reg = this.preferredRegion;
-        List<PackageCatalogService.PackageSummary> regCat = PackageCatalogService.filterByRegion(mergedCatalog, reg);
-        if (regCat.isEmpty() && !mergedCatalog.isEmpty()) {
-            regCat = mergedCatalog;
-        }
-        return this.withCatalogAndRegion(regCat, reg);
+        return this.withCatalogAndRegion(mergedCatalog, reg);
     }
 
     /**
@@ -4754,10 +4751,24 @@ public record ConversationState(
         if (lowerText == null || lowerText.isBlank()) {
             return fallback;
         }
-        if (lowerText.matches("(?isU).*\\b(sài\\s+gòn|sai\\s+gon|quận\\s+1|quan\\s+1|tp\\.?\\s*hcm|hồ\\s+chí\\s+minh|nguyễn\\s+công\\s+trứ|miền\\s+nam)\\b.*")) {
+        boolean hasSg = lowerText.matches("(?isU).*\\b(sài\\s+gòn|sai\\s+gon|quận\\s+1|quan\\s+1|tp\\.?\\s*hcm|hcm|sg|hồ\\s+chí\\s+minh|ho\\s+chi\\s+minh|nguyễn\\s+công\\s+trứ|miền\\s+nam)\\b.*");
+        boolean hasHn = lowerText.matches("(?isU).*\\b(hà\\s+nội|ha\\s+noi|hn|đống\\s+đa|cầu\\s+giấy|văn\\s+quán|hà\\s+đông|miền\\s+bắc)\\b.*");
+        if (hasSg && hasHn) {
+            String explicitTarget = AdaptiveConversationIntelligence.extractExplicitCustomerBranch(lowerText);
+            if (explicitTarget != null) {
+                String targetLow = explicitTarget.toLowerCase(Locale.ROOT);
+                if (targetLow.matches("(?isU).*\\b(hà\\s+nội|ha\\s+noi|hn|đống\\s+đa|cầu\\s+giấy|ba\\s+đình|hoàn\\s+kiếm|thanh\\s+xuân|tây\\s+hồ|hai\\s+bà\\s+trưng|hà\\s+đông|long\\s+biên|nam\\s+từ\\s+liêm|bắc\\s+từ\\s+liêm)\\b.*")) {
+                    return "HN";
+                }
+                if (targetLow.matches("(?isU).*\\b(sài\\s+gòn|sai\\s+gon|tp\\.?\\s*hcm|hcm|sg|hồ\\s+chí\\s+minh|ho\\s+chi\\s+minh|quận\\s*\\d{1,2}|bình\\s+thạnh|phú\\s+nhuận|tân\\s+bình|thủ\\s+đức|gò\\s+vấp)\\b.*")) {
+                    return "SG";
+                }
+            }
+        }
+        if (hasSg) {
             return "SG";
         }
-        if (lowerText.matches("(?isU).*\\b(hà\\s+nội|ha\\s+noi|đống\\s+đa|cầu\\s+giấy|văn\\s+quán|hà\\s+đông|miền\\s+bắc)\\b.*")) {
+        if (hasHn) {
             return "HN";
         }
         return fallback;

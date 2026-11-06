@@ -267,10 +267,10 @@ public class FanpageBotService {
 
     /** Mẫu bắt khung giờ / ngày hẹn trong tin nhắn của khách hàng. */
     private static final Pattern BOOKING_TIME_PATTERN = Pattern.compile(
-            "(?iU)(?<!\\p{L})((?:sáng|trưa|chiều|tối)\\s+(?:nay|mai|mốt|thứ\\s+[2-7]|chủ\\s+nhật|cuối\\s+tuần)|"
+            "(?iU)(?<!\\p{L})(?<!\\d)((?:sáng|trưa|chiều|tối)\\s+(?:nay|mai|mốt|thứ\\s+[2-7]|chủ\\s+nhật|cuối\\s+tuần)|"
             + "(?:tầm|buổi|khoảng)\\s+(?:sáng|trưa|chiều|tối)(?:\\s+(?:nay|mai|mốt))?|"
             + "thứ\\s+[2-7]\\s+tuần\\s+này|cuối\\s+tuần\\s+này|"
-            + "\\d{1,2}\\s*(?:h|giờ|:)\\s*\\d{0,2}(?:\\s*(?:sáng|trưa|chiều|tối))?(?:\\s*(?:hôm\\s+nay|nay|ngày\\s+mai|mai|mốt))?)(?!\\p{L})"
+            + "(?:[01]?\\d|2[0-3])\\s*(?:h|giờ(?!\\s*(?:lại|mới|thì|sao))|:)\\s*\\d{0,2}(?:\\s*(?:sáng|trưa|chiều|tối))?(?:\\s*(?:hôm\\s+nay|nay|ngày\\s+mai|mai|mốt))?)(?!\\p{L})(?!\\d)"
     );
 
     /** Mẫu bắt tín hiệu muốn đặt lịch / chốt đơn / đồng ý trải nghiệm thử của khách hàng. */
@@ -524,6 +524,10 @@ public class FanpageBotService {
 
     /** Correlation id của lượt hiện tại (run_id/conversation_id/turn_id) để nối Router -> Validator -> Sender trong log audit. */
     private static final ThreadLocal<String> CURRENT_TURN_ID = new ThreadLocal<>();
+
+    public static String getCurrentTurnId() {
+        return CURRENT_TURN_ID.get();
+    }
     private static final ThreadLocal<Boolean> PROVENANCE_V38_LOGGED = new ThreadLocal<>();
     private static final ThreadLocal<String> CURRENT_INBOUND_EXTERNAL_MID = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CURRENT_EFFECTIVE_PAGE_ID = new ThreadLocal<>();
@@ -539,8 +543,47 @@ public class FanpageBotService {
             boolean retrievalStarted,
             boolean llmStarted,
             int responseBubbleCount,
-            String responseStatus
+            String responseStatus,
+            String processingStage,
+            String deliveryStage,
+            List<String> lifecycleStages
     ) {
+        public TurnSummaryRecord {
+            processingStage = processingStage != null ? processingStage : "SYSTEM_PROCESSED";
+            deliveryStage = deliveryStage != null ? deliveryStage : (responseStatus != null ? responseStatus : "PENDING");
+            lifecycleStages = lifecycleStages != null ? List.copyOf(lifecycleStages) : List.of();
+        }
+
+        public TurnSummaryRecord(
+                UUID pageId,
+                String senderId,
+                String turnId,
+                boolean requestReceived,
+                String guardDecision,
+                String guardReason,
+                boolean retrievalStarted,
+                boolean llmStarted,
+                int responseBubbleCount,
+                String responseStatus
+        ) {
+            this(
+                    pageId,
+                    senderId,
+                    turnId,
+                    requestReceived,
+                    guardDecision,
+                    guardReason,
+                    retrievalStarted,
+                    llmStarted,
+                    responseBubbleCount,
+                    responseStatus,
+                    llmStarted ? "SYSTEM_PROCESSED" : "GUARD_SHORT_CIRCUIT",
+                    "PENDING".equals(responseStatus) ? "DELIVERY_REQUESTED" : responseStatus,
+                    llmStarted
+                            ? List.of("LLM_GENERATED", "SYSTEM_PROCESSED", "DELIVERY_REQUESTED")
+                            : List.of("SYSTEM_PROCESSED")
+            );
+        }
     }
 
     private static final class TurnLifecycleState {
@@ -711,6 +754,15 @@ public class FanpageBotService {
             } else {
                 responseStatus = "PENDING";
             }
+            String processingStage = lifecycle.llmStarted ? "SYSTEM_PROCESSED" : "GUARD_SHORT_CIRCUIT";
+            String deliveryStage = "PENDING".equals(responseStatus)
+                    ? "DELIVERY_REQUESTED"
+                    : responseStatus;
+            List<String> lifecycleStages = lifecycle.llmStarted
+                    ? ("PENDING".equals(responseStatus)
+                        ? List.of("LLM_GENERATED", "SYSTEM_PROCESSED", "DELIVERY_REQUESTED")
+                        : List.of("LLM_GENERATED", "SYSTEM_PROCESSED", deliveryStage))
+                    : List.of("SYSTEM_PROCESSED", deliveryStage);
             TurnSummaryRecord summary = new TurnSummaryRecord(
                     summaryPageId,
                     summarySenderId,
@@ -721,10 +773,13 @@ public class FanpageBotService {
                     lifecycle.retrievalStarted,
                     lifecycle.llmStarted,
                     bubbleCount,
-                    responseStatus
+                    responseStatus,
+                    processingStage,
+                    deliveryStage,
+                    lifecycleStages
             );
             this.lastTurnSummary = summary;
-            log.info("[BOT-TURN-SUMMARY] page_id={} sender_id={} turn_id={} requestReceived={} guardDecision={} guardReason={} retrievalStarted={} llmStarted={} responseBubbleCount={} responseStatus={}",
+            log.info("[BOT-TURN-SUMMARY] page_id={} sender_id={} turn_id={} requestReceived={} guardDecision={} guardReason={} retrievalStarted={} llmStarted={} responseBubbleCount={} responseStatus={} processingStage={} deliveryStage={} lifecycleStages={}",
                     summary.pageId(),
                     summary.senderId(),
                     summary.turnId(),
@@ -734,7 +789,10 @@ public class FanpageBotService {
                     summary.retrievalStarted(),
                     summary.llmStarted(),
                     summary.responseBubbleCount(),
-                    summary.responseStatus());
+                    summary.responseStatus(),
+                    summary.processingStage(),
+                    summary.deliveryStage(),
+                    summary.lifecycleStages());
             CURRENT_TURN_LIFECYCLE.remove();
             CURRENT_EFFECTIVE_PAGE_ID.remove();
             CURRENT_INBOUND_EXTERNAL_MID.remove();

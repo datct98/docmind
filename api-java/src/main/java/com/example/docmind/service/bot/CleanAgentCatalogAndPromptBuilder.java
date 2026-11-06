@@ -4365,7 +4365,7 @@ public final class CleanAgentCatalogAndPromptBuilder {
         if (raw == null) {
             return "";
         }
-        return PROMPT_VERSION_COMMENT_PATTERN.matcher(raw).replaceFirst("").strip();
+        return PROMPT_VERSION_COMMENT_PATTERN.matcher(raw).replaceFirst("").replace("\r\n", "\n").strip();
     }
 
     public static void setExternalAciPromptPathForTest(Path customPath) {

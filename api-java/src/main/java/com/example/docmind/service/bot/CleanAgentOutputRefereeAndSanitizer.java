@@ -176,6 +176,152 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
     }
 
+    public record MessageSegment(
+            String type,
+            String value,
+            String claimType,
+            String packageId,
+            String branchId
+    ) {
+        public MessageSegment {
+            type = type != null ? type.strip().toLowerCase(Locale.ROOT) : "text";
+            value = value != null ? value : "";
+            claimType = claimType != null ? claimType.strip().toLowerCase(Locale.ROOT) : "";
+            packageId = packageId != null ? packageId.strip() : "";
+            branchId = branchId != null ? branchId.strip().toUpperCase(Locale.ROOT) : "";
+        }
+
+        public static MessageSegment text(String value) {
+            return new MessageSegment("text", value, "", "", "");
+        }
+
+        public static MessageSegment catalogClaim(String claimType, String packageId, String branchId) {
+            return new MessageSegment("catalog_claim", "", claimType, packageId, branchId);
+        }
+
+        public boolean isCatalogClaim() {
+            return "catalog_claim".equalsIgnoreCase(type);
+        }
+    }
+
+    public record CatalogClaimValidationResult(
+            boolean valid,
+            List<FanpageBotResponse.ReplyBubble> renderedBubbles,
+            List<String> violations
+    ) {
+        public CatalogClaimValidationResult {
+            renderedBubbles = renderedBubbles != null ? List.copyOf(renderedBubbles) : List.of();
+            violations = violations != null ? List.copyOf(violations) : List.of();
+        }
+    }
+
+    public static List<MessageSegment> extractMessageSegmentsFromRootNode(JsonNode root) {
+        if (root == null || !root.isObject() || !root.has("message_segments")) {
+            return List.of();
+        }
+        JsonNode segArray = root.get("message_segments");
+        if (segArray == null || !segArray.isArray() || segArray.isEmpty()) {
+            return List.of();
+        }
+        List<MessageSegment> out = new ArrayList<>();
+        for (JsonNode item : segArray) {
+            if (item == null || !item.isObject()) continue;
+            String type = item.hasNonNull("type") ? item.get("type").asText("text") : "text";
+            String value = item.hasNonNull("value") ? item.get("value").asText("") : "";
+            String claimType = item.hasNonNull("claim_type") ? item.get("claim_type").asText("") : "";
+            String packageId = item.hasNonNull("package_id") ? item.get("package_id").asText("") : "";
+            String branchId = item.hasNonNull("branch_id") ? item.get("branch_id").asText("") : "";
+            out.add(new MessageSegment(type, value, claimType, packageId, branchId));
+        }
+        return List.copyOf(out);
+    }
+
+    public static CatalogClaimValidationResult validateAndRenderCatalogClaimSegments(
+            List<MessageSegment> segments,
+            List<PackageCatalogService.PackageSummary> fullCatalog,
+            String activeBranchId
+    ) {
+        if (segments == null || segments.isEmpty()) {
+            return new CatalogClaimValidationResult(true, List.of(), List.of());
+        }
+        List<PackageCatalogService.PackageSummary> safeCatalog = fullCatalog != null ? fullCatalog : List.of();
+        String normActiveBranch = (activeBranchId != null && !activeBranchId.isBlank())
+                ? activeBranchId.strip().toUpperCase(Locale.ROOT)
+                : null;
+        List<String> violations = new ArrayList<>();
+        StringBuilder rendered = new StringBuilder();
+        for (MessageSegment seg : segments) {
+            if (seg == null) continue;
+            if (!seg.isCatalogClaim()) {
+                String cleanText = PromptSecurityGuard.sanitizeModelOutput(seg.value());
+                if (!cleanText.isBlank()) {
+                    if (!rendered.isEmpty() && rendered.charAt(rendered.length() - 1) != ' ') {
+                        rendered.append(' ');
+                    }
+                    rendered.append(cleanText.strip());
+                }
+                continue;
+            }
+            String reqPkgId = seg.packageId();
+            String reqBranch = !seg.branchId().isBlank() ? seg.branchId() : (normActiveBranch != null ? normActiveBranch : "");
+            if (reqPkgId.isBlank()) {
+                violations.add("CATALOG_CLAIM_MISSING_PACKAGE_ID");
+                continue;
+            }
+            if (reqBranch.isBlank()) {
+                violations.add("CATALOG_CLAIM_MISSING_BRANCH_ID:" + reqPkgId);
+                continue;
+            }
+            if (normActiveBranch != null && !normActiveBranch.equalsIgnoreCase(reqBranch)) {
+                violations.add("CATALOG_CLAIM_BRANCH_MISMATCH:expected=" + normActiveBranch + ",actual=" + reqBranch);
+                continue;
+            }
+            boolean pkgExistsAnywhere = safeCatalog.stream().anyMatch(p -> p != null
+                    && (reqPkgId.equalsIgnoreCase(p.productId())
+                        || reqPkgId.equalsIgnoreCase(p.code())
+                        || (p.productId() != null && p.productId().toUpperCase(Locale.ROOT).contains(":" + reqPkgId.toUpperCase(Locale.ROOT) + ":"))));
+            if (!pkgExistsAnywhere) {
+                violations.add("CATALOG_CLAIM_NON_EXISTENT_PACKAGE:" + reqPkgId);
+                continue;
+            }
+            List<PackageCatalogService.PackageSummary> branchScoped = PackageCatalogService.filterByRegion(safeCatalog, reqBranch);
+            PackageCatalogService.PackageSummary matched = branchScoped.stream()
+                    .filter(p -> p != null
+                            && (p.region() != null && p.region().equalsIgnoreCase(reqBranch))
+                            && (reqPkgId.equalsIgnoreCase(p.productId())
+                                || reqPkgId.equalsIgnoreCase(p.code())
+                                || (p.productId() != null && p.productId().toUpperCase(Locale.ROOT).contains(":" + reqPkgId.toUpperCase(Locale.ROOT) + ":"))))
+                    .findFirst()
+                    .orElse(null);
+            if (matched == null) {
+                violations.add("CATALOG_CLAIM_UNAVAILABLE_AT_BRANCH:" + reqPkgId + "@" + reqBranch);
+                continue;
+            }
+            String claimFragment = switch (seg.claimType()) {
+                case "price" -> matched.priceDisplay();
+                case "duration", "duration_minutes" -> (matched.durationMinutes() != null && matched.durationMinutes() > 0)
+                        ? (matched.durationMinutes() + " phút")
+                        : matched.durationLabel();
+                case "name", "package_name" -> matched.canonicalLabel();
+                default -> matched.canonicalLabel()
+                        + (matched.durationMinutes() != null && matched.durationMinutes() > 0 ? " (" + matched.durationMinutes() + " phút)" : "")
+                        + " giá " + matched.priceDisplay();
+            };
+            if (!rendered.isEmpty() && rendered.charAt(rendered.length() - 1) != ' ') {
+                rendered.append(' ');
+            }
+            rendered.append(claimFragment.strip());
+        }
+        if (!violations.isEmpty()) {
+            return new CatalogClaimValidationResult(false, List.of(), violations);
+        }
+        String finalTxt = rendered.toString().replaceAll("\s+([,.!?])", "$1").replaceAll("\s{2,}", " ").strip();
+        if (finalTxt.isEmpty()) {
+            return new CatalogClaimValidationResult(true, List.of(), List.of());
+        }
+        return new CatalogClaimValidationResult(true, List.of(new FanpageBotResponse.ReplyBubble(finalTxt, 0)), List.of());
+    }
+
     public record StructuredLlmOutput(
             boolean parsedFromJson,
             List<FanpageBotResponse.ReplyBubble> bubbles,
@@ -185,7 +331,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             ConversationState.GroundingCheck groundingCheck,
             String groundingCheckText,
             BrainReflection brainReflection,
-            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection aciReflection
+            AdaptiveConversationIntelligence.AdaptiveCognitiveReflection aciReflection,
+            List<MessageSegment> messageSegments
     ) {
         public StructuredLlmOutput {
             if (brainReflection == null) {
@@ -194,6 +341,32 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (aciReflection == null) {
                 aciReflection = AdaptiveConversationIntelligence.AdaptiveCognitiveReflection.empty();
             }
+            messageSegments = messageSegments != null ? List.copyOf(messageSegments) : List.of();
+        }
+
+        public StructuredLlmOutput(
+                boolean parsedFromJson,
+                List<FanpageBotResponse.ReplyBubble> bubbles,
+                Boolean shouldHandoff,
+                String handoffReason,
+                String updatedSalesStage,
+                ConversationState.GroundingCheck groundingCheck,
+                String groundingCheckText,
+                BrainReflection brainReflection,
+                AdaptiveConversationIntelligence.AdaptiveCognitiveReflection aciReflection
+        ) {
+            this(
+                    parsedFromJson,
+                    bubbles,
+                    shouldHandoff,
+                    handoffReason,
+                    updatedSalesStage,
+                    groundingCheck,
+                    groundingCheckText,
+                    brainReflection,
+                    aciReflection,
+                    List.of()
+            );
         }
 
         public StructuredLlmOutput(
@@ -275,8 +448,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (root == null || !root.isObject()) {
                 return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
             }
+            List<MessageSegment> messageSegments = extractMessageSegmentsFromRootNode(root);
             List<FanpageBotResponse.ReplyBubble> bubbles = extractBubblesFromRootNode(root, minPostPriceDelayMs);
-            if (bubbles.isEmpty()) {
+            if (bubbles.isEmpty() && messageSegments.isEmpty()) {
                 return salvageReplyBubblesFromPartialJson(rawText.strip(), minPostPriceDelayMs);
             }
 
@@ -386,7 +560,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     groundingCheck,
                     groundingCheckText,
                     brainReflection,
-                    aciReflection
+                    aciReflection,
+                    messageSegments
             );
         } catch (Exception e) {
             log.debug("[LLM-JSON] Non-fatal JSON parse fallback: {}", e.getMessage());
@@ -2923,7 +3098,14 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                         sortedCatalog.stream().anyMatch(p -> p != null && p.priceAmountVnd() == sp))
                                 && sentenceLower.matches("(?isU).*(?:[-–—~]|\\b(?:đến|tới)\\b).*")
                                 && sentenceLower.matches("(?isU).*(?:\\b(?:các\\s+gói|khoảng\\s+giá|dao\\s+động|mức\\s+giá|bảng\\s+giá)\\b|\\btừ\\s+\\d).*");
+                        boolean separatedMultiCategoryClause = otherCatalogHasThisPrice
+                                && separatedByCommaFromPkgName
+                                && pkgPosInClause >= 0
+                                && pm.start() > pkgPosInClause
+                                && clause.substring(pkgPosInClause, pm.start()).toLowerCase(Locale.ROOT).matches(
+                                        "(?isU).*,\\s*(?:còn|hoặc|và|hay|riêng|với)?\\s*(?:các\\s+gói|nhóm|gói\\s+massage|gói\\s+chuyên\\s+sâu|gói\\s+cao\\s+cấp|gói\\s+nâng\\s+cao|bên\\s+cạnh\\s+đó).*");
                         if (sentenceIsGroundedMultiRange
+                                || separatedMultiCategoryClause
                                 || (clauseAlsoHasMatchedPkgExactPrice
                                     && (otherCatalogHasThisPrice || customerProvidedContrastPrice)
                                     && (separatedByCommaFromPkgName || clause.contains(",") || isGroundedPriceRangeOrMultiCompare || customerProvidedContrastPrice))) {
@@ -5102,10 +5284,40 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         String groundedChunksLower = groundedChunksSb.toString();
 
+        String activeBranchForReferee = ConversationState.resolveExplicitRegionAcrossTurns(
+                originalCustomerMessage, conversationHistory, null);
+        if (activeBranchForReferee == null && reflection != null && reflection.proposedBookingPatch() != null
+                && reflection.proposedBookingPatch().branchId() != null
+                && !reflection.proposedBookingPatch().branchId().isBlank()) {
+            activeBranchForReferee = reflection.proposedBookingPatch().branchId();
+        }
+        List<PackageCatalogService.PackageSummary> effectiveAllCatalog = allCatalog != null ? allCatalog : List.of();
         List<PackageCatalogService.PackageSummary> effectiveEligible =
                 (unblindedEligibleCatalog != null && !unblindedEligibleCatalog.isEmpty())
                         ? unblindedEligibleCatalog
-                        : (allCatalog != null ? allCatalog : List.of());
+                        : effectiveAllCatalog;
+        List<PackageCatalogService.PackageSummary> effectiveExcluded = excludedCatalog != null
+                ? new ArrayList<>(excludedCatalog)
+                : new ArrayList<>();
+        if (activeBranchForReferee != null && !activeBranchForReferee.isBlank()) {
+            final String branchFilter = activeBranchForReferee.strip().toUpperCase(Locale.ROOT);
+            List<PackageCatalogService.PackageSummary> branchScopedAll =
+                    PackageCatalogService.filterByRegion(effectiveAllCatalog, branchFilter);
+            if (!branchScopedAll.isEmpty()) {
+                for (PackageCatalogService.PackageSummary p : effectiveAllCatalog) {
+                    if (p != null && p.region() != null && !p.region().isBlank()
+                            && !p.region().equalsIgnoreCase(branchFilter)) {
+                        effectiveExcluded.add(p);
+                    }
+                }
+                effectiveAllCatalog = branchScopedAll;
+            }
+            List<PackageCatalogService.PackageSummary> branchScopedElig =
+                    PackageCatalogService.filterByRegion(effectiveEligible, branchFilter);
+            if (!branchScopedElig.isEmpty()) {
+                effectiveEligible = branchScopedElig;
+            }
+        }
         String effBookingStatus = (authoritativeBookingState != null && authoritativeBookingState.status() != null)
                 ? authoritativeBookingState.status().name()
                 : "NONE";
@@ -5125,9 +5337,9 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         // để TẮT hoàn toàn PREMATURE_DOWNSELL_ON_FIRST_OBJECTION và MISSING_ECONOMICAL_PACKAGE_IN_STAGE_3_DOWNSELL!
         List<String> baseViolations = checkCleanCatalogGrounding(
                 bubbles,
-                allCatalog,
+                effectiveAllCatalog,
                 effectiveEligible,
-                excludedCatalog,
+                effectiveExcluded,
                 0,
                 false,
                 null,

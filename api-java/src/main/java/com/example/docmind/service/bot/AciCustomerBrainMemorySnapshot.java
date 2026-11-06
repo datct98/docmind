@@ -187,12 +187,24 @@ public record AciCustomerBrainMemorySnapshot(
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record PersistedUnresolvedRequest(
+            @JsonProperty("request_id") String requestId,
             @JsonProperty("item") String item,
             @JsonProperty("status") String status,
             @JsonProperty("source_turn_id") String sourceTurnId,
             @JsonProperty("updated_turn_id") String updatedTurnId,
             @JsonProperty("observed_at") String observedAt
     ) {
+        public PersistedUnresolvedRequest(
+                String item,
+                String status,
+                String sourceTurnId,
+                String updatedTurnId,
+                String observedAt
+        ) {
+            this(AdaptiveConversationIntelligence.UnresolvedRequestItem.computeStableRequestId(item),
+                    item, status, sourceTurnId, updatedTurnId, observedAt);
+        }
+
         public static PersistedUnresolvedRequest fromDomain(
                 AdaptiveConversationIntelligence.UnresolvedRequestItem r,
                 String defaultObservedAt
@@ -201,6 +213,7 @@ public record AciCustomerBrainMemorySnapshot(
                 return null;
             }
             return new PersistedUnresolvedRequest(
+                    r.requestId(),
                     r.item(),
                     r.status() != null ? r.status().name() : AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN.name(),
                     r.sourceTurnId(),
@@ -211,6 +224,7 @@ public record AciCustomerBrainMemorySnapshot(
 
         public AdaptiveConversationIntelligence.UnresolvedRequestItem toDomain() {
             return new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                    requestId,
                     item,
                     AdaptiveConversationIntelligence.UnresolvedRequestStatus.fromString(status),
                     sourceTurnId,

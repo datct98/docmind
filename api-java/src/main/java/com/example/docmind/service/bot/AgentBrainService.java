@@ -472,6 +472,7 @@ public class AgentBrainService {
 
         // === ACI V3: Commitment Ledger & Negative Preferences ===
         private String draft2CommittedSelectedPackageId = null;
+        private String draft2BuyingReadiness = null;
         private AdaptiveConversationIntelligence.CommitmentLevel draft2CommitmentLevel =
                 AdaptiveConversationIntelligence.CommitmentLevel.NONE;
         private String draft2CommitmentEvidence = null;
@@ -913,7 +914,8 @@ public class AgentBrainService {
                                     : AdaptiveConversationIntelligence.CommitmentLevel.NONE,
                             draft2CommitmentEvidence,
                             List.copyOf(draft2LastOfferedPackageIds),
-                            List.copyOf(draft2NegativePreferences)
+                            List.copyOf(draft2NegativePreferences),
+                            draft2BuyingReadiness
                     );
             return new AdaptiveConversationIntelligence.CustomerUnderstandingDraft2Snapshot(
                     layer1,
@@ -1509,6 +1511,31 @@ public class AgentBrainService {
                 mem.lastUpdatedTurnId = "T" + mem.highestObservedTurnSeq;
             }
 
+            boolean isTimeoutFallbackTurn = reflection != null
+                    && !reflection.parsedFromV2Schema()
+                    && reflection.customerUnderstanding().detectedIntent().isBlank()
+                    && reflection.strategy().chosen().isBlank();
+            if (isTimeoutFallbackTurn && !optedOut && (handoffDecision == null || !handoffDecision.policyApprovedCreation())) {
+                // Stage 1 Workstream 4 (Section VI.4): Fallback is strictly READ-ONLY for conversation & booking state.
+                if (mem.previousStrategyRecord == null) {
+                    mem.previousStrategyRecord = new AdaptiveConversationIntelligence.PreviousStrategyRecord(
+                            "NONE",
+                            "LLM_OUTPUT_UNAVAILABLE",
+                            AdaptiveConversationIntelligence.StrategyOutcome.NOT_APPLICABLE,
+                            safeTurnId,
+                            safeTurnId,
+                            Instant.now()
+                    );
+                }
+                if (actualSentSpeechAct != null && !actualSentSpeechAct.isBlank()) {
+                    mem.lastActualSentSpeechAct = actualSentSpeechAct.strip();
+                    mem.draft2LastBotAction = actualSentSpeechAct.strip();
+                } else {
+                    mem.draft2LastBotAction = "LLM_OUTPUT_UNAVAILABLE";
+                }
+                return;
+            }
+
             // Tier 3: Unverified Parser Candidates (chỉ lưu làm ứng viên chưa xác minh, cấm ghi sang verifiedFacts / authoritativeBusinessFacts)
             mem.latestUnverifiedParserCandidates = unverifiedParserCandidates != null
                     ? List.copyOf(unverifiedParserCandidates)
@@ -1577,11 +1604,6 @@ public class AgentBrainService {
                         Instant.now()
                 );
             }
-
-            boolean isTimeoutFallbackTurn = reflection != null
-                    && !reflection.parsedFromV2Schema()
-                    && reflection.customerUnderstanding().detectedIntent().isBlank()
-                    && reflection.strategy().chosen().isBlank();
 
             // Tier 5: Operational State (Java Core nắm quyền tuyệt đối; khi LLM timeout không hạ cấp bookingState đang active về NONE)
             if (authoritativeBookingState != null) {
@@ -2066,11 +2088,18 @@ public class AgentBrainService {
                     }
                 }
                 int matchIdx = -1;
+                String deltaReqId = deltaReq.requestId();
                 String normDeltaItem = Normalizer.normalize(deltaReq.item().strip(), Normalizer.Form.NFC)
                         .toLowerCase(Locale.ROOT);
                 for (int i = 0; i < mem.draft2UnresolvedRequests.size(); i++) {
                     AdaptiveConversationIntelligence.UnresolvedRequestItem existing = mem.draft2UnresolvedRequests.get(i);
                     if (existing == null) continue;
+                    if (deltaReqId != null && !deltaReqId.isBlank()
+                            && existing.requestId() != null
+                            && deltaReqId.equalsIgnoreCase(existing.requestId())) {
+                        matchIdx = i;
+                        break;
+                    }
                     String normExisting = Normalizer.normalize(existing.item().strip(), Normalizer.Form.NFC)
                             .toLowerCase(Locale.ROOT);
                     boolean semanticCloseMatch = effectiveStatus != AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN
@@ -2090,16 +2119,18 @@ public class AgentBrainService {
                 if (matchIdx >= 0) {
                     AdaptiveConversationIntelligence.UnresolvedRequestItem existing = mem.draft2UnresolvedRequests.get(matchIdx);
                     mem.draft2UnresolvedRequests.set(matchIdx, new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                            existing.requestId(),
                             existing.item(),
                             effectiveStatus,
                             existing.sourceTurnId(),
                             effectiveStatus == AdaptiveConversationIntelligence.UnresolvedRequestStatus.OPEN ? null : safeTurnId
                     ));
-                } else {
+                } else if (!deltaReq.item().isBlank()) {
                     if (mem.draft2UnresolvedRequests.size() >= 10) {
                         mem.draft2UnresolvedRequests.remove(0);
                     }
                     mem.draft2UnresolvedRequests.add(new AdaptiveConversationIntelligence.UnresolvedRequestItem(
+                            deltaReq.requestId(),
                             deltaReq.item(),
                             effectiveStatus,
                             safeTurnId,
@@ -2504,6 +2535,9 @@ public class AgentBrainService {
                 mem.aciWorkingHypothesis.lastLifecycleOp()
         );
         mem.draft2Emotion = cu.emotionalState();
+        if (cu.bookingReadiness() != null) {
+            mem.draft2BuyingReadiness = cu.bookingReadiness().name();
+        }
 
         // Ghi nhận danh sách gói vừa được giới thiệu (ứng viên BOT_PROPOSED) trước để phân giải lựa chọn / hoãn quyết định
         if (authoritativeBookingState != null && authoritativeBookingState.candidateProductIds() != null
