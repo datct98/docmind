@@ -20,5 +20,8 @@ public interface ChunkRepository extends JpaRepository<ChunkEntity, UUID>, Chunk
 
     List<ChunkEntity> findByDocumentIdIn(List<UUID> documentIds);
 
+    // Bounded reference snapshot for the domain-neutral sales core.
+    List<ChunkEntity> findByDocumentIdIn(List<UUID> documentIds, org.springframework.data.domain.Pageable pageable);
+
     List<ChunkEntity> findByDocumentId(UUID documentId);
 }

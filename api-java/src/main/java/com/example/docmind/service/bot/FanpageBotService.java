@@ -314,6 +314,13 @@ public class FanpageBotService {
     @Autowired(required = false)
     private AciSessionMemoryPersistenceService aciSessionMemoryPersistenceService;
 
+    private com.example.docmind.service.salescore.SalesCoreGateway salesCoreGateway;
+
+    @Autowired(required = false)
+    public void setSalesCoreGateway(com.example.docmind.service.salescore.SalesCoreGateway gateway) {
+        this.salesCoreGateway = gateway;
+    }
+
     @Autowired
     public FanpageBotService(RetrievalService retrievalService,
                              LlmClient llmClient,
@@ -838,10 +845,10 @@ public class FanpageBotService {
                 : List.of();
         log.info("[ProvenanceV38] turn_id={} raw_output={} sanitized_output={} validator_errors={} repair_outcome={} final_bubble={}",
                 CURRENT_TURN_ID.get(),
-                "DETERMINISTIC_POLICY",
+                resp.triggeredHooks().contains("SALES_CORE_V1") ? "SALES_CORE_MODEL_OUTPUT" : "DETERMINISTIC_POLICY",
                 maskSensitiveForAudit(resp.replyText()),
                 List.of(),
-                "DETERMINISTIC_FAST_PATH_PASS",
+                resp.triggeredHooks().contains("SALES_CORE_V1") ? "SALES_CORE_PRESERVED" : "DETERMINISTIC_FAST_PATH_PASS",
                 maskSensitiveForAudit(String.join(" || ", finalTexts)));
         PROVENANCE_V38_LOGGED.set(true);
         return gatedResp;
@@ -888,6 +895,10 @@ public class FanpageBotService {
         if (pageId != null) {
             CURRENT_EFFECTIVE_PAGE_ID.set(pageId);
         }
+        if (salesCoreGateway != null && salesCoreGateway.enabled() && pageId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sales Core cần Page để xác định đúng kho tri thức.");
+        }
+        boolean useSalesCore = salesCoreGateway != null && salesCoreGateway.enabledFor(pageId);
 
         // Units P0.1 & P0.4: Entry State Guard (HUMAN_TAKEOVER + 6-Scenario Opt-Out/Re-Consent + Fail-Closed + Atomic ON CONFLICT)
         if (inboundSessionPersistenceService != null) {
@@ -1086,6 +1097,7 @@ public class FanpageBotService {
         FanpageBotResponse.ExtractedLead extractedLead = extractLeadSignal(mergedMessage, request.history());
         if (extractedLead != null
                 && extractedLead.phoneNumber() != null
+                && !useSalesCore
                 && metaLearningService != null
                 && request.history() != null
                 && !request.history().isEmpty()) {
@@ -1093,7 +1105,7 @@ public class FanpageBotService {
         }
         FanpageBotPromptBuilder.SalesStage salesStage = FanpageBotPromptBuilder.SalesStage.DISCOVERY;
 
-        List<AgentSkillDto> candidateSkills = agentSkillService != null
+        List<AgentSkillDto> candidateSkills = useSalesCore ? List.of() : agentSkillService != null
                 ? agentSkillService.getActiveSkillsForPage(pageId)
                 : CustomerInsightEngine.builtInDefaultSkills();
         List<AgentSkillDto> activeSkills = CleanAgentCatalogAndPromptBuilder.filterPageConfiguredSkills(candidateSkills, pageId);
@@ -1243,6 +1255,24 @@ public class FanpageBotService {
                     activeSkills != null && !activeSkills.isEmpty() ? List.of(activeSkills.get(0)) : List.of(),
                     List.of("EXPLICIT_OPT_OUT")
             );
+        }
+
+        // New sales decision owner; preserve entry guards, hydrated history and the outer outbound fence.
+        // No legacy planner, industry intent regex, price ladder or text sanitizer participates in this path.
+        if (useSalesCore) {
+            if (isGeneratePriceAnchorAction) {
+                return buildSilentSuppressedResponse("SALES_CORE_SINGLE_PASS", CURRENT_INBOUND_EXTERNAL_MID.get());
+            }
+            recordCurrentTurnGuard("ALLOW", "SALES_CORE_ACTIVE");
+            TurnLifecycleState salesLifecycle = CURRENT_TURN_LIFECYCLE.get();
+            if (salesLifecycle != null) salesLifecycle.retrievalStarted = true;
+            markCurrentTurnLlmStarted();
+            FanpageBotResponse salesResponse = salesCoreGateway.respond(pageId, request, verbatimOriginalMessage, extractedLead);
+            if (!SenderEpochRegistry.checkThreadEpochStillCurrent(pageId == null ? null : pageId.toString(), request.senderId(),
+                    SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
+                return buildSilentSuppressedResponse("SUPERSEDED_SALES_CORE_TURN", CURRENT_INBOUND_EXTERNAL_MID.get());
+            }
+            return salesResponse;
         }
 
         // 3. XÁC ĐỊNH PHẠM VI TÀI LIỆU CỦA FANPAGE (chỉ lấy tài liệu READY, đang bật active và còn hiệu lực thời gian)

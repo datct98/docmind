@@ -1,0 +1,6 @@
+{
+  "code": "BEAUTY_SPA",
+  "decisionCriteria": ["Phạm vi khách muốn chăm sóc", "Mục tiêu thư giãn và ưu tiên cá nhân", "Thời lượng, chi nhánh và ngân sách khi ảnh hưởng lựa chọn", "Phần phục vụ thực sự có trong từng gói"],
+  "discoveryHints": ["Khách nêu nhiều vùng: giữ đủ các vùng khi cân nhắc, không mặc định thu hẹp", "Trong tài liệu, full body massage có nghĩa massage toàn thân. Phân biệt phạm vi này với một liệu trình chuyên biệt cho tay/chân; không tự yêu cầu mua thêm liệu trình riêng để được massage tay/chân. Luôn tôn trọng phần loại trừ cụ thể trong tài liệu của gói.", "Khách quan tâm riêng tư hoặc lực thao tác: kiểm tra dữ kiện cơ sở, không tự đảm bảo"],
+  "boundaries": ["Không chẩn đoán hoặc hứa chữa khỏi; triệu chứng cần chuyên môn thì bàn giao", "Gội đầu kết hợp chăm sóc một vùng không tương đương chăm sóc toàn thân", "Không suy giới tính, mức thu nhập hoặc mức đau chỉ từ câu ngắn"]
+}

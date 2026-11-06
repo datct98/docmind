@@ -161,9 +161,9 @@
                   <div class="sim-compact-pill-row">
                     <span
                       class="sim-compact-metrics-pill"
-                      title="Kiến trúc ACI V2 · Số kỹ năng kích hoạt · Số quy tắc áp dụng · Tổng thời gian xử lý lượt"
+                      title="Bộ máy tư vấn · Tổng thời gian xử lý lượt"
                     >
-                      🛡️ V2 · ⚡ {{ (item.activeSkills || []).length }} · 📋 {{ (item.appliedRules || []).length }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
+                      {{ (item.triggeredHooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
                     </span>
                     <button
                       type="button"
@@ -185,7 +185,7 @@
                   </div>
 
                   <div v-if="isSimTurnExpanded(idx)" class="sim-expanded-detail-drawer">
-                    <div class="sim-detail-line">
+                    <div v-if="!(item.triggeredHooks || []).includes('SALES_CORE_V1')" class="sim-detail-line">
                       <strong>⚡ Kỹ năng ({{ (item.activeSkills || []).length }}):</strong>
                       <span v-if="item.activeSkills && item.activeSkills.length > 0">
                         {{ item.activeSkills.map(sk => `${formatSkillCategoryIcon(sk.category)} ${sk.name || sk.code}`).join(' · ') }}
@@ -204,7 +204,10 @@
                     </div>
                     <div v-if="item.turnProfiling" class="sim-detail-line sim-detail-profiling">
                       <strong>⏱️ Profiling:</strong>
-                      <span>
+                      <span v-if="(item.triggeredHooks || []).includes('TOKEN_USAGE_UNAVAILABLE')">
+                        Chưa có thống kê token cho lượt này · Xử lý {{ item.turnProfiling.model_latency_ms ?? 0 }}ms
+                      </span>
+                      <span v-else>
                         In {{ item.turnProfiling.input_tokens ?? item.turnProfiling.inputTokens ?? 0 }} tok ·
                         Out {{ item.turnProfiling.output_tokens ?? item.turnProfiling.outputTokens ?? 0 }} tok ·
                         Reflect {{ item.turnProfiling.reflection_tokens ?? item.turnProfiling.reflectionTokens ?? 0 }} tok ·

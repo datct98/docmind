@@ -642,9 +642,9 @@
                 <div class="ai-compact-pill-row">
                   <span
                     class="ai-compact-metrics-pill"
-                    title="Kiến trúc ACI V2 · Số kỹ năng kích hoạt · Số quy tắc áp dụng · Tổng thời gian xử lý lượt"
+                    title="Bộ máy tư vấn · Tổng thời gian xử lý lượt"
                   >
-                    🛡️ V2 · ⚡ {{ getMsgActivatedSkills(msg).length }} · 📋 {{ getMsgAppliedRulesCount(msg) }} · ⏱️ {{ formatTurnDurationSec(msg) }}s
+                    {{ (msg.triggered_hooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatTurnDurationSec(msg) }}s
                   </span>
                   <button
                     type="button"
@@ -667,7 +667,7 @@
 
                 <!-- On-Demand Expandable AI Telemetry Drawer -->
                 <div v-if="isAiDetailExpanded(msg, mIdx)" class="ai-expanded-detail-drawer">
-                  <div class="ai-detail-line">
+                  <div v-if="!(msg.triggered_hooks || []).includes('SALES_CORE_V1')" class="ai-detail-line">
                     <strong>⚡ Kỹ năng ({{ getMsgActivatedSkills(msg).length }}):</strong>
                     <span v-if="getMsgActivatedSkills(msg).length > 0">
                       {{ getMsgActivatedSkills(msg).map(sk => (typeof sk === 'string' ? sk : (sk.name || sk.code))).join(' · ') }}
@@ -686,7 +686,10 @@
                   </div>
                   <div v-if="msg.turn_profiling" class="ai-detail-line ai-detail-profiling">
                     <strong>⏱️ Profiling:</strong>
-                    <span>
+                    <span v-if="(msg.triggered_hooks || []).includes('TOKEN_USAGE_UNAVAILABLE')">
+                      Chưa có thống kê token cho lượt này · Xử lý {{ msg.turn_profiling.model_latency_ms ?? 0 }}ms
+                    </span>
+                    <span v-else>
                       In {{ msg.turn_profiling.input_tokens ?? msg.turn_profiling.inputTokens ?? 0 }} tok ·
                       Out {{ msg.turn_profiling.output_tokens ?? msg.turn_profiling.outputTokens ?? 0 }} tok ·
                       Reflect {{ msg.turn_profiling.reflection_tokens ?? msg.turn_profiling.reflectionTokens ?? 0 }} tok ·

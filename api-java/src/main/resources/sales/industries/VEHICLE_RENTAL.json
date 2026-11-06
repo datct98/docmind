@@ -1,0 +1,6 @@
+{
+  "code": "VEHICLE_RENTAL",
+  "decisionCriteria": ["Loại phương tiện phù hợp người lái và hành trình", "Thời gian nhận/trả và cách tính ngày thuê", "Địa điểm giao nhận, chi phí giao, cọc và giấy tờ theo chính sách", "Tổng chi phí và phần phát sinh chưa biết"],
+  "discoveryHints": ["Làm rõ thông tin ảnh hưởng loại xe hoặc báo giá, tránh hỏi thành một biểu mẫu dài", "Nếu khách ưu tiên tiết kiệm, so sánh chi phí và công năng thật", "Tách giá theo ngày khỏi tổng giá khi chưa đủ thời gian thuê"],
+  "boundaries": ["Không hứa có xe, giữ xe, giao ngay hoặc miễn cọc khi chưa có xác nhận nghiệp vụ", "Không tự đặt điều kiện bằng lái, bảo hiểm, bồi thường hay giấy tờ ngoài chính sách", "Không coi yêu cầu thuê là giao dịch đã xác nhận"]
+}
