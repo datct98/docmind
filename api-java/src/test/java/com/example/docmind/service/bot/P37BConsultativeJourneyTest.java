@@ -253,7 +253,7 @@ class P37BConsultativeJourneyTest {
                 .isEqualTo(AdaptiveConversationIntelligence.FrictionRecoveryMode.MISSED_DISCOVERY);
 
         List<FanpageBotResponse.ReplyBubble> t2Out = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
-                bubbles("Mình nói đúng ạ, em xin lỗi vì đã đưa nhiều thông tin quá sớm khi chưa hỏi kỹ nhu cầu của mình. Em sẽ dừng lại và chỉ tư vấn đúng điều mình cần nhé."),
+                bubbles("Mình nói đúng ạ, em xin lỗi vì đã đưa nhiều thông tin quá sớm khi chưa hỏi kỹ nhu cầu của mình. Em sẽ dừng lại và chỉ tư vấn đúng điều mình cần nhé. Hiện mình đang muốn tìm hiểu điều gì trước để em hỗ trợ đúng ý mình ạ?"),
                 ui0aT2, null, "em", "mình");
         assertThat(t2Out).hasSize(1);
         String t2Text = CleanAgentOutputRefereeAndSanitizer.repairWrongPronounOpenerInPlace(t2Out.get(0).text(), "em", "mình");

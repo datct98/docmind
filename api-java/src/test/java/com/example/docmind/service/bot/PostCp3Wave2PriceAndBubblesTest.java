@@ -55,11 +55,12 @@ class PostCp3Wave2PriceAndBubblesTest {
                 .contains("lựa chọn tiêu biểu")
                 .contains("TUYỆT ĐỐI KHÔNG yêu cầu khách chọn gói cụ thể khi chưa hiểu nhu cầu");
 
-        // 3. If LLM omits starting price (only quotes 399k & 670k) and asks "Mình ưu tiên gói nào ạ?", Sanitizer restores starting price and rewrites question to need discovery + splits into 2 semantic idea bubbles
+        // 3. Stage 2 Architecture Guardrail: enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace preserves LLM's own bubble structure and wording without prepending starting-price templates or overwriting questions
         List<FanpageBotResponse.ReplyBubble> rawSingleBubble = List.of(
                 new FanpageBotResponse.ReplyBubble(
-                        "Dạ bên em hiện có vài gói tiêu biểu như Gói Chăm Sóc Chuyên Sâu Cổ Vai Gáy (75 phút) giá 399k và Gói Trị Liệu Toàn Thân (90 phút) giá 670k, ngoài ra bên em còn các gói khác nữa ạ. Mình đang ưu tiên gói nào hơn ạ?",
-                        0
+                        "Dạ bên em hiện có các gói từ 239k (Gói Gội Đầu Dưỡng Sinh Cơ Bản 60 phút), 399k đến 670k ạ. Hiện mình đang muốn chăm sóc vùng nào nhất ạ?",
+                        0,
+                        "FACT_OR_PRICE_QUOTE"
                 )
         );
         List<FanpageBotResponse.ReplyBubble> finalBubbles =
@@ -75,41 +76,10 @@ class PostCp3Wave2PriceAndBubblesTest {
                         plan
                 );
 
-        // Must be split into 2 semantic idea bubbles: Bubble 1 (starting price + representative packages), Bubble 2 (gentle need/scope discovery question)
-        assertThat(finalBubbles).hasSize(2);
+        assertThat(finalBubbles).hasSize(1);
+        assertThat(finalBubbles.get(0).purpose()).isEqualTo("FACT_OR_PRICE_QUOTE");
         assertThat(finalBubbles.get(0).text())
-                .contains("239k")
-                .contains("399k")
-                .contains("670k")
-                .doesNotContain("?");
-        assertThat(finalBubbles.get(1).text())
-                .contains("thư giãn")
-                .contains("vùng cơ thể nào")
-                .doesNotContain("ưu tiên gói nào")
-                .endsWith("?");
-
-        // 4. Edge case (Auditor P1-1): Price and premature package-choice question in the SAME single sentence
-        List<FanpageBotResponse.ReplyBubble> singleSentencePriceAndChoice = List.of(
-                new FanpageBotResponse.ReplyBubble(
-                        "Dạ bên em có gói 399k và gói 670k, mình chọn gói nào ạ?",
-                        0
-                )
-        );
-        List<FanpageBotResponse.ReplyBubble> edgeBubbles =
-                CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(
-                        singleSentencePriceAndChoice,
-                        "Giá",
-                        List.of(),
-                        ConversationState.StructuredBookingState.none(),
-                        catalog,
-                        "em",
-                        "mình",
-                        "kỹ thuật viên",
-                        plan
-                );
-        assertThat(edgeBubbles).hasSize(2);
-        assertThat(edgeBubbles.get(0).text()).contains("239k").contains("399k").contains("670k").doesNotContain("?");
-        assertThat(edgeBubbles.get(1).text()).doesNotContain("chọn gói nào").endsWith("?");
+                .isEqualTo("Dạ bên em hiện có các gói từ 239k (Gói Gội Đầu Dưỡng Sinh Cơ Bản 60 phút), 399k đến 670k ạ. Hiện mình đang muốn chăm sóc vùng nào nhất ạ?");
     }
 
     @Test

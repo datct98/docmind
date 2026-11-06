@@ -195,6 +195,14 @@ public final class PriceQuoteReadingBudgetScheduler {
         boolean awaitOrSupersede(String pageId, String senderPsid, long expectedEpoch, long waitMs);
     }
 
+    public enum BubbleDeliveryLifecycleState {
+        SCHEDULED_TYPING_DELAY,
+        SEND_REQUESTED,
+        PROVIDER_ACCEPTED,
+        DELIVERY_CONFIRMED,
+        MESSAGE_SUPPRESSED_OR_CANCELLED
+    }
+
     public record SentBubbleExecutionLog(
             int bubbleIndex,
             String text,
@@ -206,6 +214,33 @@ public final class PriceQuoteReadingBudgetScheduler {
             boolean canceledBySupersede,
             boolean skippedDuplicate
     ) {
+        public BubbleDeliveryLifecycleState terminalLifecycleState() {
+            if (canceledBySupersede || skippedDuplicate) {
+                return BubbleDeliveryLifecycleState.MESSAGE_SUPPRESSED_OR_CANCELLED;
+            }
+            return sendAccepted
+                    ? BubbleDeliveryLifecycleState.PROVIDER_ACCEPTED
+                    : BubbleDeliveryLifecycleState.SEND_REQUESTED;
+        }
+
+        public List<BubbleDeliveryLifecycleState> lifecycleTrail(Long deliveredAtMs) {
+            List<BubbleDeliveryLifecycleState> trail = new ArrayList<>(4);
+            if (waitAppliedMs > 0L) {
+                trail.add(BubbleDeliveryLifecycleState.SCHEDULED_TYPING_DELAY);
+            }
+            if (canceledBySupersede || skippedDuplicate) {
+                trail.add(BubbleDeliveryLifecycleState.MESSAGE_SUPPRESSED_OR_CANCELLED);
+                return List.copyOf(trail);
+            }
+            trail.add(BubbleDeliveryLifecycleState.SEND_REQUESTED);
+            if (sendAccepted) {
+                trail.add(BubbleDeliveryLifecycleState.PROVIDER_ACCEPTED);
+                if (deliveredAtMs != null && deliveredAtMs >= 0L) {
+                    trail.add(BubbleDeliveryLifecycleState.DELIVERY_CONFIRMED);
+                }
+            }
+            return List.copyOf(trail);
+        }
     }
 
     public record CoordinatedSendSequenceResult(
@@ -440,9 +475,63 @@ public final class PriceQuoteReadingBudgetScheduler {
             } else {
                 delay = safeNormal;
             }
-            out.add(new ReplyBubble(b.text().strip(), delay));
+            out.add(new ReplyBubble(b.text().strip(), delay, b.purpose()));
         }
         return Collections.unmodifiableList(out);
+    }
+
+    /**
+     * Stage 2 Section 6: Tính toán độ trễ đọc báo giá thích ứng theo độ dài nội dung bong bóng báo giá và bong bóng theo sau
+     * (tránh việc câu hỏi/chuyển tiếp ngắn ở Bubble 3 sau Bubble 2 báo giá ngắn bị treo cứng 10.000ms làm đứt nhịp hội thoại,
+     * trong khi bảng báo giá nhiều gói hoặc nội dung dài vẫn giữ trọn ngân sách đọc tối đa).
+     */
+    public static int computeAdaptivePostPriceBubbleDelayMs(
+            ReplyBubble quoteBubble,
+            ReplyBubble followUpBubble,
+            int maxReadingBudgetMs,
+            int normalInterBubbleDelayMs
+    ) {
+        int safeMax = Math.max(0, maxReadingBudgetMs);
+        int safeNormal = Math.max(0, normalInterBubbleDelayMs);
+        if (quoteBubble == null || quoteBubble.text() == null || quoteBubble.text().isBlank()) {
+            return safeNormal;
+        }
+        String quoteText = quoteBubble.text().strip();
+        int quoteWords = quoteText.split("\\s+").length;
+        int distinctPriceCount = CleanAgentOutputRefereeAndSanitizer.extractPricesInVndFromText(quoteText).size();
+        String followText = (followUpBubble != null && followUpBubble.text() != null) ? followUpBubble.text().strip() : "";
+        int followWords = followText.isEmpty() ? 0 : followText.split("\\s+").length;
+        if (distinctPriceCount <= 1 && quoteWords <= 35 && followWords > 0 && followWords <= 22) {
+            int scaled = Math.max(safeNormal + 1_200, quoteWords * 160);
+            return Math.min(safeMax, Math.max(3_200, scaled));
+        }
+        return safeMax;
+    }
+
+    public static List<ReplyBubble> applyAdaptiveReadingBudgetTypingDelays(
+            List<ReplyBubble> bubbles,
+            int quoteBubbleIndex,
+            int maxReadingBudgetMs,
+            int normalInterBubbleDelayMs
+    ) {
+        if (bubbles == null || bubbles.isEmpty()) {
+            return List.of();
+        }
+        List<ReplyBubble> nonBlank = bubbles.stream()
+                .filter(b -> b != null && b.text() != null && !b.text().isBlank())
+                .toList();
+        if (nonBlank.isEmpty()) {
+            return List.of();
+        }
+        ReplyBubble quoteBubble = (quoteBubbleIndex >= 0 && quoteBubbleIndex < nonBlank.size())
+                ? nonBlank.get(quoteBubbleIndex)
+                : null;
+        ReplyBubble followUpBubble = (quoteBubbleIndex >= 0 && quoteBubbleIndex + 1 < nonBlank.size())
+                ? nonBlank.get(quoteBubbleIndex + 1)
+                : null;
+        int effectiveBudget = computeAdaptivePostPriceBubbleDelayMs(
+                quoteBubble, followUpBubble, maxReadingBudgetMs, normalInterBubbleDelayMs);
+        return applyReadingBudgetTypingDelays(nonBlank, quoteBubbleIndex, effectiveBudget, normalInterBubbleDelayMs);
     }
 
     /**

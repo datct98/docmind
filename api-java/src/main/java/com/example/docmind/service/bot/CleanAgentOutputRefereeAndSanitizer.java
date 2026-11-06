@@ -633,6 +633,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             for (JsonNode item : bubblesNode) {
                 if (item == null || item.isNull()) continue;
                 String text = null;
+                String purpose = null;
                 int delayMs = idx == 0 ? 900 : 2800;
                 if (item.isTextual()) {
                     text = item.asText();
@@ -641,6 +642,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         text = item.get("text").asText();
                     } else if (item.hasNonNull("content")) {
                         text = item.get("content").asText();
+                    }
+                    if (item.hasNonNull("purpose")) {
+                        String rawPurpose = item.get("purpose").asText(null);
+                        if (rawPurpose != null && !rawPurpose.isBlank()) {
+                            purpose = rawPurpose.strip();
+                        }
+                    } else if (item.hasNonNull("role")) {
+                        String rawRole = item.get("role").asText(null);
+                        if (rawRole != null && !rawRole.isBlank()) {
+                            purpose = rawRole.strip();
+                        }
                     }
                     if (item.hasNonNull("delay_ms")) {
                         delayMs = item.get("delay_ms").asInt(delayMs);
@@ -666,7 +678,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                         if (idx > 0 && prevContainsPrice && minPostPriceDelayMs > 0) {
                             partDelayMs = Math.max(partDelayMs, minPostPriceDelayMs);
                         }
-                        bubbles.add(new FanpageBotResponse.ReplyBubble(cleanBubbleText, Math.max(0, partDelayMs)));
+                        bubbles.add(new FanpageBotResponse.ReplyBubble(cleanBubbleText, Math.max(0, partDelayMs), purpose));
                         prevContainsPrice = hasQuotedPriceInText(cleanBubbleText);
                         idx++;
                         emittedSubPart++;
@@ -1101,11 +1113,15 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     public enum PriceMentionSemanticRole {
         /** 1. Giá do khách nêu ra để so sánh đối thủ / bên ngoài (trong câu hiện tại hoặc lịch sử phiên T1..T_current), được bot nhắc lại với tư cách thông tin bên ngoài để đối chiếu. */
         USER_PROVIDED_COMPARISON_PRICE,
-        /** 2. Mức giá / ngân sách khách trực tiếp hỏi xem Page có gói nào phù hợp không (trong câu hiện tại hoặc lịch sử phiên), được bot nhắc lại / phủ định trung thực. */
+        /** 2. Mức giá / ngân sách khách trực tiếp hỏi xem Page có gói nào phù hợp không (trong câu hiện tại hoặc lịch sử phiên), được bot nhắc lại trung thực. */
         USER_ASKED_PRICE,
         /** 3. Giá dịch vụ đã được xác thực trong <VERIFIED_BUSINESS_CATALOG> / chunks của page_id hiện tại. */
         BOT_CATALOG_PRICE,
-        /** 4. Giá do bot tự công bố làm giá dịch vụ của Page nhưng không có nguồn hợp lệ trong Catalog -> bắt buộc chặn bằng Referee. */
+        /** 4. Giá do bot nhắc lại để phủ định / đính chính hiểu lầm của khách (VD: "bên em không có gói 370k", "không phải 370k"). */
+        BOT_NEGATED_OR_CORRECTED_PRICE,
+        /** 5. Giá của chi nhánh / cơ sở khác được bot nhắc tới để giải thích sự khác biệt vùng miền (VD: "370k là tại cơ sở TP.HCM, còn Hà Nội là 339k"). */
+        CROSS_BRANCH_CLARIFICATION_PRICE,
+        /** 6. Giá do bot tự công bố làm giá dịch vụ của Page nhưng không có nguồn hợp lệ trong Catalog -> bắt buộc chặn bằng Referee. */
         BOT_UNGROUNDED_PRICE,
         // Hằng số tương thích ngược với các bài test/nhánh cũ:
         OFFERED_PRICE,
@@ -1158,7 +1174,17 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     );
 
     private static final Pattern BOT_NEGATION_IN_SUBCLAUSE_PATTERN = Pattern.compile(
-            "(?isU)\\b(?:chưa|không|ko|chẳng)\\s+(?:hề\\s+)?(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở|phục\\s+vụ|làm|bán|cung\\s+cấp|giảm)\\b"
+            "(?isU)\\b(?:chưa|không|ko|chẳng)\\s+(?:hề\\s+)?(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở|phục\\s+vụ|làm|bán|cung\\s+cấp|giảm|phải|báo|nhắc|nêu)\\b"
+    );
+
+    private static final Pattern BOT_CROSS_BRANCH_PRICE_CLARIFICATION_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:(?:là\\s+|áp\\s+dụng\\s+|niêm\\s+yết\\s+)?(?:tại|ở|thuộc|của)\\s+(?:cơ\\s+sở|chi\\s+nhánh|khu\\s+vực)?\\s*(?:tp\\.?\\s*hcm|hồ\\s+chí\\s+minh|sài\\s+gòn|hà\\s+nội|miền\\s+nam|miền\\s+bắc)|"
+            + "(?:cơ\\s+sở|chi\\s+nhánh)\\s+(?:tp\\.?\\s*hcm|hồ\\s+chí\\s+minh|sài\\s+gòn|hà\\s+nội|khác))\\b"
+    );
+
+    private static final Pattern CUSTOMER_SHORTHAND_THOUSAND_PRICE_PATTERN = Pattern.compile(
+            "(?isU)\\b(?:gói|giá|vừa|tận|có|lên|ra|mức|loại|tầm|khoảng)\\s+([1-9]\\d{2})\\b"
+            + "(?!\\s*(?:phút|buổi|tiết|viên|ngày|tuần|tháng|năm|km|cm|mm|kg|ml|%|độ|tuổi)\\b)"
     );
 
     private static final Pattern BOT_EXTERNAL_OR_CUSTOMER_ATTRIBUTION_PATTERN = Pattern.compile(
@@ -1170,13 +1196,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
     );
 
     private static final Pattern BOT_AFFIRMATIVE_OWN_OFFERING_BEFORE_PRICE_PATTERN = Pattern.compile(
-            "(?isU)(?:\\b(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình)|chúng\\s+em|nàng\\s+sen|nha\\s+khoa\\s+tỏa\\s+sáng|hiện\\s+tại\\s+em)\\b"
+            "(?isU)(?:\\b(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình)|chúng\\s+em|hiện\\s+tại\\s+em)\\b"
             + "[^.!?;,\\n]{0,40}?\\b(?:cũng\\s+|đang\\s+|hiện\\s+|vẫn\\s+|sẵn\\s+)?(?:có|áp\\s+dụng|phục\\s+vụ|triển\\s+khai|cung\\s+cấp|bán|làm|mở|giới\\s+thiệu|gợi\\s+ý|là)\\s*(?:thêm\\s+|ngay\\s+)?(?:gói|liệu\\s+trình|dịch\\s+vụ|mẫu|khóa|mức(?:\\s+giá)?|suất|giá)?\\s*$"
             + "|\\b(?:em|bên\\s+(?:em|mình)|shop|spa)\\s+(?:giảm|bớt|ưu\\s+đãi|để|lấy|tính)(?:\\s+giá)?(?:\\s+cho\\s+(?:mình|chị|anh|bạn))?\\s+(?:xuống\\s+)?(?:còn|chỉ(?:\\s+còn)?)\\s*$)"
     );
 
     private static final Pattern BOT_OWN_PACKAGE_AFTER_PRICE_PATTERN = Pattern.compile(
-            "(?isU)^(?:\\s*/\\s*[\\p{L}\\d²]+)?\\s*(?:của\\s+)?(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình)|nàng\\s+sen)\\b"
+            "(?isU)^(?:\\s*/\\s*[\\p{L}\\d²]+)?\\s*(?:của\\s+)?(?:bên\\s+(?:em|mình)|nhà\\s+em|spa\\s+(?:em|mình)|phòng\\s+khám\\s+(?:em|mình)|trung\\s+tâm\\s+(?:em|mình)|shop\\s+(?:em|mình))\\b"
     );
 
     private static final Pattern BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN = Pattern.compile(
@@ -1249,6 +1275,21 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             long d = Long.parseLong(litMatcher.group(1));
             if (d > 0) askedPricesOut.add(d * 100_000L);
         }
+        Matcher shortPriceMatcher = CUSTOMER_SHORTHAND_THOUSAND_PRICE_PATTERN.matcher(norm);
+        while (shortPriceMatcher.find()) {
+            try {
+                long kVal = Long.parseLong(shortPriceMatcher.group(1));
+                if (kVal >= 100L && kVal <= 999L) {
+                    long vnd = kVal * 1_000L;
+                    if (isCustomerExternalComparisonPriceContext(norm, shortPriceMatcher.start(), shortPriceMatcher.end())) {
+                        comparisonPricesOut.add(vnd);
+                    } else {
+                        askedPricesOut.add(vnd);
+                    }
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
     }
 
     public static boolean isCustomerExternalComparisonPriceContext(String customerText, int matchStart, int matchEnd) {
@@ -1286,7 +1327,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         int sentStart = 0;
         for (int i = Math.max(0, matchStart - 1); i >= 0; i--) {
             char c = bubbleText.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+            if (c == '!' || c == '?' || c == '\n'
+                    || (c == '.' && !(i >= 2 && bubbleText.regionMatches(true, i - 2, "tp", 0, 2)))) {
                 sentStart = i + 1;
                 break;
             }
@@ -1294,7 +1336,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         int sentEnd = bubbleText.length();
         for (int i = Math.min(bubbleText.length(), matchEnd); i < bubbleText.length(); i++) {
             char c = bubbleText.charAt(i);
-            if (c == '.' || c == '!' || c == '?' || c == '\n') {
+            if (c == '!' || c == '?' || c == '\n'
+                    || (c == '.' && !(i >= 2 && bubbleText.regionMatches(true, i - 2, "tp", 0, 2)))) {
                 sentEnd = i;
                 break;
             }
@@ -1478,6 +1521,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
         }
 
+        if (inAsked && bubbleText != null && isBotNegatingOrCorrectingPriceInSubclause(bubbleText, matchStart, matchEnd)) {
+            return PriceMentionSemanticRole.BOT_NEGATED_OR_CORRECTED_PRICE;
+        }
+        if (inAsked && bubbleText != null && isBotCrossBranchClarificationInSubclause(bubbleText, matchStart, matchEnd)) {
+            return PriceMentionSemanticRole.CROSS_BRANCH_CLARIFICATION_PRICE;
+        }
+
         if (excludedPrices != null && excludedPrices.contains(priceVnd) && !inComparison && !inAsked) {
             return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
         }
@@ -1495,6 +1545,69 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             return PriceMentionSemanticRole.BOT_UNGROUNDED_PRICE;
         }
         return PriceMentionSemanticRole.USER_ASKED_PRICE;
+    }
+
+    private static String extractLocalSubClauseForPriceMatch(String bubbleText, int matchStart, int matchEnd) {
+        if (bubbleText == null || bubbleText.isBlank()) {
+            return "";
+        }
+        int sentStart = 0;
+        for (int i = Math.max(0, matchStart - 1); i >= 0; i--) {
+            char c = bubbleText.charAt(i);
+            if (c == '!' || c == '?' || c == '\n'
+                    || (c == '.' && !(i >= 2 && bubbleText.regionMatches(true, i - 2, "tp", 0, 2)))) {
+                sentStart = i + 1;
+                break;
+            }
+        }
+        int sentEnd = bubbleText.length();
+        for (int i = Math.min(bubbleText.length(), matchEnd); i < bubbleText.length(); i++) {
+            char c = bubbleText.charAt(i);
+            if (c == '!' || c == '?' || c == '\n'
+                    || (c == '.' && !(i >= 2 && bubbleText.regionMatches(true, i - 2, "tp", 0, 2)))) {
+                sentEnd = i;
+                break;
+            }
+        }
+        String sentence = bubbleText.substring(sentStart, sentEnd);
+        int relStart = matchStart - sentStart;
+        int relEnd = matchEnd - sentStart;
+        String localSubClause = sentence;
+        int lastSplitEnd = 0;
+        Pattern fineSubclauseSplit = Pattern.compile("(?isU)(?:[,;\\n]|\\bmà\\s+(?:chỉ\\s+)?có\\b|\\bnhưng\\b|\\btuy\\s+nhiên\\b|\\bcòn\\b|\\btrong\\s+khi\\b)");
+        Matcher splitMatcher = fineSubclauseSplit.matcher(sentence);
+        List<int[]> spans = new ArrayList<>();
+        while (splitMatcher.find()) {
+            spans.add(new int[]{lastSplitEnd, splitMatcher.start()});
+            lastSplitEnd = splitMatcher.end();
+        }
+        spans.add(new int[]{lastSplitEnd, sentence.length()});
+        for (int[] sp : spans) {
+            if (relStart >= sp[0] && relEnd <= sp[1]) {
+                localSubClause = sentence.substring(sp[0], sp[1]);
+                break;
+            }
+        }
+        return java.text.Normalizer.normalize(localSubClause, java.text.Normalizer.Form.NFC);
+    }
+
+    private static boolean isBotNegatingOrCorrectingPriceInSubclause(String bubbleText, int matchStart, int matchEnd) {
+        String normSub = extractLocalSubClauseForPriceMatch(bubbleText, matchStart, matchEnd);
+        if (normSub.isEmpty()) {
+            return false;
+        }
+        if (BOT_FABRICATED_OWN_PACKAGE_SPEC_PATTERN.matcher(normSub).find()) {
+            return false;
+        }
+        return BOT_NEGATION_IN_SUBCLAUSE_PATTERN.matcher(normSub).find();
+    }
+
+    private static boolean isBotCrossBranchClarificationInSubclause(String bubbleText, int matchStart, int matchEnd) {
+        String normSub = extractLocalSubClauseForPriceMatch(bubbleText, matchStart, matchEnd);
+        if (normSub.isEmpty()) {
+            return false;
+        }
+        return BOT_CROSS_BRANCH_PRICE_CLARIFICATION_PATTERN.matcher(normSub).find();
     }
 
     public static PriceMentionSemanticRole classifyPriceMentionSemanticRole(
@@ -2280,26 +2393,47 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 || after.matches("(?isU)^[^.!?]{0,45}?(?:chưa\\s+có|không\\s+có|chưa\\s+bao\\s+gồm|không\\s+bao\\s+gồm|chỉ\\s+(?:có\\s+|áp\\s+dụng\\s+)?(?:từ|ở|với)\\s+(?:các\\s+)?gói|mới\\s+có\\s+ở\\s+gói|dành\\s+cho\\s+(?:các\\s+)?gói).*");
     }
 
-    private static final Set<String> NON_VIP_COMMON_ROOM_PACKAGE_CODES = Set.of(
-            "NS01", "NS02", "DS01", "DS02", "DS03", "DS04"
-    );
+    private static PackageCatalogService.PackageSummary findCatalogPackageByCode(
+            List<PackageCatalogService.PackageSummary> catalog,
+            String rawCode
+    ) {
+        if (catalog == null || catalog.isEmpty() || rawCode == null || rawCode.isBlank()) {
+            return null;
+        }
+        String target = rawCode.strip().toUpperCase(Locale.ROOT);
+        for (PackageCatalogService.PackageSummary pkg : catalog) {
+            if (pkg == null) continue;
+            String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
+            String prodId = pkg.productId() != null ? pkg.productId().strip().toUpperCase(Locale.ROOT) : "";
+            if (target.equals(code) || target.equals(prodId)) {
+                return pkg;
+            }
+        }
+        return null;
+    }
 
-    private static final Set<String> NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES = Set.of(
-            "NS01", "NS02", "NS03", "NS04"
-    );
+    private static String extractSpecificationsCorpusLower(PackageCatalogService.PackageSummary pkg) {
+        if (pkg == null || pkg.normalized() == null || pkg.normalized().specifications() == null) {
+            return "";
+        }
+        StringBuilder specsSb = new StringBuilder();
+        for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
+            if (attr != null && attr.rawValue() != null && !attr.rawValue().isBlank()) {
+                specsSb.append(' ').append(attr.rawValue());
+            }
+        }
+        return specsSb.toString().toLowerCase(Locale.ROOT);
+    }
 
     static boolean packageConfirmedAllowsPrivateOrVipRoom(PackageCatalogService.PackageSummary pkg) {
         if (pkg == null) {
             return false;
         }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
-        // Khóa thẩm quyền theo 01_giá_dịch_vụ.html (cột F + FAQ dòng 92, 96, 104):
-        // NS01 (399k) và NS02 (530k) cùng DS01..DS04 là Phòng chung có rèm riêng từng giường; từ 580k (NS03) / DS05-DS06 mới có VIP.
-        if (NON_VIP_COMMON_ROOM_PACKAGE_CODES.contains(code)) {
-            return false;
-        }
         String spaceLower = ((pkg.customerFacingSpaceNote() != null ? pkg.customerFacingSpaceNote() : "") + " "
                 + (pkg.roomType() != null ? pkg.roomType() : "")).toLowerCase(Locale.ROOT);
+        if (spaceLower.contains("phòng chung") || spaceLower.contains("khu gội chung") || spaceLower.contains("không gian chung")) {
+            return false;
+        }
         return spaceLower.contains("phòng riêng")
                 || spaceLower.contains("phòng vip")
                 || spaceLower.contains("vip");
@@ -2309,9 +2443,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (pkg == null) {
             return false;
         }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
-        // Nhóm Dưỡng sinh DS01..DS06 chỉ có ăn nhẹ & trái cây theo mùa (DS04 = PENDING_CONFIRMATION), TUYỆT ĐỐI không có buffet.
-        if (code.startsWith("DS")) {
+        String incLow = pkg.includesSummary() != null ? pkg.includesSummary().toLowerCase(Locale.ROOT) : "";
+        if (incLow.contains("ăn nhẹ") && !incLow.contains("buffet")) {
             return false;
         }
         StringBuilder corpusSb = new StringBuilder();
@@ -2321,13 +2454,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (pkg.display() != null && pkg.display().customerFacingFormatNote() != null) {
             corpusSb.append(' ').append(pkg.display().customerFacingFormatNote());
         }
-        if (pkg.normalized() != null && pkg.normalized().specifications() != null) {
-            for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
-                if (attr != null && attr.rawValue() != null) {
-                    corpusSb.append(' ').append(attr.rawValue());
-                }
-            }
-        }
+        corpusSb.append(' ').append(extractSpecificationsCorpusLower(pkg));
         return corpusSb.toString().toLowerCase(Locale.ROOT).contains("buffet");
     }
 
@@ -2335,25 +2462,18 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (pkg == null) {
             return false;
         }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
-        if ("DS04".equals(code)) {
-            return false;
-        }
-        if (NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(code)) {
+        if (packageConfirmedAllowsBuffet(pkg)) {
             return true;
         }
-        String incAndProc = ((pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
-                + (pkg.processSummary() != null ? pkg.processSummary() : "")).toLowerCase(Locale.ROOT);
-        return incAndProc.contains("thực dưỡng");
+        String incLow = pkg.includesSummary() != null ? pkg.includesSummary().toLowerCase(Locale.ROOT) : "";
+        String procLow = pkg.processSummary() != null ? pkg.processSummary().toLowerCase(Locale.ROOT) : "";
+        String specsLow = extractSpecificationsCorpusLower(pkg).toLowerCase(Locale.ROOT);
+        return incLow.contains("thực dưỡng") || procLow.contains("thực dưỡng") || specsLow.contains("thực dưỡng")
+                || incLow.contains("ăn nhẹ");
     }
 
     static boolean packageConfirmedAllowsHerbalBath(PackageCatalogService.PackageSummary pkg) {
         if (pkg == null) {
-            return false;
-        }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
-        // Catalog Grounding Lock (339k DS03 / 399k NS01 / DS01..DS04): KHÔNG có ngâm bồn thảo dược; từ NS02 (530k/80p) mới có 10p ngâm bồn.
-        if (code.startsWith("DS") || "NS01".equals(code)) {
             return false;
         }
         return buildPackageAttributeCorpusLower(pkg).contains("ngâm bồn");
@@ -2361,11 +2481,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
 
     static boolean packageConfirmedAllowsSteam(PackageCatalogService.PackageSummary pkg) {
         if (pkg == null) {
-            return false;
-        }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
-        // Catalog Grounding Lock (339k DS03 / 399k NS01 / 530k NS02): KHÔNG có xông hơi; từ NS03 (580k/100p) trở lên mới có xông hơi.
-        if (code.startsWith("DS") || "NS01".equals(code) || "NS02".equals(code)) {
             return false;
         }
         return buildPackageAttributeCorpusLower(pkg).contains("xông hơi");
@@ -2379,38 +2494,41 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (pkg == null || clauseLow == null || clauseLow.isBlank()) {
             return List.of();
         }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
+        String code = pkg.code() != null && !pkg.code().isBlank()
+                ? pkg.code().strip().toUpperCase(Locale.ROOT)
+                : (pkg.productId() != null ? pkg.productId().strip().toUpperCase(Locale.ROOT) : "UNKNOWN");
+        String incLow = pkg.includesSummary() != null ? pkg.includesSummary().toLowerCase(Locale.ROOT).strip() : "";
+        String procAndSpecsLow = ((pkg.processSummary() != null ? pkg.processSummary() : "") + " "
+                + extractSpecificationsCorpusLower(pkg)).toLowerCase(Locale.ROOT);
         List<String> flags = new ArrayList<>();
-        // 1. DS04 (500k/90p - dòng 60): refreshment = PENDING_CONFIRMATION -> không được tự hứa ăn nhẹ / trái cây
-        if ("DS04".equals(code)) {
+        // 1. Refreshment unconfirmed in includesSummary while package does not confirm buffet/refreshment:
+        boolean hasConfirmedRefreshment = incLow.contains("ăn nhẹ")
+                || incLow.contains("trái cây")
+                || incLow.contains("buffet")
+                || incLow.contains("thực dưỡng")
+                || packageConfirmedAllowsBuffet(pkg);
+        if (!incLow.isBlank() && !hasConfirmedRefreshment) {
             if (clauseLow.contains("ăn nhẹ") && !isAttributeNegatedBeforeMatch(clauseLow, "ăn nhẹ")) {
-                flags.add("PENDING_CONFIRMATION_REFRESHMENT:DS04");
-                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:DS04:ăn nhẹ");
+                flags.add("PENDING_CONFIRMATION_REFRESHMENT:" + code);
+                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:" + code + ":ăn nhẹ");
             }
             if (clauseLow.contains("trái cây") && !isAttributeNegatedBeforeMatch(clauseLow, "trái cây")) {
-                flags.add("PENDING_CONFIRMATION_REFRESHMENT:DS04");
-                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:DS04:trái cây");
+                flags.add("PENDING_CONFIRMATION_REFRESHMENT:" + code);
+                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:" + code + ":trái cây");
             }
         }
-        // 2. NS03 (580k/100p - dòng 8, 21, 33): tẩy tế bào chết chỉ xuất hiện ở cột H, thiếu ở cột E & N -> PENDING_CONFIRMATION
-        if ("NS03".equals(code)) {
+        // 2. Exfoliation mentioned in secondary process/specs notes but omitted from primary confirmed includesSummary:
+        boolean exfoliationConfirmedInIncludes = incLow.contains("tẩy tế bào chết") || incLow.contains("tẩy da chết");
+        boolean exfoliationOnlyInSecondaryNotes = !exfoliationConfirmedInIncludes
+                && !incLow.isBlank()
+                && (procAndSpecsLow.contains("tẩy tế bào chết") || procAndSpecsLow.contains("tẩy da chết"));
+        if (exfoliationOnlyInSecondaryNotes) {
             if (clauseLow.contains("tẩy tế bào chết") && !isAttributeNegatedBeforeMatch(clauseLow, "tẩy tế bào chết")) {
-                flags.add("PENDING_CONFIRMATION_EXFOLIATION:NS03");
-                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:NS03:tẩy tế bào chết");
+                flags.add("PENDING_CONFIRMATION_EXFOLIATION:" + code);
+                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:" + code + ":tẩy tế bào chết");
             } else if (clauseLow.contains("tẩy da chết") && !isAttributeNegatedBeforeMatch(clauseLow, "tẩy da chết")) {
-                flags.add("PENDING_CONFIRMATION_EXFOLIATION:NS03");
-                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:NS03:tẩy da chết");
-            }
-        }
-        // 3. NS04 (670k/120p) tại Long Biên (dòng 22): phần gội đầu dưỡng sinh = PENDING_CONFIRMATION (chỉ CONFIRMED ở Bích Câu & Mỹ Đình)
-        if ("NS04".equals(code)
-                && (fullBubbleLow.contains("long biên") || fullBubbleLow.contains("hồng tiến"))
-                && !fullBubbleLow.contains("bích câu")
-                && !fullBubbleLow.contains("mỹ đình")
-                && !clauseLow.contains("xác nhận")
-                && !clauseLow.contains("kiểm tra lại")) {
-            if (clauseLow.contains("gội đầu") && !isAttributeNegatedBeforeMatch(clauseLow, "gội đầu")) {
-                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:NS04_LONG_BIEN:gội đầu dưỡng sinh");
+                flags.add("PENDING_CONFIRMATION_EXFOLIATION:" + code);
+                flags.add("UNVERIFIED_PENDING_CONFIRMATION_ATTRIBUTE:" + code + ":tẩy da chết");
             }
         }
         return flags;
@@ -2506,43 +2624,36 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         if (pkg == null) {
             return "";
         }
-        String code = pkg.code() != null ? pkg.code().strip().toUpperCase(Locale.ROOT) : "";
         String formatNote = (pkg.display() != null && pkg.display().customerFacingFormatNote() != null)
                 ? pkg.display().customerFacingFormatNote()
                 : "";
-        StringBuilder specsSb = new StringBuilder();
-        if (pkg.normalized() != null && pkg.normalized().specifications() != null) {
-            for (PackageCatalogService.SpecificationAttr attr : pkg.normalized().specifications()) {
-                if (attr != null && attr.rawValue() != null && !attr.rawValue().isBlank()) {
-                    specsSb.append(' ').append(attr.rawValue());
-                }
-            }
-        }
+        String specsLower = extractSpecificationsCorpusLower(pkg);
+        String incLow = pkg.includesSummary() != null ? pkg.includesSummary().toLowerCase(Locale.ROOT) : "";
         String corpus = ((pkg.canonicalName() != null ? pkg.canonicalName() : "") + " "
                 + (pkg.includesSummary() != null ? pkg.includesSummary() : "") + " "
                 + (pkg.processSummary() != null ? pkg.processSummary() : "") + " "
                 + (pkg.customerFacingSpaceNote() != null ? pkg.customerFacingSpaceNote() : "") + " "
                 + formatNote + " "
                 + (pkg.roomType() != null ? pkg.roomType() : "") + " "
-                + (pkg.suitableFor() != null ? pkg.suitableFor() : "")
-                + specsSb)
+                + (pkg.suitableFor() != null ? pkg.suitableFor() : "") + " "
+                + specsLower)
                 .toLowerCase(Locale.ROOT)
                 .replaceAll("(?isU)\\(\\s*(?:không|chưa)\\s+(?:phải|bao\\s+gồm|có)[^)]*\\)", " ");
-        // Chuẩn hóa ma trận quyền lợi có thẩm quyền từ 01_giá_dịch_vụ.html:
-        // - NS01..NS04 tại 3 cơ sở Hà Nội CONFIRMED có buffet thực dưỡng cao cấp sau liệu trình.
-        // - NS01 (399k) & NS02 (530k) là Phòng chung có rèm riêng từng giường (loại bỏ chữ VIP mâu thuẫn ở cột H).
-        // - NS03 (580k): tẩy tế bào chết = PENDING_CONFIRMATION (loại khỏi corpus xác nhận).
-        if (NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(code)) {
+        if (packageConfirmedAllowsBuffet(pkg)) {
             corpus = corpus + " thưởng thức buffet thực dưỡng cao cấp sau liệu trình";
+        } else if (packageConfirmedAllowsThucDuong(pkg)) {
+            corpus = corpus + " ăn nhẹ thực dưỡng";
         }
-        if (Set.of("DS02", "DS03", "DS04", "DS05").contains(code)
-                || corpus.contains("gội đầu dưỡng sinh")) {
+        if (corpus.contains("gội đầu dưỡng sinh")) {
             corpus = corpus + " làm sạch da mặt sữa rửa mặt tẩy tế bào chết massage mặt nâng cơ đắp mặt nạ dưỡng da ấn huyệt đầu thả lỏng vai gáy cổ sấy khô xịt dưỡng tóc";
         }
-        if (NON_VIP_COMMON_ROOM_PACKAGE_CODES.contains(code)) {
+        if (!packageConfirmedAllowsPrivateOrVipRoom(pkg)) {
             corpus = corpus.replaceAll("(?iU)\\b(?:phòng\\s+vip(?:\\s+riêng)?|phòng\\s+riêng(?:\\s+vip)?|vip)\\b", " phòng chung rèm riêng ");
         }
-        if ("NS03".equals(code)) {
+        if (!incLow.isBlank()
+                && !incLow.contains("tẩy tế bào chết")
+                && !incLow.contains("tẩy da chết")
+                && !corpus.contains("gội đầu dưỡng sinh")) {
             corpus = corpus.replaceAll("(?iU)\\btẩy\\s+(?:tế\\s+bào|da)\\s+chết\\b", " ");
         }
         return corpus.replaceAll("\\s+", " ").strip();
@@ -3054,8 +3165,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     String beforePrice = clause.substring(0, pm.start()).toLowerCase(Locale.ROOT);
                     String afterPrice = clause.substring(pm.end()).toLowerCase(Locale.ROOT);
                     boolean isNegatedOrComparative = beforePrice.matches(
-                            "(?isU).*(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)|(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+|mẫu\\s+|khóa\\s+)?)[^,]*$")
-                            || afterPrice.matches("(?isU)^[^,]{0,40}?\\b(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở)\\b.*");
+                            "(?isU).*(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở|phải|báo|nhắc|nêu)|(?:dưới|thấp\\s+hơn|trên|cao\\s+hơn|so\\s+với)\\s+(?:mức\\s+|gói\\s+|mẫu\\s+|khóa\\s+)?)[^,]*$")
+                            || afterPrice.matches("(?isU)^[^,]{0,55}?\\b(?:(?:chưa|không|ko|chẳng)\\s+(?:có|hỗ\\s+trợ|triển\\s+khai|áp\\s+dụng|mở|phải)|(?:là\\s+|áp\\s+dụng\\s+|niêm\\s+yết\\s+)?(?:tại|ở|thuộc)\\s+(?:cơ\\s+sở|chi\\s+nhánh|khu\\s+vực)?\\s*(?:tp\\.?\\s*hcm|hồ\\s+chí\\s+minh|sài\\s+gòn|hà\\s+nội|khác))\\b.*");
                     if (isNegatedOrComparative) {
                         continue;
                     }
@@ -4439,7 +4550,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null) continue;
             String fixed = repairWrongPronounOpenerInPlace(b.text(), selfPronoun, customerPronoun);
-            repaired.add(new FanpageBotResponse.ReplyBubble(fixed, b.typingDelayMs()));
+            repaired.add(new FanpageBotResponse.ReplyBubble(fixed, b.typingDelayMs(), b.purpose()));
         }
         return repaired;
     }
@@ -5394,16 +5505,18 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
             if (v.startsWith("UNGROUNDED_BUFFET_AMENITY:") && !groundedChunksLower.isEmpty()) {
                 String mismatchPkgCode = v.substring("UNGROUNDED_BUFFET_AMENITY:".length()).strip().toUpperCase(Locale.ROOT);
-                if (NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(mismatchPkgCode)
+                PackageCatalogService.PackageSummary mismatchPkg = findCatalogPackageByCode(allCatalog, mismatchPkgCode);
+                if (packageConfirmedAllowsBuffet(mismatchPkg)
                         && groundedChunksLower.contains("buffet")) {
                     continue;
                 }
             }
             if (v.startsWith("CROSS_TIER_AMENITY_MISMATCH:") && !groundedChunksLower.isEmpty()) {
                 String mismatchPkgCode = v.substring("CROSS_TIER_AMENITY_MISMATCH:".length()).strip().toUpperCase(Locale.ROOT);
-                if (!"DS04".equals(mismatchPkgCode)
+                PackageCatalogService.PackageSummary mismatchPkg = findCatalogPackageByCode(allCatalog, mismatchPkgCode);
+                if (packageConfirmedAllowsThucDuong(mismatchPkg)
                         && groundedChunksLower.contains("thực dưỡng")
-                        && (!combinedTextLower.contains("buffet") || NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(mismatchPkgCode))) {
+                        && (!combinedTextLower.contains("buffet") || packageConfirmedAllowsBuffet(mismatchPkg))) {
                     continue;
                 }
             }
@@ -5411,18 +5524,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 String rest = v.substring("CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:".length());
                 int colonIdx = rest.indexOf(':');
                 String mismatchPkgCode = colonIdx >= 0 ? rest.substring(0, colonIdx).strip().toUpperCase(Locale.ROOT) : "";
+                PackageCatalogService.PackageSummary mismatchPkg = findCatalogPackageByCode(allCatalog, mismatchPkgCode);
                 String attr = v.substring(v.lastIndexOf(':') + 1).strip().toLowerCase(Locale.ROOT);
                 if (!attr.isEmpty()
-                        && !"DS04".equals(mismatchPkgCode)
+                        && mismatchPkg != null
                         && !attr.contains("phòng riêng")
                         && !attr.contains("vip")
                         && !attr.contains("tẩy tế bào chết")
                         && !attr.contains("tẩy da chết")
-                        && ((!attr.contains("buffet") && groundedChunksLower.contains(attr))
-                            || (attr.contains("buffet") && NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(mismatchPkgCode))
+                        && ((!attr.contains("buffet") && !attr.contains("thực dưỡng") && groundedChunksLower.contains(attr))
+                            || (attr.contains("buffet") && packageConfirmedAllowsBuffet(mismatchPkg))
                             || (attr.contains("thực dưỡng")
+                                && packageConfirmedAllowsThucDuong(mismatchPkg)
                                 && groundedChunksLower.contains("thực dưỡng")
-                                && (!combinedTextLower.contains("buffet") || NANG_SEN_BUFFET_CONFIRMED_PACKAGE_CODES.contains(mismatchPkgCode))))) {
+                                && (!combinedTextLower.contains("buffet") || packageConfirmedAllowsBuffet(mismatchPkg))))) {
                     continue;
                 }
             }
@@ -5762,6 +5877,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "|\\b(?:chỉ\\s+(?:nêu|nói|giới\\s+thiệu|báo|đưa)|lúc\\s+giới\\s+thiệu\\s+nói)\\s+(?:có\\s+|mỗi\\s+)?(?:\\d+|một|hai|ba)\\s*(?:gói|dịch\\s+vụ|liệu\\s+trình)\\b"
             + "|\\b(?:cách\\s+nói|giới\\s+thiệu|tư\\s+vấn)\\b[^.!?\\n]{0,45}\\b(?:gây\\s+hiểu\\s+lầm|dễ\\s+hiểu\\s+lầm|hiểu\\s+nhầm)\\b"
             + "|\\b(?:chăm(?:\\s+sóc)?|làm|massage)\\s+(?:đúng\\s+)?(?:\\d+|một)\\s+vùng\\s+(?:rồi\\s+|xong\\s+)?(?:bỏ(?:\\s+qua)?|không\\s+làm)\\s+(?:các\\s+|những\\s+)?vùng\\s+khác\\b"
+            + "|\\b(?:loạn\\s+ngôn|nãy\\s+vừa|mới\\s+vừa|vừa\\s+nãy)\\b[^.!?\\n]{0,45}\\b(?:giờ\\s+lại|lại\\s+mọc|mọc\\s+đâu\\s+ra)\\b"
             + ")"
     );
 
@@ -5773,6 +5889,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             + "|\\bcó\\s+nhận\\s+(?:chăm\\s+sóc|làm|khách|bầu|mẹ\\s+bầu)\\b|\\bnhận\\s+chăm\\s+sóc\\b"
             + "|\\b(?:chỉ\\s+(?:muốn|cần|thích|làm|chọn)|chủ\\s+yếu\\s+(?:là\\s+|muốn\\s+)?)\\s*(?:massage|mát\\s*xa)\\b"
             + "|\\bđổi\\s+(?:sang\\s+)?gói\\s+khác\\b"
+            + "|\\bmọc\\s+đâu\\s+ra\\s+(?:gói|mức|giá)\\b"
+            + "|\\b(?:nãy\\s+vừa|vừa\\s+nãy|lúc\\s+nãy)\\s*\\d{3}\\b"
             + ")"
     );
 
@@ -6032,7 +6150,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                      .replaceAll("\\s+([,.;:!?])", "$1")
                      .strip();
             if (!txt.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs(), b.purpose()));
             }
         }
         return out;
@@ -6074,7 +6192,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             m.appendTail(sb);
             String newTxt = sb.toString();
             if (!newTxt.equals(txt)) {
-                out.add(new FanpageBotResponse.ReplyBubble(newTxt, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(newTxt, b.typingDelayMs(), b.purpose()));
             } else {
                 out.add(b);
             }
@@ -6108,20 +6226,24 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 continue;
             }
             String currText = curr.text().strip();
+            String currPurpose = curr.purpose();
             while ((currText.endsWith(":") || currText.endsWith("：")) && i + 1 < bubbles.size()) {
                 FanpageBotResponse.ReplyBubble next = bubbles.get(i + 1);
                 i++;
                 if (next != null && next.text() != null && !next.text().isBlank()) {
                     currText = currText + "\n" + next.text().strip();
+                    if (currPurpose == null && next.purpose() != null) {
+                        currPurpose = next.purpose();
+                    }
                 }
             }
-            mergedColon.add(new FanpageBotResponse.ReplyBubble(currText, curr.typingDelayMs()));
+            mergedColon.add(new FanpageBotResponse.ReplyBubble(currText, curr.typingDelayMs(), currPurpose));
             i++;
         }
 
         // Bước 2: Ở lượt 1 khi khách hỏi thẳng giá/vận hành ngắn (hỏi giá chung hoặc giá một nhóm dịch vụ):
         // P3.7-B — chỉ gộp bubble 0 vào bubble báo giá khi bubble 0 là câu dẫn cụt/quá ngắn (VD "Dạ chào mình ạ.");
-        // nếu bubble 0 đã là lời chào thương hiệu hoàn chỉnh thì GIỮ 2 nhịp tách biệt (tránh lặp "Dạ chào... Dạ bên em...").
+        // nếu bubble 0 đã là lời chào thương hiệu hoàn chỉnh thì GIỮ nhịp tách biệt của LLM (Stage 2: không ép gộp 3 bubble thành 2).
         if (isOpeningTurn
                 && mergedColon.size() >= 2
                 && CleanAgentCatalogAndPromptBuilder.isDirectTurnOnePriceOrOperationalQuestion(customerMessage)) {
@@ -6130,30 +6252,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             boolean b0IsBareLeadIn = b0.length() < OPENING_COMPLETE_GREETING_MIN_CHARS;
             if (!hasQuotedPriceInText(b0) && hasQuotedPriceInText(b1) && b0IsBareLeadIn) {
                 String joiner = (b0.endsWith(":") || b0.endsWith("：")) ? "\n" : " ";
+                String mergedPurpose = mergedColon.get(1).purpose() != null
+                        ? mergedColon.get(1).purpose()
+                        : mergedColon.get(0).purpose();
                 List<FanpageBotResponse.ReplyBubble> collapsed = new ArrayList<>(mergedColon.size() - 1);
-                collapsed.add(new FanpageBotResponse.ReplyBubble(b0 + joiner + b1, mergedColon.get(0).typingDelayMs()));
+                collapsed.add(new FanpageBotResponse.ReplyBubble(b0 + joiner + b1, mergedColon.get(0).typingDelayMs(), mergedPurpose));
                 for (int k = 2; k < mergedColon.size(); k++) {
                     collapsed.add(mergedColon.get(k));
                 }
                 mergedColon = collapsed;
             }
-            // Giữ tối đa 2 bubble: gộp các bubble phía sau vào bubble nội dung (bubble chào hoàn chỉnh đứng riêng).
-            while (mergedColon.size() > 2) {
-                int a = mergedColon.size() - 2;
-                String first = mergedColon.get(a).text().strip();
-                String second = mergedColon.get(a + 1).text().strip();
-                List<FanpageBotResponse.ReplyBubble> nextList = new ArrayList<>(mergedColon.subList(0, a));
-                nextList.add(new FanpageBotResponse.ReplyBubble(first + " " + second, mergedColon.get(a).typingDelayMs()));
-                mergedColon = nextList;
-            }
         } else if (isOpeningTurn
                 && (CleanAgentCatalogAndPromptBuilder.isBareTurnOneGreetingOrConsultationRequest(customerMessage)
                     || isLevel1TurnOnePureSymptomSharingWithoutServiceQuestion(customerMessage))) {
-            // P3.7-B.1 & P3.7-B.2: Khi khách chỉ nhắn "Tư vấn", chào hỏi ngắn, hoặc mới tâm sự mệt mỏi/khó ngủ/mỏi cổ vai gáy lần đầu (chưa hỏi gói/giá),
-            // lược bỏ mọi câu tự ý báo giá/liệt kê gói cụ thể để chỉ giữ lời đồng cảm + định hướng chăm sóc chung + 1 câu hỏi mở khám phá nhu cầu.
-            boolean isPureSymptomTurn = isLevel1TurnOnePureSymptomSharingWithoutServiceQuestion(customerMessage);
             List<FanpageBotResponse.ReplyBubble> cleanedConsult = new ArrayList<>(mergedColon.size());
-            boolean strippedPriceSentence = false;
             for (FanpageBotResponse.ReplyBubble b : mergedColon) {
                 if (b == null || b.text() == null || b.text().isBlank()) continue;
                 String[] sents = b.text().strip().split("(?<=[.!?？])\\s+");
@@ -6163,34 +6275,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     if (st.isEmpty()) continue;
                     if (hasQuotedPriceInText(st)
                             || st.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(muốn\\s+em\\s+gợi\\s+ý\\s+thêm\\s+hướng|hay\\s+giữ\\s+gói\\s+này|gói\\s+cơ\\s+bản.*gói\\s+chuyên\\s+sâu)\\b.*")) {
-                        strippedPriceSentence = true;
                         continue;
                     }
                     kept.add(st);
                 }
                 String joined = String.join(" ", kept).strip();
                 if (!joined.isEmpty()) {
-                    cleanedConsult.add(new FanpageBotResponse.ReplyBubble(joined, b.typingDelayMs()));
+                    cleanedConsult.add(new FanpageBotResponse.ReplyBubble(joined, b.typingDelayMs(), b.purpose()));
                 }
             }
             if (!cleanedConsult.isEmpty()) {
-                if (strippedPriceSentence) {
-                    String combinedCleaned = cleanedConsult.stream().map(FanpageBotResponse.ReplyBubble::text).reduce("", (a, b2) -> a + " " + b2);
-                    if (isPureSymptomTurn && !combinedCleaned.toLowerCase(Locale.ROOT).contains("liệu trình")) {
-                        String b0Text = cleanedConsult.get(0).text().strip();
-                        if (!b0Text.endsWith(".") && !b0Text.endsWith("!")) {
-                            b0Text = b0Text + ".";
-                        }
-                        b0Text = b0Text + " Với tình trạng này, bên em có định hướng liệu trình dưỡng sinh kết hợp gội đầu thảo dược và chăm sóc thư giãn vùng mỏi rất dịu nhẹ ạ.";
-                        cleanedConsult.set(0, new FanpageBotResponse.ReplyBubble(b0Text, cleanedConsult.get(0).typingDelayMs()));
-                    }
-                    if (countQuestionMarks(combinedCleaned) == 0) {
-                        cleanedConsult.add(new FanpageBotResponse.ReplyBubble(
-                                "Mình muốn trải nghiệm một buổi vừa đủ để thư giãn nhẹ nhàng hay dành thêm thời gian chăm sóc kỹ hơn cho vùng đang mỏi ạ?",
-                                2000
-                        ));
-                    }
-                }
                 mergedColon = cleanedConsult;
             }
         }
@@ -6409,6 +6503,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         }
         List<List<String>> sentencesPerBubble = new ArrayList<>();
         List<Integer> delays = new ArrayList<>();
+        List<String> purposes = new ArrayList<>();
         int totalQuestionMarks = 0;
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
@@ -6420,6 +6515,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
             sentencesPerBubble.add(sents);
             delays.add(b.typingDelayMs());
+            purposes.add(b.purpose());
         }
         if (sentencesPerBubble.isEmpty()) {
             return List.of();
@@ -6480,7 +6576,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         for (int bi = 0; bi < sentencesPerBubble.size(); bi++) {
             String joined = String.join(" ", sentencesPerBubble.get(bi)).strip();
             if (!joined.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(joined, delays.get(bi)));
+                out.add(new FanpageBotResponse.ReplyBubble(joined, delays.get(bi), purposes.get(bi)));
             }
         }
         return out.isEmpty() ? bubbles : out;
@@ -6788,7 +6884,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
             String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
             if (!containsFalseApologyReference(norm, historyLow)) {
-                out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs(), b.purpose()));
                 continue;
             }
             String[] sentences = norm.split("(?<=[.!?？])\\s+");
@@ -6812,7 +6908,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 honestApologyEmitted = true;
             }
             if (!kept.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(String.join(" ", kept), b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(String.join(" ", kept), b.typingDelayMs(), b.purpose()));
             }
         }
         return out;
@@ -6978,7 +7074,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .replaceAll("[ \\t]{2,}", " ")
                     .strip();
             if (!merged.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs(), b.purpose()));
             }
         }
         if (out.isEmpty()) {
@@ -7070,7 +7166,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .replaceAll("[ \\t]{2,}", " ")
                     .strip();
             if (!merged.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(merged, b.typingDelayMs(), b.purpose()));
             }
         }
         return out.isEmpty() ? bubbles : out;
@@ -7205,19 +7301,20 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String norm = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
             if (!detectForbiddenThaoMaiEmpathyCliche(norm)) {
-                cleaned.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs()));
+                cleaned.add(new FanpageBotResponse.ReplyBubble(norm, b.typingDelayMs(), b.purpose()));
                 continue;
             }
             anyFiltered = true;
             String sanitized = sanitizePatronizingEmpathyTextInPlace(norm);
             if (!sanitized.isBlank()) {
-                cleaned.add(new FanpageBotResponse.ReplyBubble(sanitized, b.typingDelayMs()));
+                cleaned.add(new FanpageBotResponse.ReplyBubble(sanitized, b.typingDelayMs(), b.purpose()));
             }
         }
         if (cleaned.isEmpty() && anyFiltered) {
             return List.of(new FanpageBotResponse.ReplyBubble(
                     "Dạ " + safeSelf + " nghe " + safeCust + " chia sẻ rồi ạ.",
-                    bubbles.get(0).typingDelayMs()
+                    bubbles.get(0).typingDelayMs(),
+                    bubbles.get(0).purpose()
             ));
         }
         return cleaned;
@@ -7338,7 +7435,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
             // ACI V3 Guardrail 1: Giảm quyền can thiệp ngôn ngữ của Sanitizer trên các lượt thông thường;
             // chỉ sửa lỗi ngữ pháp câu hỏi gián tiếp ("và hỏi anh/chị có muốn...") và lặp từ "gói Gói".
-            txt = txt.replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu");
             txt = txt.replaceAll(
                     "(?iU)[,\\s]+và\\s+hỏi\\s+(?:xem\\s+)?(anh|chị|mình|bạn)\\s+có\\s+muốn\\s+",
                     ". $1 có muốn "
@@ -7371,7 +7467,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 }
 
                 // 4. Cắt bỏ toàn bộ câu hỏi mời đặt lịch / chọn gói / khảo sát gài ở cuối câu (bắt buộc SALES_CTA = NONE).
-                //    P3.7-B: nhánh MISSED_DISCOVERY được giữ đúng 1 DISCOVERY_QUESTION thuần túy (câu hỏi cuối cùng hợp lệ);
+                //    P3.7-B: nhánh MISSED_DISCOVERY được giữ đúng 1 DISCOVERY_QUESTION thuần túy (câu hỏi cuối cùng hợp lệ của LLM);
                 //    nhánh OVER_INTRUSION giữ nguyên 0 câu hỏi. Câu báo giá cũng bị lược trong lượt phục hồi (ZERO_PITCH)
                 //    trừ khi khách đồng thời hỏi giá.
                 boolean allowDiscovery = isDiscoveryQuestionAllowedOnProcessFeedback(customerMessage);
@@ -7414,11 +7510,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                 : ("Dạ " + safeSelf + " xin lỗi " + safeCust + " vì cách trò chuyện vừa rồi còn hơi dài và chưa thật sự tự nhiên ạ.");
                         trimLow = trimmed.toLowerCase(Locale.ROOT);
                     }
-                    if (isMissedDiscovery && prevTurnActuallyHadPrices
-                            && trimLow.matches("(?isU).*(?:em\\s+hỏi\\s+sớm\\s+quá).*")) {
-                        trimmed = "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì đã vội đưa bảng giá khi chưa hỏi kỹ tình trạng đau mỏi của " + safeCust + " ạ.";
-                        trimLow = trimmed.toLowerCase(Locale.ROOT);
-                    }
                     if (isMissedDiscovery && !prevTurnActuallyHadPrices
                             && trimLow.matches("(?isU).*(?:phải\\s+xem\\s+nhiều\\s+thông\\s+tin|đưa\\s+nhiều\\s+thông\\s+tin|xả\\s+thông\\s+tin|liệt\\s+kê\\s+bảng\\s+giá|tương\\s+cả\\s+đống\\s+giá).*")) {
                         trimmed = "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì chưa lắng nghe kỹ nhu cầu của "
@@ -7444,39 +7535,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
 
             if (!txt.isEmpty()) {
-                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs()));
+                out.add(new FanpageBotResponse.ReplyBubble(txt, b.typingDelayMs(), b.purpose()));
             }
         }
 
         if (isStyleComplaint) {
-            if (isMissedDiscoveryFeedbackCue(customerMessage) && discoveryCandidate == null) {
-                discoveryCandidate = "Hiện " + safeCust + " đang cảm thấy mỏi hay muốn chăm sóc vùng nào nhất để "
-                        + safeSelf + " lắng nghe và hỗ trợ đúng ý " + safeCust + " ạ?";
-            }
-            String normCustForComplaint = customerMessage != null
-                    ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
-                    : "";
-            boolean isAiOrEmotionCriticismTurn = !isMissedDiscoveryFeedbackCue(customerMessage)
-                    && (CRITICISM_OF_UNSOLICITED_AI_DISCLOSURE_PATTERN.matcher(normCustForComplaint).find()
-                        || normCustForComplaint.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(cảm\\s+xúc|chiến\\s+lược|nghệ\\s+thuật\\s+bán\\s+hàng|chạy\\s+mất\\s+dép)\\b.*"));
-            boolean isDrivingBrevityRequest = !isMissedDiscoveryFeedbackCue(customerMessage)
-                    && normCustForComplaint.toLowerCase(Locale.ROOT).matches("(?isU).*\\b(lái\\s+xe|chạy\\s+xe)\\b.*");
-            if (isAiOrEmotionCriticismTurn) {
-                return List.of(new FanpageBotResponse.ReplyBubble(
-                        "Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý rất thẳng thắn ạ. Cách tự giới thiệu máy móc như AI cùng lối phản hồi khô khan, thiếu cảm xúc và chưa có chiều sâu tư vấn vừa rồi đúng là làm "
-                                + safeCust + " mất thiện cảm; bất cứ khi nào " + safeCust + " muốn chia sẻ vùng cơ thể đang mỏi mệt, "
-                                + safeSelf + " luôn sẵn sàng lắng nghe trước để tư vấn thật tinh tế và sát nhu cầu của " + safeCust + " ạ.",
-                        0
-                ));
-            }
-            if (isDrivingBrevityRequest) {
-                return List.of(new FanpageBotResponse.ReplyBubble(
-                        "Dạ " + safeSelf + " đã ghi nhận và xin phép tạm dừng hỏi thêm để " + safeCust
-                                + " tập trung lái xe an toàn ạ; khi nào cần thông tin gì " + safeSelf
-                                + " sẽ báo thật ngắn gọn, đúng trọng tâm cho " + safeCust + " ngay nhé ạ.",
-                        0
-                ));
-            }
             if (out.isEmpty()) {
                 String normCustMsg = customerMessage != null
                         ? java.text.Normalizer.normalize(customerMessage.strip(), java.text.Normalizer.Form.NFC)
@@ -7487,8 +7550,8 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                 String naturalAck;
                 if (isMetaScriptQuestion) {
                     naturalAck = "Dạ không phải trả lời rập khuôn theo bài đâu ạ, tại " + safeSelf
-                            + " sợ báo giá ngắn quá làm " + safeCust
-                            + " khó hình dung rõ dịch vụ nên mới chia sẻ kỹ hơn chút thôi ạ.";
+                            + " sợ chia sẻ ngắn quá làm " + safeCust
+                            + " khó hình dung rõ dịch vụ nên mới nói kỹ hơn chút thôi ạ.";
                 } else if (isAiOrEmotionCriticism) {
                     naturalAck = "Dạ " + safeSelf + " cảm ơn " + safeCust + " đã góp ý rất thẳng thắn ạ. Cách trò chuyện vừa rồi của "
                             + safeSelf + " còn khô khan, cứng nhắc và chưa chạm tới cảm xúc của " + safeCust + "; "
@@ -7517,7 +7580,7 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             if (discoveryCandidate != null && !discoveryCandidate.isBlank()) {
                 mergedOutText = (mergedOutText + " " + discoveryCandidate).strip();
             }
-            return List.of(new FanpageBotResponse.ReplyBubble(mergedOutText, out.get(0).typingDelayMs()));
+            return List.of(new FanpageBotResponse.ReplyBubble(mergedOutText, out.get(0).typingDelayMs(), out.get(0).purpose()));
         }
         return out;
     }
@@ -7912,12 +7975,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
             if (!naturalPauseSents.isEmpty()) {
                 String keptPauseText = String.join(" ", naturalPauseSents).strip();
-                return List.of(new FanpageBotResponse.ReplyBubble(keptPauseText, 0));
+                return List.of(new FanpageBotResponse.ReplyBubble(keptPauseText, 0, bubbles.get(0).purpose()));
             }
             return List.of(new FanpageBotResponse.ReplyBubble(
                     "Dạ vâng ạ, " + safeCust + " cứ thong thả tham khảo thêm nhé. Khi nào cần hỗ trợ thông tin gì "
                             + safeSelf + " vẫn ở đây đồng hành cùng " + safeCust + " ạ.",
-                    0
+                    0,
+                    bubbles.get(0).purpose()
             ));
         }
 
@@ -7945,13 +8009,13 @@ public final class CleanAgentOutputRefereeAndSanitizer {
             }
             if (!genderAckSents.isEmpty()) {
                 String keptGenderText = String.join(" ", genderAckSents).strip();
-                return List.of(new FanpageBotResponse.ReplyBubble(keptGenderText, 0));
+                return List.of(new FanpageBotResponse.ReplyBubble(keptGenderText, 0, bubbles.get(0).purpose()));
             }
             return List.of(new FanpageBotResponse.ReplyBubble(
-                    "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì sơ suất xưng hô lúc nãy ạ. Bên " + safeSelf
-                            + " đón tiếp rất nhiều khách ghé chăm sóc cổ vai gáy và thư giãn giảm đau đầu, khi nào "
-                            + safeCust + " cần tư vấn thêm chi tiết nào " + safeCust + " cứ nhắn " + safeSelf + " nhé ạ.",
-                    0
+                    "Dạ " + safeSelf + " xin lỗi " + safeCust + " vì sơ suất xưng hô lúc nãy ạ. Khi nào "
+                            + safeCust + " cần tư vấn thêm thông tin gì " + safeCust + " cứ nhắn " + safeSelf + " nhé ạ.",
+                    0,
+                    bubbles.get(0).purpose()
             ));
         }
 
@@ -7976,10 +8040,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                                 + safeCust + " lên hàng đầu ạ. Trước khi tư vấn bất kỳ thao tác hay liệu trình nào, "
                                 + safeSelf + " xin phép kết nối trực tiếp với " + safeActor
                                 + "/quản lý chuyên môn của cơ sở để kiểm tra tình trạng thực tế và tư vấn phương án an toàn nhất cho " + safeCust + " nhé ạ.",
-                        0
+                        0,
+                        bubbles.get(0).purpose()
                 ));
             }
-            return enforceGlobalSingleTrailingQuestionAcrossBubbles(bubbles);
+            return bubbles;
         }
 
         if (action == AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF) {
@@ -7989,15 +8054,16 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .reduce("", (a, b) -> a + " " + b)
                     .toLowerCase(Locale.ROOT);
             boolean mentionsStaffReview = combinedRawLower.matches(
-                    "(?isU).*(chuyên\\s+viên|nhân\\s+viên|kỹ\\s+thuật\\s+viên|quản\\s+lý|bộ\\s+phận\\s+chuyên\\s+môn|spa\\s+kiểm\\s+tra|tư\\s+vấn\\s+trực\\s+tiếp|xem\\s+xét\\s+trực\\s+tiếp).*");
+                    "(?isU).*(chuyên\\s+viên|nhân\\s+viên|kỹ\\s+thuật\\s+viên|quản\\s+lý|bộ\\s+phận\\s+chuyên\\s+môn|cơ\\s+sở\\s+kiểm\\s+tra|spa\\s+kiểm\\s+tra|tư\\s+vấn\\s+trực\\s+tiếp|xem\\s+xét\\s+trực\\s+tiếp).*");
             boolean selfConcludesSuitability = combinedRawLower.matches(
                     "(?isU).*(hoàn\\s+toàn\\s+làm\\s+được|làm\\s+được\\s+bình\\s+thường|an\\s+toàn\\s+tuyệt\\s+đối\\s+để\\s+massage\\s+ngay).*");
             if (!mentionsStaffReview || selfConcludesSuitability) {
                 return List.of(new FanpageBotResponse.ReplyBubble(
                         "Dạ " + safeCust + " chia sẻ tình trạng này, " + safeSelf
-                                + " đã ghi nhận ạ. Để bảo đảm phù hợp, đội ngũ nhân viên/chuyên viên của Spa sẽ xem xét trực tiếp tình trạng của "
-                                + safeCust + " và tư vấn theo đúng quy trình của Spa nhé ạ.",
-                        0
+                                + " đã ghi nhận ạ. Để bảo đảm phù hợp, đội ngũ nhân viên/chuyên viên của cơ sở sẽ xem xét trực tiếp tình trạng của "
+                                + safeCust + " và tư vấn theo đúng quy trình của cơ sở nhé ạ.",
+                        0,
+                        bubbles.get(0).purpose()
                 ));
             }
         }
@@ -8005,14 +8071,11 @@ public final class CleanAgentOutputRefereeAndSanitizer {
         boolean isSecondConsecutivePriceObjection = action == AdaptiveConversationIntelligence.TurnAction.RESPECTFUL_DEESCALATION;
         boolean isSuitabilityHandoffTurn = action == AdaptiveConversationIntelligence.TurnAction.SUITABILITY_INQUIRY_HANDOFF;
         boolean isExternalPriceComparison = action == AdaptiveConversationIntelligence.TurnAction.VALUE_EXPLANATION;
-        boolean isGeneralPriceInquiryWithoutPriorNeeds = lwPlan.actionExecutionDirective() != null
-                && lwPlan.actionExecutionDirective().startsWith("PRICE_INTENT_A (GENERAL_PRICE_INQUIRY)");
 
         List<FanpageBotResponse.ReplyBubble> processed = new ArrayList<>();
         for (FanpageBotResponse.ReplyBubble b : bubbles) {
             if (b == null || b.text() == null || b.text().isBlank()) continue;
             String txt = java.text.Normalizer.normalize(b.text().strip(), java.text.Normalizer.Form.NFC);
-            txt = txt.replaceAll("(?iU)massage\\s+điều\\s+trị", "massage chăm sóc chuyên sâu");
 
             // Chống suy diễn / hạ thấp dịch vụ bên ngoài ở lượt so sánh giá (chỉ cắt mệnh đề chê bai đối thủ nếu có, không chèn văn mẫu cứng)
             if (isExternalPriceComparison) {
@@ -8039,26 +8102,6 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     }
                 }
 
-                // Post-CP3 Wave 2 (2.1): Khi khách mới chỉ hỏi "Giá" (chưa nêu nhu cầu), không yêu cầu khách chọn gói cụ thể
-                if (isGeneralPriceInquiryWithoutPriorNeeds
-                        && (st.endsWith("?") || st.endsWith("？"))
-                        && stLow.matches("(?isU).*\\b(?:ưu\\s+tiên\\s+gói\\s+nào|nghiêng\\s+về\\s+gói\\s+nào|(?:nên\\s+)?chọn\\s+gói\\s+nào|thử\\s+gói\\s+nào|thích\\s+gói\\s+nào|quan\\s+tâm\\s+(?:đến\\s+)?gói\\s+nào|gói\\s+nào\\s+phù\\s+hợp)\\b.*")) {
-                    String needDiscoveryQuestion = "Hiện " + safeCust + " đang muốn thư giãn nhẹ nhàng hay chăm sóc tập trung vùng cơ thể nào để " + safeSelf + " gợi ý gói phù hợp nhất ạ?";
-                    if (hasQuotedPriceInText(st)) {
-                        String priceClauseOnly = st.replaceAll(
-                                "(?isU)[,;\\s]+[^,;!?？]*\\b(?:ưu\\s+tiên\\s+gói\\s+nào|nghiêng\\s+về\\s+gói\\s+nào|(?:nên\\s+)?chọn\\s+gói\\s+nào|thử\\s+gói\\s+nào|thích\\s+gói\\s+nào|quan\\s+tâm\\s+(?:đến\\s+)?gói\\s+nào|gói\\s+nào\\s+phù\\s+hợp)[^!?？]*[?？]$",
-                                ""
-                        ).strip();
-                        if (!priceClauseOnly.isEmpty() && hasQuotedPriceInText(priceClauseOnly)) {
-                            if (!priceClauseOnly.endsWith(".") && !priceClauseOnly.endsWith("!")) {
-                                priceClauseOnly = priceClauseOnly + " ạ.";
-                            }
-                            keptSents.add(priceClauseOnly);
-                        }
-                    }
-                    st = needDiscoveryQuestion;
-                }
-
                 keptSents.add(st);
             }
 
@@ -8067,66 +8110,21 @@ public final class CleanAgentOutputRefereeAndSanitizer {
                     .replaceAll("[ \\t]{2,}", " ")
                     .strip();
             if (!cleanedBubble.isEmpty()) {
-                processed.add(new FanpageBotResponse.ReplyBubble(cleanedBubble, b.typingDelayMs()));
+                processed.add(new FanpageBotResponse.ReplyBubble(cleanedBubble, b.typingDelayMs(), b.purpose()));
             }
         }
 
-        // Post-CP3 Wave 2 (2.1): Bảo đảm giá khởi điểm thực tế từ Catalog hiện hành được nêu khi khách hỏi "Giá"
-        if (isGeneralPriceInquiryWithoutPriorNeeds && !processed.isEmpty() && eligibleCatalog != null && !eligibleCatalog.isEmpty()) {
-            PackageCatalogService.PackageSummary minCorePkg =
-                    CleanAgentCatalogAndPromptBuilder.resolveLowestCoreStartingPackage(eligibleCatalog, List.of());
-            if (minCorePkg != null && minCorePkg.priceDisplay() != null && !minCorePkg.priceDisplay().isBlank()) {
-                String combinedProcessed = processed.stream()
-                        .map(FanpageBotResponse.ReplyBubble::text)
-                        .filter(java.util.Objects::nonNull)
-                        .reduce("", (a, b2) -> a + " " + b2);
-                String combinedLow = combinedProcessed.toLowerCase(Locale.ROOT);
-                String minPriceLow = minCorePkg.priceDisplay().strip().toLowerCase(Locale.ROOT);
-                String minPriceShortK = minCorePkg.priceAmountVnd() >= 1000L
-                        ? (minCorePkg.priceAmountVnd() / 1000L) + "k"
-                        : minPriceLow;
-                boolean mentionsStartingPrice = combinedLow.contains(minPriceLow) || combinedLow.contains(minPriceShortK);
-                if (!mentionsStartingPrice) {
-                    String anchorText = CleanAgentCatalogAndPromptBuilder.resolveLowestCoreStartingPackageAnchor(
-                            eligibleCatalog, List.of());
-                    String startingAnchorSentence = !anchorText.isBlank()
-                            ? ("Dạ các gói chăm sóc bên " + safeSelf + " có " + anchorText + " ạ.")
-                            : ("Dạ các gói chăm sóc bên " + safeSelf + " khởi điểm từ "
-                                    + minCorePkg.canonicalLabel() + " giá " + minCorePkg.priceDisplay() + " ạ.");
-                    FanpageBotResponse.ReplyBubble firstBubble = processed.get(0);
-                    processed.set(0, new FanpageBotResponse.ReplyBubble(
-                            startingAnchorSentence + " " + firstBubble.text(),
-                            firstBubble.typingDelayMs()
-                    ));
-                }
-            }
+        if (isSecondConsecutivePriceObjection && processed.isEmpty()) {
+            return List.of(new FanpageBotResponse.ReplyBubble(
+                    "Dạ " + safeSelf + " hoàn toàn tôn trọng cân nhắc về chi phí của " + safeCust + " ạ. "
+                            + safeCust + " cứ thong thả tham khảo thêm nhé, khi nào cần hỗ trợ thông tin gì "
+                            + safeSelf + " luôn sẵn sàng đồng hành cùng " + safeCust + " ạ.",
+                    0,
+                    bubbles.get(0).purpose()
+            ));
         }
 
-        if (isSecondConsecutivePriceObjection) {
-            if (processed.isEmpty()) {
-                return List.of(new FanpageBotResponse.ReplyBubble(
-                        "Dạ " + safeSelf + " hoàn toàn tôn trọng cân nhắc về chi phí của " + safeCust + " ạ. "
-                                + safeCust + " cứ thong thả tham khảo thêm nhé, khi nào cần hỗ trợ thông tin gì "
-                                + safeSelf + " luôn sẵn sàng đồng hành cùng " + safeCust + " ạ.",
-                        0
-                ));
-            }
-            return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
-        }
-
-        // Post-CP3 Wave 2 (2.2): Chia và làm sạch reply_bubbles theo ĐƠN VỊ Ý NGHĨA (Semantic Discourse Units)
-        boolean isSingleBubbleMandatedTurn = action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_PAUSE_OR_ACKNOWLEDGEMENT
-                || action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_DEFERRAL
-                || action == AdaptiveConversationIntelligence.TurnAction.CUSTOMER_EXIT
-                || action == AdaptiveConversationIntelligence.TurnAction.SELF_IDENTIFY_GENDER
-                || action == AdaptiveConversationIntelligence.TurnAction.FEEDBACK_RECOVERY
-                || isSuitabilityHandoffTurn;
-        processed = organizeBubblesBySemanticIdeaUnits(processed, isSingleBubbleMandatedTurn);
-
-        // SBR-01 FIX-3: đã gỡ bước Java tự đổi dấu '.' cuối câu thành '?' (dấu câu của LLM được bảo toàn).
-
-        processed = sanitizeUnsolicitedNeckFromHeadShoulderScopeInPlace(processed, customerMessage, history);
-        return enforceGlobalSingleTrailingQuestionAcrossBubbles(processed);
+        return processed.isEmpty() ? bubbles : processed;
     }
 
     private static final Pattern DUPLICATE_GREETING_OR_EMPATHY_PREFIX_PATTERN = Pattern.compile(

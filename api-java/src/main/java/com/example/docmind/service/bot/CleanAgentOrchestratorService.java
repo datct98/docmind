@@ -5541,10 +5541,6 @@ public class CleanAgentOrchestratorService {
             // trước khi chạy Referee để không tốn 24s LLM retry cho lỗi hình thức, trong khi giữ nguyên Referee cho mọi lỗi bịa đặt nội dung!
             candidateBubbles = CleanAgentOutputRefereeAndSanitizer.sanitizePatronizingEmpathyPhrasesInPlace(
                     candidateBubbles, selfPronoun, safeHonorific);
-            if (CleanAgentOutputRefereeAndSanitizer.isCommunicationStyleComplaintMessage(originalVerbatim)) {
-                candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforceAciV2StyleComplaintNoCtaAndAntiClicheInPlace(
-                        candidateBubbles, originalVerbatim, prevBotTurnText, selfPronoun, safeHonorific);
-            }
             if (isPoliteThankYouClosingAckMessage(originalVerbatim)) {
                 candidateBubbles = CleanAgentOutputRefereeAndSanitizer.enforcePoliteClosingPauseSingleBubbleNoQuestionInPlace(
                         candidateBubbles, selfPronoun, safeHonorific, priorBookingState, prevBotTurnText);
@@ -5984,7 +5980,7 @@ public class CleanAgentOrchestratorService {
             if (!usedSafeHandoffFallback) {
                 txt = BubbleTextSanitizer.capitalizeFirstLetter(txt);
             }
-            formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0));
+            formattedBubbles.add(new FanpageBotResponse.ReplyBubble(txt, 0, b.purpose()));
         }
         if (!usedSafeHandoffFallback && !usedStructuredFallbackOnLlmFailure) {
             formattedBubbles = CleanAgentOutputRefereeAndSanitizer.enforceP37B2TurnActionAndBubbleIdeaDisciplineInPlace(

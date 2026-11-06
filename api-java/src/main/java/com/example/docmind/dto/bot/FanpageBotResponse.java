@@ -631,8 +631,23 @@ public record FanpageBotResponse(
             String text,
 
             @JsonProperty("typing_delay_ms")
-            int typingDelayMs
+            int typingDelayMs,
+
+            @JsonProperty("purpose")
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            String purpose
     ) {
+        public ReplyBubble(String text, int typingDelayMs) {
+            this(text, typingDelayMs, null);
+        }
+
+        public ReplyBubble withText(String newText) {
+            return new ReplyBubble(newText, this.typingDelayMs, this.purpose);
+        }
+
+        public ReplyBubble withTypingDelayMs(int newTypingDelayMs) {
+            return new ReplyBubble(this.text, newTypingDelayMs, this.purpose);
+        }
     }
 
     public record ExtractedLead(
