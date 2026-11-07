@@ -27,6 +27,9 @@ public class SalesTurnOrchestrator implements AutoCloseable {
     private boolean writerReasoning;
     private boolean planningEnabled;
     private boolean goalFirstEnabled;
+    private boolean strategiesEnabled;
+    @Autowired
+    public void setStrategiesEnabled(@Value("${sales.core.strategies-enabled:false}") boolean value) { strategiesEnabled = value; }
     @Autowired
     public void setGoalFirstEnabled(@Value("${sales.core.goal-first-enabled:false}") boolean value) { goalFirstEnabled = value; }
     @Autowired
@@ -107,7 +110,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 }
             }
             if (first != null) input = reviewInput(input, first);
-            String originalPrompt = goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(input, profile, false)
+            String originalPrompt = goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(input, profile, false, strategiesEnabled)
                     : SalesPromptBuilder.build(input, profile, paced, first, false);
             if (brief != null) originalPrompt += "\nCONVERSATION_BRIEF_JSON (hypothesis, not new customer facts): " + json.writeValueAsString(brief)
                     + "\nBám quyết định tiếp theo trong brief; không nhắc catalog cũ chỉ để lấp câu. Dữ kiện khách vẫn phải lấy từ lời khách.";
@@ -119,7 +122,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 TurnInput activeInput = input;
                 if (recovery) {
                     // Retain evidence. A failed draft is not a reason to forget the customer's goal or quote unsupported facts.
-                    prompt = (goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(activeInput, profile, true)
+                    prompt = (goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(activeInput, profile, true, strategiesEnabled)
                             : SalesPromptBuilder.build(activeInput, profile, paced, first, true))
                             + "\nREPAIR_ERRORS_JSON:" + json.writeValueAsString(violations);
                 }
@@ -135,6 +138,15 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                         if (Boolean.TRUE.equals(brief.memoryProposalRejected())) violations.add("MEMORY_PROPOSAL_PARSE_REJECTED");
                     } else decision = generation == 0 && preparedDraft != null ? preparedDraft
                             : parse(call(prompt, 1800, 0.35, clock, alternateWriter || generation > 0), first);
+                    if (!decision.strategy().techniques().isEmpty()) {
+                        var cited = new HashSet<String>();
+                        decision.bubbles().forEach(b -> b.evidence().forEach(c -> cited.add(c.sourceId())));
+                        var assessed = SalesStrategyRegistry.assess(decision.strategy(), activeInput, cited);
+                        violations.addAll(assessed.rejected());
+                        var strategy = new Strategy(decision.strategy().action(), decision.strategy().reason(), decision.strategy().advance(),
+                                strategiesEnabled ? assessed.accepted() : List.of());
+                        decision = new TurnDecision(decision.understanding(), strategy, decision.bubbles(), decision.handoffSummary(), decision.calculations(), decision.followUp());
+                    }
                     currentErrors = new ArrayList<>(validator.validate(decision, activeInput));
                     boolean validContract = currentErrors.isEmpty();
                     currentErrors.addAll(validator.validateDelivery(decision, paced, first != null, recovery,
@@ -154,7 +166,9 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                         var review = SalesSemanticReview.parse(call(SalesSemanticReview.prompt(reviewInput(activeInput, decision), profile,
                                 decision, paced, first, recovery) + "\nPROPOSED_CUSTOMER_MEMORY_UPDATES_JSON: "
                                 + json.writeValueAsString(memoryValid ? updates : List.of())
-                                + "\nPROPOSED_JOURNEY_JSON: " + json.writeValueAsString(memoryValid && brief != null ? brief.journey() : null), 650, 0.0, clock, true));
+                                + "\nPROPOSED_JOURNEY_JSON: " + json.writeValueAsString(memoryValid && brief != null ? brief.journey() : null)
+                                + "\nSELECTED_STRATEGY_CARDS_JSON: " + json.writeValueAsString(SalesStrategyRegistry.selectedCards(decision.strategy()))
+                                + "\nCheck selected strategy against actual customer intent, contraindications and reply. Labels are hypotheses, never proof. Reject pressure/false readiness; distinguish imagery from promised rights/outcomes.", 650, 0.0, clock, true));
                         if (review.memoryApproved() == Boolean.FALSE) {
                             reviewedMemory = activeInput.memory(); violations.add("MEMORY_SEMANTIC_REJECTED");
                         }

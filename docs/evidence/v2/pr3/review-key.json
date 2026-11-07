@@ -1,0 +1,10 @@
+{
+  "v03-quality-not-budget-A": "baseline",
+  "v03-quality-not-budget-B": "candidate",
+  "v07-competitor-comparison-A": "candidate",
+  "v07-competitor-comparison-B": "baseline",
+  "v08-buying-signal-A": "baseline",
+  "v08-buying-signal-B": "candidate",
+  "v10-stop-overrides-frustration-A": "baseline",
+  "v10-stop-overrides-frustration-B": "candidate"
+}

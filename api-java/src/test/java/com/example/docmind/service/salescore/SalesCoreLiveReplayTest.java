@@ -56,6 +56,7 @@ class SalesCoreLiveReplayTest {
         try (var core = new SalesTurnOrchestrator(recorded, new IndustryProfileRegistry(), 45000)) {
             core.setWriterClient(writerClient);
             core.setPlanningEnabled(true);
+            core.setStrategiesEnabled(Boolean.parseBoolean(System.getProperty("sales.strategies", "false")));
             core.setGoalFirstEnabled(Boolean.parseBoolean(System.getProperty("sales.goalFirst", "false")));
             core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
             if (!casesPath.isBlank()) {

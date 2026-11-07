@@ -91,7 +91,10 @@ public final class SalesContracts {
     public record CustomerFact(String value, String customerQuote) {}
     public record Understanding(String customerGoal, List<CustomerFact> knownFacts, List<String> uncertainties,
                                 String obstacleHypothesis) {}
-    public record Strategy(Action action, String reason, String advance) {}
+    public record Strategy(Action action, String reason, String advance, List<SalesStrategyRegistry.Application> techniques) {
+        public Strategy { techniques = techniques == null ? List.of() : List.copyOf(techniques); }
+        public Strategy(Action action, String reason, String advance) { this(action, reason, advance, List.of()); }
+    }
     public record Citation(String sourceId, String quote) {}
     public record Bubble(String text, List<Citation> evidence) {
         public Bubble { evidence = evidence == null ? List.of() : List.copyOf(evidence); }

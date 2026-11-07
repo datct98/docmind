@@ -124,6 +124,9 @@ public class SalesCoreGateway {
         if (result.fallback()) hooks.add("SALES_CORE_RETRYABLE_ERROR");
         if (continuation) hooks.add("SALES_CORE_CONTINUATION");
         hooks.addAll(result.violations());
+        var strategyIds = result.decision() == null ? List.<String>of() : result.decision().strategy().techniques().stream()
+                .map(SalesStrategyRegistry.Application::id).toList();
+        strategyIds.forEach(id -> hooks.add("STRATEGY_PLAN:" + id));
         if (result.reviewedMemory() != null) hooks.add("CUSTOMER_MEMORY_FACTS:" + result.reviewedMemory().facts().size());
         String action = result.decision() == null ? "ANSWER" : result.decision().strategy().action().name();
         String handoffReason = result.handoff() ? result.decision() == null
@@ -142,6 +145,8 @@ public class SalesCoreGateway {
                 pageId, result.profileCode(), SalesPromptBuilder.VERSION, result.promptChars(), action, result.attempts(),
                 result.violations(), result.fallback(), total, result.interactionPlan() == null ? "UNAVAILABLE" : result.interactionPlan().stage(),
                 result.interactionPlan() == null ? "DIRECT" : result.interactionPlan().replyMode());
+        log.info("[SALES-STRATEGY-PLAN] page={} planned={} delivery_status=NOT_ACKNOWLEDGED observed_outcome=NOT_OBSERVED",
+                pageId, strategyIds);
         return response;
     }
 }

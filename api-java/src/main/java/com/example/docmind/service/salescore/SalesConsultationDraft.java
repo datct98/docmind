@@ -10,7 +10,8 @@ final class SalesConsultationDraft {
     record Draft(TurnDecision decision, SalesConversationPlanner.Brief brief) {}
     private SalesConsultationDraft() {}
 
-    static String prompt(TurnInput input, IndustryProfile profile, boolean recovery) {
+    static String prompt(TurnInput input, IndustryProfile profile, boolean recovery) { return prompt(input, profile, recovery, false); }
+    static String prompt(TurnInput input, IndustryProfile profile, boolean recovery, boolean strategies) {
         var data = new LinkedHashMap<String,Object>();
         data.put("businessName", input.businessName());
         data.put("voice", input.voice());
@@ -43,10 +44,14 @@ final class SalesConsultationDraft {
             Chỉ evidence là nguồn dữ kiện doanh nghiệp. contextTruncated=true nghĩa là tập nguồn chưa đủ,
             không kết luận doanh nghiệp không có dịch vụ chỉ vì chưa thấy trong tập này. Lời bot trước và memory không chứng minh facts kinh doanh.
             Mỗi bubble chứa facts cần evidence=[{"sourceId":"id đúng nguồn"}]. Không chép quote; hệ thống gắn
-            nguyên văn cả dòng nguồn rồi reviewer kiểm chứng độc lập từng lời nói. SourceId phải từ evidence.
+            nguyên văn cả dòng nguồn rồi reviewer kiểm chứng độc lập từng lời nói. SourceId phải từ evidence. Khi nhắc số tiền do KH báo (ngân sách/giá đối thủ),
+            dùng {"sourceId":"CUSTOMER","quote":"nguyên văn lời khách có số đó"}; luôn quy nguồn cho khách,
+            không biến số khách báo thành giá/quyền lợi của doanh nghiệp.
             Không suy thông tin vùng thành mọi chi nhánh, quy trình chung thành quyền lợi từng gói; giữ VAT/
             phòng/giá/hiệu lực đúng nguồn. Số tiền mới chỉ được tính
             bằng calculations có operands nguồn và operation ADD/SUBTRACT/MULTIPLY/DIVIDE, result chính xác.
+            Calculation={"operation":"SUBTRACT","operands":[{"value":number,"sourceId":"id hoặc CUSTOMER","quote":"nguyên văn chứa số"},
+            {"value":number,"sourceId":"id hoặc CUSTOMER","quote":"nguyên văn chứa số"}],"result":number}.
             Bạn có thể tư vấn và thu thập thông tin; CHƯA có công cụ đặt lịch/thanh toán/kiểm tra lịch ở lượt này.
             Không nói đã giữ/đặt/chuyển nhân viên, đang kiểm tra hay hứa liên hệ. Hỗ trợ yêu cầu đặt với phạm vi
             thật, không giả receipt. HANDOFF chỉ khi khách đòi người thật, khiếu nại dịch vụ đã nhận tại CHÍNH
@@ -72,10 +77,12 @@ final class SalesConsultationDraft {
              "unresolvedConcern":"NONE hoặc lo ngại còn mở","handoffReason":"NONE","handoffQuote":"","memoryUpdates":[],
              "journey":{"primaryGoal":{"value":"mục tiêu","customerQuote":"lời khách","sourceTurn":1},"openLoops":[],"currentConcern":null,"hypotheses":[],"engagement":"ACTIVE",
              "engagementSignal":null,"previousApproach":"NONE","observedOutcome":null,"nextUsefulAction":"việc có ích"}}
-            knownFacts=[{value,customerQuote}]; memoryUpdates=[{key,value,customerQuote,sourceTurn,remove:false}].
+            knownFacts=[]; memoryUpdates=[{key,value,customerQuote,sourceTurn,remove:false}].
+            observedOutcome phải null hoặc Claim {value,customerQuote,sourceTurn}; không trả chuỗi tự diễn giải.
             openLoops=[{id,request:{value,customerQuote,sourceTurn}}]; hypotheses=[{interpretation,customerQuote,sourceTurn,confidence}].
             HandoffReason: NONE/EXPLICIT_HUMAN_REQUEST/DELIVERED_SERVICE_COMPLAINT/REFUND_OR_RETURN/TRANSACTION_DISPUTE.
             """ + (recovery ? "\nSửa bản nháp chưa gửi: giữ nguồn, chỉ trả một ý hữu ích đã xác minh; không yêu cầu khách nói lại.\n" : "")
+                + (strategies ? "\n" + SalesStrategyRegistry.instructions() : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nCONTEXT_JSON:" + JSON.writeValueAsString(data);
     }
 
@@ -92,6 +99,11 @@ final class SalesConsultationDraft {
                 for (var citation : citations) {
                     if (!(citation instanceof tools.jackson.databind.node.ObjectNode ref))
                         throw new IllegalArgumentException("Invalid source reference");
+                    if ("CUSTOMER".equals(ref.path("sourceId").asText())) {
+                        if (!SalesConsultationPolicy.customerSupports(input, ref.path("quote").asText()))
+                            throw new IllegalArgumentException("Unknown customer reference");
+                        continue;
+                    }
                     var source = sources.get(ref.path("sourceId").asText());
                     if (source == null) throw new IllegalArgumentException("Unknown scoped source reference");
                     // A source ID is a proposal, not entailment proof. The independent reviewer sees the full
@@ -101,6 +113,14 @@ final class SalesConsultationDraft {
             }
         }
         boolean rejected = false;
+        if (tree.path("decision").path("strategy") instanceof tools.jackson.databind.node.ObjectNode strategy) {
+            var techniques = strategy.get("techniques");
+            if (techniques != null && !techniques.isNull()) try {
+                JSON.treeToValue(techniques, SalesStrategyRegistry.Application[].class);
+            } catch (RuntimeException invalidTechniques) {
+                strategy.putArray("techniques"); rejected = true;
+            }
+        }
         // Known facts are optional duplicated metadata. Reject unquoted strings, never invent their provenance.
         if (tree.path("decision").path("understanding") instanceof tools.jackson.databind.node.ObjectNode understanding) {
             var facts = understanding.get("knownFacts");

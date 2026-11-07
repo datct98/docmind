@@ -26,6 +26,8 @@ public final class SalesSemanticReview {
             kể cả khi không hỏi hay không chốt. Không yêu cầu đủ mọi tiêu chí ngành trong mỗi lượt.
             Kiểm tra:
             - Dữ kiện có đúng nguồn, đúng phương án/địa điểm/phạm vi/đơn vị/điều kiện? Trích đúng chữ nhưng diễn giải sai vẫn lỗi.
+            - Citation sourceId=CUSTOMER chỉ chứng minh KH đã nói mức đó: được nhắc giá đối thủ/ngân sách với quy nguồn rõ.
+              Không dùng CUSTOMER làm giá, ưu đãi hoặc quyền lợi của doanh nghiệp. Sai attribution là BLOCKING.
             - Phép tính có dùng đúng đại lượng, thời gian, số lượng? Không cộng cọc vào tiền thuê mà gọi là giá thuê.
             - Có tự khẳng định ngân sách, cảm xúc, mức sẵn sàng, nguyên nhân phản đối mà khách chưa nói?
             - Có bỏ nhu cầu hoặc bán phương án khác phạm vi mà không nói phần thiếu?

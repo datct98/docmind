@@ -10,7 +10,9 @@ class SalesConversationPlannerTest {
             var brief = SalesConversationPlanner.parse(new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
             assertThat(brief.needsBusinessEvidence()).isTrue();
             assertThat(brief.memoryProposalRejected()).isTrue();
-            assertThat(brief.journey()).isNull();
+            assertThat(brief.journey().primaryGoal()).isNull();
+            assertThat(brief.journey().observedOutcome()).isNull();
+            assertThat(brief.journey().openLoops()).hasSize(2);
             assertThat(brief.decisionCheck().contextEvidence()).isEmpty();
             assertThat(brief.memoryUpdates()).hasSize(1);
         }

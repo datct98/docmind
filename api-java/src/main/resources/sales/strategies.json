@@ -1,0 +1,267 @@
+{
+  "schemaVersion": 1,
+  "maxSelected": 2,
+  "cards": [
+    {
+      "id": "apac_objection_response",
+      "family": "APAC",
+      "customerObjective": "Resolve an expressed customer objection without defensiveness or pressure",
+      "eligibleEvidence": [
+        "EXPRESSED_CONCERN"
+      ],
+      "allowedActions": [
+        "RESOLVE_CONCERN",
+        "ANSWER"
+      ],
+      "prohibitedWhen": [
+        "explicit_stop",
+        "only_direct_fact_requested",
+        "probe_when_concern_is_already_explicit"
+      ],
+      "requiredBusinessEvidence": false,
+      "intendedCustomerValue": "Resolve an expressed customer objection without defensiveness or pressure",
+      "recommendedInteraction": [
+        "Acknowledge the concern concisely and genuinely",
+        "Probe only if the underlying concern has not already been stated",
+        "Address with the shortest relevant verifiable answer or a meaningful tradeoff",
+        "Confirm only when this would help progress; an implicit check can suffice"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "four_bubbles_for_four_letters",
+        "asking_why_again_after_customer_explained",
+        "automatic_cta",
+        "overriding_stop"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 0
+    },
+    {
+      "id": "aida_communication_lens",
+      "family": "AIDA",
+      "customerObjective": "Ensure a relevant message attracts interest, explains value and offers an appropriate next step when the customer needs an introduction",
+      "eligibleEvidence": [
+        "ASKING_OVERVIEW"
+      ],
+      "allowedActions": [
+        "ANSWER",
+        "RECOMMEND"
+      ],
+      "prohibitedWhen": [
+        "specific_direct_question",
+        "buyer_already_ready_to_book",
+        "explicit_stop"
+      ],
+      "requiredBusinessEvidence": false,
+      "intendedCustomerValue": "Ensure a relevant message attracts interest, explains value and offers an appropriate next step when the customer needs an introduction",
+      "recommendedInteraction": [
+        "Connect immediately to the customer's current concern rather than manufacturing a hook",
+        "Help the customer see relevant value with factual evidence",
+        "Make the next action easy only if the customer signals that an invitation is useful"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "mandatory_four_stage_sequence",
+        "gratuitous_emotional_hook",
+        "invented_urgency",
+        "cta_every_turn"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 0
+    },
+    {
+      "id": "spin_selective_discovery",
+      "family": "CONSULTATIVE_DISCOVERY",
+      "customerObjective": "Learn only customer context that changes an actual recommendation or next action",
+      "eligibleEvidence": [
+        "MISSING_DECISION_INPUT"
+      ],
+      "allowedActions": [
+        "CLARIFY"
+      ],
+      "prohibitedWhen": [
+        "customer_says_stop_questions",
+        "direct_answer_available",
+        "customer_just_answered_same_question"
+      ],
+      "requiredBusinessEvidence": false,
+      "intendedCustomerValue": "Learn only customer context that changes an actual recommendation or next action",
+      "recommendedInteraction": [
+        "Use situation, problem, implication or desired-outcome questions selectively, never as a checklist",
+        "Prefer a helpful conditional answer over another question when factual scope permits",
+        "Keep customer interaction effort proportionate to value supplied"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "four_question_sequence",
+        "questionnaire",
+        "suggesting_disease_or_fear_to_sell"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 0
+    },
+    {
+      "id": "value_proof_recommendation",
+      "family": "FEATURE_BENEFIT_EVIDENCE",
+      "customerObjective": "Recommend a verifiable offer that fits the customer goal and explain the relevant tradeoff",
+      "eligibleEvidence": [
+        "RECOMMENDATION_REQUEST",
+        "COMPARISON_REQUEST",
+        "EXPRESSED_CONCERN"
+      ],
+      "allowedActions": [
+        "RECOMMEND",
+        "COMPARE",
+        "RESOLVE_CONCERN"
+      ],
+      "prohibitedWhen": [
+        "no_verified_offer",
+        "customer_only_wants_one_fact",
+        "explicit_stop"
+      ],
+      "requiredBusinessEvidence": true,
+      "intendedCustomerValue": "Recommend a verifiable offer that fits the customer goal and explain the relevant tradeoff",
+      "recommendedInteraction": [
+        "Select a relevant supported feature, map it to the customer's stated need, cite the business source",
+        "Explain one important limitation or tradeoff when necessary for the decision",
+        "Prefer one main fit; expand only if comparison is requested or materially useful"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "benefit_dump",
+        "unsupported_health_claims",
+        "generic_our_quality_is_best",
+        "auto_upsell"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 1
+    },
+    {
+      "id": "intent_based_close",
+      "family": "LOW_FRICTION_CLOSING",
+      "customerObjective": "Turn explicit buying intent into a truthful next action within capabilities",
+      "eligibleEvidence": [
+        "BUYING_INTEREST",
+        "EXPLICIT_PURCHASE"
+      ],
+      "allowedActions": [
+        "INVITE_NEXT_STEP"
+      ],
+      "prohibitedWhen": [
+        "no_customer_readiness",
+        "unresolved_critical_concern",
+        "explicit_stop"
+      ],
+      "requiredBusinessEvidence": false,
+      "intendedCustomerValue": "Turn explicit buying intent into a truthful next action within capabilities",
+      "recommendedInteraction": [
+        "Do not rediscover known needs after buying intent",
+        "Ask only the operational detail needed for the next authorized step",
+        "State what is merely recorded and what has genuinely been confirmed"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "assumptive_close_without_consent",
+        "claim_booking_confirmed_without_tool_receipt",
+        "forced_phone_request"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 2
+    },
+    {
+      "id": "relationship_preservation",
+      "family": "RELATIONSHIP_MANAGEMENT",
+      "customerObjective": "Protect long-term trust while distinguishing a frustrated prospect from a person who wants to stop",
+      "eligibleEvidence": [
+        "BOT_FEEDBACK",
+        "PAUSE_REQUEST",
+        "STOP_REQUEST",
+        "RETURN_INBOUND"
+      ],
+      "allowedActions": [
+        "PAUSE",
+        "RESOLVE_CONCERN",
+        "ANSWER"
+      ],
+      "prohibitedWhen": [
+        "do_not_use_to_manufacture_engagement_after_stop"
+      ],
+      "requiredBusinessEvidence": false,
+      "intendedCustomerValue": "Protect long-term trust while distinguishing a frustrated prospect from a person who wants to stop",
+      "recommendedInteraction": [
+        "Repair criticism about advising by changing the next action, not apologizing repeatedly",
+        "When asked for time, reduce pressure and allow the customer to re-initiate",
+        "Explicit STOP cancels any pending follow-up and prohibits further pitch",
+        "On a fresh inbound from the same customer, resume relevant context only when permitted"
+      ],
+      "stopConditions": [
+        "customer_stop",
+        "source_unavailable_for_claim",
+        "consent_withdrawn"
+      ],
+      "antiPatterns": [
+        "treating_every_objection_as_stop",
+        "continuing_to_pitch_after_stop",
+        "unrequested_followup_campaign"
+      ],
+      "outcomeSignals": [
+        "progress",
+        "concern_still_open",
+        "asked_to_stop",
+        "new_goal",
+        "not_observed"
+      ],
+      "allowedCloseIntensity": 0
+    }
+  ]
+}

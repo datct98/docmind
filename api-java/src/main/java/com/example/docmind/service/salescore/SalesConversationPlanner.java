@@ -138,7 +138,20 @@ final class SalesConversationPlanner {
         } catch (RuntimeException invalidMemory) { rejected = true; }
         SalesJourney.State journey = null;
         if (tree.hasNonNull("journey")) try {
-            journey = JSON.readValue(tree.get("journey").toString(), SalesJourney.State.class);
+            var journeyNode = tree.get("journey").deepCopy();
+            if (journeyNode instanceof tools.jackson.databind.node.ObjectNode object) {
+                // Independent claims have independent provenance. A prose outcome annotation must not
+                // erase an otherwise valid STOP signal, goal or open loop. Never manufacture a quote.
+                for (String key : List.of("primaryGoal", "currentConcern", "observedOutcome", "engagementSignal")) {
+                    var claim = object.get(key);
+                    if (claim != null && !claim.isNull()) try {
+                        JSON.treeToValue(claim, SalesJourney.Claim.class);
+                    } catch (RuntimeException malformedClaim) {
+                        object.putNull(key); rejected = true;
+                    }
+                }
+            }
+            journey = JSON.treeToValue(journeyNode, SalesJourney.State.class);
         } catch (RuntimeException invalidJourney) { rejected = true; }
         return new Brief(plan.latestContribution(), plan.nextDecision(), plan.reason(), plan.needsBusinessEvidence(), c,
                 updates, plan.conversationalReply(), plan.conversationalBubbles(), rejected, journey);

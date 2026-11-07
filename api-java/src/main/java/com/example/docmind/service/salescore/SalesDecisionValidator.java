@@ -42,9 +42,15 @@ public final class SalesDecisionValidator {
         var money = MONEY.matcher(customerText);
         while (money.find()) customerNumbers.removeAll(numbers(money.group()));
         Set<String> citedNumbers = new HashSet<>();
+        Set<String> attributedCustomerNumbers = new HashSet<>();
         // Bubbles form one answer. Reusing a fact in the next bubble does not require duplicating its citation.
         for (Bubble bubble : d.bubbles()) if (bubble != null && bubble.evidence() != null) {
             for (Citation c : bubble.evidence()) {
+                if (c != null && "CUSTOMER".equals(c.sourceId())) {
+                    if (SalesConsultationPolicy.customerSupports(input, c.quote())) attributedCustomerNumbers.addAll(numbers(c.quote()));
+                    else errors.add("INVALID_CUSTOMER_REFERENCE");
+                    continue;
+                }
                 Evidence source = c == null ? null : sources.get(c.sourceId());
                 if (source == null || blank(c.quote()) || !normalized(sourceText(source)).contains(normalized(c.quote())))
                     errors.add("INVALID_EVIDENCE_QUOTE");
@@ -62,10 +68,14 @@ public final class SalesDecisionValidator {
             Set<String> allowed = new HashSet<>(customerNumbers);
             allowed.addAll(calculated);
             allowed.addAll(citedNumbers);
+            allowed.addAll(attributedCustomerNumbers);
             Set<String> missing = new TreeSet<>(numbers(b.text())); missing.removeAll(allowed);
             Set<String> moneyWithoutBusinessSource = monetaryNumbers(b.text());
             moneyWithoutBusinessSource.removeAll(citedNumbers);
             moneyWithoutBusinessSource.removeAll(calculated);
+            // Explicitly attributed customer amounts are references, never independent business-price authority.
+            // The mandatory semantic reviewer verifies that distinction in the actual wording.
+            moneyWithoutBusinessSource.removeAll(attributedCustomerNumbers);
             missing.addAll(moneyWithoutBusinessSource);
             if (!missing.isEmpty()) {
                 errors.add("UNSUPPORTED_NUMBER");

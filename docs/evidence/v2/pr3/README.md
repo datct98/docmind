@@ -1,0 +1,18 @@
+# PR-3 — Evidence-linked sales strategy execution (PARTIAL)
+
+Parent: PR-2 `88bcb28`. No provider/model change. Runtime flags remain false by default; this is not a release acceptance.
+
+Implementation: six domain-neutral tools covering APAC, AIDA, selective SPIN, value/evidence, intent-based closing and relationship preservation. The writer proposes zero to two applications with customer quote, intended benefit, business source IDs and close intensity. The engine checks those contracts against current input, action and cited sources; unsupported applications are discarded and traced. Only selected full cards go to independent semantic review. The reviewer checks actual intent, contraindications, rights, readiness and wording. No fixed reply lookup and no wholesale workbook transcript injection. Plans log NOT_ACKNOWLEDGED/NOT_OBSERVED; they are not counted as successful delivery or sales.
+
+Replay-driven fixes: explicit CUSTOMER references allow attributed competitor/budget amounts while uncited merchant prices remain blocked. Calculations require typed, sourced operands. A malformed prose outcome annotation no longer erases independently typed goal/STOP claims; retained claims still require customer-source and semantic approval. Regression reproduces the actual invalid response. One old assertion that discarded the entire journey was changed to check that unquoted fields are dropped and two valid open loops survive; no test was deleted.
+
+Actual runs:
+- `mvn -o -f api-java/pom.xml -Dtest=Sales*Test test`: 96 tests, zero failures/errors, 2 skips, exit 0 (`artifacts/v2-pr3/unit-final-2.log`). Prior run failed one obsolete all-or-nothing metadata expectation, retained in `unit-final.log`.
+- Opt-in `SalesCoreLiveReplayTest`, ALTERNATE writer, goalFirst/strategies true, same approved Spa source fixture: 4 scenarios/10 turns, exit 0 (`artifacts/v2-pr3/strategy-live.log`). Compared with the exact same scenarios from the PR-2 canonical-reference run: fallbacks 2→0, p50 24,573→18,228ms, p95 42,449→37,584ms, mean calls 2.7→2.4. This is one stochastic run per configuration, not statistically significant evidence, and it combines attribution and strategy changes. It cannot isolate strategy causal effect.
+- The live run preceded the final optional-outcome parser correction; that correction has the observed-response regression, and the PR-4 adaptive rerun will exercise it live. Unit run included the uncommitted PR-4 harness, with live tests skipped. PR-5 metadata modifications were not selected by `Sales*Test`.
+
+Full customer-visible before/after: `observed-transcripts.json`; timings `metrics.json`; blinded human worksheet `human-review.csv`, key stored separately. Raw model envelopes/prompts/telemetry remain in local artifacts. No real customers, Facebook sends, database changes or conversion measurement.
+
+Unresolved quality: unsolicited NS02/NS04 introductions, overly technical catalog wording, premature “Chốt luôn”, and unsupported reassurance about not cutting massage time escaped reviewer PASS. Buying intent sometimes loses its strategy label because of incomplete evidence. Provider calls still take up to ~38s. Real-model zero fallback does not make these acceptable. Goal state correctness after STOP is separately being retested. No human scores or final blind holdout were obtained. No claim of improved empathy/closing quality is made from card counts or reviewer votes.
+
+PR-3 remains PARTIAL. Runtime defaults are not promoted. Data replacement and UI acceptance remain blocked on verified Page binding and complete quality gates. Active ACI fallback, outbound, security, migrations and other Pages are retained; independent cleanup follows in PR-5.
