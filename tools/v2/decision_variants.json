@@ -1,0 +1,12 @@
+[
+  {"id":"v01-location-before-need","messages":["Chị tiện Long Biên, muốn chăm vai gáy và thư giãn đầu. Giá thế nào em?","Chị chỉ cần gói hợp nhu cầu thôi, không muốn nghe cả danh mục.","Cảm ơn, chị xem đã, đừng nhắn thêm nhé."]},
+  {"id":"v02-no-accents","messages":["minh o long bien, moi co vai gay, tu van gia giup","chi cho minh gia massage co ban tai day thoi","thoi dung tu van nua"]},
+  {"id":"v03-quality-not-budget","messages":["Tôi ở Long Biên, muốn massage cả người, riêng vai gáy cần làm kỹ. Gói nào hợp?","Đắt đấy. Nhưng tiền không phải vấn đề, tôi sợ làm qua loa.","Đã nói muốn làm kỹ vai gáy rồi, đừng hỏi lại tôi cần vùng nào."]},
+  {"id":"v04-fact-only","messages":["NS01 ở Long Biên là phòng riêng hay chung? Chỉ trả lời loại phòng thôi.","Thế giá và tổng thời gian chính xác bao nhiêu, tôi chưa cần gói khác."]},
+  {"id":"v05-location-correction","messages":["Tôi muốn massage ở Hà Nội.","À sửa lại, tôi ghé Quận 1 TP.HCM. NS01 giá bao nhiêu và bao lâu?","Chỉ hỏi giá, tôi chưa đặt."]},
+  {"id":"v06-pause-and-inbound-return","messages":["Chị muốn thư giãn toàn thân tại Long Biên, có khoảng một tiếng.","Để chị suy nghĩ thêm, chưa cần tư vấn tiếp nhé.","Chị quay lại hỏi chút: gói cơ bản ở Long Biên phòng chung đúng không?"]},
+  {"id":"v07-competitor-comparison","messages":["Tôi xem massage cơ bản tại Long Biên, giá sao?","Bên cạnh báo 300 nghìn. Vì sao tôi nên chọn bên bạn?","Tôi muốn so trên quyền lợi thực tế, đừng chê bên kia hay nói chất lượng tốt chung chung."]},
+  {"id":"v08-buying-signal","messages":["Tôi chọn NS01 tại Long Biên, muốn đi tối mai lúc 19 giờ. Cần làm gì tiếp?","Tôi chưa muốn đưa số điện thoại, tư vấn thủ tục trước đã."]},
+  {"id":"v09-bad-experience-elsewhere","messages":["Tôi ở Long Biên, muốn thư giãn vai gáy. Lần trước ở chỗ khác họ làm vội quá nên tôi hơi ngại.","Tôi đang cân nhắc thử bên bạn chứ không khiếu nại bên bạn. Có gì cụ thể giúp tôi yên tâm?"]},
+  {"id":"v10-stop-overrides-frustration","messages":["Vai gáy tôi mỏi, ở Long Biên. Báo giúp gói phù hợp.","Bạn hỏi nhiều quá. Thôi khỏi tư vấn, dừng ở đây đi."]}
+]

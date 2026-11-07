@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class SalesConversationPlannerTest {
+    @Test void realModelMalformedOptionalStructuresCannotEraseTheActiveRequest() throws Exception {
+        try (var stream = getClass().getResourceAsStream("/salescore/planner-malformed-optional.json")) {
+            var brief = SalesConversationPlanner.parse(new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(brief.needsBusinessEvidence()).isTrue();
+            assertThat(brief.memoryProposalRejected()).isTrue();
+            assertThat(brief.journey()).isNull();
+            assertThat(brief.decisionCheck().contextEvidence()).isEmpty();
+            assertThat(brief.memoryUpdates()).hasSize(1);
+        }
+    }
     @Test void disablingPlannerStillLoadsBusinessEvidenceAndSourceFailureCannotMasqueradeAsDiscovery() {
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         var input = SalesCoreTest.input("GENERIC", "Giá gói toàn thân?");
@@ -24,10 +34,11 @@ class SalesConversationPlannerTest {
             assertThat(result.attempts()).isEqualTo(1);
         }
     }
-    @Test void listeningIsOneCallAndDoesNotFetchCatalogOrPromoteUnreviewedMemory() {
+    @Test void listeningReusesPlannerDraftWithIndependentReviewAndDoesNotFetchCatalog() {
         LlmClient client = new LlmClient() {
             public String name() { return "planner-fixture"; }
             public String complete(String p) {
+                if (p.startsWith("SALES_REVIEW")) return "{\"verdict\":\"PASS\",\"issues\":[],\"feedback\":\"\"}";
                 assertThat(p).startsWith("SALES_PLAN").doesNotContain("\"evidence\":", "evaluationScenarios");
                 return SalesConsultationPolicyTest.plan("DISCOVERY", false, "Em chào mình, mình muốn thư giãn vùng nào ạ?");
             }
@@ -37,19 +48,19 @@ class SalesConversationPlannerTest {
             var input = SalesCoreTest.input("BEAUTY_SPA", "Giá");
             var result = core.runPaced(input, () -> { throw new AssertionError("Discovery must not fetch business evidence"); });
             assertThat(result.fallback()).isFalse();
-            assertThat(result.attempts()).isEqualTo(1);
-            assertThat(result.violations()).contains("CONVERSATION_FAST_PATH");
+            assertThat(result.attempts()).isEqualTo(2);
+            assertThat(result.violations()).doesNotContain("CONVERSATION_FAST_PATH");
             assertThat(result.reviewedMemory()).isEqualTo(input.memory());
             assertThat(result.decision().followUp()).isNull();
         }
     }
-    @Test void malformedBriefFallsBackToConversationWithoutUnlockingCatalog() {
+    @Test void malformedBriefPreservesOriginalVerifiedEvidenceForWriter() {
         LlmClient client = new LlmClient() {
             public String name() { return "planner-fixture"; }
             public String complete(String p) {
                 if (p.startsWith("SALES_PLAN")) return "{\"needsBusinessEvidence\":false}";
                 if (p.startsWith("SALES_REVIEW")) return "{\"verdict\":\"PASS\",\"issues\":[],\"feedback\":\"\"}";
-                assertThat(p).doesNotContain("\"id\":\"e1\"");
+                assertThat(p).contains("\"id\":\"e1\"");
                 return SalesCoreTest.answer("Em chào mình, mình đang cần tư vấn gì ạ?", "CLARIFY", "[]");
             }
         };
@@ -57,7 +68,7 @@ class SalesConversationPlannerTest {
             core.setPlanningEnabled(true);
             var result = core.runPaced(SalesCoreTest.input("GENERIC", "Giá"));
             assertThat(result.fallback()).isFalse();
-            assertThat(result.violations()).contains("PLAN_INVALID_CONVERSATION_ONLY");
+            assertThat(result.violations()).contains("PLAN_INVALID_EVIDENCE_PRESERVED");
             assertThat(result.decision().followUp()).isNull();
         }
     }

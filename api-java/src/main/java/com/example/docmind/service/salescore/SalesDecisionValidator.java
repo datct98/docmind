@@ -86,8 +86,10 @@ public final class SalesDecisionValidator {
         if (d == null || d.bubbles() == null) return List.of("INVALID_DELIVERY");
         boolean price = d.bubbles().stream().filter(Objects::nonNull).map(Bubble::text)
                 .filter(Objects::nonNull).anyMatch(t -> MONEY.matcher(t).find());
-        if (continuation || recovery) {
+        if (continuation) {
             if (price || d.bubbles().size() > (continuation ? 1 : 2) || d.followUp() != null) return List.of("INVALID_CONTINUATION_DELIVERY");
+        } else if (recovery) {
+            if (d.bubbles().size() > 2 || d.followUp() != null) return List.of("INVALID_RECOVERY_DELIVERY");
         } else if (paced && mode == ReplyMode.PRICE_MOMENT && price && d.strategy().action() != Action.HANDOFF && d.strategy().action() != Action.PAUSE) {
             if (d.bubbles().size() != 1 || (d.followUp() != null && blank(d.followUp().aim())))
                 return List.of("PRICE_REQUIRES_SINGLE_BUBBLE_AND_VALID_OPTIONAL_FOLLOWUP");

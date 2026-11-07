@@ -45,18 +45,29 @@ class SalesCoreLiveReplayTest {
             fallbackProps.setTimeoutSeconds(35);
             recorded = new ResilientFallbackLlmClient(recorded, record(new OpenAiCompatibleLlmClient(fallbackProps, json), calls));
         }
-        Path output = Path.of("../artifacts/sales-core-live");
+        Path output = Path.of(System.getProperty("sales.output", "../artifacts/sales-core-live"));
         Files.createDirectories(output);
         List<Map<String,Object>> turns = new ArrayList<>();
         String snapshotPath = System.getProperty("sales.snapshotInput", "");
         String singleInput = System.getProperty("sales.singleInput", "");
         String catalogKind = snapshotPath.isBlank() ? "SYNTHETIC_NOT_PRODUCTION" : "PAGE_SNAPSHOT_OFFLINE";
         String writerClient = System.getProperty("sales.writer", "PRIMARY");
+        String casesPath = System.getProperty("sales.cases", "");
         try (var core = new SalesTurnOrchestrator(recorded, new IndustryProfileRegistry(), 45000)) {
             core.setWriterClient(writerClient);
             core.setPlanningEnabled(true);
+            core.setGoalFirstEnabled(Boolean.parseBoolean(System.getProperty("sales.goalFirst", "false")));
             core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
-            if (!singleInput.isBlank()) {
+            if (!casesPath.isBlank()) {
+                var template = json.readValue(Files.readString(Path.of(snapshotPath)), TurnInput.class);
+                for (var scenario : json.readTree(Files.readString(Path.of(casesPath)))) {
+                    List<String> messages = new ArrayList<>();
+                    scenario.get("messages").forEach(m -> messages.add(m.asText()));
+                    int begin = turns.size();
+                    replay(core, template, messages, turns, calls, json, output);
+                    for (int i = begin; i < turns.size(); i++) turns.get(i).put("scenario", scenario.get("id").asText());
+                }
+            } else if (!singleInput.isBlank()) {
                 var input = json.readValue(Files.readString(Path.of(singleInput)), TurnInput.class);
                 var result = Boolean.getBoolean("sales.paced") ? core.runPaced(input) : core.run(input);
                 turns.add(Map.of("industry", input.industryCode(), "customer", input.message(), "result", result));
@@ -102,7 +113,7 @@ class SalesCoreLiveReplayTest {
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", catalogKind, "modelConfigured", props.resolveModel(), "writerClient", writerClient, "turns", turns, "calls", calls)));
         }
-        assertThat(turns).hasSize(!singleInput.isBlank() ? 1 : "rental-v4".equals(System.getProperty("sales.scenario")) ? 6 : "quality-v3".equals(System.getProperty("sales.scenario")) ? 4 : "adaptive-v3".equals(System.getProperty("sales.scenario")) ? 8 : snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
+        if (casesPath.isBlank()) assertThat(turns).hasSize(!singleInput.isBlank() ? 1 : "rental-v4".equals(System.getProperty("sales.scenario")) ? 6 : "quality-v3".equals(System.getProperty("sales.scenario")) ? 4 : "adaptive-v3".equals(System.getProperty("sales.scenario")) ? 8 : snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
         if ("rental-v4".equals(System.getProperty("sales.scenario"))) {
             assertThat(turns.stream().anyMatch(t -> ((Result)t.get("result")).handoff())).as("Ordinary consultation stays with the bot").isFalse();
             var first = (Result)turns.getFirst().get("result");

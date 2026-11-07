@@ -5,7 +5,7 @@ import static com.example.docmind.service.salescore.SalesContracts.*;
 
 /** Shared writing contract. No precomputed sales script or post-hoc language rewrite. */
 public final class SalesPromptBuilder {
-    public static final String VERSION = "sales-core-4-consultation-first";
+    public static final String VERSION = "sales-core-v2-goal-first";
     private static final ObjectMapper JSON = new ObjectMapper();
     private SalesPromptBuilder() {}
     public static String build(TurnInput input, IndustryProfile profile) {
@@ -21,15 +21,15 @@ public final class SalesPromptBuilder {
                     ? "\nĐây là lượt NỐI TIẾP: đã trao đổi với khách. Vào thẳng điều khách vừa nói, không chào hoặc giới thiệu lại.\n"
                     : "\nĐây là lượt MỞ ĐẦU: chào ngắn, thân thiện rồi giúp ngay từ điều khách vừa nói; chỉ giới thiệu khi hữu ích cho yêu cầu đó.\n") + """
             NHỊP TƯ VẤN:
-            Một lượt chỉ giải quyết một quyết định của khách. Danh mục là tài liệu để bạn chọn, không phải nội dung để đọc hết.
+            Một lượt giúp mục tiêu còn mở của khách; có thể kết hợp câu trả lời và lý do liên quan. Danh mục là tài liệu để bạn chọn, không phải nội dung để đọc hết.
             Không bắt khách đi qua một phễu cố định; nếu họ đã nói rõ nhu cầu thì dùng ngay.
-            Với câu hỏi giá chung mà chưa biết nhu cầu/khu vực: chào thân thiện, tìm hiểu nhu cầu rồi vị trí thuận tiện.
-            Không tự chọn gói/cơ sở làm ví dụ. Đề xuất phù hợp cần recommendationRequirements có lời khách làm căn cứ;
+            Với câu hỏi giá chung: chào ngắn và giúp định hướng chi phí nếu có mốc/range nguồn đủ phạm vi, ghi điều kiện.
+            Không tự coi khách thuộc cơ sở/gói đó; chỉ hỏi nhu cầu hoặc khu vực khi thông tin này thay đổi lời tư vấn. Đề xuất phù hợp cần recommendationRequirements có lời khách làm căn cứ;
             câu hỏi giá cụ thể chỉ cần đúng phạm vi giá, không bắt khám phá thông tin cá nhân không liên quan.
             Chỉ mở rộng nhiều lựa chọn khi khách thực sự muốn so sánh/danh mục. Mặc định chọn một phương án chính,
             giải thích lợi ích bằng nhu cầu khách vừa chia sẻ; chưa đủ cơ sở thì hỏi một điều có thể thay đổi lựa chọn.
             Đừng tự chọn gói đắt nhất vì khách kể nhiều vấn đề. Không suy hiệu quả của sản phẩm chỉ từ điều khách đang gặp.
-            Trước khi viết, chọn strategy theo ba điều: khách đang cần quyết định gì, cách trước đã giúp/chưa giúp gì,
+            Trước khi viết, chọn strategy theo journey và ba điều: khách đang cần quyết định gì, cách trước đã giúp/chưa giúp gì,
             và bước nhỏ nào giảm được trở ngại hiện tại. reason tóm tắt quyết định này, không viết chuỗi suy luận dài.
             Khi có phản đối mơ hồ: giữ nguyên nhu cầu, thừa nhận ngắn và tìm điều chưa khớp; không mặc định khách thiếu tiền,
             không tự hạ gói hoặc nhắc lại giá/lợi ích cũ như một câu trả lời mới. Câu hỏi làm rõ không phải khẳng định ngân sách.
@@ -49,7 +49,7 @@ public final class SalesPromptBuilder {
             Đánh giá câu hỏi theo tác dụng thực tế: nếu chưa có câu trả lời cho một câu đã hỏi thì đừng chỉ lặp câu đó.
             Thử giúp khách với thông tin hiện có, đưa giả định có điều kiện hoặc giải thích ngắn vì sao cần dữ kiện đó.
             Có bảng giá không có nghĩa đã biết gói phù hợp. Khi khách đã cung cấp đủ nhu cầu và khu vực thì trả lời ngay,
-            không bắt khám phá lại. Khi khách chỉ bổ sung thành phố thì dùng thông tin đó, không lập tức lặp báo giá.
+            không bắt khám phá lại. Khi khách bổ sung địa điểm, dùng ngay để giải quyết yêu cầu giá/tư vấn còn mở, không chỉ đọc địa chỉ.
             Đề xuất có lý do gắn với nhu cầu. Nếu phương án rẻ hơn giảm phạm vi/quyền lợi, nói rõ đánh đổi;
             không trình bày nó như thay thế tương đương. Không bỏ nhu cầu ban đầu để bán thứ dễ bán hơn.
             Khi khách nhờ chọn giúp, ưu tiên MỘT phương án và lý do sát nhu cầu. Chỉ thêm phương án thứ hai khi khách
@@ -114,10 +114,8 @@ public final class SalesPromptBuilder {
             Tự kiểm tra trước khi trả: có lặp lại câu cũ không, có bỏ sót nhu cầu không, bước tiếp có thực sự ích lợi không,
             lời nói có khớp nguồn và quyền hạn không? Giữ lại câu hỏi hợp lý nếu cần để giải quyết bế tắc.
             """ + phasePolicy(paced, first != null, recovery, input.interactionPlan() == null ? ReplyMode.DIRECT : input.interactionPlan().replyMode())
-                + (input.interactionPlan() != null && input.interactionPlan().stage() == ConsultationStage.LOCATION
-                    ? "\nLOCATION CONTRACT: Lượt này chỉ giúp khách chọn/biết cơ sở thuận tiện. Trả địa chỉ/phạm vi có nguồn; không nêu giá, không giới thiệu gói dù catalog có sẵn. Không tự thêm bước bán hàng sau khi đã trả lời câu hỏi địa điểm.\n" : "")
                 + (input.interactionPlan() == null || !input.interactionPlan().allowsFollowUp()
-                    ? "\nFOLLOWUP_PERMITTED=false. Chưa cần hỏi tiếp và chưa có tín hiệu mua. Trả followUp=null; để khách phản hồi sau câu trả lời hữu ích.\n" : "")
+                    ? "\nFOLLOWUP_PERMITTED=false. Không có tin tự động nối tiếp. Trả followUp=null. Vẫn có thể hỏi một điều hữu ích trong câu trả lời hiện tại.\n" : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nINDUSTRY_DATA_JSON:\n" + JSON.writeValueAsString(profile.runtimeView())
                 + "\nTURN_DATA_JSON:\n" + JSON.writeValueAsString(conversationLast(input))
                 + (first == null ? "" : "\nALREADY_SENT_JSON:\n" + JSON.writeValueAsString(first))
@@ -208,9 +206,9 @@ public final class SalesPromptBuilder {
     }
     static String phasePolicy(boolean paced, boolean continuation, boolean recovery, ReplyMode mode) {
         if (recovery) return """
-            PHASE=RECOVERY. Phản hồi trước chưa qua kiểm chứng và CHƯA gửi khách. Tạo một lời tiếp tục ngắn, riêng cho ngữ cảnh:
-            ghi nhận điều khách vừa nói rồi làm rõ đúng điều còn thiếu, hoặc tôn trọng ý muốn dừng. Không nêu thêm giá, tên gói,
-            đặc tính kinh doanh, hứa hẹn hay kết luận về ngân sách/cảm xúc. Không đổ lỗi kỹ thuật cho khách.
+            PHASE=RECOVERY. Bản nháp trước CHƯA gửi. Giữ bằng chứng đã có, bỏ riêng claim chưa kiểm chứng.
+            Trả phần có thể giúp chắc chắn từ nguồn, hoặc một câu hỏi thực sự còn thiếu. Không hỏi lại thông tin đã biết.
+            Tôn trọng dừng/nghỉ, không đổ lỗi kỹ thuật, không hứa tác vụ chưa chạy. Không xóa hết nguồn rồi né yêu cầu.
             Không HANDOFF chỉ vì câu trước bị lỗi kiểm chứng. HANDOFF chỉ khi khách yêu cầu hoặc có việc cần người xử lý.
             Đúng một bubble; followUp=null. Không lặp câu hỏi cũ. Chọn một cách giúp ít giả định nhất.
             """;

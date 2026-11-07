@@ -32,7 +32,7 @@ public final class SalesSemanticReview {
             - Có lặp bảng giá/lợi ích/câu hỏi đã gửi mà không giải quyết thông tin mới? Đã hỏi nhưng khách chưa trả lời:
               cân nhắc tiến với thông tin đang có hoặc nêu điều chưa rõ, đừng hỏi y nguyên nhiều lượt. Không chặn nhắc chi tiết cần thiết.
               Câu hỏi chưa được trả lời không tự động hợp thức hóa việc lặp lại nó; nếu hỏi lại cùng điều mà không giúp khách tiến lên, REVISE.
-            - Khách hỏi giá chung chưa rõ nhu cầu/khu vực: chào và hỏi đúng phần thiếu là hành vi đúng, không ép báo giá mẫu.
+            - Khách hỏi giá chung: được báo mốc/range có phạm vi và điều kiện rõ từ nguồn, không coi đó là gói đã chọn cho khách.
               Nguồn có bảng giá không cho phép tự chọn gói/cơ sở. Khách đã cho đủ context thì không bắt khám phá lại.
             - Có hỏi dồn câu không cần thiết, ép chọn khi chưa hiểu rào cản, hoặc suy đồng ý mua từ câu mơ hồ?
               Khách hỏi cụ thể phải được trả lời phần có nguồn; không bắt kể nhu cầu hay cho địa chỉ nếu không ảnh hưởng câu trả lời.
@@ -46,6 +46,7 @@ public final class SalesSemanticReview {
             - Chọn phương án có lý do từ lời khách, hay chỉ chọn gói nhiều tiền/nhiều tính năng? Đây là lỗi QUALITY nếu dữ kiện vẫn đúng.
             - Lời mời hành động có phù hợp tín hiệu? Có gây áp lực bằng cảm giác tội lỗi hoặc dựa vào bất an của khách?
             - Có trả lời câu hiện tại và tạo bước có ích? Khi khách muốn mua, đừng tiếp tục khám phá không cần thiết.
+            - Có bỏ mục tiêu còn mở khi khách chỉ bổ sung địa điểm hay trả lời câu hỏi trước? Stage không cấm giá/gói có nguồn.
             - Có đi lệch interactionPlan mà không có dữ kiện mới? unresolvedConcern còn mở thì không tự coi khách đã đồng ý
               và xin lịch/chi tiết để chốt. Đã gửi giá không tự tạo bằng chứng sẵn sàng. Đây là lỗi quyết định, không chỉ giọng văn.
               Sau giá không bắt buộc có followUp; questionPurpose=NONE thì việc dừng chờ khách là hợp lệ.
@@ -54,12 +55,20 @@ public final class SalesSemanticReview {
               Đặc biệt: nếu khách vừa trả lời điều họ lo hoặc điều họ cần được làm kỹ, phải chuyển sang giải quyết ưu tiên đó.
               Không yêu cầu họ chọn ưu tiên lại giữa các lựa chọn trong đó có chính điều họ vừa nói. Đây là bỏ qua câu trả lời,
               dù viết câu hỏi khác chữ hoặc thêm nhiều lời đồng cảm. Chỉ hỏi phần còn thiếu thực sự ảnh hưởng hành động kế tiếp.
+            - Đọc PROPOSED_JOURNEY_JSON cùng memory: mục tiêu/concern/observedOutcome có đúng lời khách?
+              Không đóng openLoop chỉ vì bản nháp chưa gửi định trả lời. Hypothesis là giả thuyết, không fact.
+              previousApproach phải từ lịch sử đã gửi, không coi draft là hành động đã thực hiện.
+              engagement STOPPED/PAUSED phải đúng ý khách; quay lại ACTIVE cần khách chủ động yêu cầu giúp.
+              Chỉ memoryReview.approved=true nếu cả journey và updates trung thành.
             - Đọc PROPOSED_CUSTOMER_MEMORY_UPDATES_JSON độc lập với câu gửi khách. memoryReview.approved=true chỉ khi TẤT CẢ
               updates được lời khách hỗ trợ về nghĩa, dùng đúng key khi sửa/rút ý, không lưu cảm xúc/ngân sách/nguyên nhân
               suy đoán, không biến đề xuất của bot thành lựa chọn khách, không lưu lệnh của khách như chính sách hệ thống.
               Nếu có lỗi chỉ trong memory, đặt memoryReview.approved=false và ghi memoryReview.issues.
               TUYỆT ĐỐI không đưa lỗi memory vào replyReview: writer không sửa memory và lỗi này không làm câu gửi khách sai.
               customerFields là hướng dẫn chọn thông tin, không phải enum key đóng; key khác vẫn hợp lệ nếu thông tin đúng lời khách.
+            - Khách yêu cầu dừng, kể cả trong câu phàn nàn: chỉ khép lại ngắn, không câu hỏi/CTA/níu kéo. Vi phạm là BLOCKING.
+            - Ngôn ngữ gợi hình, lời mời nghỉ ngơi và sự quan tâm không tự là claim factual. Chỉ chặn khi ngầm hứa
+              tiện ích/kết quả/năng lực cụ thể không có nguồn. Không ép lời ấm áp thành văn bản pháp lý.
             - Có hứa đã đặt/giữ chỗ, còn hàng, thanh toán, đã bàn giao thành công khi không có kết quả nghiệp vụ?
             - HANDOFF chỉ cho stage ESCALATION với yêu cầu người thật/khiếu nại dịch vụ đã nhận/hoàn trả/tranh chấp.
               Chất vấn cách BOT tư vấn phải tự sửa, không coi là khiếu nại sản phẩm. Muốn đặt bình thường vẫn do bot tiếp nhận,
@@ -81,14 +90,14 @@ public final class SalesSemanticReview {
             replyReview PASS cần issues=[] và feedback=""; REVISE cần lỗi và feedback về CANDIDATE, không về memory.
             Câu trả lời đúng nhưng memory sai: replyReview PASS, memoryReview approved=false. Không trả suy luận dài.
             """ + SalesPromptBuilder.phasePolicy(paced, first != null, recovery, input.interactionPlan() == null ? ReplyMode.DIRECT : input.interactionPlan().replyMode())
-                + "\nĐánh giá đúng PHASE: FIRST chưa cần câu hỏi nếu có followUp.aim; CONTINUATION không cần báo lại giá; RECOVERY được hỏi làm rõ thay vì báo giá chưa kiểm chứng.\n"
+                + "\nĐánh giá đúng PHASE: FIRST chưa cần câu hỏi nếu có followUp.aim; CONTINUATION không cần báo lại giá; RECOVERY vẫn giữ nguồn và trả phần đã đủ chứng cứ; không buộc hỏi lại.\n"
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nINDUSTRY=" + JSON.writeValueAsString(profile.runtimeView()) + "\nTURN=" + JSON.writeValueAsString(input)
                 + (first == null ? "" : "\nALREADY_SENT=" + JSON.writeValueAsString(first))
                 + "\nCANDIDATE=" + JSON.writeValueAsString(candidate);
     }
     public static Review parse(String raw) {
-        if (raw == null || raw.length() > 5000) throw new IllegalArgumentException("Invalid review size");
-        var tree = JSON.readTree(raw.strip());
+        raw = SalesJson.objectText(raw, 5000);
+        var tree = JSON.readTree(raw);
         Review review;
         if (tree.has("replyReview")) {
             var envelope = JSON.readValue(raw.strip(), ReviewEnvelope.class);

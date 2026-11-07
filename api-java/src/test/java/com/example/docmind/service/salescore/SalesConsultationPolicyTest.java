@@ -46,11 +46,12 @@ class SalesConsultationPolicyTest {
         var quote = new tools.jackson.databind.ObjectMapper().readValue(SalesContinuationTest.QUOTE.replace("\"action\":\"ANSWER\"", "\"action\":\"RECOMMEND\""), TurnDecision.class);
         assertThat(new SalesDecisionValidator().validate(quote, input)).contains("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT");
     }
-    @Test void discoveryCannotQuoteEvenIfCatalogAndMisleadingPlanAreAvailable() {
+    @Test void stageDoesNotForbidSourcedPriceAnswerButCannotAuthorizeAutomaticContinuation() {
         var input = SalesCoreTest.input("BEAUTY_SPA", "Bích Câu").withInteractionPlan(plan(ConsultationStage.DISCOVERY,
             Map.of("need", "cổ vai gáy chân tay", "service_area", "Bích Câu"), HandoffReason.NONE, ""));
         var quote = new tools.jackson.databind.ObjectMapper().readValue(SalesContinuationTest.QUOTE, TurnDecision.class);
-        assertThat(new SalesDecisionValidator().validate(quote, input)).contains("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT");
+        assertThat(new SalesDecisionValidator().validate(quote, input))
+                .doesNotContain("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT").contains("FOLLOWUP_WITHOUT_DECISION_PURPOSE");
     }
     @Test void normalBookingAndBotCriticismNeverGrantHandoffPermission() {
         var raw = SalesCoreTest.answer("Em ghi nhận yêu cầu.", "HANDOFF", "[]").replace("\"handoffSummary\":\"\"", "\"handoffSummary\":\"Cần hỗ trợ\"");

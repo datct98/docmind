@@ -13,12 +13,17 @@ public final class SalesMemory {
     public record Update(String key, String value, String customerQuote, long sourceTurn, Boolean remove) {
         public Update { remove = Boolean.TRUE.equals(remove); }
     }
-    public record View(long revision, List<Fact> facts, List<Change> changes, List<Source> customerSources, boolean truncated) {
+    public record View(long revision, List<Fact> facts, List<Change> changes, List<Source> customerSources, boolean truncated, SalesJourney.State journey) {
         public View {
             facts = facts == null ? List.of() : List.copyOf(facts);
             changes = changes == null ? List.of() : List.copyOf(changes);
             customerSources = customerSources == null ? List.of() : List.copyOf(customerSources);
+            journey = journey == null ? SalesJourney.State.empty() : journey;
         }
+        public View(long revision, List<Fact> facts, List<Change> changes, List<Source> sources, boolean truncated) {
+            this(revision, facts, changes, sources, truncated, SalesJourney.State.empty());
+        }
+        public View withJourney(SalesJourney.State value) { return new View(revision, facts, changes, customerSources, truncated, value); }
         public static View empty() { return new View(0, List.of(), List.of(), List.of(), false); }
     }
     public record Scope(UUID pageId, String senderId, String conversationId) {
@@ -51,7 +56,8 @@ public final class SalesMemory {
         while (sources.size() > 12 || sources.stream().mapToInt(s -> s.text().length()).sum() > 12000) {
             sources.removeFirst(); truncated = true;
         }
-        return new View(revision, reset ? List.of() : previous.facts(), reset ? List.of() : previous.changes(), sources, truncated);
+        return new View(revision, reset ? List.of() : previous.facts(), reset ? List.of() : previous.changes(), sources, truncated,
+                reset ? SalesJourney.State.empty() : previous.journey());
     }
     /** Syntactic provenance checks; semantic entailment is additionally checked by the independent reviewer. */
     public static View apply(View base, List<Update> updates) {
@@ -80,7 +86,7 @@ public final class SalesMemory {
         }
         if (facts.size() > 48) throw new IllegalArgumentException("Memory capacity exceeded; preserve existing facts");
         while (changes.size() > 12) changes.removeFirst();
-        return new View(base.revision(), List.copyOf(facts.values()), changes, base.customerSources(), base.truncated());
+        return new View(base.revision(), List.copyOf(facts.values()), changes, base.customerSources(), base.truncated(), base.journey());
     }
     private static String normalize(String text) { return java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFC).replaceAll("\\s+", " ").strip(); }
 

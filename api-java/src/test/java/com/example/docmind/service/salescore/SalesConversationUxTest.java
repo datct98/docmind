@@ -39,6 +39,7 @@ class SalesConversationUxTest {
         LlmClient client = new LlmClient() {
             public String name() { return "ux-fixture"; }
             public String complete(String prompt) {
+                if (prompt.startsWith("SALES_REVIEW")) return "{\"verdict\":\"PASS\",\"issues\":[],\"feedback\":\"\"}";
                 assertThat(prompt).startsWith("SALES_PLAN");
                 return SalesConsultationPolicyTest.plan("DISCOVERY", false, null)
                         .replace("\"conversationalReply\":null", "\"conversationalBubbles\":" + json.writeValueAsString(bubbles));
@@ -48,7 +49,7 @@ class SalesConversationUxTest {
             core.setPlanningEnabled(true);
             var result = core.runPaced(SalesCoreTest.input("BEAUTY_SPA", "Giá"), () -> { throw new AssertionError("Not a catalog turn"); });
             assertThat(result.texts()).containsExactlyElementsOf(bubbles);
-            assertThat(result.attempts()).isEqualTo(1);
+            assertThat(result.attempts()).isEqualTo(2);
             assertThat(result.decision().followUp()).isNull();
             assertThat(result.handoff()).isFalse();
         }
@@ -60,7 +61,8 @@ class SalesConversationUxTest {
         var branch = json.readValue(SalesCoreTest.answer("Cơ sở ở khu mình có thể thuận tiện hơn.", "RECOMMEND", "[]"), TurnDecision.class);
         assertThat(SalesConsultationPolicy.validate(branch, input)).isEmpty();
         var prematureQuote = json.readValue(SalesCoreTest.answer("Gói này 399k.", "RECOMMEND", "[]"), TurnDecision.class);
-        assertThat(SalesConsultationPolicy.validate(prematureQuote, input)).contains("LOCATION_TURN_ANSWER_BRANCH_ONLY_NO_PRODUCT_PRICE");
+        // Location labels cannot ban useful prices, but invented prices still fail source validation.
+        assertThat(validator.validate(prematureQuote, input)).contains("UNSUPPORTED_NUMBER");
     }
 
     @Test void streetAddressesAreNotMistakenForDongCurrency() {

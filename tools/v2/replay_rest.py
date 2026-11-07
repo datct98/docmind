@@ -33,7 +33,7 @@ def main():
                     'message': message, 'history': history, 'reset_session': index == 0,
                     'split_price_bubbles': False}
             request = urllib.request.Request(f'http://127.0.0.1:{args.port}/api/bot/fanpage/message',
-                data=json.dumps(body, ensure_ascii=False).encode(), headers={'Content-Type': 'application/json'})
+                data=json.dumps(body, ensure_ascii=False).encode(), headers={'Content-Type': 'application/json', 'X-Correlation-Id': str(uuid.uuid4())})
             started = time.monotonic()
             with urllib.request.urlopen(request, timeout=90) as response:
                 answer = json.load(response)
@@ -45,7 +45,7 @@ def main():
             bubbles = answer.get('reply_bubbles') or answer.get('replyBubbles') or []
             texts = [bubble.get('text', '') for bubble in bubbles]
             if not texts:
-                texts = [answer.get('reply', '')]
+                texts = [answer.get('reply_text') or answer.get('reply', '')]
             history += [{'role': 'user', 'content': message}, {'role': 'assistant', 'content': '\n'.join(texts)}]
             print(json.dumps({'scenario':case['id'],'turn':index+1,'ms':record['elapsed_ms'],
                               'texts':texts},ensure_ascii=False), flush=True)

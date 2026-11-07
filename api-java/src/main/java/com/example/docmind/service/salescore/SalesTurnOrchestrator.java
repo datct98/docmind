@@ -26,6 +26,9 @@ public class SalesTurnOrchestrator implements AutoCloseable {
     private boolean alternateWriter;
     private boolean writerReasoning;
     private boolean planningEnabled;
+    private boolean goalFirstEnabled;
+    @Autowired
+    public void setGoalFirstEnabled(@Value("${sales.core.goal-first-enabled:false}") boolean value) { goalFirstEnabled = value; }
     @Autowired
     public void setPlanningEnabled(@Value("${sales.core.planning-enabled:true}") boolean value) { planningEnabled = value; }
     @Autowired
@@ -64,50 +67,47 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             var profile = profiles.load(input.industryCode());
             profileCode = profile.code();
             SalesConversationPlanner.Brief brief = null;
-            if (!planningEnabled && first == null && evidenceLoader != null) {
+            TurnDecision preparedDraft = null;
+            if ((!planningEnabled || goalFirstEnabled) && first == null && evidenceLoader != null) {
                 input = evidenceLoader.get();
                 completeInput = input;
             }
-            if (planningEnabled && first == null) {
+            if (planningEnabled && !goalFirstEnabled && first == null) {
                 try {
-                    brief = SalesConversationPlanner.parse(call(SalesConversationPlanner.prompt(input, profile), 1800, 0.15, clock, alternateWriter));
+                    brief = SalesConversationPlanner.parse(call(SalesConversationPlanner.prompt(input, profile), 2200, 0.15, clock, alternateWriter));
                 } catch (CallFailure e) { throw e;
                 } catch (RuntimeException e) {
-                    violations.add("PLAN_INVALID_CONVERSATION_ONLY");
-                    input = SalesConversationPlanner.conversationOnly(input).withInteractionPlan(new InteractionPlan(
-                            "Làm rõ nhu cầu còn thiếu", "Tránh tư vấn sai", "Thông tin khách cần được giúp", "UNKNOWN", "UNKNOWN",
-                            ConsultationStage.DISCOVERY, Map.of(), profile.recommendationRequirements(), HandoffReason.NONE, ""));
+                    log.warn("[SALES-PLAN-REJECTED] type={}", e.getClass().getSimpleName());
+                    violations.add("PLAN_INVALID_EVIDENCE_PRESERVED");
+                    if (evidenceLoader != null) input = evidenceLoader.get();
+                    input = input.withInteractionPlan(new InteractionPlan(
+                            "Giúp mục tiêu còn mở từ lịch sử và nguồn", "Giảm công sức khách", "NONE", "UNKNOWN", "UNKNOWN",
+                            ConsultationStage.CONSULTATION, Map.of(), profile.recommendationRequirements(), HandoffReason.NONE, ""));
+                    completeInput = input;
                 }
                 if (brief != null) {
                     if (Boolean.TRUE.equals(brief.memoryProposalRejected())) violations.add("MEMORY_PROPOSAL_PARSE_REJECTED");
                     input = input.withInteractionPlan(brief.contract(profile));
                     completeInput = input;
-                    // The typed stage owns the evidence boundary. A contradictory optional hint must
-                    // not erase prices/policies needed to answer or collect a grounded purchase request.
-                    if (SalesConsultationPolicy.conversationOnly(input)) input = SalesConversationPlanner.conversationOnly(input);
-                    else if (evidenceLoader != null) {
+                    boolean needsEvidence = Boolean.TRUE.equals(brief.needsBusinessEvidence())
+                            || !SalesConsultationPolicy.conversationOnly(input);
+                    if (input.interactionPlan().stage() == ConsultationStage.CLOSE) needsEvidence = false;
+                    if (needsEvidence && evidenceLoader != null) {
                         input = evidenceLoader.get().withInteractionPlan(input.interactionPlan());
                         completeInput = input;
                     }
-                    if (SalesConsultationPolicy.conversationOnly(input) && !brief.replyBubbles().isEmpty()) {
+                    if (!needsEvidence && !brief.replyBubbles().isEmpty()) {
+                        input = SalesConversationPlanner.conversationOnly(input);
                         Action action = input.interactionPlan().stage() == ConsultationStage.CLOSE ? Action.PAUSE
                                 : input.interactionPlan().stage() == ConsultationStage.TRUST_REPAIR ? Action.RESOLVE_CONCERN : Action.CLARIFY;
-                        var draft = new TurnDecision(new Understanding(brief.latestContribution(), List.of(), List.of(), ""),
+                        preparedDraft = new TurnDecision(new Understanding(brief.latestContribution(), List.of(), List.of(), ""),
                                 new Strategy(action, brief.reason(), brief.nextDecision()), brief.replyBubbles().stream().map(t -> new Bubble(t, List.of())).toList(), "", List.of(), null);
-                        var errors = validator.validate(draft, input);
-                        if (errors.isEmpty()) {
-                            violations.add("CONVERSATION_FAST_PATH");
-                            // This path has no semantic memory approval: preserve raw sources, do not promote proposed facts.
-                            return new Result(draft, brief.replyBubbles(), false, false, clock.calls, List.copyOf(violations),
-                                    clock.elapsed(), SalesConversationPlanner.prompt(input, profile).length(), profileCode, 0, input.memory(), input.interactionPlan());
-                        }
-                        violations.addAll(errors);
+                        // Reuse the planner's actual draft, but subject it to the SAME semantic/memory review as all replies.
                     }
                 }
             }
             if (first != null) input = reviewInput(input, first);
-            String originalPrompt = first == null && input != completeInput
-                    ? SalesPromptBuilder.conversation(input, profile, brief, false)
+            String originalPrompt = goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(input, profile, false)
                     : SalesPromptBuilder.build(input, profile, paced, first, false);
             if (brief != null) originalPrompt += "\nCONVERSATION_BRIEF_JSON (hypothesis, not new customer facts): " + json.writeValueAsString(brief)
                     + "\nBám quyết định tiếp theo trong brief; không nhắc catalog cũ chỉ để lấp câu. Dữ kiện khách vẫn phải lấy từ lời khách.";
@@ -116,19 +116,25 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             for (int generation = 0; generation < 3; generation++) {
                 clock.repairCount = generation;
                 boolean recovery = generation == 2;
-                TurnInput activeInput = recovery ? new TurnInput(input.pageId(), input.businessName(), input.industryCode(),
-                        input.selfPronoun(), input.customerPronoun(), input.voice(), input.history(), input.message(),
-                        List.of(), List.of(), input.quotedMessage(), input.contextTruncated(), input.memory(), input.interactionPlan()) : input;
+                TurnInput activeInput = input;
                 if (recovery) {
-                    // Narrow the task instead of letting an evidence error masquerade as a customer handoff.
-                    prompt = (first == null ? SalesPromptBuilder.conversation(activeInput, profile, brief, true)
+                    // Retain evidence. A failed draft is not a reason to forget the customer's goal or quote unsupported facts.
+                    prompt = (goalFirstEnabled && first == null ? SalesConsultationDraft.prompt(activeInput, profile, true)
                             : SalesPromptBuilder.build(activeInput, profile, paced, first, true))
                             + "\nREPAIR_ERRORS_JSON:" + json.writeValueAsString(violations);
                 }
                 List<String> currentErrors;
                 String feedback = "";
                 try {
-                    TurnDecision decision = parse(call(prompt, 1800, 0.35, clock, alternateWriter || generation > 0), first);
+                    TurnDecision decision;
+                    if (goalFirstEnabled && first == null) {
+                        var draft = SalesConsultationDraft.parse(call(prompt, 2200, 0.35, clock, alternateWriter || generation > 0), activeInput);
+                        decision = draft.decision(); brief = draft.brief();
+                        activeInput = input.withInteractionPlan(brief.contract(profile));
+                        input = activeInput;
+                        if (Boolean.TRUE.equals(brief.memoryProposalRejected())) violations.add("MEMORY_PROPOSAL_PARSE_REJECTED");
+                    } else decision = generation == 0 && preparedDraft != null ? preparedDraft
+                            : parse(call(prompt, 1800, 0.35, clock, alternateWriter || generation > 0), first);
                     currentErrors = new ArrayList<>(validator.validate(decision, activeInput));
                     boolean validContract = currentErrors.isEmpty();
                     currentErrors.addAll(validator.validateDelivery(decision, paced, first != null, recovery,
@@ -140,26 +146,30 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                         SalesMemory.View reviewedMemory = activeInput.memory();
                         List<SalesMemory.Update> updates = brief == null ? List.of() : brief.memoryUpdates();
                         boolean memoryValid = true;
-                        try { reviewedMemory = SalesMemory.apply(activeInput.memory(), updates); }
-                        catch (RuntimeException invalidMemory) { memoryValid = false; violations.add("MEMORY_UPDATE_REJECTED"); }
+                        try {
+                            reviewedMemory = SalesMemory.apply(activeInput.memory(), updates);
+                            if (brief != null) reviewedMemory = reviewedMemory.withJourney(SalesJourney.validate(brief.journey(), activeInput.memory()));
+                        }
+                        catch (RuntimeException invalidMemory) { memoryValid = false; reviewedMemory = activeInput.memory(); violations.add("MEMORY_UPDATE_REJECTED"); }
                         var review = SalesSemanticReview.parse(call(SalesSemanticReview.prompt(reviewInput(activeInput, decision), profile,
                                 decision, paced, first, recovery) + "\nPROPOSED_CUSTOMER_MEMORY_UPDATES_JSON: "
-                                + json.writeValueAsString(memoryValid ? updates : List.of()), 650, 0.0, clock, true));
+                                + json.writeValueAsString(memoryValid ? updates : List.of())
+                                + "\nPROPOSED_JOURNEY_JSON: " + json.writeValueAsString(memoryValid && brief != null ? brief.journey() : null), 650, 0.0, clock, true));
                         if (review.memoryApproved() == Boolean.FALSE) {
                             reviewedMemory = activeInput.memory(); violations.add("MEMORY_SEMANTIC_REJECTED");
                         }
                         // Older review contracts did not assess memory. Never silently treat absence as approval.
-                        if (!updates.isEmpty() && review.memoryApproved() != Boolean.TRUE) reviewedMemory = activeInput.memory();
+                        if ((!updates.isEmpty() || (brief != null && brief.journey() != null)) && review.memoryApproved() != Boolean.TRUE) reviewedMemory = activeInput.memory();
                         boolean qualityOnly = review.verdict() == SalesSemanticReview.Verdict.REVISE
                                 && review.severity() == SalesSemanticReview.Severity.QUALITY;
-                        if (qualityOnly && generation > 0 && currentErrors.isEmpty()) {
+                        if (qualityOnly && (generation > 0 || preparedDraft != null || goalFirstEnabled) && currentErrors.isEmpty()) {
                             violations.add("QUALITY_REVIEW_WARNING");
                             violations.addAll(review.issues());
                         }
                         // A grounded answer with a style warning is preferable to a false operational handoff.
                         // Factual, scope and authority errors always remain blocking.
                         if (recovery && currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || qualityOnly)) violations.add("GROUNDED_CLARIFICATION_RECOVERY");
-                        if (currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || (qualityOnly && generation > 0))) return new Result(decision,
+                        if (currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || (qualityOnly && (generation > 0 || preparedDraft != null || goalFirstEnabled)))) return new Result(decision,
                                 decision.bubbles().stream().map(Bubble::text).toList(), decision.strategy().action() == Action.HANDOFF,
                                 false, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount,
                                 reviewedMemory, activeInput.interactionPlan());
@@ -169,7 +179,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 } catch (CallFailure e) { violations.add(e.code); break;
                 } catch (RuntimeException e) { currentErrors = List.of("INVALID_JSON_CONTRACT"); }
                 violations.addAll(currentErrors);
-                if (first == null && input != completeInput && !recovery && !SalesConsultationPolicy.conversationOnly(input)) {
+                if (!goalFirstEnabled && first == null && input != completeInput && !recovery && !SalesConsultationPolicy.conversationOnly(input)) {
                     // The planner's context choice is provisional. A failed compact draft can consult the
                     // original evidence during repair; otherwise it could never fix a missing-source error.
                     input = evidenceLoader == null ? completeInput : evidenceLoader.get().withInteractionPlan(input.interactionPlan());
@@ -187,6 +197,12 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             }
         } catch (CallFailure e) { violations.add(e.code);
         } catch (RuntimeException e) { violations.add("CONTEXT_OR_PROFILE_ERROR"); }
+        if (input.interactionPlan() != null && input.interactionPlan().stage() == ConsultationStage.CLOSE) {
+            var close = new TurnDecision(new Understanding("Tôn trọng yêu cầu dừng", List.of(), List.of(), ""),
+                    new Strategy(Action.PAUSE, "CONSENT_SAFE_RECOVERY", "Dừng tư vấn"), List.of(new Bubble("Dạ, em dừng tư vấn tại đây.", List.of())), "", List.of());
+            return new Result(close, List.of(close.bubbles().getFirst().text()), false, true, clock.calls, List.copyOf(violations),
+                    clock.elapsed(), promptChars, profileCode, clock.repairCount, input.memory(), input.interactionPlan());
+        }
         return new Result(null, List.of("Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."),
                 false, true, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount);
     }
@@ -201,24 +217,29 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 input.quotedMessage(), input.contextTruncated(), input.memory(), input.interactionPlan());
     }
     private String call(String prompt, int tokens, double temperature, TurnClock clock, boolean preferAlternate) {
-        long remaining = deadlineMs - clock.elapsed();
+        long remainingTurn = deadlineMs - clock.elapsed();
+        long phaseBudget = prompt.startsWith("SALES_PLAN") ? 24000 : prompt.startsWith("SALES_REVIEW") ? 14000 : 24000;
+        long remaining = Math.min(remainingTurn, phaseBudget);
         if (remaining <= 0) throw new CallFailure("TURN_DEADLINE");
         if (!capacity.tryAcquire()) throw new CallFailure("PROVIDER_BUSY");
         // Use the already configured alternate for review/repair, not a vendor or industry hardcoded here.
         LlmClient selected = preferAlternate && llm instanceof com.example.docmind.service.llm.ResilientFallbackLlmClient resilient
-                && resilient.getFallback() != null ? resilient.getFallback() : llm;
+                && resilient.getFallback() != null ? new com.example.docmind.service.llm.ResilientFallbackLlmClient(
+                        resilient.getFallback(), resilient.getPrimary()) : llm;
         log.info("[SALES-CORE-MODEL] purpose={} model={}", prompt.startsWith("SALES_PLAN") ? "PLAN" : prompt.startsWith("SALES_REVIEW") ? "REVIEW" : clock.repairCount > 0 ? "REPAIR" : clock.continuation ? "CONTINUE" : "GENERATE", selected.name());
         Future<String> future;
+        var requestContext = org.slf4j.MDC.getCopyOfContextMap();
         try {
             future = executor.submit(() -> {
                 try {
+                    if (requestContext != null) org.slf4j.MDC.setContextMap(requestContext);
                     boolean think = (writerReasoning || clock.continuation)
                             && !prompt.startsWith("SALES_REVIEW");
                     return selected.complete(prompt, new ReasoningBudget(QueryComplexity.SIMPLE, think ? "low" : "none",
                             (int)Math.max(1, remaining / 1000), 0, 8000, tokens, temperature, 0.9, null,
                             think ? (clock.continuation ? ThinkingMode.PRICE_ANCHOR_THINK : ThinkingMode.EMOTIONAL_WARM_THINK)
                                     : ThinkingMode.FAST_NO_THINK));
-                } finally { capacity.release(); }
+                } finally { org.slf4j.MDC.clear(); capacity.release(); }
             });
             clock.calls++;
         } catch (RejectedExecutionException e) { capacity.release(); throw new CallFailure("PROVIDER_BUSY"); }
@@ -229,9 +250,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
     }
     private record ContinuationDraft(Strategy strategy, Bubble bubble) {}
     private TurnDecision parse(String raw, TurnDecision first) {
-        if (raw == null || raw.length() > 24000) throw new IllegalArgumentException("Invalid response size");
-        String text = raw.strip();
-        if (text.startsWith("```json\n") && text.endsWith("```")) text = text.substring(8, text.length() - 3).strip();
+        String text = SalesJson.objectText(raw, 24000);
         if (first != null) {
             var draft = json.readValue(text, ContinuationDraft.class);
             // There has been no new customer input since the first checked decision. Do not let a second

@@ -1,0 +1,387 @@
+[
+  {
+    "scenario": "v01-location-before-need",
+    "customer": "Chị tiện Long Biên, muốn chăm vai gáy và thư giãn đầu. Giá thế nào em?",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 24485,
+    "calls": 1,
+    "fallback": true,
+    "violations": [
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v01-location-before-need",
+    "customer": "Chị chỉ cần gói hợp nhu cầu thôi, không muốn nghe cả danh mục.",
+    "texts": [
+      "Vậy em chốt đúng một gói cho mình: NS03 Massage phục hồi ở Long Biên — 580.000đ, 100 phút, gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi, phòng VIP riêng. Gói này đúng hướng vai gáy và thư giãn, không phải nghe thêm danh mục. Giá chưa gồm VAT 8%, tip tùy tâm."
+    ],
+    "ms": 14906,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v01-location-before-need",
+    "customer": "Cảm ơn, chị xem đã, đừng nhắn thêm nhé.",
+    "texts": [
+      "Dạ, em dừng tư vấn tại đây."
+    ],
+    "ms": 20399,
+    "calls": 2,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v02-no-accents",
+    "customer": "minh o long bien, moi co vai gay, tu van gia giup",
+    "texts": [
+      "Mỏi cổ vai gáy thì bên em ở Long Biên có gói NS03 Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi, phòng VIP riêng. Giá chưa gồm VAT 8%, tip tùy tâm.",
+      "Nếu mình muốn gọn hơn thì NS01 Massage cơ bản 60 phút — 399.000đ, phòng chung, cũng chưa gồm VAT 8%."
+    ],
+    "ms": 15229,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v02-no-accents",
+    "customer": "chi cho minh gia massage co ban tai day thoi",
+    "texts": [
+      "Massage cơ bản NS01 ở Long Biên là 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung. Giá chưa gồm VAT 8%, tip tùy tâm."
+    ],
+    "ms": 15591,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v02-no-accents",
+    "customer": "thoi dung tu van nua",
+    "texts": [
+      "Vâng, em dừng ở đây nhé. Chúc mình một ngày dễ chịu."
+    ],
+    "ms": 7674,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v03-quality-not-budget",
+    "customer": "Tôi ở Long Biên, muốn massage cả người, riêng vai gáy cần làm kỹ. Gói nào hợp?",
+    "texts": [
+      "Mình ở Long Biên thì tiện ghé Nàng Sen Long Biên (319 Hồng Tiến, Bồ Đề), mở 9:00–22:00. Với nhu cầu massage cả người mà vai gáy cần làm kỹ, em nghiêng về gói NS03 Massage phục hồi — 100 phút, gồm 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi, phòng VIP riêng, KTV phục hồi. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm.",
+      "Nếu mình muốn dài hơn và thêm gội đầu thư giãn thì có NS05 Silver 120 phút, 780.000đ, phòng VIP riêng khép kín — nhưng phần cấu thành ngoài gội đầu VIP em chưa dám khẳng định chắc, nên NS03 là lựa chọn rõ ràng nhất cho vai gáy."
+    ],
+    "ms": 18120,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Bubble 2 giới thiệu NS05 (gói nâng cấp 780k) dù khách chỉ hỏi gói nào hợp với nhu cầu toàn thân + vai gáy kỹ; đây là upsell không được mời, vi phạm quy tắc khách giới hạn nhu cầu cụ thể."
+    ]
+  },
+  {
+    "scenario": "v03-quality-not-budget",
+    "customer": "Đắt đấy. Nhưng tiền không phải vấn đề, tôi sợ làm qua loa.",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45013,
+    "calls": 3,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:100",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v03-quality-not-budget",
+    "customer": "Đã nói muốn làm kỹ vai gáy rồi, đừng hỏi lại tôi cần vùng nào.",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45015,
+    "calls": 4,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:100",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v04-fact-only",
+    "customer": "NS01 ở Long Biên là phòng riêng hay chung? Chỉ trả lời loại phòng thôi.",
+    "texts": [
+      "NS01 ở Long Biên là phòng chung ạ."
+    ],
+    "ms": 9446,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "v04-fact-only",
+    "customer": "Thế giá và tổng thời gian chính xác bao nhiêu, tôi chưa cần gói khác.",
+    "texts": [
+      "NS01 ở Long Biên: 399.000VNĐ cho 60 phút, full body massage trị liệu cơ bản, phòng chung. Giá chưa gồm VAT 8%, tip tùy tâm ạ."
+    ],
+    "ms": 11861,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v05-location-correction",
+    "customer": "Tôi muốn massage ở Hà Nội.",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 24062,
+    "calls": 1,
+    "fallback": true,
+    "violations": [
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v05-location-correction",
+    "customer": "À sửa lại, tôi ghé Quận 1 TP.HCM. NS01 giá bao nhiêu và bao lâu?",
+    "texts": [
+      "NS01 Massage cơ bản tại Nàng Sen Quận 1 là 570.000đ, thời lượng theo bảng 70 phút — full body massage trị liệu cơ bản, phòng chung, KTV tiêu chuẩn. Giá chưa gồm VAT 8%, tip tùy tâm."
+    ],
+    "ms": 12377,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v05-location-correction",
+    "customer": "Chỉ hỏi giá, tôi chưa đặt.",
+    "texts": [
+      "Dạ rõ, mình cứ thong thả xem. NS01 tại Quận 1 vẫn là 570.000đ cho 70 phút, chưa gồm VAT 8% và tip tùy tâm — khi nào cần thêm gì mình nhắn em nhé."
+    ],
+    "ms": 11227,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v06-pause-and-inbound-return",
+    "customer": "Chị muốn thư giãn toàn thân tại Long Biên, có khoảng một tiếng.",
+    "texts": [
+      "Một tiếng để thư giãn trọn vẹn thì em gợi ý mình gói NS01 Massage cơ bản ở Nàng Sen Long Biên: đúng 60 phút, full body massage trị liệu cơ bản, giá niêm yết 399.000VNĐ, chưa gồm VAT 8%, tip tùy tâm. Đây là lựa chọn gọn nhất khớp quỹ thời gian của mình.",
+      "Nếu mình muốn có thêm chút ngâm bồn thảo dược trước khi massage thì NS02 là 80 phút, giá 530.000VNĐ, nhưng sẽ vượt một tiếng của mình."
+    ],
+    "ms": 16731,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Khách giới hạn thời lượng khoảng một tiếng; bubble 2 tự đề xuất thêm gói NS02 80 phút vượt thời lượng khách nêu, là phương án nâng cấp không được hỏi (upsell không được mời)."
+    ]
+  },
+  {
+    "scenario": "v06-pause-and-inbound-return",
+    "customer": "Để chị suy nghĩ thêm, chưa cần tư vấn tiếp nhé.",
+    "texts": [
+      "Dạ, chị cứ thong thả suy nghĩ. Khi nào muốn xem tiếp gói phù hợp, chị nhắn em nhé."
+    ],
+    "ms": 12158,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v06-pause-and-inbound-return",
+    "customer": "Chị quay lại hỏi chút: gói cơ bản ở Long Biên phòng chung đúng không?",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45008,
+    "calls": 3,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:3000000",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v07-competitor-comparison",
+    "customer": "Tôi xem massage cơ bản tại Long Biên, giá sao?",
+    "texts": [
+      "Massage cơ bản (NS01) tại Nàng Sen Long Biên đang niêm yết 399.000đ cho 60 phút, gồm full body massage trị liệu cơ bản, phòng chung, KTV tiêu chuẩn. Giá chưa gồm VAT 8%, tip tùy tâm.",
+      "Nếu mình muốn thêm phần ngâm bồn thảo dược và thời gian dài hơn, gói NS02 là 530.000đ/80 phút (10 phút ngâm bồn + tắm tráng + 70 phút massage), cũng phòng chung."
+    ],
+    "ms": 16468,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Khách chỉ hỏi giá massage cơ bản tại Long Biên; bubble 2 tự thêm gói NS02 nâng cấp không được hỏi, vi phạm quy tắc không upsell khi khách giới hạn thông tin cụ thể."
+    ]
+  },
+  {
+    "scenario": "v07-competitor-comparison",
+    "customer": "Bên cạnh báo 300 nghìn. Vì sao tôi nên chọn bên bạn?",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45014,
+    "calls": 4,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:300000",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v07-competitor-comparison",
+    "customer": "Tôi muốn so trên quyền lợi thực tế, đừng chê bên kia hay nói chất lượng tốt chung chung.",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45008,
+    "calls": 3,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "INVALID_CALCULATION",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:300000",
+      "UNSUPPORTED_NUMBER_VALUES:300000,99000",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v08-buying-signal",
+    "customer": "Tôi chọn NS01 tại Long Biên, muốn đi tối mai lúc 19 giờ. Cần làm gì tiếp?",
+    "texts": [
+      "NS01 tại Long Biên là massage cơ bản full body 60 phút, phòng chung, KTV tiêu chuẩn, giá 399.000đ chưa gồm VAT 8%, tip tùy tâm.",
+      "Em chưa kiểm tra được lịch trống, nên mình gọi hotline Long Biên 070 711 2255 để giữ chỗ tối mai 19 giờ nhé. Cơ sở mở 9:00–22:00, địa chỉ TTA11–TTA12, Chung cư HC Golden, 319 Hồng Tiến, Bồ Đề, Long Biên. Nếu cần đổi/hủy, mình báo trước tối thiểu 2 tiếng."
+    ],
+    "ms": 18255,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v08-buying-signal",
+    "customer": "Tôi chưa muốn đưa số điện thoại, tư vấn thủ tục trước đã.",
+    "texts": [
+      "Không sao, mình cứ nắm thủ tục trước đã. Với NS01 Long Biên, bước giữ chỗ là báo ngày giờ, tên và số điện thoại cho cơ sở; em chưa có công cụ tra lịch nên chưa xác nhận được chỗ tối mai 19 giờ — mình gọi hotline 070 711 2255 khi sẵn sàng là gọn nhất.",
+      "Gói 399.000đ là giá niêm yết, chưa gồm VAT 8%, tip tùy tâm; phòng chung và KTV tiêu chuẩn, 60 phút. Mình đến sớm vài phút cho thoải mái, và nếu đổi giờ thì báo cơ sở sớm giúp em."
+    ],
+    "ms": 20625,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v09-bad-experience-elsewhere",
+    "customer": "Tôi ở Long Biên, muốn thư giãn vai gáy. Lần trước ở chỗ khác họ làm vội quá nên tôi hơi ngại.",
+    "texts": [
+      "Mình ở Long Biên thì tiện ghé Nàng Sen Long Biên (319 Hồng Tiến, Bồ Đề), mở 9:00–22:00. Với vai gáy, em nghiêng về gói NS03 Massage phục hồi – 100 phút, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage phục hồi, phòng VIP riêng, KTV phục hồi, giá 580.000đ chưa gồm VAT 8%, tip tùy tâm. Điều mình ngại lần trước là bị làm vội – gói này dành hẳn 85 phút cho phần massage nên mình có khoảng thời gian đủ để cơ vai gáy được thả lỏng, không bị cắt ngắn."
+    ],
+    "ms": 22390,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "v09-bad-experience-elsewhere",
+    "customer": "Tôi đang cân nhắc thử bên bạn chứ không khiếu nại bên bạn. Có gì cụ thể giúp tôi yên tâm?",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 45007,
+    "calls": 3,
+    "fallback": true,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "UNSUPPORTED_NUMBER",
+      "UNSUPPORTED_NUMBER_VALUES:100",
+      "PLAN_CONTEXT_EXPANDED",
+      "INVALID_JSON_CONTRACT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "v10-stop-overrides-frustration",
+    "customer": "Vai gáy tôi mỏi, ở Long Biên. Báo giúp gói phù hợp.",
+    "texts": [
+      "Vai gáy mỏi thì em nghiêng về gói NS03 Massage phục hồi ở Nàng Sen Long Biên: 100 phút, gồm 10p ngâm bồn thảo dược + 5p xông hơi + 85p massage phục hồi, phòng VIP riêng, KTV phục hồi — bảng dịch vụ cũng ghi nhóm phù hợp với đau mỏi vai gáy. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm.",
+      "Nếu mình muốn gọn hơn thì NS01 60 phút full body cơ bản là 399.000đ, phòng chung. Còn nếu thích riêng tư và thêm gội đầu dưỡng sinh thì có NS05 120 phút, 780.000đ, phòng VIP khép kín."
+    ],
+    "ms": 21804,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Bubble 2 tự thêm hai phương án NS01 và NS05 khi khách chỉ hỏi một gói phù hợp — xả danh mục/upsell không được mời.",
+      "Bubble 2 nêu NS05 'thêm gội đầu dưỡng sinh' nhưng nguồn ghi 'tương tự gói 670k + gội đầu' và cảnh báo phải xác nhận cấu phần trước khi khẳng định; đang khẳng định vượt nguồn."
+    ]
+  },
+  {
+    "scenario": "v10-stop-overrides-frustration",
+    "customer": "Bạn hỏi nhiều quá. Thôi khỏi tư vấn, dừng ở đây đi.",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "ms": 24083,
+    "calls": 1,
+    "fallback": true,
+    "violations": [
+      "TURN_DEADLINE"
+    ]
+  }
+]

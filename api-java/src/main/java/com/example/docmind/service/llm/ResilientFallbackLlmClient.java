@@ -66,6 +66,8 @@ public class ResilientFallbackLlmClient implements LlmClient {
             return primaryResult;
         }
 
+        // A caller canceled/deadlined this work. Do not start a second network request after cancellation.
+        if (Thread.currentThread().isInterrupted()) return "[llm-unavailable] Request canceled.";
         if (fallback == null) {
             this.lastUsedClient = primary;
             if (primaryException != null) {
