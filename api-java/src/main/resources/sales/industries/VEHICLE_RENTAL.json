@@ -26,9 +26,7 @@
     "rejected_option: phương án khách bác bỏ; không tiếp tục mời cùng phương án"
   ],
   "actionRequirements": [
-    "Báo tổng thuê: cần thời gian và cách tính ngày trong chính sách; tách tiền cọc, phí giao nhận và khoản chưa rõ.",
-    "Khách đã chọn: bot tiếp tục thu nhận yêu cầu và hỏi đúng thông tin còn thiếu. Không xác nhận lịch/xe trống hoặc giao dịch hoàn tất khi chưa có kết quả nghiệp vụ. Thiếu công cụ xác nhận không phải lý do HANDOFF.",
-    "Chỉ HANDOFF khi khách đòi người thật, khiếu nại dịch vụ đã nhận tại doanh nghiệp, hoàn tiền/trả hàng hoặc tranh chấp; không HANDOFF vì khách chê giá, lưỡng lự hay sửa cách bot tư vấn."
+    "Báo tổng thuê: cần thời gian và cách tính ngày trong chính sách; tách tiền cọc, phí giao nhận và khoản chưa rõ."
   ],
   "evaluationScenarios": [
     "Đòi đúng mẫu xe dù giá cao",

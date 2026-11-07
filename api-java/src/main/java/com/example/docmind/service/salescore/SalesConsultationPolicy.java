@@ -34,10 +34,12 @@ final class SalesConsultationPolicy {
                 || p.handoffReason() == HandoffReason.NONE || !customerSupports(input, p.handoffQuote())))
             errors.add("HANDOFF_REQUIRES_CUSTOMER_SERVICE_REASON");
         if (p == null || p.stage() == null) return errors; // Legacy callers still get source/authority checks; follow-up remains fail-closed.
+        // A missing preference is not a forbidden speech act. A scoped/conditional recommendation may
+        // help before every slot is known. Never accept invented customer context; the semantic review
+        // additionally checks whether the wording falsely assumes a branch, need or buying decision.
         boolean recommendation = decision.strategy().action() == Action.RECOMMEND || decision.strategy().action() == Action.COMPARE;
-        // Stage never forbids grounded answers. Personal recommendations still require customer context.
-        if (recommendation && p.stage() != ConsultationStage.LOCATION && !missingContext(input).isEmpty())
-            errors.add("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT");
+        if (recommendation && p.contextEvidence().values().stream().anyMatch(quote -> !customerSupports(input, quote)))
+            errors.add("UNSUPPORTED_RECOMMENDATION_CONTEXT");
         if (p.stage() == ConsultationStage.COMMITMENT && !customerSupports(input, p.readinessEvidence()))
             errors.add("COMMITMENT_WITHOUT_CUSTOMER_SIGNAL");
         if (p.stage() == ConsultationStage.CLOSE && (decision.strategy().action() != Action.PAUSE

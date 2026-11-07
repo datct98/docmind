@@ -1,0 +1,10 @@
+{
+  "container": "/docmind-api",
+  "running": true,
+  "image": "sha256:86cd8e4820003609ce72625766715fd2dffbdfedf8f7b089bd1fec33f677be5c",
+  "flags": {
+    "SALES_CORE_ENABLED": "true"
+  },
+  "latest_image": "sha256:d060d927aca72aa71640efb7cda698fd5c92e823aac2b174b518bc813af15443",
+  "restarted_after_changes": false
+}

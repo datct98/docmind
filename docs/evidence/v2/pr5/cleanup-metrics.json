@@ -1,0 +1,326 @@
+{
+  "parent": "b3581f01b1b2c189930ac9e20ce33fe569d45c83",
+  "targets": [
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/metadata/ChunkMetadataBackfillService.java",
+      "before": {
+        "lines": 352,
+        "bytes": 14983,
+        "sha256": "e18b99243c6b282edc001476cd18ea55881068a06d756889209956abf92ea8b8",
+        "conditional_tokens": 15
+      },
+      "after": {
+        "lines": 335,
+        "bytes": 14379,
+        "sha256": "a98b52de5bc89bb8062f90f29c06ab33c8f36bde2cee4dd8e996643198c6e571",
+        "conditional_tokens": 13
+      }
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/salescore/SalesPromptBuilder.java",
+      "before": {
+        "lines": 244,
+        "bytes": 29744,
+        "sha256": "ca9345b92f6dd0b444f02abcb50a7aaa6cba61a06a7be57cadd748cc75f7d7a6",
+        "conditional_tokens": 4
+      },
+      "after": {
+        "lines": 216,
+        "bytes": 26085,
+        "sha256": "deee527994bb3542f71eac5a74dbcd4f3846b4b92b6b5f0cd0f3bf19875ac267",
+        "conditional_tokens": 4
+      }
+    },
+    {
+      "path": "api-java/src/main/resources/sales/industries/BEAUTY_SPA.json",
+      "before": {
+        "lines": 50,
+        "bytes": 3701,
+        "sha256": "37d6a022a57e3b1b2c5c233afc3d6c697ee8931b6fde86e2e034e944c6ece92a",
+        "conditional_tokens": 0
+      },
+      "after": {
+        "lines": 48,
+        "bytes": 3228,
+        "sha256": "f6da557a9c540fcd2b6c944b1a4d98746abcb7c5fc813dec1502d3c5bb08921e",
+        "conditional_tokens": 0
+      }
+    },
+    {
+      "path": "api-java/src/main/resources/sales/industries/MOTORBIKE_RENTAL.json",
+      "before": {
+        "lines": 50,
+        "bytes": 3087,
+        "sha256": "97f8bc29e9402c06ce814d4883b3351f8dce1518330a53522b1d082c265c1988",
+        "conditional_tokens": 0
+      },
+      "after": {
+        "lines": 48,
+        "bytes": 2614,
+        "sha256": "5cf8508d1c719408bdf236d667ef0df4f1cb35c2b1c04f9f56ec5db9139c90bd",
+        "conditional_tokens": 0
+      }
+    },
+    {
+      "path": "api-java/src/main/resources/sales/industries/VEHICLE_RENTAL.json",
+      "before": {
+        "lines": 50,
+        "bytes": 2914,
+        "sha256": "f40e79d63487873637e54b49f5e9330318838c1331c0e5c35ac74ec0e1ff07c6",
+        "conditional_tokens": 0
+      },
+      "after": {
+        "lines": 48,
+        "bytes": 2441,
+        "sha256": "8552f5682b114ea168a3ba2228217e23d80cc2a36ba9aef6fd860adf376b4d01",
+        "conditional_tokens": 0
+      }
+    }
+  ],
+  "source_files": 269,
+  "source_lines": 127097,
+  "migrations": [
+    {
+      "path": "api-java/src/main/resources/db/migration/V10__cooling_psychological_persuasion_skills.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V11__harness2_recursive_library.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V12__staging_review_queue.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V13__omnichannel_conversations.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V14__obsidian_metadata_cache_backfill.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V15__multi_tenant_persona_and_chunk_lifecycle.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V16__elite_sales_negotiation_psychology_skills.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V17__page_playbooks_and_sample_dialogues.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V18__sample_dialogues_quality_label.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V19__sent_bubble_ledger.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V1__init.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V20__nang_sen_opening_and_catalog_driven_prompt.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V21__fix_nang_sen_skills_and_opening_hours_faq.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V22__clean_dynamic_duration_and_trial_accept_rules.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V23__seed_dental_clinic_opening_bubbles.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V24__canonical_eq_agent_skills_and_nang_sen_space.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V25__aci_v2_conversational_ux_and_safety_refinement.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V26__aci_v2_microcopy_objection_wording.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V27__align_price_objection_with_kb_all_inclusive_policy.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V28__aci_v2_consultative_hospitality_and_promo_alignment.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V29__aci_v2_anti_thaomai_skill_and_price_range_polish.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V2__meta_learning.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V30__aci_v2_draft2_smart_price_anchor_and_all_inclusive_objection.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V31__aci_v2_adaptive_sales_intelligence_v23.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V32__p01_message_external_mid_unique_index.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V33__p04_add_session_opt_out_and_reconsent_audit.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V34__p22_normalize_room_space_chunks_provenance.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V35__p24_add_aci_memory_state_and_optimistic_version.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V36__p35_ai_identity_honesty_and_price_step_back_rules.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V37__p36_scope_consistency_and_natural_consultative_sales.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V38__p36_privacy_room_and_scope_quote_polish.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V39__p36_tip_policy_grounding_and_three_step_privacy_order.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V3__knowledge_pages.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V40__p37b2_skill_rule_arbitration_and_deescalation.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V41__aci_v3_p1_taxonomy_skills_and_rule_scoping.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V42__p31_outbound_delivery_lifecycle.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V43__sbr01_cp3_3_neutralize_discovery_good_example.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V44__sbr01_cp3_4_nang_sen_skill_audit_and_principle_skills.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V45__p1_curated_variant_c_good_examples.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V46__sales_customer_memory.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V4__chunks_page_isolation.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V5__cleanup_heading_chunks_and_sync_page_id.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V6__feedback_page_id.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V7__agent_skills.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V8__lifelong_evolution_metrics.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    },
+    {
+      "path": "api-java/src/main/resources/db/migration/V9__anti_dumping_pacing_skills.sql",
+      "unchanged": true,
+      "comparison": "Git-normalized LF; Windows checkout may use CRLF"
+    }
+  ],
+  "all_historical_migrations_unchanged": true,
+  "removed_unused_prompt_methods": 1,
+  "removed_page_specific_constants": 2,
+  "removed_duplicate_universal_pack_rules": 6,
+  "removed_active_fallback_routes": 0,
+  "knowledge_authority_cleanup": "BLOCKED_ON_VERIFIED_PAGE_BINDING",
+  "proof_limits": [
+    "Conditional tokens are not cyclomatic complexity",
+    "Source count grows with new capabilities; no total-complexity reduction claim",
+    "Runtime and dynamic reachability judgement is in cleanup-inventory.md",
+    "No codebase-clean or quality acceptance from these metrics"
+  ]
+}

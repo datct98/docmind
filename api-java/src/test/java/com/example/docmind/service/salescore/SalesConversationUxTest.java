@@ -23,7 +23,7 @@ class SalesConversationUxTest {
         assertThat(validator.validateDelivery(split, true, false, false, ReplyMode.PRICE_MOMENT)).isNotEmpty();
     }
 
-    @Test void specificPriceAnswerDoesNotRequirePersonalDiscoveryButRecommendationStillDoes() {
+    @Test void scopedPriceAndSuggestionDoNotRequireCompletingEveryDiscoverySlot() {
         var input = SalesCoreTest.input("BEAUTY_SPA", "Gói toàn thân bao nhiêu?")
                 .withInteractionPlan(SalesConsultationPolicyTest.plan(ConsultationStage.CONSULTATION, Map.of(), HandoffReason.NONE, ""));
         var answer = json.readValue(SalesCoreTest.answer("Toàn thân 399k / 60 phút.", "ANSWER",
@@ -31,7 +31,10 @@ class SalesConversationUxTest {
         assertThat(validator.validate(answer, input)).isEmpty();
         var recommendation = new TurnDecision(answer.understanding(), new Strategy(Action.RECOMMEND, "Phù hợp", "Chọn"),
                 answer.bubbles(), "", List.of(), null);
-        assertThat(validator.validate(recommendation, input)).contains("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT");
+        assertThat(validator.validate(recommendation, input)).isEmpty();
+        var inventedContext = input.withInteractionPlan(SalesConsultationPolicyTest.plan(ConsultationStage.CONSULTATION,
+                Map.of("need", "khách yêu cầu phòng riêng"), HandoffReason.NONE, ""));
+        assertThat(validator.validate(recommendation, inventedContext)).contains("UNSUPPORTED_RECOMMENDATION_CONTEXT");
     }
 
     @Test void plannerChoosesWholeBubblesWithoutSentenceSplittingOrUnsolicitedContinuation() {

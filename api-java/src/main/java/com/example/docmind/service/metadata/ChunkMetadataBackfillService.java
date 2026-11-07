@@ -31,8 +31,6 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ChunkMetadataBackfillService.class);
 
-    public static final UUID NANG_SEN_PAGE_ID = UUID.fromString("2850a8ef-ca4a-40eb-87fa-4f808640efee");
-    public static final int EXPECTED_NANG_SEN_CHUNK_COUNT = 65;
 
     private final JdbcTemplate jdbc;
     private final ChunkRepository chunkRepository;
@@ -101,14 +99,6 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
             return new BackfillReport(pageId, 0, 0, 0, 0, 0, 0, 0, true, 0, "SKIPPED_EMPTY_PAGE");
         }
 
-        // Kiểm tra cứng pre-flight cho Page mặc định
-        if (NANG_SEN_PAGE_ID.equals(pageId) && beforeCount != EXPECTED_NANG_SEN_CHUNK_COUNT) {
-            String errMsg = String.format("NANG_SEN_PAGE_ID preflight chunk count mismatch! Expected=%d, Actual=%d",
-                    EXPECTED_NANG_SEN_CHUNK_COUNT, beforeCount);
-            log.error(errMsg);
-            throw new IllegalStateException(errMsg);
-        }
-
         // 2. Kiểm tra các cột trong DB
         boolean hasMetadataCol = columnExists("chunks", "chunk_metadata");
         boolean hasTsvContentCol = columnExists("chunks", "tsv_content");
@@ -159,8 +149,9 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
                     java.util.Map<String, Object> merged = objectMapper.readValue(existingRaw, java.util.LinkedHashMap.class);
                     @SuppressWarnings("unchecked")
                     java.util.Map<String, Object> extractedMap = objectMapper.convertValue(meta, java.util.LinkedHashMap.class);
-                    merged.putAll(extractedMap);
-                    json = objectMapper.writeValueAsString(merged);
+                    // Curated source scope/rights outrank heuristic metadata extraction.
+                    extractedMap.putAll(merged);
+                    json = objectMapper.writeValueAsString(extractedMap);
                 } else {
                     json = objectMapper.writeValueAsString(meta);
                 }
@@ -186,14 +177,6 @@ public class ChunkMetadataBackfillService implements ApplicationRunner {
         if (!rowCountPreserved) {
             String errMsg = String.format("CRITICAL INVARIANT VIOLATION: Row count mismatch! Before=%d, After=%d",
                     beforeCount, afterCount);
-            log.error(errMsg);
-            throw new IllegalStateException(errMsg);
-        }
-
-        // Đối với Page mặc định, kiểm tra cứng 65 chunk
-        if (NANG_SEN_PAGE_ID.equals(pageId) && afterCount != EXPECTED_NANG_SEN_CHUNK_COUNT) {
-            String errMsg = String.format("NANG_SEN_PAGE_ID chunk count mismatch! Expected=%d, Actual=%d",
-                    EXPECTED_NANG_SEN_CHUNK_COUNT, afterCount);
             log.error(errMsg);
             throw new IllegalStateException(errMsg);
         }

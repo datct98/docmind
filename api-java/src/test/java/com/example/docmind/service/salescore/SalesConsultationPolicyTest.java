@@ -44,7 +44,16 @@ class SalesConsultationPolicyTest {
             Map.of("service_area", "Bích Câu"), HandoffReason.NONE, ""));
         assertThat(SalesConsultationPolicy.missingContext(input)).contains("need", "service_area");
         var quote = new tools.jackson.databind.ObjectMapper().readValue(SalesContinuationTest.QUOTE.replace("\"action\":\"ANSWER\"", "\"action\":\"RECOMMEND\""), TurnDecision.class);
-        assertThat(new SalesDecisionValidator().validate(quote, input)).contains("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT");
+        assertThat(new SalesDecisionValidator().validate(quote, input)).contains("UNSUPPORTED_RECOMMENDATION_CONTEXT");
+    }
+    @Test void missingLocationDoesNotForbidAConditionalSourceBackedSuggestion() {
+        var input = SalesCoreTest.input("BEAUTY_SPA", "Giá").withInteractionPlan(plan(ConsultationStage.CONSULTATION,
+                Map.of(), HandoffReason.NONE, ""));
+        var quote = new tools.jackson.databind.ObjectMapper().readValue(SalesContinuationTest.QUOTE.replace("\"action\":\"ANSWER\"", "\"action\":\"RECOMMEND\""), TurnDecision.class);
+        assertThat(new SalesDecisionValidator().validate(quote, input)).doesNotContain("OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT", "UNSUPPORTED_RECOMMENDATION_CONTEXT");
+        // The same decision is still forbidden to claim a customer location which they never supplied.
+        var invented = input.withInteractionPlan(plan(ConsultationStage.CONSULTATION, Map.of("service_area", "Long Biên"), HandoffReason.NONE, ""));
+        assertThat(new SalesDecisionValidator().validate(quote, invented)).contains("UNSUPPORTED_RECOMMENDATION_CONTEXT");
     }
     @Test void stageDoesNotForbidSourcedPriceAnswerButCannotAuthorizeAutomaticContinuation() {
         var input = SalesCoreTest.input("BEAUTY_SPA", "Bích Câu").withInteractionPlan(plan(ConsultationStage.DISCOVERY,

@@ -1,0 +1,52 @@
+[
+  {
+    "path": "artifacts/v2-pr5/full-baseline-ready.log",
+    "sha256": "374249e2d40ed9eb696a2ed33da168b17c074061a010e452e455f93dcf05762c",
+    "bytes": 1938477
+  },
+  {
+    "path": "artifacts/v2-pr5/full-current-release-check.log",
+    "sha256": "d9a632089b7c544a5f78dd1402d5c4c41ef3915e359631323099dcdfd4ee969f",
+    "bytes": 1947759
+  },
+  {
+    "path": "artifacts/v2-pr5/real-memory.log",
+    "sha256": "991e7133319edc542b28fefae83af55f2d9cf8cdb0b04779bac3f8c3c1cf3626",
+    "bytes": 1269
+  },
+  {
+    "path": "artifacts/v2-pr5/frontend-build.log",
+    "sha256": "a97c55ba168a57baf706228d5ba145064b146c7af598ad7efc1f617172576e31",
+    "bytes": 403
+  },
+  {
+    "path": "artifacts/v2-pr5/docker-build-release-check.log",
+    "sha256": "f6de710f9d29e1c9ef3f63d0d78e31a7904e9ff7d04ba5c67008bb304d0d57cb",
+    "bytes": 9188
+  },
+  {
+    "path": "artifacts/v2-pr4/window-unit-fixed.log",
+    "sha256": "071a2798c5072dfc59d1bae5330ed97571a0ec78bc0dbd67c6bf07c5e3504f85",
+    "bytes": 47640
+  },
+  {
+    "path": "artifacts/v2-pr4/window-live.log",
+    "sha256": "32a150b7cb0e0d7ec96374966851f63a94a44434015e5750d3010b75ee4df502",
+    "bytes": 11243
+  },
+  {
+    "path": "artifacts/v2-pr4/authority-live.log",
+    "sha256": "2319e3b040ad11e9dca4ebbac46fc3f731440bebaa12a89a45fb14a8ccc70144",
+    "bytes": 43522
+  },
+  {
+    "path": "artifacts/v2-pr4/owner-live.log",
+    "sha256": "09cbdf68133cd30587b81f1e6ef9cdd946442179f0da595b120a6549ee8929a8",
+    "bytes": 96914
+  },
+  {
+    "path": "artifacts/v2-pr4/python-tests-authority.log",
+    "sha256": "05200419049e558e6b2a2c9997da389e2d91b7c5c0cb2e354241a53732818361",
+    "bytes": 114
+  }
+]

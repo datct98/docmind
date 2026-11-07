@@ -53,7 +53,7 @@ class ChunkMetadataBackfillServiceAdversarialTest {
     private ObsidianMetadataCache obsidianMetadataCache;
     private ChunkMetadataBackfillService service;
 
-    private static final UUID NANG_SEN_PAGE_ID = ChunkMetadataBackfillService.NANG_SEN_PAGE_ID;
+    private static final UUID NANG_SEN_PAGE_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     @BeforeEach
     void setUp() {
@@ -80,20 +80,22 @@ class ChunkMetadataBackfillServiceAdversarialTest {
         return chunks;
     }
 
-    @ParameterizedTest(name = "Pre-flight Nàng sen chunk count {0} strictly throws IllegalStateException")
-    @ValueSource(ints = {1, 63, 64, 66, 67, 100})
-    @DisplayName("ADV-1: Page Nàng sen pre-flight count mismatch (64, 66...) ném IllegalStateException")
-    void testPreflightNangSenCountDivergence_ThrowsIllegalStateException(int actualCount) {
-        when(jdbc.queryForObject(eq("SELECT count(*) FROM chunks WHERE page_id = ?"), eq(Integer.class), eq(NANG_SEN_PAGE_ID)))
-                .thenReturn(actualCount);
-
-        assertThatThrownBy(() -> service.backfillPage(NANG_SEN_PAGE_ID, false))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(String.format("NANG_SEN_PAGE_ID preflight chunk count mismatch! Expected=65, Actual=%d", actualCount));
-
-        // Verify no updates occurred
-        verify(chunkRepository, never()).findByPageId(any());
-        verify(jdbc, never()).update(anyString(), anyString(), any());
+    @ParameterizedTest(name = "Preserve Page snapshot of {0} chunks, without a fixed business count")
+    @ValueSource(ints = {1, 63, 64, 66, 67, 100, 114})
+    void arbitraryPageSnapshotCountIsPreserved(int actualCount) {
+        var chunks = new ArrayList<ChunkEntity>();
+        for (int i = 0; i < actualCount; i++) chunks.add(ChunkEntity.builder().id(UUID.randomUUID())
+                .pageId(NANG_SEN_PAGE_ID).text("price source").headingPath(new String[]{"Catalog"}).build());
+        when(chunkRepository.findByPageId(NANG_SEN_PAGE_ID)).thenReturn(chunks);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(NANG_SEN_PAGE_ID))).thenReturn(actualCount);
+        when(jdbc.queryForObject(contains("FROM information_schema.columns"), eq(Integer.class), anyString(), anyString())).thenReturn(1);
+        when(jdbc.update(anyString(), anyString(), any(UUID.class))).thenReturn(1);
+        var report = service.backfillPage(NANG_SEN_PAGE_ID, false);
+        assertThat(report.verified()).isTrue();
+        assertThat(report.beforeRowCount()).isEqualTo(actualCount);
+        assertThat(report.afterRowCount()).isEqualTo(actualCount);
+        assertThat(report.chunksUpdated()).isEqualTo(actualCount);
+        verify(jdbc, times(actualCount)).update(anyString(), anyString(), any(UUID.class));
     }
 
     @Test

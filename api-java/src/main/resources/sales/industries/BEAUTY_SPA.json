@@ -27,9 +27,7 @@
     "rejected_option: phương án/phạm vi khách không muốn; giữ lý do nếu khách nêu"
   ],
   "actionRequirements": [
-    "Tư vấn gói: đối chiếu phạm vi và phần loại trừ; giá theo đúng chi nhánh và thời lượng nguồn.",
-    "Khách đã chọn: bot tiếp tục thu nhận yêu cầu và hỏi đúng thông tin còn thiếu. Không xác nhận lịch/xe trống hoặc giao dịch hoàn tất khi chưa có kết quả nghiệp vụ. Thiếu công cụ xác nhận không phải lý do HANDOFF.",
-    "Chỉ HANDOFF khi khách đòi người thật, khiếu nại dịch vụ đã nhận tại doanh nghiệp, hoàn tiền/trả hàng hoặc tranh chấp; không HANDOFF vì khách chê giá, lưỡng lự hay sửa cách bot tư vấn."
+    "Tư vấn gói: đối chiếu phạm vi và phần loại trừ; giá theo đúng chi nhánh và thời lượng nguồn."
   ],
   "evaluationScenarios": [
     "Giữ đủ nhiều vùng khi có phản đối giá",

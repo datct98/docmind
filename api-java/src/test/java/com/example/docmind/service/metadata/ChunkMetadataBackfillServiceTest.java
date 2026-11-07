@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
  * Unit Test Suite for ChunkMetadataBackfillService (Feature F10):
  * 1. Full 65-chunk enrichment and verification (before == 65, after == 65) for Page "Nàng sen".
  * 2. Invariant violation detection (throws IllegalStateException if row counts diverge).
- * 3. Page "Nàng sen" strict 65-chunk invariant enforcement.
+ * 3. Source provenance survives heuristic enrichment for any Page size.
  * 4. Idempotency (running backfill repeatedly leaves row counts unchanged).
  * 5. Dynamic metadata extraction verification via ChunkMetadataExtractor (zero hardcode).
  * 6. Cache invalidation on ObsidianMetadataCache.
@@ -45,7 +45,7 @@ class ChunkMetadataBackfillServiceTest {
     private ObsidianMetadataCache obsidianMetadataCache;
     private ChunkMetadataBackfillService service;
 
-    private static final UUID NANG_SEN_PAGE_ID = ChunkMetadataBackfillService.NANG_SEN_PAGE_ID;
+    private static final UUID NANG_SEN_PAGE_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     @BeforeEach
     void setUp() {
@@ -235,15 +235,23 @@ class ChunkMetadataBackfillServiceTest {
     }
 
     @Test
-    @DisplayName("F10 Bất biến: Page Nàng sen yêu cầu chính xác 65 chunk, nếu không đủ 65 ném IllegalStateException")
-    void testInvariantViolation_ThrowsIllegalStateException_WhenNangSenCountNot65() {
-        // Pre-flight count = 64 (thiếu 1 chunk)
-        when(jdbc.queryForObject(eq("SELECT count(*) FROM chunks WHERE page_id = ?"), eq(Integer.class), eq(NANG_SEN_PAGE_ID)))
-                .thenReturn(64);
-
-        assertThatThrownBy(() -> service.backfillPage(NANG_SEN_PAGE_ID, false))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("NANG_SEN_PAGE_ID preflight chunk count mismatch! Expected=65, Actual=64");
+    @DisplayName("Curated source metadata outranks inferred metadata at any row count")
+    void curatedSourceScopeSurvivesBackfill() throws Exception {
+        var chunk = ChunkEntity.builder().id(UUID.randomUUID()).pageId(NANG_SEN_PAGE_ID)
+                .headingPath(new String[]{"Other place", "PRICE"}).text("NS01 500k")
+                .chunkMetadataJson("{\"provenance_normalized\":true,\"branch_tags\":[\"verified-branch\"],\"source_sha256\":\"verified-sha\",\"embedding_status\":\"FTS_ONLY\"}").build();
+        when(chunkRepository.findByPageId(NANG_SEN_PAGE_ID)).thenReturn(List.of(chunk));
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(NANG_SEN_PAGE_ID))).thenReturn(1);
+        when(jdbc.queryForObject(contains("FROM information_schema.columns"), eq(Integer.class), anyString(), anyString())).thenReturn(1);
+        when(jdbc.update(anyString(), anyString(), any(UUID.class))).thenReturn(1);
+        var result = service.backfillPage(NANG_SEN_PAGE_ID, false);
+        var captured = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(anyString(), captured.capture(), eq(chunk.getId()));
+        var metadata = objectMapper.readTree(captured.getValue());
+        assertThat(metadata.get("branch_tags").get(0).asText()).isEqualTo("verified-branch");
+        assertThat(metadata.get("source_sha256").asText()).isEqualTo("verified-sha");
+        assertThat(metadata.get("embedding_status").asText()).isEqualTo("FTS_ONLY");
+        assertThat(result.verified()).isTrue();
     }
 
     @Test
