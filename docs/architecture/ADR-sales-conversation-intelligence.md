@@ -1,6 +1,6 @@
 # ADR — Định hướng sản phẩm và kiến trúc hội thoại bán hàng DocMind
 
-**Status:** Hướng triển khai đã được người dùng yêu cầu thực hiện; Sales Core 3 triển khai một lát M1/M2. Các năng lực khác bên dưới vẫn là mục tiêu, chưa phải tính năng đã hoàn tất.
+**Status:** Hướng triển khai đã được người dùng yêu cầu thực hiện. Sales Core 4 bổ sung hợp đồng UX, truy xuất khi cần và quyền bàn giao có điều kiện trên nền M1/M2. [Quyết định UX hiện hành](../analysis/2026-11-07-sales-core-v4-ux-design.md) ưu tiên nghiệm thu Spa trước. Các năng lực khác bên dưới vẫn là mục tiêu, chưa phải tính năng đã hoàn tất.
 **Date:** 2026-11-07, Asia/Bangkok.
 **Deciders:** Chủ sản phẩm quyết định tiêu chuẩn trải nghiệm, quyền hạn kinh doanh và phạm vi pilot; engineering chịu trách nhiệm hợp đồng dữ liệu, đo lường và triển khai.
 **Baseline inspected:** `af1c236`, nhánh `fix/post-cp3-quality-remediation`.

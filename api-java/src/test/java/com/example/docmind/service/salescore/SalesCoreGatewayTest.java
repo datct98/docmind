@@ -179,14 +179,24 @@ class SalesCoreGatewayTest {
         assertThat(result.replyBubbles()).isEmpty();
         verifyNoInteractions(core, knowledge);
     }
-    @Test void groundedHandoffReturnsActionableInboxSummaryWithoutBookingConfirmation() {
+    @Test void explicitHumanRequestReturnsActionableInboxSummaryWithoutBookingConfirmation() {
         var source = source();
         String raw = SalesCoreTest.answer("Em cần nhờ nhân viên xác nhận xe và thủ tục cho mình.", "HANDOFF", "[]")
-                .replace("cổ vai gáy chân tay", "thuê xe hai ngày")
+                .replace("cổ vai gáy chân tay", "Tôi muốn gặp nhân viên")
                 .replace("\"handoffSummary\":\"\"", "\"handoffSummary\":\"Khách muốn thuê xe hai ngày. Cần xác nhận tồn xe và thủ tục.\"");
-        try (var core = new SalesTurnOrchestrator(SalesCoreTest.fake(() -> raw), new IndustryProfileRegistry(), 3000)) {
+        var client = new com.example.docmind.service.llm.LlmClient() {
+            public String name() { return "human-request-fixture"; }
+            public String complete(String prompt) {
+                if (prompt.startsWith("SALES_PLAN")) return SalesConsultationPolicyTest.plan("ESCALATION", false, null)
+                    .replace("\"handoffReason\":\"NONE\"", "\"handoffReason\":\"EXPLICIT_HUMAN_REQUEST\"")
+                    .replace("\"handoffQuote\":\"\"", "\"handoffQuote\":\"Tôi muốn gặp nhân viên\"");
+                return SalesCoreTest.fake(() -> raw).complete(prompt);
+            }
+        };
+        try (var core = new SalesTurnOrchestrator(client, new IndustryProfileRegistry(), 3000)) {
+            core.setPlanningEnabled(true);
             var gateway = new SalesCoreGateway(core, source, true);
-            var request = new FanpageBotRequest(pageId.toString(), "handoff-fixture", "", "thuê xe hai ngày", null,
+            var request = new FanpageBotRequest(pageId.toString(), "handoff-fixture", "", "Tôi muốn gặp nhân viên", null,
                     List.of(), null, 5, null, null, null, null);
             var response = gateway.respond(pageId, request, request.message(), null);
             assertThat(response.needsHumanHandoff()).isTrue();

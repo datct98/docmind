@@ -31,7 +31,7 @@ public class IndustryProfileRegistry {
             } else {
                 var stream = getClass().getResourceAsStream("/sales/industries/" + code + ".json");
                 if (stream == null) {
-                    if (!code.equals("GENERIC")) return load("GENERIC");
+                    if (!code.equals("GENERIC")) throw new IllegalArgumentException("Unknown configured industry: " + code);
                     throw new IllegalStateException("Missing GENERIC profile");
                 }
                 try (stream) { profile = json.readValue(stream.readAllBytes(), IndustryProfile.class); }
@@ -40,8 +40,13 @@ public class IndustryProfileRegistry {
                     || profile.discoveryHints() == null || profile.boundaries() == null) {
                 throw new IllegalArgumentException("Invalid industry profile: " + code);
             }
-            if (profile.schemaVersion() == 2 && (profile.customerFields().isEmpty() || profile.actionRequirements().isEmpty()
-                    || profile.evaluationScenarios().isEmpty())) throw new IllegalArgumentException("Incomplete v2 industry profile: " + code);
+            if (profile.schemaVersion() == 2 && (profile.customerFields().isEmpty() || profile.actionRequirements().isEmpty()))
+                throw new IllegalArgumentException("Incomplete v2 industry profile: " + code);
+            var keys = new java.util.HashSet<String>();
+            for (var requirement : profile.recommendationRequirements()) if (requirement == null || requirement.key() == null
+                    || !requirement.key().matches("[a-z][a-z0-9_]{0,63}") || !keys.add(requirement.key())
+                    || requirement.description() == null || requirement.description().isBlank())
+                throw new IllegalArgumentException("Invalid recommendation requirement: " + code);
             return profile;
         } catch (IOException e) { throw new IllegalStateException("Cannot read industry profile " + code, e); }
     }

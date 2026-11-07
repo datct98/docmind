@@ -27,8 +27,8 @@
   ],
   "actionRequirements": [
     "Báo tổng thuê: cần thời gian và cách tính ngày trong chính sách; tách tiền cọc, phí giao nhận và khoản chưa rõ.",
-    "Yêu cầu nhận xe: dùng loại xe/thời gian/địa điểm đã biết, hỏi đúng phần còn thiếu để kiểm tra khả năng phục vụ.",
-    "Không có công cụ kiểm tra xe trống/giữ xe ở phiên bản này: nhờ nhân viên xác nhận, không hứa có xe hay đã giữ."
+    "Khách đã chọn: bot tiếp tục thu nhận yêu cầu và hỏi đúng thông tin còn thiếu. Không xác nhận lịch/xe trống hoặc giao dịch hoàn tất khi chưa có kết quả nghiệp vụ. Thiếu công cụ xác nhận không phải lý do HANDOFF.",
+    "Chỉ HANDOFF khi khách đòi người thật, khiếu nại dịch vụ đã nhận tại doanh nghiệp, hoàn tiền/trả hàng hoặc tranh chấp; không HANDOFF vì khách chê giá, lưỡng lự hay sửa cách bot tư vấn."
   ],
   "evaluationScenarios": [
     "Đòi đúng mẫu xe dù giá cao",
@@ -36,5 +36,15 @@
     "Sửa ngày trả",
     "Muốn thuê ngay nhưng chưa có tồn xe",
     "Bác bỏ phương án thay thế"
+  ],
+  "recommendationRequirements": [
+    {
+      "key": "need",
+      "description": "Nhu cầu/mục đích hoặc sản phẩm khách muốn thực sự cụ thể; hỏi giá chung không đủ."
+    },
+    {
+      "key": "service_area",
+      "description": "Quận/khu vực nhận dịch vụ hoặc cơ sở cụ thể khách chọn. Tên thành phố chưa đủ để chọn cơ sở thuận tiện nếu có nhiều cơ sở. Không suy từ địa chỉ bot đã gợi ý."
+    }
   ]
 }

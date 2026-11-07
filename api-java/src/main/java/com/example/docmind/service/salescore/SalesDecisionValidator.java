@@ -8,12 +8,12 @@ import static com.example.docmind.service.salescore.SalesContracts.*;
 /** Checks verifiable contracts; does not claim to prove empathy or semantic entailment. */
 public final class SalesDecisionValidator {
     private static final Pattern NUMBER = Pattern.compile("\\d+(?:[.,]\\d+)*(?:\\s*(?:k|nghìn|ngàn|triệu|tr)\\b)?", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern MONEY = Pattern.compile("\\d+(?:[.,]\\d+)*\\s*(?:k\\b|nghìn\\b|ngàn\\b|triệu\\b|tr\\b|đồng\\b|vnd\\b|vnđ\\b|đ)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS);
+    private static final Pattern MONEY = Pattern.compile("\\d+(?:[.,]\\d+)*\\s*(?:k\\b|nghìn\\b|ngàn\\b|triệu\\b|tr\\b|đồng\\b|vnd\\b|vnđ\\b|đ(?!\\p{L}))", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS);
     private static final Pattern UNAUTHORIZED = Pattern.compile(
             "(?iu)(?:đã|vừa)\\s+(?:đặt|giữ|chốt|xác nhận|thanh toán)|(?:đặt|giữ|thanh toán)\\s+.{0,35}thành công|(?:booking|payment|reservation)\\s+(?:is\\s+)?confirmed");
     public List<String> validate(TurnDecision d, TurnInput input) {
         Set<String> errors = new LinkedHashSet<>();
-        if (d != null && d.followUp() != null && input.interactionPlan() != null && !input.interactionPlan().allowsFollowUp())
+        if (d != null && d.followUp() != null && (input.interactionPlan() == null || !input.interactionPlan().allowsFollowUp()))
             errors.add("FOLLOWUP_WITHOUT_DECISION_PURPOSE");
         if (d == null || d.understanding() == null || d.strategy() == null || d.strategy().action() == null
                 || blank(d.strategy().reason()) || blank(d.strategy().advance()) || d.bubbles() == null
@@ -76,15 +76,19 @@ public final class SalesDecisionValidator {
             if (b.text().contains("{{") || b.text().contains("sourceId") || b.text().contains("TURN_DATA_JSON")) errors.add("INTERNAL_DATA_LEAK");
         }
         if (d.strategy().action() == Action.HANDOFF && blank(d.handoffSummary())) errors.add("MISSING_HANDOFF_SUMMARY");
+        errors.addAll(SalesConsultationPolicy.validate(d, input));
         return List.copyOf(errors);
     }
     public List<String> validateDelivery(TurnDecision d, boolean paced, boolean continuation, boolean recovery) {
+        return validateDelivery(d, paced, continuation, recovery, ReplyMode.DIRECT);
+    }
+    public List<String> validateDelivery(TurnDecision d, boolean paced, boolean continuation, boolean recovery, ReplyMode mode) {
         if (d == null || d.bubbles() == null) return List.of("INVALID_DELIVERY");
         boolean price = d.bubbles().stream().filter(Objects::nonNull).map(Bubble::text)
                 .filter(Objects::nonNull).anyMatch(t -> MONEY.matcher(t).find());
         if (continuation || recovery) {
             if (price || d.bubbles().size() > (continuation ? 1 : 2) || d.followUp() != null) return List.of("INVALID_CONTINUATION_DELIVERY");
-        } else if (paced && price && d.strategy().action() != Action.HANDOFF && d.strategy().action() != Action.PAUSE) {
+        } else if (paced && mode == ReplyMode.PRICE_MOMENT && price && d.strategy().action() != Action.HANDOFF && d.strategy().action() != Action.PAUSE) {
             if (d.bubbles().size() != 1 || (d.followUp() != null && blank(d.followUp().aim())))
                 return List.of("PRICE_REQUIRES_SINGLE_BUBBLE_AND_VALID_OPTIONAL_FOLLOWUP");
             if (d.bubbles().getFirst().text().contains("?")) return List.of("PRICE_BUBBLE_QUESTION_BELONGS_IN_CONTINUATION");
@@ -95,7 +99,7 @@ public final class SalesDecisionValidator {
     private static boolean blank(String s) { return s == null || s.isBlank(); }
     static String sourceText(Evidence source) { return (source.title() == null ? "" : source.title()) + "\n" + (source.text() == null ? "" : source.text()); }
     private static String normalized(String s) { return Normalizer.normalize(s, Normalizer.Form.NFC).replaceAll("\\s+", " ").strip(); }
-    private static Set<String> monetaryNumbers(String text) {
+    static Set<String> monetaryNumbers(String text) {
         Set<String> values = new HashSet<>();
         var matches = MONEY.matcher(text);
         while (matches.find()) values.addAll(numbers(matches.group()));

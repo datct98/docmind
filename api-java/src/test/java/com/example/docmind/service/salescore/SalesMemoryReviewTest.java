@@ -13,7 +13,7 @@ class SalesMemoryReviewTest {
                 if (prompt.startsWith("SALES_PLAN")) return """
                     {"latestContribution":"Bổ sung địa điểm","nextDecision":"Ghi nhận","reason":"Khách trả lời","needsBusinessEvidence":false,
                      "memoryUpdates":[{"key":"location","value":"Hà Nội","customerQuote":"Hà Nội","sourceTurn":1,"remove":false}]}
-                    """;
+                    """.replace("\"memoryUpdates\":", SalesConsultationPolicyTest.check("CONSULTATION") + ",\"memoryUpdates\":");
                 if (prompt.startsWith("SALES_REVIEW")) return """
                     {"replyReview":{"verdict":"PASS","issues":[],"feedback":"","severity":"QUALITY"},
                      "memoryReview":{"approved":false,"issues":["Uncertain extraction; retain source only"]}}
@@ -48,7 +48,7 @@ class SalesMemoryReviewTest {
                     if (prompt.startsWith("SALES_PLAN")) return """
                         {"latestContribution":"Bổ sung chi nhánh","nextDecision":"Dùng địa điểm đã biết","reason":"Khách vừa trả lời","needsBusinessEvidence":false,
                         "memoryUpdates":[{"key":"location","value":"Hà Nội","customerQuote":"Hà Nội","sourceTurn":1,"remove":false}]}
-                        """;
+                        """.replace("\"memoryUpdates\":", SalesConsultationPolicyTest.check("CONSULTATION") + ",\"memoryUpdates\":");
                     if (prompt.startsWith("SALES_REVIEW")) {
                         assertThat(prompt).contains("PROPOSED_CUSTOMER_MEMORY_UPDATES_JSON", "Hà Nội");
                         return "{\"verdict\":\"PASS\",\"issues\":[],\"feedback\":\"\",\"memoryApproved\":" + approval + "}";

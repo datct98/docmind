@@ -1,6 +1,24 @@
 {
   "code": "GENERIC",
-  "decisionCriteria": ["Kết quả khách muốn đạt", "Mức phù hợp với hoàn cảnh sử dụng", "Chi phí tổng và điều kiện áp dụng", "Đánh đổi giữa các lựa chọn"],
-  "discoveryHints": ["Chỉ hỏi thông tin có thể làm thay đổi lựa chọn hoặc bước tiếp theo", "Nếu còn nhiều khả năng, nêu ngắn điều chưa rõ trước khi hỏi"],
-  "boundaries": ["Không cam kết ngoài tài liệu hoặc quyền thực thi", "Không coi hỏi giá là đồng ý mua", "Tôn trọng việc chưa mua và yêu cầu dừng"]
+  "decisionCriteria": [
+    "Kết quả khách muốn đạt",
+    "Mức phù hợp với hoàn cảnh sử dụng",
+    "Chi phí tổng và điều kiện áp dụng",
+    "Đánh đổi giữa các lựa chọn"
+  ],
+  "discoveryHints": [
+    "Chỉ hỏi thông tin có thể làm thay đổi lựa chọn hoặc bước tiếp theo",
+    "Nếu còn nhiều khả năng, nêu ngắn điều chưa rõ trước khi hỏi"
+  ],
+  "boundaries": [
+    "Không cam kết ngoài tài liệu hoặc quyền thực thi",
+    "Không coi hỏi giá là đồng ý mua",
+    "Tôn trọng việc chưa mua và yêu cầu dừng"
+  ],
+  "recommendationRequirements": [
+    {
+      "key": "need",
+      "description": "Nhu cầu/mục đích hoặc sản phẩm khách muốn thực sự cụ thể; hỏi giá chung không đủ."
+    }
+  ]
 }

@@ -10,7 +10,9 @@ public final class SalesMemory {
     public record Source(long turn, String text) {}
     public record Fact(String key, String value, String customerQuote, long sourceTurn) {}
     public record Change(String key, String previousValue, String newValue, long sourceTurn) {}
-    public record Update(String key, String value, String customerQuote, long sourceTurn, boolean remove) {}
+    public record Update(String key, String value, String customerQuote, long sourceTurn, Boolean remove) {
+        public Update { remove = Boolean.TRUE.equals(remove); }
+    }
     public record View(long revision, List<Fact> facts, List<Change> changes, List<Source> customerSources, boolean truncated) {
         public View {
             facts = facts == null ? List.of() : List.copyOf(facts);

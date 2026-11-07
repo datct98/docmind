@@ -40,23 +40,51 @@ public final class SalesContracts {
     }
     /** A provisional decision, not a customer fact. Carried unchanged across writing, review and post-quote continuation. */
     public record InteractionPlan(String nextDecision, String customerBenefit, String questionPurpose,
-                                  String readinessEvidence, String unresolvedConcern) {
-        public boolean allowsFollowUp() {
-            return !("NONE".equalsIgnoreCase(questionPurpose) && (readinessEvidence == null
-                    || readinessEvidence.isBlank() || "UNKNOWN".equalsIgnoreCase(readinessEvidence) || "NONE".equalsIgnoreCase(readinessEvidence)));
+                                  String readinessEvidence, String unresolvedConcern, ConsultationStage stage,
+                                  java.util.Map<String,String> contextEvidence, List<ContextRequirement> requiredContext,
+                                  HandoffReason handoffReason, String handoffQuote, ReplyMode replyMode) {
+        public InteractionPlan {
+            contextEvidence = contextEvidence == null ? java.util.Map.of() : java.util.Map.copyOf(contextEvidence);
+            requiredContext = requiredContext == null ? List.of() : List.copyOf(requiredContext);
+            handoffReason = handoffReason == null ? HandoffReason.NONE : handoffReason;
+            replyMode = replyMode == null ? ReplyMode.DIRECT : replyMode;
         }
+        public InteractionPlan(String next, String benefit, String question, String readiness, String concern,
+                               ConsultationStage stage, java.util.Map<String,String> context, List<ContextRequirement> required,
+                               HandoffReason handoff, String quote) {
+            this(next, benefit, question, readiness, concern, stage, context, required, handoff, quote, ReplyMode.DIRECT);
+        }
+        public InteractionPlan(String next, String benefit, String question, String readiness, String concern) {
+            this(next, benefit, question, readiness, concern, null, java.util.Map.of(), List.of(), HandoffReason.NONE, "");
+        }
+        public boolean allowsFollowUp() {
+            return replyMode == ReplyMode.PRICE_MOMENT && stage == ConsultationStage.COMMITMENT
+                    && meaningful(questionPurpose) && meaningful(readinessEvidence);
+        }
+        private static boolean meaningful(String value) { return value != null && !value.isBlank()
+                && !"NONE".equalsIgnoreCase(value) && !"UNKNOWN".equalsIgnoreCase(value); }
     }
+    public enum ConsultationStage { DISCOVERY, LOCATION, CONSULTATION, TRUST_REPAIR, COMMITMENT, ESCALATION, CLOSE }
+    public enum ReplyMode { DIRECT, PRICE_MOMENT }
+    public enum HandoffReason { NONE, EXPLICIT_HUMAN_REQUEST, DELIVERED_SERVICE_COMPLAINT, REFUND_OR_RETURN, TRANSACTION_DISPUTE }
+    public record ContextRequirement(String key, String description) {}
     public record IndustryProfile(String code, List<String> decisionCriteria, List<String> discoveryHints,
                                   List<String> boundaries, Integer schemaVersion, List<String> customerFields,
-                                  List<String> actionRequirements, List<String> evaluationScenarios) {
+                                  List<String> actionRequirements, List<String> evaluationScenarios, List<ContextRequirement> recommendationRequirements) {
         public IndustryProfile {
             schemaVersion = schemaVersion == null ? 1 : schemaVersion;
             customerFields = customerFields == null ? List.of() : List.copyOf(customerFields);
             actionRequirements = actionRequirements == null ? List.of() : List.copyOf(actionRequirements);
             evaluationScenarios = evaluationScenarios == null ? List.of() : List.copyOf(evaluationScenarios);
+            recommendationRequirements = recommendationRequirements == null ? List.of() : List.copyOf(recommendationRequirements);
         }
         public IndustryProfile(String code, List<String> criteria, List<String> hints, List<String> boundaries) {
-            this(code, criteria, hints, boundaries, 1, List.of(), List.of(), List.of());
+            this(code, criteria, hints, boundaries, 1, List.of(), List.of(), List.of(), List.of());
+        }
+        public java.util.Map<String,Object> runtimeView() {
+            return java.util.Map.of("code", code, "schemaVersion", schemaVersion, "decisionCriteria", decisionCriteria,
+                "discoveryHints", discoveryHints, "boundaries", boundaries, "customerFields", customerFields,
+                "actionRequirements", actionRequirements, "recommendationRequirements", recommendationRequirements);
         }
     }
     public enum Action { ANSWER, CLARIFY, RECOMMEND, COMPARE, RESOLVE_CONCERN, INVITE_NEXT_STEP, HANDOFF, PAUSE }

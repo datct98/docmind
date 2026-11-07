@@ -153,7 +153,7 @@
                   {{ item.text }}
                 </div>
 
-                <!-- 1-Line 24px Compact Metadata Pill under Assistant Turn (Collapsed by default) -->
+                <!-- Compact turn metadata; wraps on narrow chat viewports. -->
                 <div
                   v-if="!isDeliveringBubbles && chatItems[idx + 1]?.role !== 'assistant'"
                   class="assistant-bubble-meta"
@@ -163,7 +163,7 @@
                       class="sim-compact-metrics-pill"
                       title="Bộ máy tư vấn · Tổng thời gian xử lý lượt"
                     >
-                      {{ (item.triggeredHooks || []).includes('SALES_CORE_MEMORY_V3') ? 'Sales Core 3' : (item.triggeredHooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
+                      {{ (item.triggeredHooks || []).includes('SALES_CORE_CONSULTATION_V4') ? 'Sales Core 4' : (item.triggeredHooks || []).includes('SALES_CORE_MEMORY_V3') ? 'Sales Core 3' : (item.triggeredHooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
                     </span>
                     <button
                       type="button"
@@ -1720,24 +1720,28 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-width: 82%;
+  min-width: 0;
+  max-width: min(82%, calc(100% - 32px));
+  overflow-wrap: anywhere;
 }
 
-/* 1-Line 24px Compact Metadata Pill under Assistant Turn */
+/* Keep turn controls readable without horizontal scrolling on mobile. */
 .assistant-bubble-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
   margin-left: 2px;
+  max-width: 100%;
 }
 
 .sim-compact-pill-row {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  height: 24px;
-  max-height: 24px;
+  min-height: 24px;
+  max-width: 100%;
   white-space: nowrap;
 }
 
@@ -3737,7 +3741,7 @@ onBeforeUnmount(() => {
   }
 
   .assistant-bubble-col {
-    max-width: 90%;
+    max-width: min(90%, calc(100% - 32px));
   }
 }
 </style>

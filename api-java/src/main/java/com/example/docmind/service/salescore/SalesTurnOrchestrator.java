@@ -44,11 +44,16 @@ public class SalesTurnOrchestrator implements AutoCloseable {
         return run(input, false, null);
     }
     public Result runPaced(TurnInput input) { return run(input, true, null); }
+    public Result runPaced(TurnInput input, java.util.function.Supplier<TurnInput> evidence) { return run(input, true, null, evidence); }
+    public Result run(TurnInput input, java.util.function.Supplier<TurnInput> evidence) { return run(input, false, null, evidence); }
     public Result continueAfterQuote(TurnInput input, TurnDecision first) {
         if (first == null || first.followUp() == null) throw new IllegalArgumentException("Missing continuation purpose");
         return run(input, true, first);
     }
     private Result run(TurnInput input, boolean paced, TurnDecision first) {
+        return run(input, paced, first, null);
+    }
+    private Result run(TurnInput input, boolean paced, TurnDecision first, java.util.function.Supplier<TurnInput> evidenceLoader) {
         TurnClock clock = new TurnClock();
         clock.continuation = first != null;
         Set<String> violations = new LinkedHashSet<>();
@@ -59,14 +64,46 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             var profile = profiles.load(input.industryCode());
             profileCode = profile.code();
             SalesConversationPlanner.Brief brief = null;
+            if (!planningEnabled && first == null && evidenceLoader != null) {
+                input = evidenceLoader.get();
+                completeInput = input;
+            }
             if (planningEnabled && first == null) {
                 try {
                     brief = SalesConversationPlanner.parse(call(SalesConversationPlanner.prompt(input, profile), 1800, 0.15, clock, alternateWriter));
-                    input = input.withInteractionPlan(brief.contract());
-                    completeInput = input;
-                    if (!brief.needsBusinessEvidence()) input = SalesConversationPlanner.conversationOnly(input);
                 } catch (CallFailure e) { throw e;
-                } catch (RuntimeException e) { violations.add("PLAN_INVALID_USING_FULL_CONTEXT"); }
+                } catch (RuntimeException e) {
+                    violations.add("PLAN_INVALID_CONVERSATION_ONLY");
+                    input = SalesConversationPlanner.conversationOnly(input).withInteractionPlan(new InteractionPlan(
+                            "Làm rõ nhu cầu còn thiếu", "Tránh tư vấn sai", "Thông tin khách cần được giúp", "UNKNOWN", "UNKNOWN",
+                            ConsultationStage.DISCOVERY, Map.of(), profile.recommendationRequirements(), HandoffReason.NONE, ""));
+                }
+                if (brief != null) {
+                    if (Boolean.TRUE.equals(brief.memoryProposalRejected())) violations.add("MEMORY_PROPOSAL_PARSE_REJECTED");
+                    input = input.withInteractionPlan(brief.contract(profile));
+                    completeInput = input;
+                    // The typed stage owns the evidence boundary. A contradictory optional hint must
+                    // not erase prices/policies needed to answer or collect a grounded purchase request.
+                    if (SalesConsultationPolicy.conversationOnly(input)) input = SalesConversationPlanner.conversationOnly(input);
+                    else if (evidenceLoader != null) {
+                        input = evidenceLoader.get().withInteractionPlan(input.interactionPlan());
+                        completeInput = input;
+                    }
+                    if (SalesConsultationPolicy.conversationOnly(input) && !brief.replyBubbles().isEmpty()) {
+                        Action action = input.interactionPlan().stage() == ConsultationStage.CLOSE ? Action.PAUSE
+                                : input.interactionPlan().stage() == ConsultationStage.TRUST_REPAIR ? Action.RESOLVE_CONCERN : Action.CLARIFY;
+                        var draft = new TurnDecision(new Understanding(brief.latestContribution(), List.of(), List.of(), ""),
+                                new Strategy(action, brief.reason(), brief.nextDecision()), brief.replyBubbles().stream().map(t -> new Bubble(t, List.of())).toList(), "", List.of(), null);
+                        var errors = validator.validate(draft, input);
+                        if (errors.isEmpty()) {
+                            violations.add("CONVERSATION_FAST_PATH");
+                            // This path has no semantic memory approval: preserve raw sources, do not promote proposed facts.
+                            return new Result(draft, brief.replyBubbles(), false, false, clock.calls, List.copyOf(violations),
+                                    clock.elapsed(), SalesConversationPlanner.prompt(input, profile).length(), profileCode, 0, input.memory(), input.interactionPlan());
+                        }
+                        violations.addAll(errors);
+                    }
+                }
             }
             if (first != null) input = reviewInput(input, first);
             String originalPrompt = first == null && input != completeInput
@@ -94,7 +131,8 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                     TurnDecision decision = parse(call(prompt, 1800, 0.35, clock, alternateWriter || generation > 0), first);
                     currentErrors = new ArrayList<>(validator.validate(decision, activeInput));
                     boolean validContract = currentErrors.isEmpty();
-                    currentErrors.addAll(validator.validateDelivery(decision, paced, first != null, recovery));
+                    currentErrors.addAll(validator.validateDelivery(decision, paced, first != null, recovery,
+                            activeInput.interactionPlan() == null ? ReplyMode.DIRECT : activeInput.interactionPlan().replyMode()));
                     // Review a structurally valid draft even if its delivery layout is wrong, so one repair
                     // fixes both factual/semantic defects and layout rather than spending separate retries.
                     if (validContract) {
@@ -131,10 +169,10 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 } catch (CallFailure e) { violations.add(e.code); break;
                 } catch (RuntimeException e) { currentErrors = List.of("INVALID_JSON_CONTRACT"); }
                 violations.addAll(currentErrors);
-                if (first == null && input != completeInput && !recovery) {
+                if (first == null && input != completeInput && !recovery && !SalesConsultationPolicy.conversationOnly(input)) {
                     // The planner's context choice is provisional. A failed compact draft can consult the
                     // original evidence during repair; otherwise it could never fix a missing-source error.
-                    input = completeInput;
+                    input = evidenceLoader == null ? completeInput : evidenceLoader.get().withInteractionPlan(input.interactionPlan());
                     violations.add("PLAN_CONTEXT_EXPANDED");
                     originalPrompt = SalesPromptBuilder.build(input, profile, paced, null, false)
                             + "\nThe compact conversation-only draft failed validation. Full original business evidence is now available."
@@ -149,8 +187,8 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             }
         } catch (CallFailure e) { violations.add(e.code);
         } catch (RuntimeException e) { violations.add("CONTEXT_OR_PROFILE_ERROR"); }
-        return new Result(null, List.of("Em cần nhờ nhân viên kiểm tra thêm để tư vấn chính xác cho mình."),
-                true, true, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount);
+        return new Result(null, List.of("Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."),
+                false, true, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount);
     }
     private TurnInput reviewInput(TurnInput input, TurnDecision decision) {
         Set<String> ids = new HashSet<>();

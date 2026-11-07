@@ -60,7 +60,7 @@ class SalesCoreTest {
             var calls = new AtomicInteger();
             try (var core = new SalesTurnOrchestrator(fake(() -> { calls.incrementAndGet(); return raw; }), new IndustryProfileRegistry(), 5000)) {
                 var result = core.run(input("BEAUTY_SPA", "Chốt nhé"));
-                assertThat(result.handoff()).isTrue();
+                assertThat(result.handoff()).isFalse();
                 assertThat(result.fallback()).isTrue();
                 assertThat(calls.get()).isEqualTo(3); // initial, repair, then constrained clarification recovery
                 assertThat(String.join(" ", result.texts())).doesNotContain("đã xác nhận");
@@ -76,11 +76,11 @@ class SalesCoreTest {
             assertThat(result.violations()).contains("TURN_DEADLINE");
         }
     }
-    @Test void samePromptBuilderUsesSeparateIndustryDataAndUnknownIndustryStaysGeneric() {
+    @Test void samePromptBuilderUsesSeparateIndustryDataAndUnknownIndustryFailsVisibly() {
         var registry = new IndustryProfileRegistry();
         var rental = SalesPromptBuilder.build(input("VEHICLE_RENTAL", "thuê hai ngày"), registry.load("VEHICLE_RENTAL"));
         assertThat(rental).contains("VEHICLE_RENTAL", "giấy tờ").doesNotContain("rèm riêng", "SOFT_FEELING_CHECK", "RESPECTFUL_DEESCALATION");
-        assertThat(registry.load("UNLISTED_INDUSTRY").code()).isEqualTo("GENERIC");
+        assertThatThrownBy(() -> registry.load("UNLISTED_INDUSTRY")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> registry.load("../private")).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void priceInCustomerMessageDoesNotAuthorizeInventedOfferPrice() {

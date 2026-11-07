@@ -49,13 +49,25 @@ class SalesCoreLiveReplayTest {
         Files.createDirectories(output);
         List<Map<String,Object>> turns = new ArrayList<>();
         String snapshotPath = System.getProperty("sales.snapshotInput", "");
+        String singleInput = System.getProperty("sales.singleInput", "");
         String catalogKind = snapshotPath.isBlank() ? "SYNTHETIC_NOT_PRODUCTION" : "PAGE_SNAPSHOT_OFFLINE";
         String writerClient = System.getProperty("sales.writer", "PRIMARY");
         try (var core = new SalesTurnOrchestrator(recorded, new IndustryProfileRegistry(), 45000)) {
             core.setWriterClient(writerClient);
             core.setPlanningEnabled(true);
             core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
-            if ("quality-v3".equals(System.getProperty("sales.scenario"))) {
+            if (!singleInput.isBlank()) {
+                var input = json.readValue(Files.readString(Path.of(singleInput)), TurnInput.class);
+                var result = Boolean.getBoolean("sales.paced") ? core.runPaced(input) : core.run(input);
+                turns.add(Map.of("industry", input.industryCode(), "customer", input.message(), "result", result));
+            } else if ("rental-v4".equals(System.getProperty("sales.scenario"))) {
+                replay(core, "MOTORBIKE_RENTAL", List.of(new Evidence("rental-v4", "Synthetic business data; not a live rental company",
+                        "Điểm nhận xe tại Hoàn Kiếm, Hà Nội. Honda Vision 220k/ngày; Wave 150k/ngày. Một ngày là 24 giờ. Cọc 1000k/xe, tách riêng tiền thuê. Có 2 mũ bảo hiểm mỗi xe. Khách được kiểm tra tình trạng xe trước khi nhận và ghi nhận hiện trạng vào biên bản bàn giao. Chưa có thông tin xe trống, giao nhận, giấy tờ bắt buộc hay hỗ trợ sự cố.")),
+                        List.of("Giá thuê xe thế nào?", "Tôi đi hai người, thích xe ga, nhận ở Hoàn Kiếm. Thuê hai ngày.",
+                                "Vision nhé. Bên kia rẻ hơn mà.", "Tôi không muốn đổi sang xe số. Chủ yếu sợ xe cũ hỏng giữa đường.",
+                                "Thế tôi lấy Vision. Nhận thứ bảy 9h, trả thứ hai 9h, ngay Hoàn Kiếm.",
+                                "Chưa cung cấp số điện thoại vội, tôi muốn hỏi thủ tục nhận xe trước."), turns, calls, json, output);
+            } else if ("quality-v3".equals(System.getProperty("sales.scenario"))) {
                 replay(core, "BEAUTY_SPA", List.of(new Evidence("spa-price", "Synthetic evaluation catalog",
                         "Hà Nội: Massage cơ bản toàn thân 60 phút 399k, gồm cổ vai gáy và tay chân. Dưỡng sinh cơ bản 60 phút 239k, gội đầu và cổ vai gáy, không gồm chân tay. Khách có thể trao đổi vùng muốn tập trung với kỹ thuật viên trước khi bắt đầu; chưa có dữ liệu lịch trống.")),
                         List.of("Mình ở Hà Nội, muốn thư giãn cả cổ vai gáy lẫn tay chân. Giá thế nào?",
@@ -90,7 +102,13 @@ class SalesCoreLiveReplayTest {
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", catalogKind, "modelConfigured", props.resolveModel(), "writerClient", writerClient, "turns", turns, "calls", calls)));
         }
-        assertThat(turns).hasSize("quality-v3".equals(System.getProperty("sales.scenario")) ? 4 : "adaptive-v3".equals(System.getProperty("sales.scenario")) ? 8 : snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
+        assertThat(turns).hasSize(!singleInput.isBlank() ? 1 : "rental-v4".equals(System.getProperty("sales.scenario")) ? 6 : "quality-v3".equals(System.getProperty("sales.scenario")) ? 4 : "adaptive-v3".equals(System.getProperty("sales.scenario")) ? 8 : snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
+        if ("rental-v4".equals(System.getProperty("sales.scenario"))) {
+            assertThat(turns.stream().anyMatch(t -> ((Result)t.get("result")).handoff())).as("Ordinary consultation stays with the bot").isFalse();
+            var first = (Result)turns.getFirst().get("result");
+            assertThat(SalesDecisionValidator.monetaryNumbers(String.join(" ", first.texts()))).as("Unknown need/location cannot get an arbitrary quote").isEmpty();
+            assertThat(first.attempts()).as("Discovery should avoid catalog/writer/reviewer calls").isEqualTo(1);
+        }
         assertThat(turns.stream().filter(t -> ((Result)t.get("result")).fallback()).count()).as("No contract fallback in these rehearsals").isZero();
         assertThat(turns.stream().filter(t -> t.containsKey("continuation") && ((Result)t.get("continuation")).fallback()).count())
                 .as("No failed continuation in these rehearsals").isZero();

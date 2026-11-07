@@ -12,7 +12,9 @@ import static com.example.docmind.service.salescore.SalesContracts.*;
 
 class SalesContinuationTest {
     final UUID page = UUID.randomUUID();
-    final TurnInput input = SalesCoreTest.input("GENERIC", "Giá");
+    final TurnInput input = SalesCoreTest.input("GENERIC", "Mình chọn gói toàn thân").withInteractionPlan(new InteractionPlan(
+        "Thu nhận yêu cầu", "Hoàn thiện yêu cầu", "Thông tin cần thiết", "Mình chọn gói toàn thân", "NONE",
+        ConsultationStage.COMMITMENT, Map.of(), List.of(), HandoffReason.NONE, "", ReplyMode.PRICE_MOMENT));
     static final String QUOTE = SalesCoreTest.answer("Toàn thân 399k / 60 phút.", "ANSWER",
             "[{\"sourceId\":\"e1\",\"quote\":\"Toàn thân: 399k / 60 phút.\"}]")
             .replace("\"handoffSummary\":\"\"", "\"handoffSummary\":\"\",\"followUp\":{\"aim\":\"Làm rõ điều khách coi trọng\"}");
@@ -104,7 +106,7 @@ class SalesContinuationTest {
         var validator = new SalesDecisionValidator();
         for (String price : List.of("399.000VNĐ", "399.000 VNĐ", "399000vnđ", "399k", "399.000đ")) {
             var quoted = json.readValue(QUOTE.replace("399k", price), TurnDecision.class);
-            assertThat(validator.validateDelivery(quoted, true, false, false)).as(price).isEmpty();
+            assertThat(validator.validateDelivery(quoted, true, false, false, ReplyMode.PRICE_MOMENT)).as(price).isEmpty();
             assertThat(validator.validateDelivery(quoted, true, true, false)).as(price).isNotEmpty();
             var invented = json.readValue(SalesCoreTest.answer("Giá " + price, "ANSWER", "[]"), TurnDecision.class);
             var budget = new TurnInput("p", "shop", "GENERIC", "em", "mình", "", List.of(), "399000", List.of(), List.of(), "", false);

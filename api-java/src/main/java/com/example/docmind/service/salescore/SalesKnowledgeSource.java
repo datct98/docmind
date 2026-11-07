@@ -33,6 +33,12 @@ public class SalesKnowledgeSource {
         return load(pageId, requestedDocuments, history, message, quoted, SalesMemory.View.empty());
     }
     public TurnInput load(UUID pageId, List<UUID> requestedDocuments, List<Message> history, String message, String quoted, SalesMemory.View memory) {
+        return loadInternal(pageId, requestedDocuments, history, message, quoted, memory, true);
+    }
+    public TurnInput conversationContext(UUID pageId, List<UUID> requestedDocuments, List<Message> history, String message, String quoted, SalesMemory.View memory) {
+        return loadInternal(pageId, requestedDocuments, history, message, quoted, memory, false);
+    }
+    private TurnInput loadInternal(UUID pageId, List<UUID> requestedDocuments, List<Message> history, String message, String quoted, SalesMemory.View memory, boolean includeEvidence) {
         if (pageId == null) throw new IllegalArgumentException("Page is required");
         KnowledgePageEntity page = pages.findById(pageId).orElseThrow(() -> new IllegalArgumentException("Unknown Page"));
         var allowed = documents.findByPageIdOrderByCreatedAtDesc(pageId).stream()
@@ -48,23 +54,23 @@ public class SalesKnowledgeSource {
         PageSalesProfile profile = readPageProfile(pageId);
         LinkedHashMap<String, Evidence> candidates = new LinkedHashMap<>();
         var today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
-        for (var offer : profile.offers()) if (offer.effective(today)) {
+        for (var offer : profile.offers()) if (includeEvidence && offer.effective(today)) {
             if (candidates.put("offer:" + offer.id(), new Evidence("offer:" + offer.id(), "Page catalog", offer.asEvidence())) != null)
                 throw new IllegalArgumentException("Duplicate offer id");
         }
-        for (int i = 0; i < profile.businessPolicies().size(); i++) {
+        for (int i = 0; includeEvidence && i < profile.businessPolicies().size(); i++) {
             String id = "policy:" + i;
             candidates.put(id, new Evidence(id, "Page policy", profile.businessPolicies().get(i)));
         }
         final List<UUID> requestedScope = scope;
-        List<ChunkEntity> snapshot = scope.isEmpty() ? List.of() : chunks.findByDocumentIdIn(scope,
+        List<ChunkEntity> snapshot = !includeEvidence || scope.isEmpty() ? List.of() : chunks.findByDocumentIdIn(scope,
                 PageRequest.of(0, 256, Sort.by("id")));
         // Pricing references survive a short reply ('yes', a location, an objection) and do not depend on vector quality.
         snapshot.stream().filter(c -> referencePriority(c) < 3).sorted(Comparator.comparingInt(SalesKnowledgeSource::referencePriority))
                 .forEach(c -> putChunk(candidates, c, requestedScope));
         LinkedHashMap<String, Evidence> matchedContext = new LinkedHashMap<>();
         int matchedChars = 0;
-        if (!scope.isEmpty() && retrieval != null) {
+        if (includeEvidence && !scope.isEmpty() && retrieval != null) {
             String context = history.stream().skip(Math.max(0, history.size() - 6)).map(Message::content)
                     .reduce("", (a, b) -> a + "\n" + b) + "\nCUSTOMER_MEMORY: "
                     + memory.facts().stream().map(f -> f.key() + "=" + f.value()).collect(java.util.stream.Collectors.joining("; "))

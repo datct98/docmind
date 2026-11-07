@@ -51,13 +51,24 @@ public class SalesCoreGateway {
             if (memory != null) memoryLease = memory.begin(new SalesMemory.Scope(pageId, request.senderId(), request.conversationId()),
                     message, request.isResetSessionRequested());
             input = memoryLease == null ? knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText())
-                    : knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText(), memoryLease.view());
+                    : knowledge.conversationContext(pageId, request.documentIds(), history, message, request.quotedMessageText(), memoryLease.view());
             sourceMs = (System.nanoTime() - started) / 1_000_000;
-            result = Boolean.TRUE.equals(request.splitPriceBubbles()) ? core.runPaced(input) : core.run(input);
+            TurnInput base = input;
+            TurnInput[] resolved = {input};
+            long[] evidenceMs = {0};
+            java.util.function.Supplier<TurnInput> evidence = () -> {
+                long start = System.nanoTime();
+                resolved[0] = knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText(), base.memory());
+                evidenceMs[0] += (System.nanoTime() - start) / 1_000_000;
+                return resolved[0];
+            };
+            result = memoryLease == null ? (Boolean.TRUE.equals(request.splitPriceBubbles()) ? core.runPaced(input) : core.run(input))
+                    : (Boolean.TRUE.equals(request.splitPriceBubbles()) ? core.runPaced(input, evidence) : core.run(input, evidence));
+            input = resolved[0]; sourceMs += evidenceMs[0];
         } catch (RuntimeException e) {
             log.warn("[SALES-CORE] context unavailable page={} error_type={}", pageId, e.getClass().getSimpleName());
-            result = new Result(null, List.of("Em cần nhờ nhân viên kiểm tra thông tin trước khi tư vấn tiếp cho mình."),
-                    true, true, 0, List.of("CONTEXT_UNAVAILABLE"), 0, 0, "UNKNOWN", 0);
+            result = new Result(null, List.of("Xin lỗi mình, thông tin đang tải chưa thành công. Mình thử gửi lại tin nhắn giúp em nhé."),
+                    false, true, 0, List.of("CONTEXT_UNAVAILABLE"), 0, 0, "UNKNOWN", 0);
         }
         if (!continuations.current(ticket)) return suppressed("SUPERSEDED_SALES_CORE_TURN");
         if (memoryLease != null) {
@@ -68,8 +79,8 @@ public class SalesCoreGateway {
             } catch (RuntimeException failure) {
                 // Fail visibly before sending a reply whose memory could not be committed.
                 continuations.finish(ticket);
-                var unavailable = new Result(null, List.of("Em cần nhờ nhân viên kiểm tra lại thông tin để hỗ trợ mình tiếp."),
-                        true, true, result.attempts(), List.of("SALES_MEMORY_COMMIT_FAILED"), result.elapsedMs(), result.promptChars(), result.profileCode(), result.repairCount());
+                var unavailable = new Result(null, List.of("Xin lỗi mình, em chưa lưu được thông tin vừa rồi. Mình thử gửi lại giúp em nhé."),
+                        false, true, result.attempts(), List.of("SALES_MEMORY_COMMIT_FAILED"), result.elapsedMs(), result.promptChars(), result.profileCode(), result.repairCount());
                 return response(pageId, unavailable, message, lead, sourceMs, started, 0, false);
             }
         }
@@ -108,12 +119,13 @@ public class SalesCoreGateway {
                                         long sourceMs, long started, int delayMs, boolean continuation) {
         var bubbles = result.texts().stream().map(t -> new FanpageBotResponse.ReplyBubble(t, delayMs)).toList();
         List<String> hooks = new ArrayList<>(List.of("SALES_CORE_V1", "SALES_CORE_PACED_V2", "SALES_CORE_MEMORY_V3", "EVIDENCE_CONTRACT_CHECKED", "TOKEN_USAGE_UNAVAILABLE"));
-        if (!result.fallback() && !result.violations().contains("QUALITY_REVIEW_WARNING")) hooks.add("SEMANTIC_REVIEW_PASS");
-        if (result.fallback()) hooks.add("SALES_CORE_SAFE_HANDOFF");
+        hooks.add("SALES_CORE_CONSULTATION_V4");
+        if (!result.fallback() && !result.violations().contains("QUALITY_REVIEW_WARNING") && !result.violations().contains("CONVERSATION_FAST_PATH")) hooks.add("SEMANTIC_REVIEW_PASS");
+        if (result.fallback()) hooks.add("SALES_CORE_RETRYABLE_ERROR");
         if (continuation) hooks.add("SALES_CORE_CONTINUATION");
         hooks.addAll(result.violations());
         if (result.reviewedMemory() != null) hooks.add("CUSTOMER_MEMORY_FACTS:" + result.reviewedMemory().facts().size());
-        String action = result.decision() == null ? "HANDOFF" : result.decision().strategy().action().name();
+        String action = result.decision() == null ? "ANSWER" : result.decision().strategy().action().name();
         String handoffReason = result.handoff() ? result.decision() == null
                 ? "Không xác minh được dữ kiện hoặc phản hồi trong thời hạn." : result.decision().handoffSummary() : null;
         long total = (System.nanoTime() - started) / 1_000_000;
@@ -126,9 +138,10 @@ public class SalesCoreGateway {
                 new DecisionTrace.ResponsePlanTrace(action, result.decision() == null ? "UNAVAILABLE" : result.decision().strategy().reason(),
                         result.decision() == null ? "UNAVAILABLE" : result.decision().strategy().advance(), false),
                 new DecisionTrace.SanitizerMutations(false, false, false)));
-        log.info("[SALES-CORE] page={} profile={} prompt_version={} prompt_chars={} action={} attempts={} violations={} fallback={} total_ms={}",
+        log.info("[SALES-CORE] page={} profile={} prompt_version={} prompt_chars={} action={} attempts={} violations={} fallback={} total_ms={} stage={} reply_mode={}",
                 pageId, result.profileCode(), SalesPromptBuilder.VERSION, result.promptChars(), action, result.attempts(),
-                result.violations(), result.fallback(), total);
+                result.violations(), result.fallback(), total, result.interactionPlan() == null ? "UNAVAILABLE" : result.interactionPlan().stage(),
+                result.interactionPlan() == null ? "DIRECT" : result.interactionPlan().replyMode());
         return response;
     }
 }
