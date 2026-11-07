@@ -66,6 +66,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
         int promptChars = 0;
         String profileCode = "UNKNOWN";
         TurnInput completeInput = input;
+        Result reviewedAlternative = null;
         try {
             var profile = profiles.load(input.industryCode());
             profileCode = profile.code();
@@ -176,14 +177,23 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                         if ((!updates.isEmpty() || (brief != null && brief.journey() != null)) && review.memoryApproved() != Boolean.TRUE) reviewedMemory = activeInput.memory();
                         boolean qualityOnly = review.verdict() == SalesSemanticReview.Verdict.REVISE
                                 && review.severity() == SalesSemanticReview.Severity.QUALITY;
-                        if (qualityOnly && (generation > 0 || preparedDraft != null || goalFirstEnabled) && currentErrors.isEmpty()) {
+                        if (qualityOnly && currentErrors.isEmpty()) {
                             violations.add("QUALITY_REVIEW_WARNING");
                             violations.addAll(review.issues());
+                            reviewedAlternative = new Result(decision, decision.bubbles().stream().map(Bubble::text).toList(),
+                                    decision.strategy().action() == Action.HANDOFF, false, clock.calls, List.copyOf(violations),
+                                    clock.elapsed(), promptChars, profileCode, clock.repairCount, reviewedMemory, activeInput.interactionPlan());
+                            // One bounded improvement, not an unbounded style loop. A failed rewrite cannot erase
+                            // a response which has already passed the source, authority and delivery checks.
+                            long remaining = deadlineMs - clock.elapsed();
+                            if (generation > 0 || remaining < 1000) return reviewedAlternative;
+                            clock.qualityDeadline = clock.elapsed() + Math.min(16000, remaining);
+                            violations.add("QUALITY_REPAIR_ATTEMPTED");
                         }
                         // A grounded answer with a style warning is preferable to a false operational handoff.
                         // Factual, scope and authority errors always remain blocking.
                         if (recovery && currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || qualityOnly)) violations.add("GROUNDED_CLARIFICATION_RECOVERY");
-                        if (currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || (qualityOnly && (generation > 0 || preparedDraft != null || goalFirstEnabled)))) return new Result(decision,
+                        if (currentErrors.isEmpty() && review.verdict() == SalesSemanticReview.Verdict.PASS) return new Result(decision,
                                 decision.bubbles().stream().map(Bubble::text).toList(), decision.strategy().action() == Action.HANDOFF,
                                 false, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount,
                                 reviewedMemory, activeInput.interactionPlan());
@@ -193,6 +203,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 } catch (CallFailure e) { violations.add(e.code); break;
                 } catch (RuntimeException e) { currentErrors = List.of("INVALID_JSON_CONTRACT"); }
                 violations.addAll(currentErrors);
+                if (reviewedAlternative != null && generation > 0) break;
                 if (!goalFirstEnabled && first == null && input != completeInput && !recovery && !SalesConsultationPolicy.conversationOnly(input)) {
                     // The planner's context choice is provisional. A failed compact draft can consult the
                     // original evidence during repair; otherwise it could never fix a missing-source error.
@@ -211,6 +222,12 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             }
         } catch (CallFailure e) { violations.add(e.code);
         } catch (RuntimeException e) { violations.add("CONTEXT_OR_PROFILE_ERROR"); }
+        if (reviewedAlternative != null) {
+            violations.add("CHECKED_REPLY_RETAINED_AFTER_QUALITY_REPAIR");
+            return new Result(reviewedAlternative.decision(), reviewedAlternative.texts(), reviewedAlternative.handoff(), false,
+                    clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount,
+                    reviewedAlternative.reviewedMemory(), reviewedAlternative.interactionPlan());
+        }
         if (input.interactionPlan() != null && input.interactionPlan().stage() == ConsultationStage.CLOSE) {
             var close = new TurnDecision(new Understanding("Tôn trọng yêu cầu dừng", List.of(), List.of(), ""),
                     new Strategy(Action.PAUSE, "CONSENT_SAFE_RECOVERY", "Dừng tư vấn"), List.of(new Bubble("Dạ, em dừng tư vấn tại đây.", List.of())), "", List.of());
@@ -231,7 +248,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 input.quotedMessage(), input.contextTruncated(), input.memory(), input.interactionPlan());
     }
     private String call(String prompt, int tokens, double temperature, TurnClock clock, boolean preferAlternate) {
-        long remainingTurn = deadlineMs - clock.elapsed();
+        long remainingTurn = Math.min(deadlineMs, clock.qualityDeadline) - clock.elapsed();
         long phaseBudget = prompt.startsWith("SALES_PLAN") ? 24000 : prompt.startsWith("SALES_REVIEW") ? 14000 : 24000;
         long remaining = Math.min(remainingTurn, phaseBudget);
         if (remaining <= 0) throw new CallFailure("TURN_DEADLINE");
@@ -275,6 +292,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
     }
     private static final class TurnClock {
         final long start = System.nanoTime(); int calls; int repairCount; boolean continuation;
+        long qualityDeadline = Long.MAX_VALUE;
         long elapsed() { return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start); }
     }
     private static final class CallFailure extends RuntimeException {

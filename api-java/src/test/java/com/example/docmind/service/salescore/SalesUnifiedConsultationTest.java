@@ -53,6 +53,51 @@ class SalesUnifiedConsultationTest {
             assertThat(result.violations()).contains("Wrong branch interpretation");
         }
     }
+    @Test void failedQualityRewriteRetainsOnlyThePreviouslyCheckedReply() {
+        var calls = new AtomicInteger();
+        LlmClient client = new LlmClient() {
+            public String name() { return "quality-repair-fixture"; }
+            public String complete(String prompt) {
+                return switch (calls.incrementAndGet()) {
+                    case 1 -> DRAFT;
+                    case 2 -> """
+                        {"replyReview":{"verdict":"REVISE","issues":["Too verbose"],"feedback":"Be concise","severity":"QUALITY"},"memoryReview":{"approved":true,"issues":[]}}
+                        """;
+                    default -> throw new IllegalStateException("rewrite provider unavailable");
+                };
+            }
+        };
+        try (var core = new SalesTurnOrchestrator(client, new IndustryProfileRegistry(), 45000)) {
+            core.setGoalFirstEnabled(true);
+            var result = core.run(input());
+            assertThat(result.fallback()).isFalse();
+            assertThat(result.handoff()).isFalse();
+            assertThat(result.attempts()).isEqualTo(3);
+            assertThat(result.texts()).containsExactly("Chào mình, giá tham khảo tại khu A là 240k, chưa thuế.");
+            assertThat(result.violations()).contains("QUALITY_REPAIR_ATTEMPTED", "CHECKED_REPLY_RETAINED_AFTER_QUALITY_REPAIR");
+        }
+    }
+    @Test void qualityFeedbackActuallyChangesTheDeliveredReplyAfterIndependentRecheck() {
+        var generation = new AtomicInteger();
+        LlmClient client = new LlmClient() {
+            public String name() { return "quality-improvement-fixture"; }
+            public String complete(String prompt) {
+                if (prompt.startsWith("SALES_REVIEW")) return generation.get() == 1 ? """
+                    {"replyReview":{"verdict":"REVISE","issues":["Wordy"],"feedback":"Keep relevant price only","severity":"QUALITY"},"memoryReview":{"approved":true,"issues":[]}}
+                    """ : """
+                    {"replyReview":{"verdict":"PASS","issues":[],"feedback":"","severity":"QUALITY"},"memoryReview":{"approved":true,"issues":[]}}
+                    """;
+                return generation.incrementAndGet() == 1 ? DRAFT : DRAFT.replace("Chào mình, giá tham khảo tại khu A là 240k, chưa thuế.", "Khu A: 240k, chưa thuế.");
+            }
+        };
+        try (var core = new SalesTurnOrchestrator(client, new IndustryProfileRegistry(), 45000)) {
+            core.setGoalFirstEnabled(true);
+            var result = core.run(input());
+            assertThat(result.fallback()).isFalse();
+            assertThat(result.attempts()).isEqualTo(4);
+            assertThat(result.texts()).containsExactly("Khu A: 240k, chưa thuế.");
+        }
+    }
     @Test void malformedPlanCannotTurnAPauseIntoAQuestionOrHandoff() {
         var pause = DRAFT.replace("\"ANSWER\"", "\"PAUSE\"");
         var parsed = SalesConsultationDraft.parse(pause);

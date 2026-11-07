@@ -13,6 +13,9 @@ import static org.assertj.core.api.Assertions.*;
 /** Opt-in provider evaluation. Synthetic customers/catalog only; never calls inbox, DB or Facebook. */
 @EnabledIfSystemProperty(named = "sales.live", matches = "true")
 class SalesCoreLiveReplayTest {
+    private LlmClient customerActor;
+    private String actorPersona;
+    private String scenarioId;
     @Test void replayBothIndustriesThroughProductionCore() throws Exception {
         Map<String,String> env = new HashMap<>();
         // Compose mounts repository .env at /app/.env; application gives that file priority.
@@ -45,6 +48,7 @@ class SalesCoreLiveReplayTest {
             fallbackProps.setTimeoutSeconds(35);
             recorded = new ResilientFallbackLlmClient(recorded, record(new OpenAiCompatibleLlmClient(fallbackProps, json), calls));
         }
+        if (Boolean.getBoolean("sales.adaptive")) customerActor = recorded;
         Path output = Path.of(System.getProperty("sales.output", "../artifacts/sales-core-live"));
         Files.createDirectories(output);
         List<Map<String,Object>> turns = new ArrayList<>();
@@ -60,12 +64,21 @@ class SalesCoreLiveReplayTest {
             core.setGoalFirstEnabled(Boolean.parseBoolean(System.getProperty("sales.goalFirst", "false")));
             core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
             if (!casesPath.isBlank()) {
-                var template = json.readValue(Files.readString(Path.of(snapshotPath)), TurnInput.class);
+                var template = snapshotPath.isBlank() ? null : json.readValue(Files.readString(Path.of(snapshotPath)), TurnInput.class);
                 for (var scenario : json.readTree(Files.readString(Path.of(casesPath)))) {
                     List<String> messages = new ArrayList<>();
                     scenario.get("messages").forEach(m -> messages.add(m.asText()));
+                    scenarioId = scenario.get("id").asText();
+                    actorPersona = scenario.path("persona").asText("");
+                    var scenarioTemplate = scenario.hasNonNull("fixture")
+                            ? json.readValue(Files.readString(Path.of(scenario.get("fixture").asText())), TurnInput.class) : template;
+                    if (scenarioTemplate == null) throw new IllegalArgumentException("Scenario fixture required");
+                    if (customerActor != null && !actorPersona.isBlank()) {
+                        int maxTurns = Math.min(5, Math.max(1, scenario.path("maxTurns").asInt(4)));
+                        while (messages.size() < maxTurns) messages.add("");
+                    }
                     int begin = turns.size();
-                    replay(core, template, messages, turns, calls, json, output);
+                    replay(core, scenarioTemplate, messages, turns, calls, json, output);
                     for (int i = begin; i < turns.size(); i++) turns.get(i).put("scenario", scenario.get("id").asText());
                 }
             } else if (!singleInput.isBlank()) {
@@ -146,12 +159,20 @@ class SalesCoreLiveReplayTest {
                         List<Map<String,Object>> turns, List<Map<String,Object>> calls, ObjectMapper json, Path output) throws Exception {
         List<Message> history = new ArrayList<>();
         SalesMemory.View memory = SalesMemory.View.empty();
-        for (String message : customers) {
+        for (String scriptedMessage : customers) {
+            String message = scriptedMessage;
+            if (customerActor != null && actorPersona != null && !actorPersona.isBlank() && !history.isEmpty()) {
+                var next = SalesLabCustomer.next(customerActor, actorPersona, history);
+                if (next.done()) break;
+                message = next.message();
+            }
             memory = SalesMemory.advance(memory, message, false);
             var input = new TurnInput(template.pageId(), template.businessName(), template.industryCode(), template.selfPronoun(), template.customerPronoun(), template.voice(),
                     history, message, template.evidence(), template.businessPolicies(), "", template.contextTruncated(), memory);
             var result = Boolean.getBoolean("sales.paced") ? core.runPaced(input) : core.run(input);
             var turn = new LinkedHashMap<String,Object>();
+            if (scenarioId != null) turn.put("scenario", scenarioId);
+            turn.put("customerMode", customerActor != null && actorPersona != null && !actorPersona.isBlank() ? "ADAPTIVE_MODEL_ACTOR" : "SCRIPTED");
             turn.put("industry", template.industryCode()); turn.put("customer", message); turn.put("result", result);
             turns.add(turn);
             if (result.reviewedMemory() != null) memory = result.reviewedMemory();
@@ -164,6 +185,8 @@ class SalesCoreLiveReplayTest {
             }
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", "SYNTHETIC_NOT_PRODUCTION", "turns", turns, "calls", calls)));
+            if (customerActor != null && actorPersona != null && !actorPersona.isBlank()
+                    && result.decision() != null && result.decision().strategy().action() == Action.PAUSE) break;
             System.out.println("LIVE_REPLAY " + template.industryCode() + " turn=" + (history.stream().filter(m -> m.role().equals("user")).count() - 1) + " fallback=" + result.fallback() + " ms=" + result.elapsedMs());
         }
     }

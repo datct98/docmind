@@ -81,7 +81,7 @@ final class SalesConsultationDraft {
             observedOutcome phải null hoặc Claim {value,customerQuote,sourceTurn}; không trả chuỗi tự diễn giải.
             openLoops=[{id,request:{value,customerQuote,sourceTurn}}]; hypotheses=[{interpretation,customerQuote,sourceTurn,confidence}].
             HandoffReason: NONE/EXPLICIT_HUMAN_REQUEST/DELIVERED_SERVICE_COMPLAINT/REFUND_OR_RETURN/TRANSACTION_DISPUTE.
-            """ + (recovery ? "\nSửa bản nháp chưa gửi: giữ nguồn, chỉ trả một ý hữu ích đã xác minh; không yêu cầu khách nói lại.\n" : "")
+            """ + SalesPromptBuilder.sourceAuthorityPolicy() + (recovery ? "\nSửa bản nháp chưa gửi: giữ nguồn, chỉ trả một ý hữu ích đã xác minh; không yêu cầu khách nói lại.\n" : "")
                 + (strategies ? "\n" + SalesStrategyRegistry.instructions() : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nCONTEXT_JSON:" + JSON.writeValueAsString(data);
     }

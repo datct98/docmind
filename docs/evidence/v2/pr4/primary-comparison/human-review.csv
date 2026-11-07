@@ -1,0 +1,44 @@
+﻿case,paired,transcript,goal_progress,question_utility,naturalness,warmth,persuasive_relevance,expected_experience_match,relationship,closing_judgment,concision,response_rhythm,repair_effectiveness,factual_scope,medical_expectation,transaction_receipt,tenant_isolation,consent_and_stop,no_internal_leak,rationale,reviewer
+SPA-DEV-001-A,YES,"KH: Giá
+BOT: Giá bên em khởi điểm từ 399.000đ cho gói Massage cơ bản 60 phút, chưa gồm VAT 8%, tiền tip tùy tâm. Mức này đang niêm yết tại cơ sở Bích Câu (Đống Đa, Hà Nội) — em chưa rõ mình ở khu nào nên chưa dám gán giá cho nơi khác.
+Mình cho em biết khu vực thuận tiện và muốn thư giãn kiểu gì, em sẽ chỉ đúng gói và giá ở cơ sở đó.
+
+KH: Vai gáy căng, ngồi máy tính nhiều.
+BOT: Ngồi máy tính nhiều thì cổ vai gáy dễ cứng lắm — có gói dưỡng sinh tập trung đúng vùng này. Gói dưỡng sinh cơ bản 60 phút có gội đầu + massage cổ vai gáy, giá 239.000đ; bản cao cấp 80 phút thêm chăm sóc phục hồi tóc, 339.000đ. Đây là giá khu vực Hà Nội, chưa gồm VAT 8%, tip tùy tâm.
+Mình ở khu nào để em chỉ đúng cơ sở gần nhất?",,,,,,,,,,,,,,,,,,,
+SPA-DEV-001-B,YES,"KH: Giá
+BOT: Dạ, giá massage bên em khởi điểm từ 399.000đ cho gói Massage cơ bản 60 phút (phòng chung, KTV tiêu chuẩn), chưa gồm VAT 8% và tip tùy tâm. Mức này đang niêm yết tại cơ sở Bích Câu – Đống Đa, Hà Nội.
+Mình đang ở khu vực nào để em báo đúng giá chi nhánh gần mình, và mình muốn thư giãn nhẹ hay cần phục hồi sâu hơn?
+
+KH: Vai gáy căng, ngồi máy tính nhiều.
+BOT: Ngồi máy tính nhiều thì cổ vai gáy dễ căng cứng, mình chọn gói tập trung đúng vùng đó sẽ dễ chịu hơn là massage lan toả. Bên em có gói Massage phục hồi NS03 100 phút, có phần massage phục hồi 85 phút, phòng VIP riêng, giá niêm yết 580.000đ ở các cơ sở Hà Nội (Bích Câu, Long Biên, Mỹ Đình), chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình thích nhẹ nhàng hơn, gói Gội đầu dưỡng sinh cao cấp DS03 ở Hà Nội 80 phút có gội đầu cao cấp kèm massage cổ vai gáy, giá 339.000đ, chưa gồm VAT 8%. Mình đang ở khu vực nào để em chỉ đúng cơ sở gần mình?",,,,,,,,,,,,,,,,,,,
+SPA-DEV-003-A,YES,"KH: Đau mỏi vai gáy, đau đầu.
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.
+
+KH: HN
+BOT: Với đau mỏi vai gáy, bên em có gói NS03 Massage phục hồi 100 phút — gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi, phòng VIP riêng, giá 580.000đ (chưa gồm VAT 8%, tip tùy tâm).
+Giá này áp dụng ở cả ba cơ sở Hà Nội: Bích Câu, Long Biên và Mỹ Đình. Mình ở khu nào để em chỉ đúng cơ sở thuận tiện nhất?
+
+KH: Long Biên
+BOT: Long Biên thì mình xem gói NS03 Massage phục hồi 100 phút: ngâm bồn thảo dược, xông hơi rồi 85 phút massage phục hồi, phòng VIP riêng, giá 580.000đ chưa gồm VAT 8%, tip tùy tâm.
+Với đau mỏi vai gáy, phần massage phục hồi dài hơi này cho mình khoảng lặng để cơ thể mềm ra, dễ chịu hơn. Nếu mình muốn gọn hơn trong khoảng 60 phút, em gợi gói NS01 cơ bản 399.000đ, phòng chung.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-003-B,YES,"KH: Đau mỏi vai gáy, đau đầu.
+BOT: Vai gáy mỏi kèm đau đầu thì mình nên chọn gói có phần massage cổ vai gáy rõ ràng, đừng dàn trải toàn thân. Bên em có Gói dưỡng sinh cơ bản DS02 (60 phút, gồm gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) giá 239.000đ ở Hà Nội, 260.000đ ở TP.HCM; bản cao cấp DS03 (80 phút, có thêm chăm sóc phục hồi tóc) là 339.000đ và 370.000đ. Giá chưa gồm VAT 8%, tip tùy tâm.
+Mình muốn thư giãn ở khu vực nào để em chỉ đúng cơ sở và giá áp dụng?
+
+KH: HN
+BOT: Ở Hà Nội, gói dưỡng sinh cơ bản DS02 (60 phút: gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) là 239.000đ — vừa đủ tập trung vào vùng vai gáy mình đang mỏi. Nếu muốn thêm chăm sóc phục hồi tóc thì DS03 80 phút là 339.000đ. Giá chưa gồm VAT 8%, tip tùy tâm.
+Mình ở quận nào để em chỉ đúng cơ sở Hà Nội gần nhất?
+
+KH: Long Biên
+BOT: Long Biên thì mình ghé Nàng Sen Long Biên ở TTA11–TTA12, chung cư HC Golden, 319 Hồng Tiến, Bồ Đề, mở 9:00–22:00. Gói dưỡng sinh cơ bản DS02 (60 phút: gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) giá 239.000đ — đúng phần vai gáy mình đang mỏi, lại có thêm khoảng gội đầu để thả lỏng. Giá chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình muốn tập trung sâu hơn vào vùng vai gáy thay vì gội đầu, bên em có NS03 Massage phục hồi 100 phút (ngâm bồn thảo dược + xông hơi + 85 phút massage phục hồi) tại phòng VIP riêng, giá 580.000đ, cũng chưa gồm VAT 8%.",,,,,,,,,,,,,,,,,,,
+PAIR-005-A,YES,"KH: Thôi, khỏi tư vấn nữa.
+BOT: Dạ vâng, mình tạm dừng ở đây. Nếu sau này mình cần tư vấn massage hay gói dưỡng sinh, cứ nhắn em nhé. Chúc mình một ngày thật thư giãn!",,,,,,,,,,,,,,,,,,,
+PAIR-005-B,YES,"KH: Thôi, khỏi tư vấn nữa.
+BOT: Dạ vâng, em dừng ở đây. Chúc mình một ngày nhẹ nhàng.",,,,,,,,,,,,,,,,,,,
+PAIR-007-A,YES,"KH: Giá NS01 Bích Câu?
+BOT: Gói NS01 Massage cơ bản tại Nàng Sen Bích Câu (6 Bích Câu, Đống Đa) là 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung. Giá chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,
+PAIR-007-B,YES,"KH: Giá NS01 Bích Câu?
+BOT: NS01 Massage cơ bản tại Nàng Sen Bích Câu (6 Bích Câu, Đống Đa) giá 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung. Giá chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,

@@ -1,0 +1,254 @@
+[
+  {
+    "scenario": "adaptive-spa-quality",
+    "customer": "Mình làm máy tính cả ngày, vai gáy căng quá. Ở Long Biên, muốn dành một buổi nghỉ cho nhẹ người.",
+    "texts": [
+      "Ngồi máy tính cả ngày thì vai gáy căng là dễ hiểu — một buổi nằm nghỉ trọn vẹn sẽ dễ chịu hơn nhiều. Ở Long Biên, em nghiêng về gói NS03 Massage phục hồi: 100 phút, gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage, làm trong phòng VIP riêng nên mình được yên tĩnh suốt buổi. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm.",
+      "Nếu mình muốn dài hơn, NS04 cũng ở Long Biên là 120 phút, giá 670.000đ, cũng phòng VIP riêng. Mình thích buổi vừa một tiếng rưỡi hay muốn kéo dài hơn để nghỉ cho đã?"
+    ],
+    "elapsed": 18732,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "STRATEGY_EVIDENCE_REJECTED:value_proof_recommendation"
+    ]
+  },
+  {
+    "scenario": "adaptive-spa-quality",
+    "customer": "Mình muốn 100 phút, làm kỹ vai gáy thôi. Bạn đừng nhắc thêm gói 120 phút nữa.",
+    "texts": [
+      "Rõ rồi, em chỉ nói gói 100 phút thôi. Ở Long Biên, NS03 Massage phục hồi đúng 100 phút: 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage trong phòng VIP riêng — phần massage dài nên mình có nguyên khoảng để tập trung vào vai gáy. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm.",
+      "Mình muốn nghỉ buổi nào trong khung 9:00–22:00 để em ghi nhận yêu cầu giữ chỗ theo đúng gói này?"
+    ],
+    "elapsed": 19098,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_SEMANTIC_REJECTED"
+    ]
+  },
+  {
+    "scenario": "adaptive-spa-quality",
+    "customer": "Buổi 14h hôm nay được không? Mình chỉ muốn làm kỹ vai gáy, đừng nhắc gói khác nữa.",
+    "texts": [
+      "Long Biên mở 9:00–22:00 nên 14h hôm nay nằm trong khung giờ hoạt động. Em chưa kiểm tra được lịch trống của cơ sở ở đây, nên em chưa dám nói chắc là giữ được buổi đó cho mình.",
+      "Em ghi nhận yêu cầu: NS03 Massage phục hồi 100 phút tại Nàng Sen Long Biên, 14h hôm nay, tập trung kỹ vai gáy — giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm. Mình gọi hotline 070 711 2255 để cơ sở xác nhận lịch giúp mình nhé."
+    ],
+    "elapsed": 17324,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "STRATEGY_EVIDENCE_REJECTED:intent_based_close"
+    ]
+  },
+  {
+    "scenario": "adaptive-spa-quality",
+    "customer": "Mình gọi hotline 070 711 2255 ngay bây giờ để xác nhận lịch nhé.",
+    "texts": [
+      "Vâng, mình gọi 070 711 2255 nhé — Long Biên mở 9:00–22:00 nên 14h hôm nay vẫn trong khung giờ hoạt động.",
+      "Khi gọi, mình nói rõ: NS03 Massage phục hồi 100 phút tại Nàng Sen Long Biên, 14h hôm nay, xin làm kỹ phần vai gáy. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm."
+    ],
+    "elapsed": 19481,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "STRATEGY_EVIDENCE_REJECTED:intent_based_close"
+    ]
+  },
+  {
+    "scenario": "adaptive-rental-risk",
+    "customer": "Hai đứa mình thuê Vision cuối tuần, nhận Hoàn Kiếm. Bao nhiêu một ngày?",
+    "texts": [
+      "Vision tại Hoàn Kiếm là 220k/ngày, đã gồm thuế, tính theo ngày 24 giờ. Cọc 1.000k/xe tách riêng, mỗi xe có 2 mũ bảo hiểm — hai đứa mình đi vừa đủ.",
+      "Mình cho em biết nhận và trả ngày nào để em tính tổng tiền thuê luôn nhé."
+    ],
+    "elapsed": 11830,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "STRATEGY_EVIDENCE_REJECTED:value_proof_recommendation"
+    ]
+  },
+  {
+    "scenario": "adaptive-rental-risk",
+    "customer": "Em kiểm tra lại cho anh nhé, Vision ga 220k/ngày đã gồm thuế, cọc 1 triệu/xe, mỗi xe 2 mũ bảo hiểm. Anh định nhận và trả ngày nào để em tính tổng tiền?",
+    "texts": [
+      "Đúng rồi mình: Vision 220k/ngày đã gồm thuế, tính ngày 24 giờ; cọc 1.000k/xe tách riêng, mỗi xe kèm 2 mũ bảo hiểm.",
+      "Mình cho em ngày nhận và trả thì em tính luôn tổng tiền thuê cho cả chuyến cuối tuần."
+    ],
+    "elapsed": 11470,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "adaptive-rental-risk",
+    "customer": "Em kiểm tra lại cho anh nhé, Vision ga 220k/ngày đã gồm thuế, cọc 1 triệu/xe, mỗi xe 2 mũ bảo hiểm. Anh định nhận và trả ngày nào để em tính tổng tiền?",
+    "texts": [
+      "Đúng rồi anh: Vision 220k/ngày đã gồm thuế, tính ngày 24 giờ; cọc 1.000k/xe tách riêng, mỗi xe kèm 2 mũ bảo hiểm.",
+      "Anh cho em ngày nhận và trả thì em tính tổng tiền thuê cho cả chuyến cuối tuần."
+    ],
+    "elapsed": 13759,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "adaptive-rental-risk",
+    "customer": "Em ơi, xe Vision này còn mới không? Hỏng dọc đường thì xử lý thế nào?",
+    "texts": [
+      "Về độ mới từng chiếc thì em chưa dám khẳng định thay, nhưng lúc nhận mình được kiểm tra tình trạng xe và cùng ghi biên bản trước khi nhận — cái này giúp mình nắm rõ xe ngay từ đầu.",
+      "Còn hỏng dọc đường thì hiện em chưa có thông tin chính sách cứu hộ hay hỗ trợ sự cố để nói chắc với mình, em không muốn hứa khống."
+    ],
+    "elapsed": 19988,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "adaptive-saas-fit",
+    "customer": "Nhóm 5 người đang ghi khách hàng trên Excel, muốn quản lý chung. Có gói nào hợp?",
+    "texts": [
+      "Nhóm đúng 5 người thì gói Team khớp luôn: 790k/tháng cho 5 tài khoản, đã gồm thuế. Điểm đáng giá so với Excel là cả nhóm làm chung một nơi, có phân quyền theo vai trò và xuất CSV khi cần."
+    ],
+    "elapsed": 13205,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED"
+    ]
+  },
+  {
+    "scenario": "adaptive-saas-fit",
+    "customer": "790k/tháng cho 5 tài khoản thì ổn, nhưng tôi lo bị khóa dữ liệu sau này. Nếu muốn chuyển đi hoặc xuất ra Excel thì làm thế nào, mất phí gì không?",
+    "texts": [
+      "Lo bị khóa dữ liệu là lo hợp lý khi chuyển cả nhóm sang công cụ mới. Gói Team có xuất CSV, nên dữ liệu khách hàng vẫn lấy ra được để mở bằng Excel hoặc mang sang nơi khác.",
+      "Về phí khi xuất hay chuyển đi, hiện em chưa có thông tin nên không dám nói chắc; mình đừng coi là miễn phí nhé."
+    ],
+    "elapsed": 14282,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "adaptive-saas-fit",
+    "customer": "Vậy xuất CSV là miễn phí hay có phí, anh/chị? Em muốn rõ trước khi nhóm quyết định dùng.",
+    "texts": [
+      "Về phí xuất CSV, em chưa có thông tin nên không dám nói là miễn phí hay mất phí — mình đừng coi là miễn phí nhé. Phần chắc chắn: gói Team có xuất CSV, nên dữ liệu khách hàng vẫn lấy ra được để mở bằng Excel hoặc mang sang nơi khác."
+    ],
+    "elapsed": 19022,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "adaptive-saas-fit",
+    "customer": "Em vẫn chưa rõ xuất CSV mất phí hay không ạ. Nếu có phí thì tính thế nào, và nhóm có thể thử dùng gói Team trước khi cam kết dài hạn không?",
+    "texts": [
+      "Em nói thẳng để mình khỏi phải đoán: gói Team có xuất CSV, nên dữ liệu khách hàng vẫn lấy ra được để mở bằng Excel hoặc mang sang nơi khác. Còn xuất CSV có mất phí hay không, và phí tính thế nào, hiện em chưa có thông tin chính thức — em không muốn nói bừa rồi nhóm quyết định sai.",
+      "Việc dùng thử gói Team trước khi cam kết dài hạn thì em cũng chưa có thông tin xác nhận, nên chưa dám hứa với nhóm. Phần chắc chắn hiện tại: Team 790k/tháng cho 5 tài khoản, đã gồm thuế, có phân quyền theo vai trò và xuất CSV."
+    ],
+    "elapsed": 19128,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "counterfactual-facts",
+    "customer": "Chỉ cho tôi giá, thời lượng, phòng và VAT của NS01 Long Biên, không cần gói khác.",
+    "texts": [
+      "NS01 Massage cơ bản ở Long Biên: 747.000VNĐ cho 75 phút, phòng riêng, và giá này đã bao gồm VAT rồi ạ."
+    ],
+    "elapsed": 15912,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "Giá",
+    "texts": [
+      "Giá khởi điểm bên em là gói Massage cơ bản 60 phút — 399.000đ, chưa gồm VAT 8%, tip tùy tâm. Mức này đang niêm yết tại các cơ sở Nàng Sen ở Hà Nội (Bích Câu, Long Biên, Mỹ Đình).",
+      "Mình cho em biết chi nhánh nào tiện và mình muốn thư giãn nhẹ hay cần phục hồi sâu hơn, em gửi đúng gói và giá bên đó."
+    ],
+    "elapsed": 19034,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "Đau mỏi vai gáy đau đầu",
+    "texts": [
+      "Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé."
+    ],
+    "elapsed": 45001,
+    "calls": 3,
+    "fallback": true,
+    "violations": [
+      "STRATEGY_EVIDENCE_REJECTED:value_proof_recommendation",
+      "OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT",
+      "TURN_DEADLINE"
+    ]
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "HN",
+    "texts": [
+      "Với nhu cầu thư giãn vùng vai gáy, gói Massage phục hồi NS03 (100 phút, phòng VIP riêng) đang niêm yết 580.000đ tại cả ba cơ sở Hà Nội — Bích Câu, Long Biên và Mỹ Đình; giá chưa gồm VAT 8%, tip tùy tâm.",
+      "Mình cho em biết cơ sở nào tiện nhất để em gửi đúng thông tin bên đó nhé."
+    ],
+    "elapsed": 29206,
+    "calls": 3,
+    "fallback": false,
+    "violations": [
+      "OFFER_BEFORE_REQUIRED_CUSTOMER_CONTEXT"
+    ]
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "Long Biên",
+    "texts": [
+      "Long Biên thì gói Massage phục hồi NS03 hợp với nhu cầu vai gáy của mình: 100 phút, gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi, làm trong phòng VIP riêng. Giá niêm yết 580.000đ, chưa gồm VAT 8%, tip tùy tâm.",
+      "Cơ sở ở TTA11–TTA12, chung cư HC Golden, 319 Hồng Tiến, Bồ Đề, mở 9:00–22:00. Nếu mình muốn nhẹ nhàng hơn thì có NS02 80 phút giá 530.000đ, nhưng phòng chung và không có phần xông hơi."
+    ],
+    "elapsed": 14618,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_UPDATE_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Khách chỉ nói 'Long Biên' để chọn cơ sở; việc thêm gói NS02 530.000đ (phương án nâng cấp/khác) không được khách hỏi là upsell không được mời, vi phạm giới hạn 'khách giới hạn thông tin cụ thể'."
+    ]
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "ủa rồi sao, hỏi nhiều quá mà chưa giúp tôi chọn",
+    "texts": [
+      "Em xin lỗi vì để mình phải trả lời nhiều. Chốt luôn: mình chọn NS03 Massage phục hồi ở Long Biên — 100 phút, có 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi trong phòng VIP riêng, giá 580.000đ chưa gồm VAT 8%, tip tùy tâm.",
+      "Lý do em nghiêng gói này cho mình: đúng nhóm nhu cầu đau mỏi vai gáy và stress, thời lượng đủ dài để phần massage 85 phút tập trung vào vùng mình cần thay vì vội. Nếu mình muốn tiết kiệm hơn thì NS02 80 phút giá 530.000đ, nhưng phòng chung và không có xông hơi."
+    ],
+    "elapsed": 19396,
+    "calls": 2,
+    "fallback": false,
+    "violations": [
+      "MEMORY_PROPOSAL_PARSE_REJECTED",
+      "STRATEGY_EVIDENCE_REJECTED:apac_objection_response",
+      "MEMORY_SEMANTIC_REJECTED",
+      "QUALITY_REVIEW_WARNING",
+      "Bubble 1 viết 'mình chọn NS03' — khách chưa chọn gói nào, đây là tự gán quyết định của khách; chỉ nên đề xuất và nói rõ là gợi ý của em",
+      "Bubble 2 lặp lại NS02 80 phút/530.000đ dù khách vừa phàn nàn bị hỏi nhiều và chỉ cần một phương án chốt; thêm phương án không được hỏi làm loãng bước chốt"
+    ]
+  },
+  {
+    "scenario": "owner-six-turn-reproduction",
+    "customer": "Thôi nghỉ đi khỏi tư vấn",
+    "texts": [
+      "Dạ, em xin lỗi vì đã để mình phải nhắc. Mình nghỉ ngơi nhé, khi nào cần cứ nhắn em."
+    ],
+    "elapsed": 11065,
+    "calls": 2,
+    "fallback": false,
+    "violations": []
+  }
+]

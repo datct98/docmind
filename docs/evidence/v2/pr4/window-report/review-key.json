@@ -1,0 +1,8 @@
+{
+  "SPA-DEV-014-A": "candidate",
+  "SPA-DEV-014-B": "baseline",
+  "SPA-DEV-011-A": "baseline",
+  "SPA-DEV-011-B": "candidate",
+  "COUNTERFACTUAL-AUTHORITY-A": "candidate",
+  "COUNTERFACTUAL-AUTHORITY-B": "baseline"
+}

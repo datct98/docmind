@@ -6,7 +6,23 @@ import java.util.List;
 public final class SalesContracts {
     private SalesContracts() {}
     public record Message(String role, String content) {}
-    public record Evidence(String id, String title, String text) {}
+    public record Evidence(String id, String title, String text, java.util.Map<String,Object> metadata) {
+        public Evidence {
+            // Only source scope/authority crosses this boundary. Never import arbitrary metadata instructions.
+            var safe = new java.util.LinkedHashMap<String,Object>();
+            if (metadata != null) for (String key : List.of("record_kind", "branch_tags", "service_codes",
+                    "source_priority", "effectiveness", "has_source_conflict", "review_status")) {
+                Object value = metadata.get(key);
+                if (value instanceof String s && s.length() <= 160) safe.put(key, s);
+                else if (value instanceof Boolean b) safe.put(key, b);
+                else if (value instanceof List<?> items && items.size() <= 24
+                        && items.stream().allMatch(v -> v instanceof String s && s.length() <= 80))
+                    safe.put(key, List.copyOf(items));
+            }
+            metadata = java.util.Collections.unmodifiableMap(safe);
+        }
+        public Evidence(String id, String title, String text) { this(id, title, text, java.util.Map.of()); }
+    }
     public record TurnInput(String pageId, String businessName, String industryCode, String selfPronoun,
                             String customerPronoun, String voice, List<Message> history, String message,
                             List<Evidence> evidence, List<String> businessPolicies, String quotedMessage,

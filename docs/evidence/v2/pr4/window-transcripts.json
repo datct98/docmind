@@ -1,0 +1,115 @@
+{
+  "baseline": [
+    {
+      "scenario": "SPA-DEV-014",
+      "customer": "NS02 ở Long Biên bao nhiêu? Có phải phòng VIP không?",
+      "texts": [
+        "NS02 Massage cơ bản nâng cao ở Long Biên là 530.000đ, 80 phút, gồm 10 phút ngâm bồn thảo dược + tắm tráng + 70 phút massage. Giá chưa gồm VAT 8%, tip tùy tâm.",
+        "Gói này là phòng chung, không phải phòng VIP riêng nhé."
+      ],
+      "elapsed": 13007,
+      "calls": 2,
+      "fallback": false,
+      "violations": []
+    },
+    {
+      "scenario": "SPA-DEV-011",
+      "customer": "Mua 5 buổi massage có giảm không?",
+      "texts": [
+        "Có ạ — mua từ 5 buổi trở lên được giảm 10% trên tổng giá trị liệu trình, áp dụng cho gói massage trị liệu, gội dưỡng sinh hoặc combo đủ điều kiện, tại mọi cơ sở.",
+        "Lưu ý nhỏ: ưu đãi không cộng dồn với ưu đãi khác, mua tại cơ sở nào thì dùng tại cơ sở đó, và thẻ không hoàn/hủy. Tài liệu chưa ghi ngày hiệu lực nên em chưa dám khẳng định chương trình đang chạy hôm nay — mình cho em biết định làm gói nào và ở cơ sở nào để em tư vấn sát hơn nhé."
+      ],
+      "elapsed": 15654,
+      "calls": 2,
+      "fallback": false,
+      "violations": [
+        "STRATEGY_EVIDENCE_REJECTED:value_proof_recommendation"
+      ]
+    },
+    {
+      "scenario": "SPA-DEV-011",
+      "customer": "Mua ở Long Biên dùng Bích Câu được không?",
+      "texts": [
+        "Long Biên và Bích Câu là hai cơ sở riêng, địa chỉ khác nhau: Long Biên ở 319 Hồng Tiến, Bồ Đề; Bích Câu ở 6 Bích Câu, Đống Đa. Còn việc gói mua ở Long Biên có dùng được sang Bích Câu hay không thì hiện em chưa có thông tin trong tài liệu, nên em chưa dám khẳng định.",
+        "Giá cũng niêm yết theo từng cơ sở. Mình cho em biết định chọn gói nào để em báo đúng giá và tính ưu đãi 5 buổi cho mình nhé."
+      ],
+      "elapsed": 40174,
+      "calls": 4,
+      "fallback": false,
+      "violations": [
+        "Bubble 1 khẳng định 'mỗi cơ sở có bảng giá riêng, nên gói mua ở Long Biên sẽ dùng tại Long Biên, không chuyển sang Bích Câu được' — nguồn chỉ là dữ liệu địa chỉ chi nhánh, không nêu chính sách chuyển cơ sở/không chuyển cơ sở. Đây là suy diễn chính sách thành sự thật (BLOCKING).",
+        "Bubble 2 xả cả 3 gói kèm giá khi khách chỉ hỏi phạm vi dùng giữa hai cơ sở; thêm danh mục không được hỏi."
+      ]
+    },
+    {
+      "scenario": "COUNTERFACTUAL-AUTHORITY",
+      "customer": "NS01 Long Biên giá bao nhiêu, bao lâu, phòng riêng hay chung, có VAT chưa?",
+      "texts": [
+        "Gói NS01 Massage cơ bản ở Nàng Sen Long Biên: 747.000VNĐ cho 75 phút, full body massage thư giãn, phòng riêng — và giá này đã bao gồm VAT."
+      ],
+      "elapsed": 27578,
+      "calls": 3,
+      "fallback": false,
+      "violations": [
+        "UNSUPPORTED_NUMBER",
+        "UNSUPPORTED_NUMBER_VALUES:8"
+      ]
+    }
+  ],
+  "candidate": [
+    {
+      "scenario": "SPA-DEV-014",
+      "customer": "NS02 ở Long Biên bao nhiêu? Có phải phòng VIP không?",
+      "texts": [
+        "Gói NS02 Massage cơ bản nâng cao tại Nàng Sen Long Biên niêm yết 530.000VNĐ cho 80 phút, gồm 10 phút ngâm bồn thảo dược, tắm tráng và 70 phút massage. Giá chưa gồm VAT 8%, tiền tip tùy tâm.",
+        "NS02 là phòng chung, không phải phòng VIP riêng — nếu mình muốn không gian riêng thì cần chọn gói khác."
+      ],
+      "elapsed": 19963,
+      "calls": 3,
+      "fallback": false,
+      "violations": [
+        "UNSUPPORTED_NUMBER",
+        "UNSUPPORTED_NUMBER_VALUES:3000000"
+      ]
+    },
+    {
+      "scenario": "SPA-DEV-011",
+      "customer": "Mua 5 buổi massage có giảm không?",
+      "texts": [
+        "Có ạ — mua từ 5 buổi trở lên đang được giảm 10% trên tổng giá trị liệu trình, áp dụng cho gói massage trị liệu, gội dưỡng sinh hoặc combo đủ điều kiện, và mua ở cơ sở nào thì dùng ở cơ sở đó. Tài liệu chưa ghi ngày hiệu lực nên em chưa dám khẳng định chương trình đang chạy hôm nay; mình cho em biết định làm ở cơ sở nào, em tính luôn con số sau giảm cho đúng giá nơi đó."
+      ],
+      "elapsed": 13202,
+      "calls": 2,
+      "fallback": false,
+      "violations": []
+    },
+    {
+      "scenario": "SPA-DEV-011",
+      "customer": "Mua ở Long Biên dùng Bích Câu được không?",
+      "texts": [
+        "Không được ạ — thẻ mua tại cơ sở nào chỉ dùng tại cơ sở đó. Nên nếu mình mua ở Long Biên thì 5 buổi dùng ở Long Biên, không sang Bích Câu được.",
+        "Mình định gắn với cơ sở nào để em tính luôn giá 5 buổi sau giảm 10% cho đúng nơi đó?"
+      ],
+      "elapsed": 16831,
+      "calls": 2,
+      "fallback": false,
+      "violations": [
+        "MEMORY_SEMANTIC_REJECTED"
+      ]
+    },
+    {
+      "scenario": "COUNTERFACTUAL-AUTHORITY",
+      "customer": "NS01 Long Biên giá bao nhiêu, bao lâu, phòng riêng hay chung, có VAT chưa?",
+      "texts": [
+        "Gói NS01 Massage cơ bản tại Nàng Sen Long Biên: giá niêm yết 747.000VNĐ, thời lượng 75 phút, full body massage thư giãn. Đây là phòng riêng, và giá đã bao gồm VAT."
+      ],
+      "elapsed": 26685,
+      "calls": 3,
+      "fallback": false,
+      "violations": [
+        "UNSUPPORTED_NUMBER",
+        "UNSUPPORTED_NUMBER_VALUES:8"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "SPA-DEV-001-A": "baseline",
+  "SPA-DEV-001-B": "candidate",
+  "SPA-DEV-003-A": "candidate",
+  "SPA-DEV-003-B": "baseline",
+  "PAIR-005-A": "candidate",
+  "PAIR-005-B": "baseline",
+  "PAIR-007-A": "candidate",
+  "PAIR-007-B": "baseline"
+}

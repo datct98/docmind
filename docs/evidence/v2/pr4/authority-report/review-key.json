@@ -1,0 +1,21 @@
+{
+  "SPA-DEV-003-A": "candidate",
+  "SPA-DEV-003-B": "baseline",
+  "SPA-DEV-004-A": "candidate",
+  "SPA-DEV-004-B": "baseline",
+  "SPA-DEV-006-A": "candidate",
+  "SPA-DEV-006-B": "baseline",
+  "SPA-DEV-007-A": "baseline",
+  "SPA-DEV-007-B": "candidate",
+  "SPA-DEV-009-A": "candidate",
+  "SPA-DEV-009-B": "baseline",
+  "SPA-DEV-011-A": "baseline",
+  "SPA-DEV-011-B": "candidate",
+  "SPA-DEV-014-A": "candidate",
+  "SPA-DEV-014-B": "baseline",
+  "PAIR-003-A": "baseline",
+  "PAIR-003-B": "candidate",
+  "PAIR-005-A": "candidate",
+  "PAIR-005-B": "baseline",
+  "COUNTERFACTUAL-AUTHORITY-A": "candidate"
+}

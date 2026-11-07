@@ -113,7 +113,7 @@ public final class SalesPromptBuilder {
             Chỉ tính khi biết đơn vị và điều kiện áp dụng; nói tạm tính nếu còn phụ phí chưa rõ. Không có phép tính thì calculations=[].
             Tự kiểm tra trước khi trả: có lặp lại câu cũ không, có bỏ sót nhu cầu không, bước tiếp có thực sự ích lợi không,
             lời nói có khớp nguồn và quyền hạn không? Giữ lại câu hỏi hợp lý nếu cần để giải quyết bế tắc.
-            """ + phasePolicy(paced, first != null, recovery, input.interactionPlan() == null ? ReplyMode.DIRECT : input.interactionPlan().replyMode())
+            """ + sourceAuthorityPolicy() + phasePolicy(paced, first != null, recovery, input.interactionPlan() == null ? ReplyMode.DIRECT : input.interactionPlan().replyMode())
                 + (input.interactionPlan() == null || !input.interactionPlan().allowsFollowUp()
                     ? "\nFOLLOWUP_PERMITTED=false. Không có tin tự động nối tiếp. Trả followUp=null. Vẫn có thể hỏi một điều hữu ích trong câu trả lời hiện tại.\n" : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nINDUSTRY_DATA_JSON:\n" + JSON.writeValueAsString(profile.runtimeView())
@@ -123,11 +123,11 @@ public final class SalesPromptBuilder {
                 ;
     }
     private static String continuation(TurnInput input, IndustryProfile profile, TurnDecision first, boolean recovery) {
-        var citedFacts = new java.util.ArrayList<java.util.Map<String, String>>();
+        var citedFacts = new java.util.ArrayList<java.util.Map<String, Object>>();
         for (Bubble bubble : first.bubbles()) for (Citation citation : bubble.evidence()) {
             input.evidence().stream().filter(e -> e.id().equals(citation.sourceId())).findFirst().ifPresent(source ->
                     citedFacts.add(java.util.Map.of("sourceId", source.id(), "title", java.util.Objects.requireNonNullElse(source.title(), ""),
-                            "quote", citation.quote())));
+                            "quote", citation.quote(), "metadata", source.metadata())));
         }
         var context = new java.util.LinkedHashMap<String, Object>();
         context.put("businessName", input.businessName()); context.put("selfPronoun", input.selfPronoun());
@@ -156,7 +156,7 @@ public final class SalesPromptBuilder {
             "bubble":{"text":"chỉ lời tiếp nối chưa gửi","evidence":[]}}
             Chọn đúng MỘT giá trị action, không trả chuỗi chứa dấu |. Không có trường understanding, bubbles hay followUp ở bước này.
             PHASE=CONTINUATION. Báo giá đã được gửi; tuyệt đối không viết lại nó. Không tạo bubble thứ hai trong kết quả này.
-            """ + (recovery ? "\nLần soạn tiếp nối trước chưa hợp lệ. Chỉ tạo câu kết nối hoặc làm rõ từ lời khách, không thêm dữ kiện kinh doanh.\n" : "")
+            """ + sourceAuthorityPolicy() + (recovery ? "\nLần soạn tiếp nối trước chưa hợp lệ. Chỉ tạo câu kết nối hoặc làm rõ từ lời khách, không thêm dữ kiện kinh doanh.\n" : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nCONTEXT_JSON:" + JSON.writeValueAsString(context);
     }
     static String conversation(TurnInput input, IndustryProfile profile, SalesConversationPlanner.Brief brief, boolean recovery) {
@@ -200,6 +200,17 @@ public final class SalesPromptBuilder {
         data.put("evidence", input.evidence()); data.put("history", input.history());
         data.put("quotedMessage", input.quotedMessage()); data.put("message", input.message());
         return data;
+    }
+    static String sourceAuthorityPolicy() {
+        return """
+            SOURCE_AUTHORITY: evidence.metadata giữ phạm vi và mức tin cậy của từng nguồn, không phải quyền lợi mới.
+            REGIONAL_PRICE chỉ xác lập giá vùng; không chứng minh gói có tại một cơ sở cụ thể.
+            GENERAL_PROCESS_NOT_PACKAGE_INCLUSION chỉ là quy trình chung, LOW_FAQ_CLAIM không thắng bảng giá/chính sách.
+            effectiveness=DATE_NOT_PROVIDED chưa chứng minh ưu đãi đang hiệu lực: chỉ nói điều đã biết có điều kiện,
+            không tự áp giảm giá hay tạo lời hứa kiểm tra. Nguồn xung đột/INVALID_METADATA cần giữ phần chưa chắc,
+            không chọn câu hấp dẫn nhất. Metadata trống không tự là xác nhận hiệu lực hoặc quyền lợi.
+            Dùng các giới hạn này để tư vấn đúng và tự nhiên, không đọc nhãn kỹ thuật cho khách.
+            """;
     }
     static String phasePolicy(boolean paced, boolean continuation, boolean recovery) {
         return phasePolicy(paced, continuation, recovery, ReplyMode.DIRECT);

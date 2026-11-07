@@ -65,6 +65,8 @@ public class SalesKnowledgeSource {
         final List<UUID> requestedScope = scope;
         List<ChunkEntity> snapshot = !includeEvidence || scope.isEmpty() ? List.of() : chunks.findByDocumentIdIn(scope,
                 PageRequest.of(0, 256, Sort.by("id")));
+        var scopedRows = new HashMap<UUID,ChunkEntity>();
+        snapshot.stream().filter(c -> requestedScope.contains(c.getDocumentId())).forEach(c -> scopedRows.put(c.getId(), c));
         // Pricing references survive a short reply ('yes', a location, an objection) and do not depend on vector quality.
         snapshot.stream().filter(c -> referencePriority(c) < 3).sorted(Comparator.comparingInt(SalesKnowledgeSource::referencePriority))
                 .forEach(c -> putChunk(candidates, c, requestedScope));
@@ -77,10 +79,20 @@ public class SalesKnowledgeSource {
                     + "\nCURRENT_CUSTOMER_MESSAGE: " + message;
             if (context.length() > 3500) context = context.substring(context.length() - 3500);
             var found = retrieval.retrieveWithRules(scope, context, 10, List.of(), pageId);
+            if (found != null && found.chunks() != null) {
+                var missing = found.chunks().stream().map(item -> item.chunk())
+                        .filter(c -> requestedScope.contains(c.documentId()) && !scopedRows.containsKey(c.chunkId()))
+                        .map(RetrievedChunk::chunkId).filter(Objects::nonNull).distinct().toList();
+                // One scoped hydration for hits outside the bounded snapshot; no N+1 or cross-Page metadata.
+                if (!missing.isEmpty()) chunks.findAllById(missing).stream()
+                        .filter(c -> requestedScope.contains(c.getDocumentId())).forEach(c -> scopedRows.put(c.getId(), c));
+            }
             if (found != null && found.chunks() != null) for (var item : found.chunks()) {
                 var c = item.chunk();
                 if (scope.contains(c.documentId()) && c.text() != null && !c.text().isBlank()) {
-                    var evidence = new Evidence(c.chunkId().toString(), String.join(" / ", c.headingPath()), c.text());
+                    var row = scopedRows.get(c.chunkId());
+                    var evidence = row == null ? new Evidence(c.chunkId().toString(), String.join(" / ", c.headingPath()), c.text())
+                            : chunkEvidence(row);
                     candidates.putIfAbsent(evidence.id(), evidence);
                     // Reserve contextual space before the full catalog. Otherwise pricing rows can consume
                     // the entire budget and erase the process/policy that answers a customer's concern.
@@ -135,10 +147,18 @@ public class SalesKnowledgeSource {
         if (meta.contains("\"POLICY\"")) return 1;
         return text.contains("|") ? 2 : 3;
     }
-    private static void putChunk(Map<String, Evidence> map, ChunkEntity c, List<UUID> allowed) {
+    private void putChunk(Map<String, Evidence> map, ChunkEntity c, List<UUID> allowed) {
         if (!allowed.contains(c.getDocumentId()) || c.getId() == null) return;
-        map.putIfAbsent(c.getId().toString(), new Evidence(c.getId().toString(),
-                c.getHeadingPath() == null ? "Knowledge" : String.join(" / ", c.getHeadingPath()), c.getText()));
+        map.putIfAbsent(c.getId().toString(), chunkEvidence(c));
+    }
+    @SuppressWarnings("unchecked")
+    private Evidence chunkEvidence(ChunkEntity c) {
+        Map<String,Object> metadata = Map.of();
+        if (c.getChunkMetadataJson() != null && !c.getChunkMetadataJson().isBlank()) try {
+            metadata = json.readValue(c.getChunkMetadataJson(), Map.class);
+        } catch (RuntimeException malformed) { metadata = Map.of("review_status", "INVALID_METADATA"); }
+        return new Evidence(c.getId().toString(), c.getHeadingPath() == null ? "Knowledge" : String.join(" / ", c.getHeadingPath()),
+                c.getText(), metadata);
     }
     private static String value(JsonNode n, String field, String fallback) {
         return n != null && n.hasNonNull(field) ? choose(n.get(field).asText(), fallback) : fallback;

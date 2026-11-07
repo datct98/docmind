@@ -1,0 +1,10 @@
+[
+  {"id":"adaptive-spa-quality", "fixture":"../artifacts/v2-pr4/fixtures/spa.json", "messages":["Mình làm máy tính cả ngày, vai gáy căng quá. Ở Long Biên, muốn dành một buổi nghỉ cho nhẹ người."], "maxTurns":4,
+   "persona":"Bạn là khách ít thời gian, mong nghỉ ngơi và làm kỹ vai gáy. Không thiếu tiền nhưng ghét upsell và nghe đọc bảng giá. Nếu bot hỏi điều đã biết, hãy nhắc. Nếu tư vấn rõ, tự nhiên và đúng mong muốn, cân nhắc thử nhưng không tự mặc định đã đặt lịch. Không biết bảng giá trước."},
+  {"id":"adaptive-rental-risk", "fixture":"../artifacts/v2-pr4/fixtures/rental.json", "messages":["Hai đứa mình thuê Vision cuối tuần, nhận Hoàn Kiếm. Bao nhiêu một ngày?"], "maxTurns":4,
+   "persona":"Bạn cần đúng xe ga Vision cho hai người. Ngân sách khoảng 250k/ngày, có thể trả cọc. Lo xe cũ hỏng dọc đường; nếu chưa được giải thích, hỏi về cách kiểm tra xe. Không thích bị đổi sang xe số. Chỉ chấp nhận thông tin tồn xe/thủ tục được xác nhận, không đưa số điện thoại trước khi hiểu."},
+  {"id":"adaptive-saas-fit", "fixture":"../artifacts/v2-pr4/fixtures/saas.json", "messages":["Nhóm 5 người đang ghi khách hàng trên Excel, muốn quản lý chung. Có gói nào hợp?"], "maxTurns":4,
+   "persona":"Bạn quản lý nhóm 5 người, muốn phân quyền và xuất dữ liệu khi cần. Ngại bị khóa dữ liệu hơn giá. Không hiểu từ kỹ thuật. Nếu giải thích phù hợp, hỏi bước thử tiếp theo; nếu lời hứa không rõ, hỏi lại. Không tự biết tính năng nào của hãng."},
+  {"id":"counterfactual-facts", "fixture":"../artifacts/v2-pr4/fixtures/spa-counterfactual.json", "messages":["Chỉ cho tôi giá, thời lượng, phòng và VAT của NS01 Long Biên, không cần gói khác."]},
+  {"id":"owner-six-turn-reproduction", "fixture":"../artifacts/v2-pr4/fixtures/spa.json", "messages":["Giá", "Đau mỏi vai gáy đau đầu", "HN", "Long Biên", "ủa rồi sao, hỏi nhiều quá mà chưa giúp tôi chọn", "Thôi nghỉ đi khỏi tư vấn"]}
+]

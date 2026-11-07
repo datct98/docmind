@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "turns": 0,
+    "scenarios": 0,
+    "p50_ms": null,
+    "p95_ms": null,
+    "fallback_count": 0,
+    "fallback_observations_available": true,
+    "mean_calls": null,
+    "hard_gate_status": "REQUIRES_SOURCE_AND_HUMAN_REVIEW",
+    "human_score": null
+  },
+  "candidate": {
+    "turns": 19,
+    "scenarios": 5,
+    "p50_ms": 18732,
+    "p95_ms": 45001,
+    "fallback_count": 1,
+    "fallback_observations_available": true,
+    "mean_calls": 2.1052631578947367,
+    "hard_gate_status": "REQUIRES_SOURCE_AND_HUMAN_REVIEW",
+    "human_score": null
+  },
+  "human_acceptance": "NOT_RUN",
+  "conversion_claim": "NOT_MEASURED"
+}

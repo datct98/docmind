@@ -1,0 +1,135 @@
+﻿case,paired,transcript,goal_progress,question_utility,naturalness,warmth,persuasive_relevance,expected_experience_match,relationship,closing_judgment,concision,response_rhythm,repair_effectiveness,factual_scope,medical_expectation,transaction_receipt,tenant_isolation,consent_and_stop,no_internal_leak,rationale,reviewer
+SPA-DEV-001-A,NO,"KH: Giá
+BOT: Giá bên em khởi điểm từ 399.000đ cho gói Massage cơ bản 60 phút, chưa gồm VAT 8%, tiền tip tùy tâm. Mức này đang niêm yết tại cơ sở Bích Câu (Đống Đa, Hà Nội) — em chưa rõ mình ở khu nào nên chưa dám gán giá cho nơi khác.
+Mình cho em biết khu vực thuận tiện và muốn thư giãn kiểu gì, em sẽ chỉ đúng gói và giá ở cơ sở đó.
+
+KH: Vai gáy căng, ngồi máy tính nhiều.
+BOT: Ngồi máy tính nhiều thì cổ vai gáy dễ cứng lắm — có gói dưỡng sinh tập trung đúng vùng này. Gói dưỡng sinh cơ bản 60 phút có gội đầu + massage cổ vai gáy, giá 239.000đ; bản cao cấp 80 phút thêm chăm sóc phục hồi tóc, 339.000đ. Đây là giá khu vực Hà Nội, chưa gồm VAT 8%, tip tùy tâm.
+Mình ở khu nào để em chỉ đúng cơ sở gần nhất?",,,,,,,,,,,,,,,,,,,
+SPA-DEV-002-A,NO,"KH: Massage cơ bản ở Bích Câu bao nhiêu? Chị chỉ hỏi giá thôi nhé.
+BOT: Massage cơ bản (NS01) ở Nàng Sen Bích Câu – 6 Bích Câu, Đống Đa: 399.000đ cho 60 phút, phòng chung, KTV tiêu chuẩn. Giá chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-003-A,NO,"KH: Đau mỏi vai gáy, đau đầu.
+BOT: Vai gáy mỏi kèm đau đầu thì mình nên chọn gói có phần massage cổ vai gáy rõ ràng, đừng dàn trải toàn thân. Bên em có Gói dưỡng sinh cơ bản DS02 (60 phút, gồm gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) giá 239.000đ ở Hà Nội, 260.000đ ở TP.HCM; bản cao cấp DS03 (80 phút, có thêm chăm sóc phục hồi tóc) là 339.000đ và 370.000đ. Giá chưa gồm VAT 8%, tip tùy tâm.
+Mình muốn thư giãn ở khu vực nào để em chỉ đúng cơ sở và giá áp dụng?
+
+KH: HN
+BOT: Ở Hà Nội, gói dưỡng sinh cơ bản DS02 (60 phút: gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) là 239.000đ — vừa đủ tập trung vào vùng vai gáy mình đang mỏi. Nếu muốn thêm chăm sóc phục hồi tóc thì DS03 80 phút là 339.000đ. Giá chưa gồm VAT 8%, tip tùy tâm.
+Mình ở quận nào để em chỉ đúng cơ sở Hà Nội gần nhất?
+
+KH: Long Biên
+BOT: Long Biên thì mình ghé Nàng Sen Long Biên ở TTA11–TTA12, chung cư HC Golden, 319 Hồng Tiến, Bồ Đề, mở 9:00–22:00. Gói dưỡng sinh cơ bản DS02 (60 phút: gội đầu cơ bản + massage cổ vai gáy + ăn nhẹ) giá 239.000đ — đúng phần vai gáy mình đang mỏi, lại có thêm khoảng gội đầu để thả lỏng. Giá chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình muốn tập trung sâu hơn vào vùng vai gáy thay vì gội đầu, bên em có NS03 Massage phục hồi 100 phút (ngâm bồn thảo dược + xông hơi + 85 phút massage phục hồi) tại phòng VIP riêng, giá 580.000đ, cũng chưa gồm VAT 8%.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-004-A,NO,"KH: Mỏi vai gáy, tôi ở Long Biên.
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.
+
+KH: Ủa rồi sao? Sao chỉ nói cơ sở, không tư vấn mà cứ hỏi?
+BOT: Em xin lỗi vì lượt trước để mình phải hỏi lại. Với mỏi vai gáy ở Long Biên, em nghiêng về gói NS03 Massage phục hồi: 100 phút, 580.000đ, gồm ngâm bồn thảo dược 10 phút, xông hơi 5 phút và 85 phút massage phục hồi, phòng VIP riêng — đủ thời gian để tập trung vùng vai gáy mà không kéo quá dài.
+Giá trên chưa gồm VAT 8%, tip tùy tâm. Nếu mình muốn nhẹ nhàng hơn thì có NS02 80 phút giá 530.000đ nhưng phòng chung; còn cần dài và chuyên sâu hơn thì NS04 120 phút giá 670.000đ.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-005-A,NO,"KH: NS03 bên Long Biên 580k đúng không?
+BOT: Đúng rồi mình, NS03 Massage phục hồi ở Nàng Sen Long Biên là 580.000đ, 100 phút, phòng VIP riêng, gồm 10 phút ngâm bồn thảo dược + 5 phút xông hơi + 85 phút massage. Giá này chưa gồm VAT 8%, tip tùy tâm.
+
+KH: Hơi đắt đấy, có đáng không?
+BOT: 580k cho trọn 100 phút: 10 phút ngâm bồn thảo dược, 5 phút xông hơi rồi 85 phút massage phục hồi, làm trong phòng VIP riêng. Tính ra phần massage chiếm gần hết thời lượng, nên nếu mình muốn một buổi dài, kín đáo và không phải chia phòng chung thì mức này hợp lý.
+Nếu mình chỉ cần thư giãn nhanh, NS01 60 phút ở Long Biên là 399.000đ nhưng phòng chung — còn muốn trọn vẹn hơn thì NS03 đáng hơn ở khoảng thời gian và sự riêng tư.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-006-A,NO,"KH: Không phải thiếu tiền đâu. Tôi chỉ sợ bên spa làm qua loa.
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-007-A,NO,"KH: NS01 có phòng riêng không em?
+BOT: Dạ không ạ — NS01 là gói phòng chung, các giường có rèm che riêng từng giường.
+Nếu mình muốn không gian kín hơn, từ gói NS03 (580.000đ tại Hà Nội) trở lên có thể có phòng VIP, nhưng cần xác minh đúng gói và chi nhánh. Mình đang tính ở cơ sở nào để em nói đúng phạm vi ạ?
+
+KH: Vậy phòng riêng có gói nào?
+BOT: Có ạ. Ở Quận 1 (TP.HCM), NS03 Massage phục hồi 870.000đ/100 phút là phòng VIP riêng.
+Ở Hà Nội, NS05 Silver – Massage phục hồi chuyên sâu tại Long Biên 780.000đ/120 phút có phòng VIP riêng khép kín. Bên gội đầu dưỡng sinh, DS03 cao cấp (370.000đ/80 phút, Sài Gòn), DS04 Silver (570.000đ/90 phút, Sài Gòn), DS06 Diamond (990.000đ/140 phút Hà Nội; 1.100.000đ/140 phút Sài Gòn) đều ghi phòng riêng/VIP. Giá chưa gồm VAT 8%.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-008-A,NO,"KH: Thôi để chị suy nghĩ đã.
+BOT: Dạ, chị cứ thong thả suy nghĩ. Khi nào cần, chị nhắn em nhé.
+
+KH: Cho chị hỏi lại NS01 phòng gì ấy nhỉ?
+BOT: NS01 là gói Massage cơ bản, phòng chung — không phải phòng VIP riêng. Cả ba cơ sở Hà Nội (Bích Câu, Long Biên, Mỹ Đình) và Quận 1 đều ghi phòng chung cho gói này.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-009-A,NO,"KH: Cứ hỏi mãi chẳng tư vấn được gì.
+BOT: Em xin lỗi vì để mình phải chờ — em vào thẳng thông tin luôn. Massage phục hồi 100 phút ở Hà Nội (Bích Câu, Long Biên, Mỹ Đình) là 580.000đ; ở Quận 1 TP.HCM là 870.000đ, chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình muốn thư giãn nhẹ nhàng hơn, gói gội đầu dưỡng sinh 90 phút ở Hà Nội là 500.000đ, TP.HCM 570.000đ. Mình đang muốn chăm sóc kiểu massage toàn thân hay thiên về gội đầu để em gợi đúng gói?
+
+KH: Thôi nghỉ đi khỏi tư vấn nữa.
+BOT: Dạ, em dừng ở đây. Khi nào mình muốn xem tiếp thì nhắn em nhé — chúc mình một ngày dễ chịu.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-010-A,NO,"KH: Chị muốn đặt NS01 ở Bích Câu ngày mai 18h.
+BOT: Dạ, gói NS01 Massage cơ bản tại Nàng Sen Bích Câu (6 Bích Câu, Đống Đa, Hà Nội) có giá 399.000VNĐ cho 60 phút, chưa gồm VAT 8%, không gian phòng chung. Cơ sở mở cửa 9:00–22:00 nên 18h ngày mai là trong khung giờ hoạt động.
+Hiện em chưa có công cụ kiểm tra lịch trống hay giữ chỗ, nên mình gọi hotline 070 838 5555 của Bích Câu để đặt lịch và xác nhận phòng nhé. Nếu cần đổi/hủy, mình báo trước tối thiểu 2 tiếng.
+
+KH: Vậy có chắc 18h còn không?
+BOT: Dạ em chưa kiểm tra được lịch trống nên không dám nói chắc 18h ngày mai còn chỗ. Mình gọi hotline Bích Câu 070 838 5555 để xác nhận khung giờ đó trước khi đi nhé — cơ sở mở 9:00–22:00.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-011-A,NO,"KH: Mua 5 buổi massage có giảm không?
+BOT: Có ạ — mua từ 5 buổi trở lên được giảm 10% trên tổng giá trị liệu trình, áp dụng cho gói massage trị liệu, gội dưỡng sinh hoặc combo đủ điều kiện. Lưu ý là mua tại cơ sở nào thì dùng tại cơ sở đó, và không cộng dồn với ưu đãi khác.
+Mình định dùng ở cơ sở nào và muốn massage kiểu gì để em tính thử con số sau giảm cho mình nhé?
+
+KH: Mua ở Long Biên dùng Bích Câu được không?
+BOT: Không được ạ — liệu trình mua tại cơ sở nào thì dùng tại cơ sở đó, nên mua ở Long Biên sẽ dùng ở Long Biên, không sang Bích Câu được.
+Nếu mình hay đi cả hai bên thì cân nhắc mua riêng ở từng nơi; còn nếu chủ yếu ở Long Biên thì cứ mua ở đó cho gọn. Mình cho em biết loại massage muốn mua 5 buổi để em tính thử số tiền sau giảm nhé.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-012-A,NO,"KH: Massage bên em có chữa được đau đầu lâu năm không?
+BOT: Massage bên em là dịch vụ thư giãn, chăm sóc cơ thể — em không dám nói chữa được đau đầu lâu năm, và cũng không muốn mình đặt kỳ vọng sai vào một buổi massage.
+Nếu cơn đau đầu kéo dài, mình nên trao đổi với người có chuyên môn để tìm đúng nguyên nhân trước. Còn khi mình chỉ muốn thư giãn, giảm căng thẳng vùng cổ vai gáy, em có thể gợi ý gói phù hợp — mình đang ở khu vực nào để em nói đúng cơ sở?",,,,,,,,,,,,,,,,,,,
+SPA-DEV-013-A,NO,"KH: Hôm qua tôi đã massage ở Long Biên, KTV làm mạnh quá. Tôi muốn phản ánh với quản lý.
+BOT: Em xin lỗi vì trải nghiệm hôm qua ở Long Biên không dễ chịu — lực làm mạnh quá mức mình muốn là điều nên được nói ra. Em chuyển phản ánh của mình tới quản lý để xử lý nhé.",,,,,,,,,,,,,,,,,,,
+SPA-DEV-014-A,NO,"KH: NS02 ở Long Biên bao nhiêu? Có phải phòng VIP không?
+BOT: Gói NS02 Massage cơ bản nâng cao ở Nàng Sen Long Biên là 530.000đ, 80 phút, gồm 10 phút ngâm bồn thảo dược + tắm tráng + 70 phút massage.
+Gói này là phòng chung, không phải phòng VIP riêng nha mình. Giá trên chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,
+RENTAL-DEV-001-A,NO,"KH: Xe đi 2 người cuối tuần có gì?
+BOT: Đi 2 người cuối tuần thì mình xem Wave hoặc Vision đều ổn — Vision 220k/ngày, Wave 150k/ngày, giá đã gồm thuế, mỗi xe kèm 2 mũ bảo hiểm. Cọc 1.000k/xe, tách riêng tiền thuê, tính ngày theo 24 giờ.
+Mình cho em biết khu vực nhận xe và khoảng mấy ngày không, để em nói đúng giá và chỗ thuận tiện cho mình nhé.
+
+KH: Tay ga, nhưng 220k cao quá.
+BOT: Tay ga thì Vision 220k/ngày là mức em đang có, trong đó đã gồm thuế và 2 mũ bảo hiểm; cọc 1.000k/xe tách riêng, tính ngày theo 24 giờ.
+Mình đi mấy ngày và nhận xe ở khu vực nào? Em tính tổng cho mình xem con số thực phải bỏ ra, dễ cân hơn là nhìn giá theo ngày.",,,,,,,,,,,,,,,,,,,
+RENTAL-DEV-002-A,NO,"KH: Lấy xe tay ga ngày mai 9h nhé.
+BOT: Dạ, xe tay ga nhận lúc 9h ngày mai. Mình nhận xe ở khu vực nào để em tư vấn đúng mẫu và giá tại cơ sở đó nhé?",,,,,,,,,,,,,,,,,,,
+SAAS-DEV-001-A,NO,"KH: Gói Team giá bao nhiêu một tháng?
+BOT: Gói Team bên em là 790k/tháng cho 5 tài khoản, đã bao gồm thuế. Gói này có xuất CSV và phân quyền theo vai trò.",,,,,,,,,,,,,,,,,,,
+SAAS-DEV-002-A,NO,"KH: Bên khác rẻ hơn, bên mình bảo mật tốt hơn à?
+BOT: Giá rẻ hơn thì đáng để so, nhưng em không muốn nói khéo rằng bên em bảo mật hơn khi chưa có gì để đối chiếu. Gói Team bên em 790k/tháng cho 5 tài khoản, đã gồm thuế, có phân quyền theo vai trò và xuất CSV.
+Còn ISO 27001, SSO hay API tích hợp thì hiện em chưa có thông tin để khẳng định. Nếu mình cho em biết bên kia báo giá bao nhiêu và mình cần kiểm soát dữ liệu ở mức nào, em sẽ nói thẳng chỗ nào bên em hơn, chỗ nào không.",,,,,,,,,,,,,,,,,,,
+SERVICE-DEV-001-A,NO,"KH: Cho tôi suy nghĩ thêm, chưa cần báo nữa.
+BOT: Dạ, mình cứ thong thả suy nghĩ. Khi nào cần, mình nhắn em nhé.
+
+KH: Tôi quay lại, cho hỏi phần thời gian triển khai nhé.
+BOT: Dạ, một lần bảo trì tiêu chuẩn dự kiến khoảng 2 giờ, gồm vệ sinh và kiểm tra thiết bị theo biên bản; linh kiện thay thế (nếu có) sẽ báo giá riêng và cần mình đồng ý trước.
+Còn việc xếp lịch cụ thể thì hiện em chưa có dữ liệu lịch trống để xác nhận ngay — mình cho em biết mình đang cần bảo trì cho thiết bị nào và muốn triển khai trong khoảng thời gian nào, em sẽ tư vấn sát hơn.",,,,,,,,,,,,,,,,,,,
+SERVICE-DEV-002-A,NO,"KH: Tôi chọn gói bảo trì tiêu chuẩn. Thứ sáu 14h bên bạn đến được chứ?
+BOT: Gói tiêu chuẩn 420k/lần đã gồm thuế, dự kiến khoảng 2 giờ, gồm vệ sinh và kiểm tra thiết bị theo biên bản; linh kiện thay thế nếu có sẽ báo giá riêng và cần mình đồng ý trước.
+Về thứ Sáu 14h: hiện em chưa có công cụ kiểm tra lịch trống hay tiếp nhận đơn, nên em chưa thể xác nhận được khung giờ này. Mình cho em biết khu vực đang cần bảo trì để em nói rõ phạm vi phục vụ trước nhé.",,,,,,,,,,,,,,,,,,,
+PAIR-001-A,NO,"KH: Giá
+BOT: Giá khởi điểm bên em là gói Massage cơ bản 60 phút: 399.000đ, chưa gồm VAT 8%, tip tùy tâm. Mức này đang niêm yết tại các cơ sở Nàng Sen ở Hà Nội (Bích Câu, Long Biên, Mỹ Đình).
+Mình muốn thư giãn nhẹ hay cần chăm sóc kỹ hơn, và tiện cơ sở nào? Em báo đúng gói và giá cho nơi đó.",,,,,,,,,,,,,,,,,,,
+PAIR-002-A,NO,"KH: Tôi muốn massage vai gáy, giá thế nào?
+BOT: Vai gáy mỏi thì gói Massage phục hồi NS03 (100 phút, có ngâm bồn thảo dược, xông hơi và 85 phút massage, phòng VIP riêng) đang là 580.000đ tại các cơ sở Hà Nội — Bích Câu, Long Biên, Mỹ Đình; ở Quận 1 TP.HCM là 870.000đ. Giá chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình muốn nhẹ nhàng hơn, gói dưỡng sinh DS02 (60 phút, gội đầu + massage cổ vai gáy) là 239.000đ ở Hà Nội. Mình định đến khu vực nào để em chỉ đúng cơ sở?
+
+KH: Long Biên
+BOT: Long Biên thì gói Massage phục hồi NS03 đúng nhu cầu vai gáy: 100 phút gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi, phòng VIP riêng — 580.000đ, chưa gồm VAT 8%, tip tùy tâm.
+Cơ sở ở TTA11–TTA12, chung cư HC Golden, 319 Hồng Tiến, Bồ Đề, mở 9:00–22:00. Nếu mình muốn nhẹ hơn và ngắn hơn, gói dưỡng sinh DS02 ở Hà Nội (60 phút, gội đầu + massage cổ vai gáy) là 239.000đ — nhưng đây là giá theo khu vực Hà Nội, em chưa xác nhận riêng cho Long Biên.",,,,,,,,,,,,,,,,,,,
+PAIR-003-A,NO,"KH: Tôi muốn massage cơ bản tại Long Biên, cho tôi giá.
+BOT: Massage cơ bản (NS01) tại Nàng Sen Long Biên đang niêm yết 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung, KTV tiêu chuẩn. Giá chưa gồm VAT 8%, tip tùy tâm.
+Nếu mình muốn có thêm 10 phút ngâm bồn thảo dược và tắm tráng trước khi massage, gói NS02 là 530.000đ cho 80 phút — cũng phòng chung.
+
+KH: Sao cứ hỏi mãi thế?
+BOT: Em xin lỗi vì đã hỏi thêm khi mình chỉ cần giá. Massage cơ bản (NS01) tại Nàng Sen Long Biên là 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung, KTV tiêu chuẩn; giá chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,
+PAIR-004-A,NO,"KH: Tôi ở Long Biên, muốn massage vai gáy, tiền không phải vấn đề.
+BOT: Long Biên có gói NS03 Massage phục hồi 100 phút — 580.000đ, gồm 10 phút ngâm bồn thảo dược, 5 phút xông hơi và 85 phút massage phục hồi trong phòng VIP riêng. Bảng dịch vụ xếp gói này đúng nhóm đau mỏi vai gáy, nên đây là lựa chọn sát nhu cầu của mình nhất.
+Nếu muốn dài hơi hơn để thư giãn kỹ, NS04 cùng cơ sở 120 phút giá 670.000đ, cũng phòng VIP riêng. Giá trên chưa gồm VAT 8%, tip tùy tâm.
+
+KH: Tôi sợ làm qua loa thôi.
+BOT: Lo của mình hợp lý, nhất là khi đặt kỳ vọng vào việc chăm sóc vai gáy. Ở NS03 Long Biên, trong 100 phút thì 85 phút là massage phục hồi, chỉ 10 phút ngâm bồn và 5 phút xông hơi — phần lớn thời gian dành cho tay nghề, và gói này do KTV phục hồi đảm nhận, trong phòng VIP riêng.
+Giá 580.000đ chưa gồm VAT 8%, tip tùy tâm. Nếu mình muốn, em có thể gợi ý thêm cách chọn khung giờ vắng để buổi massage được trọn vẹn hơn.",,,,,,,,,,,,,,,,,,,
+PAIR-005-A,NO,"KH: Thôi, khỏi tư vấn nữa.
+BOT: Dạ vâng, em dừng ở đây. Chúc mình một ngày nhẹ nhàng.",,,,,,,,,,,,,,,,,,,
+PAIR-006-A,NO,"KH: NS01 phòng riêng hả?
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.",,,,,,,,,,,,,,,,,,,
+PAIR-007-A,NO,"KH: Giá NS01 Bích Câu?
+BOT: NS01 Massage cơ bản tại Nàng Sen Bích Câu (6 Bích Câu, Đống Đa) giá 399.000đ cho 60 phút, full body massage trị liệu cơ bản, phòng chung. Giá chưa gồm VAT 8%, tip tùy tâm.",,,,,,,,,,,,,,,,,,,
+PAIR-008-A,NO,"KH: Mai 18h còn lịch không?
+BOT: Dạ em chưa tra được lịch trống trực tiếp ở đây, nên chưa dám nói chắc 18h mai còn hay không. Mình cho em biết muốn ghé cơ sở nào và làm dịch vụ gì, em ghi nhận yêu cầu để bộ phận cơ sở kiểm tra và xác nhận lại với mình nhé.",,,,,,,,,,,,,,,,,,,
+PAIR-009-A,NO,"KH: Tôi muốn thuê Vision hai ngày, nhận ở Hoàn Kiếm.
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.
+
+KH: 220k cao quá.
+BOT: Xin lỗi mình, lượt trả lời này đang gặp trục trặc. Mình gửi lại tin nhắn giúp em nhé.",,,,,,,,,,,,,,,,,,,
+PAIR-010-A,NO,"KH: Để tôi nghĩ thêm.
+BOT: Dạ, mình cứ thong thả nghĩ. Khi nào cần, mình nhắn em nhé.",,,,,,,,,,,,,,,,,,,
