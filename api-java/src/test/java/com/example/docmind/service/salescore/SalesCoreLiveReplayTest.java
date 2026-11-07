@@ -55,7 +55,25 @@ class SalesCoreLiveReplayTest {
             core.setWriterClient(writerClient);
             core.setPlanningEnabled(true);
             core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
-            if (!snapshotPath.isBlank()) {
+            if ("quality-v3".equals(System.getProperty("sales.scenario"))) {
+                replay(core, "BEAUTY_SPA", List.of(new Evidence("spa-price", "Synthetic evaluation catalog",
+                        "Hà Nội: Massage cơ bản toàn thân 60 phút 399k, gồm cổ vai gáy và tay chân. Dưỡng sinh cơ bản 60 phút 239k, gội đầu và cổ vai gáy, không gồm chân tay. Khách có thể trao đổi vùng muốn tập trung với kỹ thuật viên trước khi bắt đầu; chưa có dữ liệu lịch trống.")),
+                        List.of("Mình ở Hà Nội, muốn thư giãn cả cổ vai gáy lẫn tay chân. Giá thế nào?",
+                                "Mình không lo ngân sách, chỉ sợ làm qua loa",
+                                "Lần trước vai gáy bị làm lướt qua, mình cần kỹ vùng đó",
+                                "Vậy mình lấy gói toàn thân, mai lúc 18h, cần làm gì tiếp?"), turns, calls, json, output);
+            } else if ("adaptive-v3".equals(System.getProperty("sales.scenario"))) {
+                replay(core, "BEAUTY_SPA", List.of(new Evidence("spa-price", "Synthetic evaluation catalog",
+                        "Hà Nội: Massage cơ bản toàn thân 60 phút 399k, gồm cổ vai gáy và tay chân. Dưỡng sinh cơ bản 60 phút 239k, gội đầu và cổ vai gáy, không gồm chân tay. Chưa có dữ liệu lịch trống.")),
+                        List.of("Mình ở Hà Nội, muốn thư giãn cả cổ vai gáy lẫn tay chân. Tư vấn giá giúp mình.",
+                                "Đắt", "Mình vẫn muốn làm đủ tay chân, đừng đổi sang gội đầu nhé", "Mình sẽ cân nhắc, đừng tư vấn thêm nữa"), turns, calls, json, output);
+                replay(core, "MOTORBIKE_RENTAL", List.of(new Evidence("rental-price", "Synthetic evaluation catalog",
+                        "Hà Nội: Honda Vision 220k/ngày; Wave 150k/ngày. Một ngày là 24 giờ. Cọc 1000k/xe, tách riêng tiền thuê. Mỗi xe kèm 2 mũ bảo hiểm. Chưa có dữ liệu tồn xe, phí giao nhận và phụ thu quá giờ.")),
+                        List.of("Mình cần Vision ở Hà Nội, nhận sáng thứ bảy trả sáng thứ hai. Giá thế nào?",
+                                "Bên kia báo rẻ hơn. Nhưng mình chỉ muốn Vision, đừng đổi sang xe số",
+                                "Sửa lại nhé, mình nhận sáng chủ nhật, trả sáng thứ ba",
+                                "Ok mình lấy Vision, nhận ở Hoàn Kiếm lúc 9h. Cần làm gì tiếp?"), turns, calls, json, output);
+            } else if (!snapshotPath.isBlank()) {
                 var template = json.readValue(Files.readString(Path.of(snapshotPath)), TurnInput.class);
                 replay(core, template, "user-reported".equals(System.getProperty("sales.scenario"))
                         ? List.of("Giá", "tôi đau mỏi vai gáy nhức đầu khó ngủ", "HN", "Đắt")
@@ -72,7 +90,7 @@ class SalesCoreLiveReplayTest {
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", catalogKind, "modelConfigured", props.resolveModel(), "writerClient", writerClient, "turns", turns, "calls", calls)));
         }
-        assertThat(turns).hasSize(snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
+        assertThat(turns).hasSize("quality-v3".equals(System.getProperty("sales.scenario")) ? 4 : "adaptive-v3".equals(System.getProperty("sales.scenario")) ? 8 : snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
         assertThat(turns.stream().filter(t -> ((Result)t.get("result")).fallback()).count()).as("No contract fallback in these rehearsals").isZero();
         assertThat(turns.stream().filter(t -> t.containsKey("continuation") && ((Result)t.get("continuation")).fallback()).count())
                 .as("No failed continuation in these rehearsals").isZero();
@@ -97,16 +115,20 @@ class SalesCoreLiveReplayTest {
     private void replay(SalesTurnOrchestrator core, TurnInput template, List<String> customers,
                         List<Map<String,Object>> turns, List<Map<String,Object>> calls, ObjectMapper json, Path output) throws Exception {
         List<Message> history = new ArrayList<>();
+        SalesMemory.View memory = SalesMemory.View.empty();
         for (String message : customers) {
+            memory = SalesMemory.advance(memory, message, false);
             var input = new TurnInput(template.pageId(), template.businessName(), template.industryCode(), template.selfPronoun(), template.customerPronoun(), template.voice(),
-                    history, message, template.evidence(), template.businessPolicies(), "", template.contextTruncated());
+                    history, message, template.evidence(), template.businessPolicies(), "", template.contextTruncated(), memory);
             var result = Boolean.getBoolean("sales.paced") ? core.runPaced(input) : core.run(input);
             var turn = new LinkedHashMap<String,Object>();
             turn.put("industry", template.industryCode()); turn.put("customer", message); turn.put("result", result);
             turns.add(turn);
+            if (result.reviewedMemory() != null) memory = result.reviewedMemory();
+            turn.put("memory", memory);
             history.add(new Message("user", message)); result.texts().forEach(t -> history.add(new Message("assistant", t)));
             if (result.decision() != null && result.decision().followUp() != null) {
-                var continuation = core.continueAfterQuote(input, result.decision());
+                var continuation = core.continueAfterQuote(input.withInteractionPlan(result.interactionPlan()).withMemory(memory), result.decision());
                 turn.put("continuation", continuation);
                 continuation.texts().forEach(t -> history.add(new Message("assistant", t)));
             }

@@ -36,10 +36,12 @@ public class IndustryProfileRegistry {
                 }
                 try (stream) { profile = json.readValue(stream.readAllBytes(), IndustryProfile.class); }
             }
-            if (!code.equals(profile.code()) || profile.decisionCriteria() == null
+            if (!code.equals(profile.code()) || profile.schemaVersion() < 1 || profile.schemaVersion() > 2 || profile.decisionCriteria() == null
                     || profile.discoveryHints() == null || profile.boundaries() == null) {
                 throw new IllegalArgumentException("Invalid industry profile: " + code);
             }
+            if (profile.schemaVersion() == 2 && (profile.customerFields().isEmpty() || profile.actionRequirements().isEmpty()
+                    || profile.evaluationScenarios().isEmpty())) throw new IllegalArgumentException("Incomplete v2 industry profile: " + code);
             return profile;
         } catch (IOException e) { throw new IllegalStateException("Cannot read industry profile " + code, e); }
     }

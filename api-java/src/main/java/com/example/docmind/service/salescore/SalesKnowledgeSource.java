@@ -30,6 +30,9 @@ public class SalesKnowledgeSource {
         profileDirectory = Path.of(directory).toAbsolutePath().normalize();
     }
     public TurnInput load(UUID pageId, List<UUID> requestedDocuments, List<Message> history, String message, String quoted) {
+        return load(pageId, requestedDocuments, history, message, quoted, SalesMemory.View.empty());
+    }
+    public TurnInput load(UUID pageId, List<UUID> requestedDocuments, List<Message> history, String message, String quoted, SalesMemory.View memory) {
         if (pageId == null) throw new IllegalArgumentException("Page is required");
         KnowledgePageEntity page = pages.findById(pageId).orElseThrow(() -> new IllegalArgumentException("Unknown Page"));
         var allowed = documents.findByPageIdOrderByCreatedAtDesc(pageId).stream()
@@ -59,22 +62,34 @@ public class SalesKnowledgeSource {
         // Pricing references survive a short reply ('yes', a location, an objection) and do not depend on vector quality.
         snapshot.stream().filter(c -> referencePriority(c) < 3).sorted(Comparator.comparingInt(SalesKnowledgeSource::referencePriority))
                 .forEach(c -> putChunk(candidates, c, requestedScope));
+        LinkedHashMap<String, Evidence> matchedContext = new LinkedHashMap<>();
+        int matchedChars = 0;
         if (!scope.isEmpty() && retrieval != null) {
             String context = history.stream().skip(Math.max(0, history.size() - 6)).map(Message::content)
-                    .reduce("", (a, b) -> a + "\n" + b) + "\n" + message;
+                    .reduce("", (a, b) -> a + "\n" + b) + "\nCUSTOMER_MEMORY: "
+                    + memory.facts().stream().map(f -> f.key() + "=" + f.value()).collect(java.util.stream.Collectors.joining("; "))
+                    + "\nCURRENT_CUSTOMER_MESSAGE: " + message;
             if (context.length() > 3500) context = context.substring(context.length() - 3500);
             var found = retrieval.retrieveWithRules(scope, context, 10, List.of(), pageId);
             if (found != null && found.chunks() != null) for (var item : found.chunks()) {
                 var c = item.chunk();
-                if (scope.contains(c.documentId())) candidates.putIfAbsent(c.chunkId().toString(),
-                        new Evidence(c.chunkId().toString(), String.join(" / ", c.headingPath()), c.text()));
+                if (scope.contains(c.documentId()) && c.text() != null && !c.text().isBlank()) {
+                    var evidence = new Evidence(c.chunkId().toString(), String.join(" / ", c.headingPath()), c.text());
+                    candidates.putIfAbsent(evidence.id(), evidence);
+                    // Reserve contextual space before the full catalog. Otherwise pricing rows can consume
+                    // the entire budget and erase the process/policy that answers a customer's concern.
+                    if (!matchedContext.containsKey(evidence.id()) && matchedChars + c.text().length() <= 8000) {
+                        matchedContext.put(evidence.id(), evidence); matchedChars += c.text().length();
+                    }
+                }
             }
         }
         snapshot.forEach(c -> putChunk(candidates, c, requestedScope));
+        matchedContext.putAll(candidates);
         int used = 0;
         boolean truncated = snapshot.size() >= 256;
         List<Evidence> evidence = new ArrayList<>();
-        for (Evidence e : candidates.values()) {
+        for (Evidence e : matchedContext.values()) {
             // Keep whole evidence pieces. Never cut a price row/condition in half silently.
             if (e.text() == null || e.text().isBlank()) continue;
             if (used + e.text().length() > 18000 || e.text().length() > 8000) { truncated = true; continue; }
@@ -97,7 +112,7 @@ public class SalesKnowledgeSource {
         return new TurnInput(pageId.toString(), page.getName(), choose(profile.industryCode(), value(persona, "industry_code", "GENERIC")),
                 value(persona, "self_pronoun", "em"), value(persona, "default_customer_pronoun", "mình"),
                 choose(profile.voice(), value(persona, "tone_style", "ấm áp, rõ ràng, tự nhiên")), boundedHistory, message,
-                evidence, List.of(), quoted, truncated);
+                evidence, List.of(), quoted, truncated, memory);
     }
     private PageSalesProfile readPageProfile(UUID page) {
         Path file = profileDirectory.resolve(page + ".json");

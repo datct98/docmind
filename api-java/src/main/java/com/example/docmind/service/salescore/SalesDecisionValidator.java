@@ -13,11 +13,15 @@ public final class SalesDecisionValidator {
             "(?iu)(?:đã|vừa)\\s+(?:đặt|giữ|chốt|xác nhận|thanh toán)|(?:đặt|giữ|thanh toán)\\s+.{0,35}thành công|(?:booking|payment|reservation)\\s+(?:is\\s+)?confirmed");
     public List<String> validate(TurnDecision d, TurnInput input) {
         Set<String> errors = new LinkedHashSet<>();
+        if (d != null && d.followUp() != null && input.interactionPlan() != null && !input.interactionPlan().allowsFollowUp())
+            errors.add("FOLLOWUP_WITHOUT_DECISION_PURPOSE");
         if (d == null || d.understanding() == null || d.strategy() == null || d.strategy().action() == null
                 || blank(d.strategy().reason()) || blank(d.strategy().advance()) || d.bubbles() == null
                 || d.bubbles().isEmpty() || d.bubbles().size() > 4) return List.of("INVALID_CONTRACT");
         var customers = new ArrayList<String>();
         customers.add(input.message());
+        input.memory().facts().stream().map(SalesMemory.Fact::customerQuote).forEach(customers::add);
+        input.memory().customerSources().stream().map(SalesMemory.Source::text).forEach(customers::add);
         input.history().stream().filter(m -> Set.of("user", "customer").contains(m.role().toLowerCase(Locale.ROOT)))
                 .map(Message::content).forEach(customers::add);
         var facts = d.understanding().knownFacts();
@@ -81,8 +85,8 @@ public final class SalesDecisionValidator {
         if (continuation || recovery) {
             if (price || d.bubbles().size() > (continuation ? 1 : 2) || d.followUp() != null) return List.of("INVALID_CONTINUATION_DELIVERY");
         } else if (paced && price && d.strategy().action() != Action.HANDOFF && d.strategy().action() != Action.PAUSE) {
-            if (d.bubbles().size() != 1 || d.followUp() == null || blank(d.followUp().aim()))
-                return List.of("PRICE_REQUIRES_SINGLE_BUBBLE_AND_FOLLOWUP_AIM");
+            if (d.bubbles().size() != 1 || (d.followUp() != null && blank(d.followUp().aim())))
+                return List.of("PRICE_REQUIRES_SINGLE_BUBBLE_AND_VALID_OPTIONAL_FOLLOWUP");
             if (d.bubbles().getFirst().text().contains("?")) return List.of("PRICE_BUBBLE_QUESTION_BELONGS_IN_CONTINUATION");
         } else if (d.followUp() != null) return List.of("UNEXPECTED_FOLLOWUP");
         if (d.followUp() != null && d.followUp().aim().length() > 500) return List.of("FOLLOWUP_AIM_TOO_LONG");

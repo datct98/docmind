@@ -1,6 +1,40 @@
 {
   "code": "VEHICLE_RENTAL",
-  "decisionCriteria": ["Loại phương tiện phù hợp người lái và hành trình", "Thời gian nhận/trả và cách tính ngày thuê", "Địa điểm giao nhận, chi phí giao, cọc và giấy tờ theo chính sách", "Tổng chi phí và phần phát sinh chưa biết"],
-  "discoveryHints": ["Làm rõ thông tin ảnh hưởng loại xe hoặc báo giá, tránh hỏi thành một biểu mẫu dài", "Nếu khách ưu tiên tiết kiệm, so sánh chi phí và công năng thật", "Tách giá theo ngày khỏi tổng giá khi chưa đủ thời gian thuê"],
-  "boundaries": ["Không hứa có xe, giữ xe, giao ngay hoặc miễn cọc khi chưa có xác nhận nghiệp vụ", "Không tự đặt điều kiện bằng lái, bảo hiểm, bồi thường hay giấy tờ ngoài chính sách", "Không coi yêu cầu thuê là giao dịch đã xác nhận"]
+  "decisionCriteria": [
+    "Loại phương tiện phù hợp người lái và hành trình",
+    "Thời gian nhận/trả và cách tính ngày thuê",
+    "Địa điểm giao nhận, chi phí giao, cọc và giấy tờ theo chính sách",
+    "Tổng chi phí và phần phát sinh chưa biết"
+  ],
+  "discoveryHints": [
+    "Làm rõ thông tin ảnh hưởng loại xe hoặc báo giá, tránh hỏi thành một biểu mẫu dài",
+    "Nếu khách ưu tiên tiết kiệm, so sánh chi phí và công năng thật",
+    "Tách giá theo ngày khỏi tổng giá khi chưa đủ thời gian thuê"
+  ],
+  "boundaries": [
+    "Không hứa có xe, giữ xe, giao ngay hoặc miễn cọc khi chưa có xác nhận nghiệp vụ",
+    "Không tự đặt điều kiện bằng lái, bảo hiểm, bồi thường hay giấy tờ ngoài chính sách",
+    "Không coi yêu cầu thuê là giao dịch đã xác nhận"
+  ],
+  "schemaVersion": 2,
+  "customerFields": [
+    "vehicle_preference: loại/mẫu xe khách muốn; không tự hạ loại xe vì chê đắt",
+    "rental_period: thời gian nhận và trả khách nêu; cập nhật khi khách sửa",
+    "location: nơi nhận/trả khách đã nói",
+    "budget: chỉ khi khách nêu con số/giới hạn",
+    "customer_goal: hành trình và nhu cầu khách nêu",
+    "rejected_option: phương án khách bác bỏ; không tiếp tục mời cùng phương án"
+  ],
+  "actionRequirements": [
+    "Báo tổng thuê: cần thời gian và cách tính ngày trong chính sách; tách tiền cọc, phí giao nhận và khoản chưa rõ.",
+    "Yêu cầu nhận xe: dùng loại xe/thời gian/địa điểm đã biết, hỏi đúng phần còn thiếu để kiểm tra khả năng phục vụ.",
+    "Không có công cụ kiểm tra xe trống/giữ xe ở phiên bản này: nhờ nhân viên xác nhận, không hứa có xe hay đã giữ."
+  ],
+  "evaluationScenarios": [
+    "Đòi đúng mẫu xe dù giá cao",
+    "So sánh giá nhưng chưa rõ cọc/phụ thu",
+    "Sửa ngày trả",
+    "Muốn thuê ngay nhưng chưa có tồn xe",
+    "Bác bỏ phương án thay thế"
+  ]
 }

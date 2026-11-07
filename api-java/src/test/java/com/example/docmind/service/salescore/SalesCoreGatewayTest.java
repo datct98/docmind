@@ -41,6 +41,30 @@ class SalesCoreGatewayTest {
         assertThat(gateway.enabledFor(null)).isFalse();
         assertThat(new SalesCoreGateway(null, null, false).enabledFor(pageId)).isFalse();
     }
+    @Test void rememberedPreferenceParticipatesInRetrievalWithoutFabricatingConversationHistory() {
+        var source = source();
+        var memory = new SalesMemory.View(30, List.of(new SalesMemory.Fact("vehicle_preference", "Vision", "Chỉ Vision", 1)), List.of(), List.of(), true);
+        var input = source.load(pageId, null, List.of(), "Giá thế nào?", "", memory);
+        verify(retrieval).retrieveWithRules(eq(List.of(docId)), argThat(q -> q.contains("Vision") && q.contains("Giá thế nào?")), eq(10), eq(List.of()), eq(pageId));
+        assertThat(input.history()).isEmpty();
+        assertThat(input.memory()).isEqualTo(memory);
+    }
+    @Test void staleDatabaseRevisionSuppressesOutputAcrossGatewayInstances() {
+        var source = source();
+        var store = new SalesMemory.InMemoryStore();
+        var scope = new SalesMemory.Scope(pageId, "db-race", "default");
+        var llm = SalesCoreTest.fake(() -> {
+            store.begin(scope, "Tin mới hơn", false);
+            return SalesCoreTest.answer("Em ghi nhận nhé.", "ANSWER", "[]").replace("cổ vai gáy chân tay", "Giá");
+        });
+        try (var core = new SalesTurnOrchestrator(llm, new IndustryProfileRegistry(), 5000)) {
+            var gateway = new SalesCoreGateway(core, source, true);
+            gateway.setMemoryStore(store);
+            var result = gateway.respond(pageId, new FanpageBotRequest(pageId.toString(), "db-race", "", "Giá", null, null, null, 5), "Giá", null);
+            assertThat(result.replyBubbles()).isEmpty();
+            assertThat(result.triggeredHooks()).contains("SUPERSEDED_SALES_MEMORY_REVISION");
+        }
+    }
     @Test void rejectsForeignDocumentAndNeverUsesGlobalKnowledge() {
         var source = source();
         assertThatThrownBy(() -> source.load(pageId, List.of(UUID.randomUUID()), List.of(), "giá", ""))
@@ -76,6 +100,26 @@ class SalesCoreGatewayTest {
         var input = source().load(pageId, null, List.of(), "Giá", "");
         assertThat(input.evidence()).anyMatch(e -> e.id().equals("offer:current"));
         assertThat(input.evidence()).noneMatch(e -> e.text().contains("OLD OFFER"));
+    }
+    @Test void relevantPolicySurvivesLargeCatalogWithoutLosingAllPricesOrCrossingPageScope() {
+        var source = source();
+        var catalog = new ArrayList<ChunkEntity>();
+        for (int i = 0; i < 4; i++) catalog.add(ChunkEntity.builder().id(UUID.randomUUID()).documentId(docId)
+                .text("| Tên | Giá |\n| Mẫu " + i + " | 150000 VND |\n" + "x".repeat(4400)).build());
+        when(chunks.findByDocumentIdIn(anyList(), any(org.springframework.data.domain.Pageable.class))).thenReturn(catalog);
+        String policy = "Khách kiểm tra xe và ghi nhận tình trạng trước khi nhận. " + "p".repeat(1800);
+        var relevant = new RetrievedChunk(UUID.randomUUID(), docId, List.of("Quy trình"), List.of(), 1, null, policy, 1);
+        var foreign = new RetrievedChunk(UUID.randomUUID(), UUID.randomUUID(), List.of("Ngoài page"), List.of(), 1, null, "FOREIGN POLICY", 1);
+        when(retrieval.retrieveWithRules(anyList(), anyString(), eq(10), anyList(), eq(pageId))).thenReturn(
+                new RetrievalService.RetrievalResult(List.of(
+                        new com.example.docmind.service.retrieval.ReciprocalRankFusion.FusedChunk(foreign, 1),
+                        new com.example.docmind.service.retrieval.ReciprocalRankFusion.FusedChunk(relevant, .9)), List.of()));
+        var input = source.load(pageId, null, List.of(), "Tôi lo xe có hỏng hóc sẵn", "");
+        assertThat(input.evidence()).anyMatch(e -> e.text().equals(policy));
+        assertThat(input.evidence()).anyMatch(e -> e.text().contains("150000 VND"));
+        assertThat(input.evidence()).noneMatch(e -> e.text().contains("FOREIGN POLICY"));
+        assertThat(input.evidence().stream().mapToInt(e -> e.text().length()).sum()).isLessThanOrEqualTo(18000);
+        assertThat(input.contextTruncated()).isTrue();
     }
     @Test void publicFanpageRouteUsesNewCoreAndPreservesBudgetQuestion() {
         var source = source();

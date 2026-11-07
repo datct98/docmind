@@ -15,6 +15,9 @@ public class SalesCoreGateway {
     private final SalesTurnOrchestrator core;
     private final SalesKnowledgeSource knowledge;
     private final boolean enabled;
+    private SalesMemory.Store memory;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setMemoryStore(SalesMemory.Store store) { memory = store; }
     private final SalesContinuationStore continuations = new SalesContinuationStore();
     private int quotePauseMs = 10000;
     @org.springframework.beans.factory.annotation.Autowired
@@ -41,10 +44,14 @@ public class SalesCoreGateway {
         Result result;
         TurnInput input = null;
         long sourceMs = 0;
+        SalesMemory.Lease memoryLease = null;
         try {
             List<Message> history = request.isResetSessionRequested() || request.history() == null ? List.of()
                     : request.history().stream().map(t -> new Message(t.role(), t.content())).toList();
-            input = knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText());
+            if (memory != null) memoryLease = memory.begin(new SalesMemory.Scope(pageId, request.senderId(), request.conversationId()),
+                    message, request.isResetSessionRequested());
+            input = memoryLease == null ? knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText())
+                    : knowledge.load(pageId, request.documentIds(), history, message, request.quotedMessageText(), memoryLease.view());
             sourceMs = (System.nanoTime() - started) / 1_000_000;
             result = Boolean.TRUE.equals(request.splitPriceBubbles()) ? core.runPaced(input) : core.run(input);
         } catch (RuntimeException e) {
@@ -53,7 +60,22 @@ public class SalesCoreGateway {
                     true, true, 0, List.of("CONTEXT_UNAVAILABLE"), 0, 0, "UNKNOWN", 0);
         }
         if (!continuations.current(ticket)) return suppressed("SUPERSEDED_SALES_CORE_TURN");
+        if (memoryLease != null) {
+            // Persist only customer understanding reviewed against its source; never persist a draft as delivered history.
+            try {
+                if (!memory.commit(memoryLease, result.reviewedMemory() == null ? memoryLease.view() : result.reviewedMemory()))
+                    return suppressed("SUPERSEDED_SALES_MEMORY_REVISION");
+            } catch (RuntimeException failure) {
+                // Fail visibly before sending a reply whose memory could not be committed.
+                continuations.finish(ticket);
+                var unavailable = new Result(null, List.of("Em cần nhờ nhân viên kiểm tra lại thông tin để hỗ trợ mình tiếp."),
+                        true, true, result.attempts(), List.of("SALES_MEMORY_COMMIT_FAILED"), result.elapsedMs(), result.promptChars(), result.profileCode(), result.repairCount());
+                return response(pageId, unavailable, message, lead, sourceMs, started, 0, false);
+            }
+        }
         var response = response(pageId, result, message, lead, sourceMs, started, 0, false);
+        if (input != null) input = input.withInteractionPlan(result.interactionPlan())
+                .withMemory(result.reviewedMemory() == null ? input.memory() : result.reviewedMemory());
         if (!result.fallback() && !result.handoff() && result.decision() != null && result.decision().followUp() != null
                 && continuations.stage(ticket, input, result.decision()))
             return response.withPendingSecondBubble(true, ticket.sequence(), null);
@@ -85,11 +107,12 @@ public class SalesCoreGateway {
     private FanpageBotResponse response(UUID pageId, Result result, String message, FanpageBotResponse.ExtractedLead lead,
                                         long sourceMs, long started, int delayMs, boolean continuation) {
         var bubbles = result.texts().stream().map(t -> new FanpageBotResponse.ReplyBubble(t, delayMs)).toList();
-        List<String> hooks = new ArrayList<>(List.of("SALES_CORE_V1", "SALES_CORE_PACED_V2", "EVIDENCE_CONTRACT_CHECKED", "TOKEN_USAGE_UNAVAILABLE"));
+        List<String> hooks = new ArrayList<>(List.of("SALES_CORE_V1", "SALES_CORE_PACED_V2", "SALES_CORE_MEMORY_V3", "EVIDENCE_CONTRACT_CHECKED", "TOKEN_USAGE_UNAVAILABLE"));
         if (!result.fallback() && !result.violations().contains("QUALITY_REVIEW_WARNING")) hooks.add("SEMANTIC_REVIEW_PASS");
         if (result.fallback()) hooks.add("SALES_CORE_SAFE_HANDOFF");
         if (continuation) hooks.add("SALES_CORE_CONTINUATION");
         hooks.addAll(result.violations());
+        if (result.reviewedMemory() != null) hooks.add("CUSTOMER_MEMORY_FACTS:" + result.reviewedMemory().facts().size());
         String action = result.decision() == null ? "HANDOFF" : result.decision().strategy().action().name();
         String handoffReason = result.handoff() ? result.decision() == null
                 ? "Không xác minh được dữ kiện hoặc phản hồi trong thời hạn." : result.decision().handoffSummary() : null;
@@ -100,7 +123,8 @@ public class SalesCoreGateway {
                         new FanpageBotResponse.TurnProfiling(0, 0, 0, result.elapsedMs(), sourceMs, result.repairCount(), total));
         response = response.withDecisionTrace(new DecisionTrace(UUID.randomUUID().toString(), DecisionTrace.sha256Short(message),
                 action, "NONE", null, List.of(), List.of(), List.of(), List.of(), List.of(),
-                new DecisionTrace.ResponsePlanTrace(action, "ADAPTIVE", "CONTEXTUAL", false),
+                new DecisionTrace.ResponsePlanTrace(action, result.decision() == null ? "UNAVAILABLE" : result.decision().strategy().reason(),
+                        result.decision() == null ? "UNAVAILABLE" : result.decision().strategy().advance(), false),
                 new DecisionTrace.SanitizerMutations(false, false, false)));
         log.info("[SALES-CORE] page={} profile={} prompt_version={} prompt_chars={} action={} attempts={} violations={} fallback={} total_ms={}",
                 pageId, result.profileCode(), SalesPromptBuilder.VERSION, result.promptChars(), action, result.attempts(),

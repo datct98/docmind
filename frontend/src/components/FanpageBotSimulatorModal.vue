@@ -71,7 +71,7 @@
                 <div class="bot-live-status">
                   <span class="status-dot" :class="isHandedOffToHuman ? 'dot-handoff' : 'dot-active'"></span>
                   <span v-if="!isHandedOffToHuman">
-                    AI V2 đang trực · <strong>{{ formatStageLabel(currentStage) }}</strong>
+                    AI đang trực · <strong>{{ formatStageLabel(currentStage) }}</strong>
                   </span>
                   <span v-else class="handoff-status-text">
                     🟠 ĐÃ CHUYỂN NHÂN VIÊN THẬT XỬ LÝ
@@ -163,7 +163,7 @@
                       class="sim-compact-metrics-pill"
                       title="Bộ máy tư vấn · Tổng thời gian xử lý lượt"
                     >
-                      {{ (item.triggeredHooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
+                      {{ (item.triggeredHooks || []).includes('SALES_CORE_MEMORY_V3') ? 'Sales Core 3' : (item.triggeredHooks || []).includes('SALES_CORE_V1') ? 'Sales Core' : '🛡️ V2' }} · ⏱️ {{ formatSimTurnDurationSec(item) }}s
                     </span>
                     <button
                       type="button"

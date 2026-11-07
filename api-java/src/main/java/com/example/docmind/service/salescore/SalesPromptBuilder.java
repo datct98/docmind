@@ -5,7 +5,7 @@ import static com.example.docmind.service.salescore.SalesContracts.*;
 
 /** Shared writing contract. No precomputed sales script or post-hoc language rewrite. */
 public final class SalesPromptBuilder {
-    public static final String VERSION = "sales-core-2-paced";
+    public static final String VERSION = "sales-core-3-customer-memory";
     private static final ObjectMapper JSON = new ObjectMapper();
     private SalesPromptBuilder() {}
     public static String build(TurnInput input, IndustryProfile profile) {
@@ -88,11 +88,13 @@ public final class SalesPromptBuilder {
             Tự kiểm tra trước khi trả: có lặp lại câu cũ không, có bỏ sót nhu cầu không, bước tiếp có thực sự ích lợi không,
             lời nói có khớp nguồn và quyền hạn không? Giữ lại câu hỏi hợp lý nếu cần để giải quyết bế tắc.
             """ + phasePolicy(paced, first != null, recovery)
+                + (input.interactionPlan() != null && !input.interactionPlan().allowsFollowUp()
+                    ? "\nFOLLOWUP_PERMITTED=false. Chưa cần hỏi tiếp và chưa có tín hiệu mua. Trả followUp=null; để khách phản hồi sau câu trả lời hữu ích.\n" : "")
                 + "\n<!-- SYSTEM_USER_SPLIT -->\nINDUSTRY_DATA_JSON:\n" + JSON.writeValueAsString(profile)
                 + "\nTURN_DATA_JSON:\n" + JSON.writeValueAsString(conversationLast(input))
                 + (first == null ? "" : "\nALREADY_SENT_JSON:\n" + JSON.writeValueAsString(first))
                 + "\nReturn only the required JSON object, grounded in the supplied data."
-                + (paced && first == null && !recovery ? "\nFIRST DELIVERY: any quoted price => exactly ONE bubble, NO QUESTION/CTA inside it, and followUp.aim (purpose only; write the question in a later call). No price => followUp=null." : "");
+                + (paced && first == null && !recovery ? "\nFIRST DELIVERY: any quoted price => exactly ONE bubble, NO QUESTION/CTA inside it. followUp only for a useful next step supported by interactionPlan; otherwise null. No price => followUp=null." : "");
     }
     private static String continuation(TurnInput input, IndustryProfile profile, TurnDecision first, boolean recovery) {
         var citedFacts = new java.util.ArrayList<java.util.Map<String, String>>();
@@ -104,13 +106,16 @@ public final class SalesPromptBuilder {
         var context = new java.util.LinkedHashMap<String, Object>();
         context.put("businessName", input.businessName()); context.put("selfPronoun", input.selfPronoun());
         context.put("customerPronoun", input.customerPronoun()); context.put("voice", input.voice());
-        context.put("industry", profile); context.put("history", input.history());
+        context.put("industry", profile); context.put("history", input.history()); context.put("customerMemory", input.memory());
+        context.put("interactionPlan", input.interactionPlan());
         context.put("alreadyAnsweredCustomerMessage", input.message()); context.put("quotedMessage", input.quotedMessage());
         context.put("ALREADY_SENT_JSON", first); context.put("verifiedFactsAvailable", citedFacts);
         return """
             SALES CONTINUATION — viết lời tiếp nối sau khi khách ĐÃ NHẬN báo giá. Không trả lời tin khách từ đầu lần nữa.
             Bạn đang tư vấn bán hàng bằng tiếng Việt tự nhiên. Khách chưa nhắn thêm: không suy im lặng là đồng ý hay phản đối.
             Xem lịch sử, nhu cầu đã nói, nội dung ĐÃ GỬI và followUp.aim để chọn một bước nhỏ có ích.
+            interactionPlan là quyết định đã lập trước giá. Không tự nâng mức sẵn sàng chỉ vì đã gửi giá: unresolvedConcern
+            vẫn còn cho đến khi khách giải quyết. Nếu chưa có tín hiệu mua, không hỏi lịch/thu thập chi tiết để đặt.
             Chỉ MỘT bubble ngắn, ấm áp: một câu hỏi dễ trả lời giúp hiểu lựa chọn, hoặc kết nối điều đã báo với nhu cầu đã biết.
             Không chào lại, không nhắc lại giá/tóm tắt báo giá, không mở danh mục hay giới thiệu phương án mới.
             Không hỏi lại điều đã biết, không hỏi dồn. Không cố chốt khi chưa có tín hiệu. Không kể lể cảm xúc hộ khách.
@@ -163,6 +168,9 @@ public final class SalesPromptBuilder {
         data.put("industryCode", input.industryCode()); data.put("selfPronoun", input.selfPronoun());
         data.put("customerPronoun", input.customerPronoun()); data.put("voice", input.voice());
         data.put("businessPolicies", input.businessPolicies()); data.put("contextTruncated", input.contextTruncated());
+        data.put("customerMemory", input.memory());
+        data.put("interactionPlan", input.interactionPlan());
+        data.put("availableCapabilities", java.util.List.of("READ_BUSINESS_EVIDENCE", "COLLECT_CUSTOMER_DETAILS", "REQUEST_HUMAN_ASSISTANCE"));
         data.put("evidence", input.evidence()); data.put("history", input.history());
         data.put("quotedMessage", input.quotedMessage()); data.put("message", input.message());
         return data;
@@ -185,7 +193,9 @@ public final class SalesPromptBuilder {
         if (paced) return """
             PHASE=FIRST. Nếu cần nêu giá kinh doanh: chỉ gửi MỘT bubble chứa giá đúng phạm vi/điều kiện và một lý do ngắn nếu cần.
             Không đặt câu hỏi hay lời mời chọn/mua trong bubble này. Khách cần khoảng nghỉ sau giá; hệ thống sẽ gọi bạn viết tiếp sau.
-            Câu hỏi khám phá, kết nối và lời mời tiếp theo để lần xử lý sau. Đặt followUp={"aim":"mục đích tiếp nối ngắn"}.
+            Câu hỏi khám phá, kết nối và lời mời tiếp theo để lần xử lý sau. Chỉ đặt followUp={"aim":"mục đích tiếp nối ngắn"}
+            nếu có bước tiếp thật sự có ích từ interactionPlan. questionPurpose=NONE và chưa có tín hiệu mua: followUp=null,
+            đợi khách phản hồi. Không ép thêm câu hỏi, nhắc lại giá hoặc xin lịch chỉ để tạo hai bubble.
             aim là mục tiêu, không phải câu đã viết để gửi khách. Không soạn bubble thứ hai lúc này. Có thể chào ngắn trong bubble giá.
             Nếu không nêu giá thì tư vấn bình thường và followUp=null. Không cố nêu giá chỉ để kích hoạt hai bubble.
             """;

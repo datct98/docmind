@@ -61,7 +61,9 @@ public class SalesTurnOrchestrator implements AutoCloseable {
             SalesConversationPlanner.Brief brief = null;
             if (planningEnabled && first == null) {
                 try {
-                    brief = SalesConversationPlanner.parse(call(SalesConversationPlanner.prompt(input, profile), 1200, 0.15, clock, alternateWriter));
+                    brief = SalesConversationPlanner.parse(call(SalesConversationPlanner.prompt(input, profile), 1800, 0.15, clock, alternateWriter));
+                    input = input.withInteractionPlan(brief.contract());
+                    completeInput = input;
                     if (!brief.needsBusinessEvidence()) input = SalesConversationPlanner.conversationOnly(input);
                 } catch (CallFailure e) { throw e;
                 } catch (RuntimeException e) { violations.add("PLAN_INVALID_USING_FULL_CONTEXT"); }
@@ -79,7 +81,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                 boolean recovery = generation == 2;
                 TurnInput activeInput = recovery ? new TurnInput(input.pageId(), input.businessName(), input.industryCode(),
                         input.selfPronoun(), input.customerPronoun(), input.voice(), input.history(), input.message(),
-                        List.of(), List.of(), input.quotedMessage(), input.contextTruncated()) : input;
+                        List.of(), List.of(), input.quotedMessage(), input.contextTruncated(), input.memory(), input.interactionPlan()) : input;
                 if (recovery) {
                     // Narrow the task instead of letting an evidence error masquerade as a customer handoff.
                     prompt = (first == null ? SalesPromptBuilder.conversation(activeInput, profile, brief, true)
@@ -96,8 +98,20 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                     // Review a structurally valid draft even if its delivery layout is wrong, so one repair
                     // fixes both factual/semantic defects and layout rather than spending separate retries.
                     if (validContract) {
+                        // Memory proposals are untrusted until both source validation and this semantic review pass.
+                        SalesMemory.View reviewedMemory = activeInput.memory();
+                        List<SalesMemory.Update> updates = brief == null ? List.of() : brief.memoryUpdates();
+                        boolean memoryValid = true;
+                        try { reviewedMemory = SalesMemory.apply(activeInput.memory(), updates); }
+                        catch (RuntimeException invalidMemory) { memoryValid = false; violations.add("MEMORY_UPDATE_REJECTED"); }
                         var review = SalesSemanticReview.parse(call(SalesSemanticReview.prompt(reviewInput(activeInput, decision), profile,
-                                decision, paced, first, recovery), 450, 0.0, clock, true));
+                                decision, paced, first, recovery) + "\nPROPOSED_CUSTOMER_MEMORY_UPDATES_JSON: "
+                                + json.writeValueAsString(memoryValid ? updates : List.of()), 650, 0.0, clock, true));
+                        if (review.memoryApproved() == Boolean.FALSE) {
+                            reviewedMemory = activeInput.memory(); violations.add("MEMORY_SEMANTIC_REJECTED");
+                        }
+                        // Older review contracts did not assess memory. Never silently treat absence as approval.
+                        if (!updates.isEmpty() && review.memoryApproved() != Boolean.TRUE) reviewedMemory = activeInput.memory();
                         boolean qualityOnly = review.verdict() == SalesSemanticReview.Verdict.REVISE
                                 && review.severity() == SalesSemanticReview.Severity.QUALITY;
                         if (qualityOnly && generation > 0 && currentErrors.isEmpty()) {
@@ -109,7 +123,8 @@ public class SalesTurnOrchestrator implements AutoCloseable {
                         if (recovery && currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || qualityOnly)) violations.add("GROUNDED_CLARIFICATION_RECOVERY");
                         if (currentErrors.isEmpty() && (review.verdict() == SalesSemanticReview.Verdict.PASS || (qualityOnly && generation > 0))) return new Result(decision,
                                 decision.bubbles().stream().map(Bubble::text).toList(), decision.strategy().action() == Action.HANDOFF,
-                                false, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount);
+                                false, clock.calls, List.copyOf(violations), clock.elapsed(), promptChars, profileCode, clock.repairCount,
+                                reviewedMemory, activeInput.interactionPlan());
                         if (review.verdict() != SalesSemanticReview.Verdict.PASS) currentErrors.addAll(review.issues());
                         feedback = review.feedback();
                     }
@@ -145,7 +160,7 @@ public class SalesTurnOrchestrator implements AutoCloseable {
         return new TurnInput(input.pageId(), input.businessName(), input.industryCode(), input.selfPronoun(),
                 input.customerPronoun(), input.voice(), input.history(), input.message(),
                 input.evidence().stream().filter(e -> ids.contains(e.id())).toList(), input.businessPolicies(),
-                input.quotedMessage(), input.contextTruncated());
+                input.quotedMessage(), input.contextTruncated(), input.memory(), input.interactionPlan());
     }
     private String call(String prompt, int tokens, double temperature, TurnClock clock, boolean preferAlternate) {
         long remaining = deadlineMs - clock.elapsed();

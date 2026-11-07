@@ -93,6 +93,12 @@ class SalesContinuationTest {
         assertThat(SalesCoreGateway.remainingPauseMs(10000, 3000)).isEqualTo(7000);
         assertThat(SalesCoreGateway.remainingPauseMs(10000, 14000)).isZero();
     }
+    @Test void priceCanEndNaturallyWithoutManufacturingAQuestion() {
+        var json = new tools.jackson.databind.ObjectMapper();
+        var quote = json.readValue(QUOTE, TurnDecision.class);
+        var complete = new TurnDecision(quote.understanding(), quote.strategy(), quote.bubbles(), "", quote.calculations(), null);
+        assertThat(new SalesDecisionValidator().validateDelivery(complete, true, false, false)).isEmpty();
+    }
     @Test void vietnameseCurrencyWithAccentedFinalLetterStillTriggersPriceDeliveryAndRequiresBusinessSource() {
         var json = new tools.jackson.databind.ObjectMapper();
         var validator = new SalesDecisionValidator();
