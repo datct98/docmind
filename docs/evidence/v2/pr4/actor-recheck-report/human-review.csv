@@ -1,0 +1,10 @@
+﻿case,paired,transcript,goal_progress,question_utility,naturalness,warmth,persuasive_relevance,expected_experience_match,relationship,closing_judgment,concision,response_rhythm,repair_effectiveness,factual_scope,medical_expectation,transaction_receipt,tenant_isolation,consent_and_stop,no_internal_leak,rationale,reviewer
+adaptive-rental-risk-A,NO,"KH: Hai đứa mình thuê Vision cuối tuần, nhận Hoàn Kiếm. Bao nhiêu một ngày?
+BOT: Vision bên em 220k/ngày, đã gồm thuế, tính theo 24 giờ. Cọc 1.000k/xe tách riêng tiền thuê, mỗi xe có 2 mũ bảo hiểm. Hai bạn định nhận và trả lúc nào để em tính tổng cho gọn?
+
+KH: 220k/ngày thì trong tầm, nhưng em bảo cọc 1 triệu tách riêng hả? Hai đứa mình chỉ cần xe ga, không đổi sang xe số được không? Xe cũ hỏng dọc đường thì mình lo lắm, em có cách kiểm tra gì trước khi nhận không?
+BOT: Đúng rồi, cọc 1.000k/xe là khoản tách riêng, không trừ vào tiền thuê 220k/ngày. Hai bạn thuê Vision thì vẫn giữ Vision, không phải đổi sang xe số.
+Trước khi nhận, hai bạn được kiểm tra tình trạng xe và cùng ghi biên bản với bên em — cứ thử phanh, đèn, lốp và máy rồi ghi lại, cái này giúp mình yên tâm hơn khi chạy dọc đường. Hai bạn dự định nhận và trả lúc nào để em tính tổng tiền thuê cho gọn?
+
+KH: Được, mình sẽ kiểm tra kỹ xe trước khi nhận. Còn giờ nhận và trả thì mình chưa chắc lắm, để mình cùng bạn kia xác định lại rồi nhắn shop nhé.
+BOT: Dạ, em dừng tư vấn tại đây.",,,,,,,,,,,,,,,,,,,

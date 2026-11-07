@@ -1,0 +1,46 @@
+{
+  "candidate": [
+    {
+      "scenario": "adaptive-rental-risk",
+      "customer": "Hai đứa mình thuê Vision cuối tuần, nhận Hoàn Kiếm. Bao nhiêu một ngày?",
+      "texts": [
+        "Vision bên em 220k/ngày, đã gồm thuế, tính theo 24 giờ. Cọc 1.000k/xe tách riêng tiền thuê, mỗi xe có 2 mũ bảo hiểm. Hai bạn định nhận và trả lúc nào để em tính tổng cho gọn?"
+      ],
+      "elapsed": 12710,
+      "calls": 2,
+      "fallback": false,
+      "violations": []
+    },
+    {
+      "scenario": "adaptive-rental-risk",
+      "customer": "220k/ngày thì trong tầm, nhưng em bảo cọc 1 triệu tách riêng hả? Hai đứa mình chỉ cần xe ga, không đổi sang xe số được không? Xe cũ hỏng dọc đường thì mình lo lắm, em có cách kiểm tra gì trước khi nhận không?",
+      "texts": [
+        "Đúng rồi, cọc 1.000k/xe là khoản tách riêng, không trừ vào tiền thuê 220k/ngày. Hai bạn thuê Vision thì vẫn giữ Vision, không phải đổi sang xe số.",
+        "Trước khi nhận, hai bạn được kiểm tra tình trạng xe và cùng ghi biên bản với bên em — cứ thử phanh, đèn, lốp và máy rồi ghi lại, cái này giúp mình yên tâm hơn khi chạy dọc đường. Hai bạn dự định nhận và trả lúc nào để em tính tổng tiền thuê cho gọn?"
+      ],
+      "elapsed": 13393,
+      "calls": 2,
+      "fallback": false,
+      "violations": [
+        "MEMORY_PROPOSAL_PARSE_REJECTED"
+      ]
+    },
+    {
+      "scenario": "adaptive-rental-risk",
+      "customer": "Được, mình sẽ kiểm tra kỹ xe trước khi nhận. Còn giờ nhận và trả thì mình chưa chắc lắm, để mình cùng bạn kia xác định lại rồi nhắn shop nhé.",
+      "texts": [
+        "Dạ, em dừng tư vấn tại đây."
+      ],
+      "elapsed": 26326,
+      "calls": 3,
+      "fallback": true,
+      "violations": [
+        "CLOSE_MUST_RESPECT_CUSTOMER_STOP"
+      ]
+    }
+  ],
+  "role_fidelity_agent_review": "VALID_IN_THIS_THREE_TURN_SAMPLE",
+  "quality_accepted": false,
+  "code_commit": "7d51ef0a8b74f3efcfc1267f665534d5126a581a",
+  "raw_sha256": "b0f29387c35e9adf6d6f14b7ed210b3711b0bea348af304f7fbd16643d4841a1"
+}

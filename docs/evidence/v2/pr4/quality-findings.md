@@ -21,6 +21,7 @@ The complete owner run contains 30 cases/46 turns. Every visible turn was inspec
 | PAIR-004 | Explains price by known time/room, but suggests quiet timing without availability evidence | Unverified reassurance remains |
 | PAIR-009 | Both turns fallback | Reliability/UX failure |
 | Adaptive rental | Simulated customer twice speaks as seller | Invalid customer simulation; excluded from quality inference |
+| Adaptive rental recheck on `7d51ef0` | Three turns retain customer role; shop repeats date request and gives cold hard-stop wording at a soft pause, one fallback | Actor-role correction observed; sales/UX still fails |
 | Counterfactual | 747,000đ/75min/private/VAT-included adapts correctly in observed runs | Narrow anti-parroting evidence only |
 
 The final four-turn source-window run recovered the actual policy “buy at one branch, use at that branch”, which was missed in the prior17-turn run. It did not cure promotion overclaim, optional CTA or verbosity. Do not present only the successful counterfactual as the result of the project.
