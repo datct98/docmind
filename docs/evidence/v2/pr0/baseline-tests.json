@@ -1,0 +1,161 @@
+{
+  "maven_reported_totals": {
+    "tests": 1097,
+    "failures": 17,
+    "errors": 3,
+    "skipped": 10
+  },
+  "available_xml_totals": {
+    "tests": 934,
+    "failures": 17,
+    "errors": 3,
+    "skipped": 10
+  },
+  "counts_agree": false,
+  "exit_code": 1,
+  "command": "mvn -o -f api-java/pom.xml clean test",
+  "log_sha256": "f591cd226dca7fb38d17b7f5fa75d3b82c28a49de6717396aa2506a3373ebe87",
+  "failures": [
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP01_SyncRestHttp503RetryAfterWalMaxBytesOverflowAndHumanTakeoverLifecycle(Path)",
+      "kind": "error",
+      "type": "org.springframework.dao.DataIntegrityViolationException",
+      "message": "PreparedStatementCallback; SQL [INSERT INTO conversation_sessions (id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, control_mode, buying_temperature, temperature_delta, temperature_label, momentum, buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, last_message_preview, last_sender_role, last_message_at, created_at, updated_at) VALUES (?, ?, ?, 'Khách Takeover', 'Chị', 'Tư vấn', 'GENERAL', 'HUMAN_TAKEOVER', 50, 0, 'WARM', 'STABLE', 'EXPLORING_CONSULTATION', 'Đang tìm hiểu', 'DISCOVERY', TRUE, FALSE, 'Sale đang hỗ trợ', 'H"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP22_V34PreconditionHashGuardAndRoomSpaceNormalizationOnLivePostgres",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting code to raise a throwable."
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP13_ZeroRulePollutionScoreGateStyleComplaintNoCtaAndMigratedF04F07",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  \"Dạ em xin lỗi vì câu trả lời trước chưa bám sát những gì mình chia sẻ ạ.\"\nto contain:\n  \"chân\" "
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "aciV23AuthoritativeKnowledgeMatrixAndFourTierClaimTaxonomyReferee",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting empty but was: [\"CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:NS01:buffet thực dưỡng\",\n    \"UNGROUNDED_BUFFET_AMENITY:NS01\",\n    \"CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:NS01:buffet\"]"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP03_MultiTenantSecurityMetaProbeRefusalAndSubstanceProvenanceIsolation",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  \"<CLEAN_AGENT_SYSTEM_PROMPT>\nVai: Minh Anh, trợ lý tư vấn của \"Nha Khoa Tỏa Sáng\" (DENTAL_CLINIC), ACI V2.13. Xưng \"Em\" (cơ sở: \"bên Em\", CẤM xưng \"mình\" khi Em=\"em\"), gọi khách \"Anh\" (CẤM trộn \"bạn\"), nhân sự \"bác sĩ\". Phong cách \"Lịch sự, chuyên nghiệp, chuẩn mực phòng khám nha khoa\" tự nhiên, ấm áp (CẤM `**`, `1️⃣`, CẤM *\"Dạ Em hiểu ạ\"*, *\"Anh nói phải/nói đúng\"*, *\"mình thấy hợp với tình trạng hiện tại\"*).\n\nI. KHUNG TƯ DUY TƯ VẤN 8 CHIỀU (SALES REASONING) & QUYỀN TỰ QUYẾT CỦA LLM:\n1. 8 chiều suy luận (`Fact/Inference/Unknown` từ `[T_CURRENT]`, `<CONVERSATION_HISTORY>`,"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP04_V33SixScenarioOptOutReconsentMatrixAndUninterruptibleSafetyLock(Path)",
+      "kind": "error",
+      "type": "org.springframework.dao.DataIntegrityViolationException",
+      "message": "PreparedStatementCallback; SQL [INSERT INTO conversation_sessions (id, page_id, customer_psid, customer_name, honorific, active_topic, topic_family, control_mode, buying_temperature, temperature_delta, temperature_label, momentum, buyer_archetype, archetype_label, sales_stage, has_human_sale_reply, learned_in_cold_path, opted_out, last_message_preview, last_sender_role, last_message_at, created_at, updated_at) VALUES (?, ?, ?, 'Khách Cấp Cứu', 'Chị', 'Tư vấn', 'GENERAL', 'HUMAN_TAKEOVER', 60, 0, 'WARM', 'STABLE', 'EXPLORING_CONSULTATION', 'Đang tìm hiểu', 'DISCOVERY', TRUE, FALSE, FALSE, 'Sale"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "aciV23FiveStateAtomicSymptomLifecycleInteractionPermissionAndUnresolvedRequests",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  \"<CLEAN_AGENT_SYSTEM_PROMPT>\nVai: nhân viên chăm sóc của \"Nàng Sen Spa\" (BEAUTY_SPA), ACI V2.13. Xưng \"em\" (cơ sở: \"bên em\", CẤM xưng \"mình\" khi em=\"em\"), gọi khách \"mình\" (CẤM trộn \"bạn\"), nhân sự \"kỹ thuật viên\". Phong cách \"Dịu dàng, ấm áp, tinh tế, thấu cảm tình trạng khách trước rồi mới gợi ý gói\" tự nhiên, ấm áp (CẤM `**`, `1️⃣`, CẤM *\"Dạ em hiểu ạ\"*, *\"mình nói phải/nói đúng\"*, *\"mình thấy hợp với tình trạng hiện tại\"*).\n\nI. KHUNG TƯ DUY TƯ VẤN 8 CHIỀU (SALES REASONING) & QUYỀN TỰ QUYẾT CỦA LLM:\n1. 8 chiều suy luận (`Fact/Inference/Unknown` từ `[T_CURRENT]`, `<CONVE"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "externalPromptHotReloadCachesByLastModifiedAndFallsBackSafelyOnCorruptFile",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  \"<CLEAN_AGENT_SYSTEM_PROMPT>\nVai: nhân viên chăm sóc của \"Nàng Sen Spa\" (BEAUTY_SPA), ACI V2.13. Xưng \"em\" (cơ sở: \"bên em\", CẤM xưng \"mình\" khi em=\"em\"), gọi khách \"mình\" (CẤM trộn \"bạn\"), nhân sự \"kỹ thuật viên\". Phong cách \"Dịu dàng, ấm áp, tinh tế, thấu cảm tình trạng khách trước rồi mới gợi ý gói\" tự nhiên, ấm áp (CẤM `**`, `1️⃣`, CẤM *\"Dạ em hiểu ạ\"*, *\"mình nói phải/nói đúng\"*, *\"mình thấy hợp với tình trạng hiện tại\"*).\n\nI. KHUNG TƯ DUY TƯ VẤN 8 CHIỀU (SALES REASONING) & QUYỀN TỰ QUYẾT CỦA LLM:\n1. 8 chiều suy luận (`Fact/Inference/Unknown` từ `[T_CURRENT]`, `<CONVE"
+    },
+    {
+      "class": "com.example.docmind.service.bot.AciCognitiveV2AndReadingBudgetTest",
+      "method": "testP24_V35FlywayMigrationOptimisticMonotonicMergeAndRestartLazyHydration(Path)",
+      "kind": "error",
+      "type": "org.hibernate.exception.ConstraintViolationException",
+      "message": "could not execute statement [ERROR: insert or update on table \"conversation_sessions\" violates foreign key constraint \"conversation_sessions_page_id_fkey\"\n  Detail: Key (page_id)=(b23cd382-4f7a-4829-8c54-1d410da14bf8) is not present in table \"knowledge_pages\".] [insert into conversation_sessions (aci_memory_state,active_topic,archetype_label,buyer_archetype,buying_temperature,captured_phone,control_mode,created_at,customer_name,customer_psid,extracted_pains,handoff_category,handoff_reason,has_human_sale_reply,hidden_concerns,honorific,last_message_at,last_message_preview,last_sender_role,learn"
+    },
+    {
+      "class": "com.example.docmind.service.bot.CleanAgentArchitectureVerificationTest",
+      "method": "testP32_Float384VectorEquivalenceGateAndShortQueryVectorCandidatesRecoveryKeep8091",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Expected active documents for Nàng Sen page in live PostgreSQL ==> expected: <false> but was: <true>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.CleanAgentArchitectureVerificationTest",
+      "method": "testCrossTierAmenityGuard_BlocksPrivateRoomAndMacrobioticFoodOnBasicPackages",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Phải bắt lỗi CROSS_TIER_AMENITY_MISMATCH khi gán 'thực dưỡng' vào gói 239k: [UNGROUNDED_PRIVATE_ROOM:DS02, CROSS_TIER_EXCLUSIVE_ATTRIBUTE_MISMATCH:DS02:phòng riêng/vip] ==> expected: <true> but was: <false>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.FanpageBotServiceTest",
+      "method": "testOversizedMessageFastPathReturnsUnderSla",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  13967L\nto be less than:\n  1500L "
+    },
+    {
+      "class": "com.example.docmind.service.bot.MultiIndustryCatalogServiceC2ATest",
+      "method": "deterministicPriceParserHandlesMultiIndustryFormatsAndRejectsAmbiguousInputs",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "\nexpected: \"3.500k/khóa\"\n but was: \"3.500.000đ/khóa\""
+    },
+    {
+      "class": "com.example.docmind.service.bot.MultiIndustryPersonaRulesAndSafetyC2CTest",
+      "method": "testDomainScopedSafetyGate_TilePagePregnancyAllowed_SpaPagePregnancyHandoff_CustomRedFlagsEnforced",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Bot trên Page gạch phải tư vấn sản phẩm gạch chống trơn bình thường: Dạ Anh mới có can thiệp nhạy cảm nên bên em luôn đặt sự an toàn và thoải mái của Anh lên hàng đầu ạ. Trước khi tư vấn bất kỳ thao tác hay liệu trình nào, em xin phép kết nối trực tiếp với chuyên viên/quản lý chuyên môn của cơ sở để kiểm tra tình trạng thực tế và tư vấn phương án an toàn nhất cho Anh nhé ạ. ==> expected: <true> but was: <false>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.MultiIndustryRefereeAndE2EC3DTest",
+      "method": "testEndToEnd_ThreeIndustries_Spa_BuildingMaterials_Education_AndSimulatedLlmFailureFallback",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Fallback phải báo đúng học phí niêm yết 6.500k/khóa từ PackageSummary.display(): Dạ hiện tại Khóa Luyện Thi IELTS 6.5 Cam Kết 36 buổi bên em đang áp dụng đơn giá là 6.500.000đ/khóa, hiện chưa có chương trình giảm giá riêng cho khóa này ạ.\n\nMức 6.500.000đ/khóa đã bao gồm Chấm chữa Writing 1-1 cùng giảng viên 8.5 + thi thử phòng máy (Lớp sĩ số nhỏ 6 học viên) theo đúng thông tin niêm yết của bên em ạ. ==> expected: <true> but was: <false>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.MultiIndustryRefereeAndE2EC3DTest",
+      "method": "testGroup3_Deleted350kHardcodedSpaRegex_PreservesLowPriceTileAnchor_RepairsHighPriceEconomicalCourse",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Câu thay thế phải dựng từ dữ liệu cấu trúc 4 lớp của khóa học 3.900k/khóa: Dạ 6.Nếu mình muốn tham khảo phương án tiết kiệm hơn thì bên em cũng có Khóa Tiếng Anh Giao Tiếp Cơ Bản 24 buổi (3.900.000đ/khóa, bao gồm Giáo trình phản xạ giao tiếp + câu lạc bộ cuối tuần) ạ. ==> expected: <true> but was: <false>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.P33SessionContextAndEvidenceMemoryTest",
+      "method": "tc09_endToEndMultiTurnConsultationToMockBookingConfirmed",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting ListN:\n  [\"CB01\"]\nto contain:\n  [\"NS01\", \"CB01\"]\nbut could not find the following element(s):\n  [\"NS01\"]\n"
+    },
+    {
+      "class": "com.example.docmind.service.bot.StructuredTurnContractAndFallbackC3CTest",
+      "method": "testSimulatedLlmTimeoutAndConnectionFailure_PreservesReplyToMidAnd6StateBookingViaStructuralFallback",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "Khi LLM timeout trên reply_to.mid không tìm thấy, phải hỏi làm rõ giữa 2 khóa học trong lịch sử: Dạ để trung tâm kiểm tra và báo chính xác nhất, không biết Bạn đang muốn hỏi thông tin cho Khóa Tiếng Anh Giao Tiếp Cơ Bản 24 buổi giá 3.900.000đ/khóa hay Khóa IELTS Intensive 6.5+ 36 buổi giá 6.500.000đ/khóa ạ? ==> expected: <true> but was: <false>"
+    },
+    {
+      "class": "com.example.docmind.service.bot.ThinkingModePolicyAndAdaptiveRouterTest",
+      "method": "v324FinalSevenTurnScenarioPreservesLlmLiveAndEnforcesNegativeGuardrails",
+      "kind": "failure",
+      "type": "org.opentest4j.AssertionFailedError",
+      "message": "\nexpected: \"Dạ em rất hiểu mình cân nhắc về chi phí ạ. Mức 399k cho 60 phút bên em đã bao gồm trọn gói massage trị liệu toàn thân ấn huyệt chuyên sâu vùng đầu vai gáy, dùng bữa nhẹ thực dưỡng miễn phí sau buổi làm và hoàn toàn không nhận tiền Tip, nên mình có thể yên tâm trải nghiệm thử 1 buổi xem cơ thể nhẹ nhõm thế nào nhé ạ.\"\n but was: \"Dạ em rất hiểu mình cân nhắc về chi phí ạ. Mức 399k cho 60 phút bên em đã bao gồm trọn gói massage trị liệu toàn thân ấn huyệt chuyên sâu vùng đầu vai gáy, dùng bữa nhẹ thực dưỡng miễn phí sau buổi làm và hoàn toàn, nên mình có thể yên tâm trải nghiệm thử 1 "
+    },
+    {
+      "class": "com.example.docmind.service.bot.ThinkingModePolicyAndAdaptiveRouterTest",
+      "method": "v324EndToEndSplitBubblePriceQuoteEmotionalAnchorRetentionAndMidSaleSafetyFlow",
+      "kind": "failure",
+      "type": "java.lang.AssertionError",
+      "message": "\nExpecting actual:\n  \"Dạ em đã ghi nhận thông tin của mình và đang phối hợp bộ phận phụ trách kiểm tra chi tiết để phản hồi chính xác nhất cho mình nhé ạ.\"\nto contain:\n  \"🥰\" "
+    }
+  ],
+  "limitation": "Maven aggregate and retained XML counts differ; do not claim per-case execution coverage from XML totals."
+}

@@ -1,0 +1,571 @@
+[
+  {
+    "scenario_id": "SPA-DEV-001",
+    "sheet": "01 NANG SEN",
+    "row": 2,
+    "ownerDecision": "SUA",
+    "title": "Đầu cuộc hỏi giá chung",
+    "expectedBehavior": [
+      "EARLY_SCOPED_PRICE",
+      "ONE_USEFUL_QUESTION",
+      "SPECIFIC_WARMTH"
+    ],
+    "ownerRationale": "1. Khách hỏi 'Giá' từ Lượt 1 nhưng qua 2 lượt vẫn chưa nhận được bất kỳ con số tham khảo nào, bị hỏi dồn 2 câu liên tiếp (hỏi nhóm dịch vụ -> hỏi khu vực).\n2. Lượt 2 khách chia sẻ 'Vai gáy căng, ngồi máy tính nhiều' nhưng bot trả lời vô cảm, câu văn cứng ('có các gói massage có thể trao đổi vùng cần chăm sóc với kỹ thuật viên'), thiếu sự thấu cảm tinh tế.",
+    "desiredChange": "Lượt 1 nên đưa kèm mức khởi điểm tham khảo để khách dễ hình dung. Lượt 2 cần đồng cảm nhẹ nhàng với tình trạng ngồi máy tính căng mỏi vai gáy, gợi ý 1-2 gói phù hợp kèm mức giá tham khảo rồi mới hỏi khu vực khách tiện ghé.\nVí dụ Lượt 2: 'Ngồi máy tính liên tục dễ làm cơ vai gáy bó cứng và mỏi nhức lắm ạ. Với tình trạng này, mình làm buổi gội dưỡng sinh kết hợp massage cổ vai gáy (từ 239k/60p) hoặc massage trị liệu cơ bản (399k/60p tại HN) là vùng vai gáy nhẹ hẳn. Mình đang tiện ghé khu vực nào để em gửi đúng gói của cơ sở gần mình nhất nhé?'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-001",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-002",
+    "sheet": "01 NANG SEN",
+    "row": 3,
+    "ownerDecision": "GIU",
+    "title": "Giá gói cụ thể không cần discovery",
+    "expectedBehavior": [
+      "DIRECT_PRICE_TERMS",
+      "NO_DISCOVERY_OR_CTA"
+    ],
+    "ownerRationale": "Hành vi chuẩn: trả lời thẳng giá, thời lượng, loại phòng và VAT, giữ đúng xưng hô 'chị' và không hỏi khám phá thừa khi khách nói 'chỉ hỏi giá thôi'. (Lưu ý nhỏ: hạn chế lạm dụng mã nội bộ NS01 nếu không cần thiết).",
+    "desiredChange": "Giữ nguyên hướng trả lời trực diện này. Có thể diễn đạt mềm hơn: 'Dạ chị, gói Massage cơ bản (NS01) tại Bích Câu là 399.000đ/60 phút, thực hiện tại phòng chung yên tĩnh (giá niêm yết chưa gồm VAT 8%) ạ.'",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-002",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-003",
+    "sheet": "01 NANG SEN",
+    "row": 4,
+    "ownerDecision": "SUA",
+    "title": "Điền địa điểm phải đóng vòng tư vấn đang mở",
+    "expectedBehavior": [
+      "FOLLOW_GOAL_AFTER_LOCATION",
+      "NO_DEFAULT_UPSELL",
+      "NO_UNPROMPTED_MEDICAL_DISCLAIMER"
+    ],
+    "ownerRationale": "1. Lượt 1 phản hồi như văn bản pháp lý lạnh lùng ('em không xem massage là cách điều trị nguyên nhân đau đầu nhé'), thiếu hẳn sự lắng nghe khi khách đang đau mỏi.\n2. Lượt 2 hỏi cung địa lý thừa: các cơ sở ở HN có cùng mức giá massage nhưng khi khách nói 'HN' bot vẫn bắt hỏi tiếp quận nào mới báo giá, kèm câu giải thích máy móc ('Em hỏi để không lấy giá hoặc địa chỉ sai cơ sở').\n3. Lượt 3 tự ý chào thẳng gói cao 580.000đ/100p (VIP) thay vì giới thiệu từ gói cơ bản 399.000đ/60p.",
+    "desiredChange": "- Lượt 1: Đồng cảm tự nhiên với cảm giác mỏi vai gáy kéo theo nặng đầu, định hướng liệu trình thư giãn thả lỏng cơ (không cần rào đón y khoa cứng nhắc khi khách chưa đòi chữa bệnh).\n- Lượt 2 & 3: Khi đã biết ở HN / Long Biên (319 Hồng Tiến), giới thiệu từ gói cơ bản dễ tiếp cận (399.000đ/60p phòng chung) đến gói phục hồi chuyên sâu (580.000đ/100p phòng VIP) để khách chủ động chọn.",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-003",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-004",
+    "sheet": "01 NANG SEN",
+    "row": 5,
+    "ownerDecision": "SUA",
+    "title": "Khách chỉ trích hỏi cung nhưng vẫn muốn được giúp",
+    "expectedBehavior": [
+      "APOLOGY_PLUS_USEFUL_ANSWER",
+      "NO_REPEATED_DISCOVERY"
+    ],
+    "ownerRationale": "1. Câu xin lỗi ('Dạ em đã để mình trả lời địa điểm mà vẫn chưa đưa ra phương án cụ thể') và câu kết ('Nếu mình cần gọn hơn em sẽ so tiếp theo thời lượng, không hỏi lại từ đầu ạ') nghe như bản tự kiểm điểm của máy, rất ngượng nghịu.\n2. Tự động đẩy gói đắt 580.000đ/100p mà bỏ qua gói cơ bản 399.000đ/60p.",
+    "desiredChange": "Xin lỗi ngắn gọn, tự nhiên như nhân viên thật và đưa luôn 2 lựa chọn rõ ràng tại Long Biên (gói 60p 399k vừa đủ và gói 100p 580k chuyên sâu phòng VIP).\nVí dụ: 'Dạ em xin lỗi mình nha, em sơ suất chưa gửi luôn thông tin gói ạ. Tại cơ sở Long Biên (319 Hồng Tiến), nếu muốn thả lỏng vai gáy vừa đủ thì mình có gói Massage cơ bản 60 phút (399.000đ, phòng chung); còn muốn ấn huyệt sâu và nằm phòng VIP riêng thì có gói Massage phục hồi 100 phút (580.000đ, chưa VAT 8%). Mình nghiêng về buổi 60 phút hay 100 phút hơn ạ?'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-004",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-005",
+    "sheet": "01 NANG SEN",
+    "row": 6,
+    "ownerDecision": "SUA",
+    "title": "Chê giá không có nghĩa thiếu tiền",
+    "expectedBehavior": [
+      "VALUE_PROOF",
+      "NO_ASSUMED_BUDGET",
+      "NO_DEFENSIVE_DISCLAIMER"
+    ],
+    "ownerRationale": "Chiến lược không tự động hạ gói (downsell) là đúng, nhưng câu kết ('phần đó có thể đáng để so; em không muốn khẳng định hiệu quả khi chưa biết trải nghiệm thực tế của mình') quá khô cứng và phòng thủ, làm khách tụt cảm xúc và cảm giác chính nhân viên cũng không tự tin vào chất lượng dịch vụ.",
+    "desiredChange": "Tập trung khắc họa giá trị thực tế làm nên mức giá 580.000đ (trọn 100 phút trong phòng VIP riêng tĩnh lặng, có 15p ngâm thảo dược + xông hơi làm mềm cơ trước khi vào 85p massage phục hồi sâu vùng vai gáy) để khách thấy xứng đáng mà không cần dùng câu rào đón tiêu cực.\nVí dụ: 'Dạ mức 580.000đ nhỉnh hơn gói cơ bản vì mình có trọn 100 phút nghỉ ngơi trong phòng VIP riêng kín đáo — ngoài 15 phút ngâm thảo dược và xông hơi làm ấm cơ đầu giờ, kỹ thuật viên có tới 85 phút để miết mở kỹ từng điểm mỏi ở vai gáy mà không bị vội ạ.'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-005",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-006",
+    "sheet": "01 NANG SEN",
+    "row": 7,
+    "ownerDecision": "SUA",
+    "title": "Lo chất lượng, không phải giá",
+    "expectedBehavior": [
+      "QUALITY_CONCERN_PROOF",
+      "NO_DOWNSALE",
+      "NO_INTERNAL_SOURCE_PROSE"
+    ],
+    "ownerRationale": "Cách nói 'Theo bảng gói NS03, dịch vụ ghi...' và 'nhưng không thể bảo đảm trải nghiệm cá nhân khi chưa sử dụng ạ' nghe như robot đọc tài liệu nội bộ và phủi trách nhiệm. Khách đang sợ làm qua loa mà nghe câu 'không thể bảo đảm trải nghiệm' sẽ càng mất niềm tin.",
+    "desiredChange": "Đồng cảm với tâm lý sợ làm hời hợt khi đi spa, sau đó trấn an bằng cấu trúc thời lượng rõ ràng (85/100 phút thuần massage phục hồi) và quyền trao đổi trực tiếp với KTV về lực ấn/vùng mỏi trong suốt buổi làm.\nVí dụ: 'Dạ đi spa sợ nhất là cảm giác làm vội cho hết giờ nên em rất hiểu băn khoăn này của mình ạ. Ở gói Phục hồi 100 phút, bên em dành trọn 85 phút thuần massage trị liệu (sau 15 phút ngâm thảo dược và xông hơi) để KTV đủ thời gian đi kỹ từng vùng cơ căng; trong lúc làm mình cũng có thể nhắc KTV điều chỉnh lực tay hoặc dồn kỹ vào điểm mỏi bất cứ lúc nào ạ.'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-006",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-007",
+    "sheet": "01 NANG SEN",
+    "row": 8,
+    "ownerDecision": "SUA",
+    "title": "Không gian NS01 NS02 = phòng chung",
+    "expectedBehavior": [
+      "SCOPED_ROOM",
+      "REQUESTED_ALTERNATIVE_WITH_PRICE"
+    ],
+    "ownerRationale": "Lượt 1 trả lời rất tốt. Nhưng ở Lượt 2 khi khách hỏi thẳng 'Vậy phòng riêng có gói nào?', bot lại dùng cụm 'bảng dịch vụ Bích Câu ghi NS03 dùng phòng VIP riêng' (văn phong đọc dữ liệu) và giữ lại thông tin giá/thời lượng ('Em có thể so sự khác nhau về giá và thời lượng...'), bắt khách phải hỏi thêm 1 lượt nữa mới biết giá.",
+    "desiredChange": "Ở Lượt 2, trả lời trực tiếp tên gói có phòng VIP riêng kèm luôn mức giá và thời lượng để khách nắm được ngay.\nVí dụ Lượt 2: 'Dạ nếu mình ưu tiên không gian phòng VIP riêng khép kín thì tại Bích Câu có gói Massage phục hồi 100 phút (NS03), giá niêm yết 580.000đ (chưa VAT 8%) ạ. So với gói cơ bản 60 phút (399.000đ, phòng chung), gói này có phòng riêng tư và thời lượng chăm sóc sâu hơn.'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-007",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-008",
+    "sheet": "01 NANG SEN",
+    "row": 9,
+    "ownerDecision": "GIU",
+    "title": "Khách cân nhắc rồi chủ động quay lại",
+    "expectedBehavior": [
+      "PAUSE_NO_FOLLOWUP",
+      "RESUME_WITH_MEMORY"
+    ],
+    "ownerRationale": "Tốt: tôn trọng quyết định tạm dừng của khách, không chèo kéo, giữ đúng ngữ cảnh cơ sở Bích Câu và đại từ 'chị' khi khách quay lại hỏi.",
+    "desiredChange": "Giữ nguyên cách xử lý gọn gàng, lịch sự này.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-008",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-009",
+    "sheet": "01 NANG SEN",
+    "row": 10,
+    "ownerDecision": "SUA",
+    "title": "Khách muốn dừng rõ ràng",
+    "expectedBehavior": [
+      "APOLOGY_PLUS_USEFUL_ANSWER",
+      "STOP_NO_MORE_MESSAGES"
+    ],
+    "ownerRationale": "Lượt 2 khi khách bảo 'Thôi nghỉ đi' thì cách dừng của bot rất chuẩn. Nhưng ở Lượt 1, khi khách trách 'Cứ hỏi mãi chẳng tư vấn được gì', bot chỉ xin lỗi và hứa suông ('Em sẽ không hỏi lại...') mà vẫn không đưa ra thông tin tư vấn nào ngay trong lượt đó.",
+    "desiredChange": "- Lượt 1: Khi khách phàn nàn hỏi nhiều chưa tư vấn, sau 1 câu xin lỗi ngắn phải lập tức tổng hợp dữ kiện đã biết để đưa ra ngay 1 gợi ý/mức giá cụ thể.\n- Lượt 2: Khi khách yêu cầu dừng hẳn ('Thôi nghỉ đi khỏi tư vấn nữa'), giữ nguyên câu xin lỗi ngắn gọn và dừng tư vấn hoàn toàn như hiện tại.",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-009",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-010",
+    "sheet": "01 NANG SEN",
+    "row": 11,
+    "ownerDecision": "SUA",
+    "title": "Chốt đúng khi khách thể hiện tín hiệu đặt",
+    "expectedBehavior": [
+      "BUYING_SIGNAL_NEXT_STEP",
+      "RECEIPT_BEFORE_CONFIRMATION",
+      "CONTACT_CONSENT"
+    ],
+    "ownerRationale": "1. Phản hồi quá thụ động: khách nhắn Fanpage để đặt lịch nhưng bot lại bảo 'Nếu chị muốn kiểm tra trực tiếp, hotline cơ sở là...' như đẩy việc cho khách tự gọi.\n2. Chưa chủ động xin SĐT/thông tin để lễ tân cơ sở kiểm tra giường trống và liên hệ xác nhận cho khách.\n3. Câu cuối Lượt 2 bị lệch đại từ từ 'chị' sang 'Mình'.",
+    "desiredChange": "Giữ nguyên nguyên tắc không xác nhận khống khi chưa kiểm tra lịch thực tế, nhưng phải chủ động ghi nhận yêu cầu đặt lịch tạm và xin SĐT để bộ phận lễ tân kiểm tra khung 18h rồi báo lại cho chị (kèm hotline nếu chị cần gấp); giữ nhất quán đại từ 'chị'.\nVí dụ Lượt 1: 'Dạ em ghi nhận yêu cầu đặt gói Massage cơ bản (NS01) tại Bích Câu lúc 18h ngày mai của chị ạ. Hiện trên tin nhắn em chưa kiểm tra trực tiếp được giường trống nên chưa dám báo xác nhận ngay; chị cho em xin số điện thoại để lễ tân cơ sở kiểm tra lịch lúc 18h rồi liên hệ xác nhận với chị nhé (hoặc nếu cần gấp chị có thể gọi hotline 070 838 5555 ạ).'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-010",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-011",
+    "sheet": "01 NANG SEN",
+    "row": 12,
+    "ownerDecision": "GIU",
+    "title": "Ưu đãi có điều kiện không tự chen vào câu trả lời",
+    "expectedBehavior": [
+      "PROMO_SCOPE_AND_VALIDITY",
+      "NO_UNSOLICITED_PROMO"
+    ],
+    "ownerRationale": "Trả lời chính xác điều kiện ưu đãi 5 buổi (giảm 10%, dùng tại cơ sở mua, không cộng dồn), đi thẳng vào trọng tâm câu hỏi của khách.",
+    "desiredChange": "Giữ nguyên logic trả lời. Có thể lược bớt chữ hành chính 'theo chính sách hiện có' để câu nói tự nhiên hơn: 'Dạ khi mua liệu trình từ 5 buổi trở lên mình được giảm 10% tổng giá trị ạ. Thẻ mua tại cơ sở nào sẽ áp dụng tại cơ sở đó và không cộng dồn cùng các chương trình ưu đãi khác nhé ạ.'",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-011",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-012",
+    "sheet": "01 NANG SEN",
+    "row": 13,
+    "ownerDecision": "SUA",
+    "title": "Sức khỏe và trị liệu không được biến thành lời hứa y khoa",
+    "expectedBehavior": [
+      "NO_HEALING_CLAIM",
+      "WARM_MEDICAL_BOUNDARY"
+    ],
+    "ownerRationale": "Ranh giới y tế đúng nhưng cách dùng từ ('không có căn cứ để em khẳng định...', 'em vẫn có thể giải thích phạm vi các gói') quá cứng nhắc, nghe như văn bản pháp lý chứ không phải nhân viên chăm sóc khách hàng.",
+    "desiredChange": "Giữ nguyên việc từ chối cam kết chữa bệnh và khuyên khám bác sĩ với triệu chứng lâu năm, nhưng diễn đạt mềm mại, ấm áp hơn.\nVí dụ: 'Dạ các liệu trình bên em thiên về chăm sóc, thả lỏng cơ để cơ thể thư giãn dễ chịu hơn, chứ không thay thế phương pháp y tế để chữa dứt điểm chứng đau đầu lâu năm được ạ. Với tình trạng đã kéo dài, mình nên thăm khám bác sĩ để kiểm tra nguyên nhân cho yên tâm nhé; còn khi nào mình cần một buổi massage nhẹ nhàng vùng đầu và vai gáy để giảm bớt căng thẳng thì em rất sẵn lòng tư vấn gói phù hợp ạ.'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-012",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-013",
+    "sheet": "01 NANG SEN",
+    "row": 14,
+    "ownerDecision": "SUA",
+    "title": "Khiếu nại dịch vụ đã nhận được phân biệt với phàn nàn bot",
+    "expectedBehavior": [
+      "SERVICE_COMPLAINT",
+      "NO_INTERNAL_LABEL",
+      "RECEIPT_BEFORE_HANDOFF"
+    ],
+    "ownerRationale": "1. Câu 'Đây là phản ánh về dịch vụ đã sử dụng; em sẽ ghi nhận đúng nội dung và tạo yêu cầu chuyển quản lý theo kênh hỗ trợ của hệ thống' là ngôn ngữ phân loại nội bộ của AI đọc thẳng ra cho khách, cực kỳ máy móc.\n2. Không hỏi thăm tình trạng của khách và không xin SĐT / khung giờ hôm qua khách ghé Long Biên để Quản lý có thông tin tra cứu ca trực.",
+    "desiredChange": "Bỏ hoàn toàn câu tự phân loại 'Đây là phản ánh về dịch vụ đã sử dụng'. Xin lỗi chân thành, hỏi thăm xem khách còn bị đau/ê người không và xin SĐT + khoảng giờ hôm qua khách đến cơ sở Long Biên để chuyển Quản lý kiểm tra và liên hệ trực tiếp.\nVí dụ: 'Dạ em thành thật xin lỗi mình vì trải nghiệm chưa trọn vẹn tại cơ sở Long Biên hôm qua ạ, không biết hôm nay người mình còn bị ê mỏi nhiều không ạ? Em xin phép ghi nhận ngay phản ánh này để chuyển tới Quản lý cơ sở; mình cho em xin số điện thoại và khoảng giờ mình ghé hôm qua để Quản lý kiểm tra lại ca làm việc và liên hệ trực tiếp hỗ trợ mình nhé ạ.'",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-013",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SPA-DEV-014",
+    "sheet": "01 NANG SEN",
+    "row": 15,
+    "ownerDecision": "GIU",
+    "title": "Khách hỏi đúng giá đã có nguồn, không hạ gói tùy tiện",
+    "expectedBehavior": [
+      "SCOPED_PRICE_ROOM_VAT",
+      "ANSWER_BOTH_QUESTIONS"
+    ],
+    "ownerRationale": "Trả lời gãy gọn, chính xác cả 2 câu hỏi trong 1 lượt (giá 530.000đ/80 phút tại Long Biên + phòng chung chứ không phải phòng VIP + chưa gồm VAT 8%), không hỏi khám phá thừa.",
+    "desiredChange": "Giữ nguyên cách trả lời trực diện, súc tích này.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SPA-DEV-014",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "RENTAL-DEV-001",
+    "sheet": "02 DA NGANH",
+    "row": 2,
+    "ownerDecision": "SUA",
+    "title": "Giá thuê xe và nhu cầu dùng thực",
+    "expectedBehavior": [
+      "PRESERVE_SELECTED_CATEGORY",
+      "NO_TEST_JARGON"
+    ],
+    "ownerRationale": "Câu trả lời của bot bị lộ cụm từ kỹ thuật 'Theo bảng giá thử nghiệm' / 'theo dữ liệu thử nghiệm' ngay trong lời thoại nói với khách.",
+    "desiredChange": "Bỏ hoàn toàn cụm từ 'theo dữ liệu thử nghiệm' khỏi câu trả lời gửi khách; giữ nguyên logic không tự ý downsell từ xe tay ga xuống xe số.",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:RENTAL-DEV-001",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "RENTAL-DEV-002",
+    "sheet": "02 DA NGANH",
+    "row": 3,
+    "ownerDecision": "GIU",
+    "title": "Yêu cầu đặt khi chưa có inventory tool",
+    "expectedBehavior": [
+      "NO_FAKE_INVENTORY",
+      "ONLY_NEEDED_OPERATIONAL_QUESTION"
+    ],
+    "ownerRationale": "Ghi nhận đúng nhu cầu, trung thực về việc chưa kiểm tra được xe trống và hỏi đúng 1 thông tin cần thiết (thuê bao lâu) để tính tổng chi phí.",
+    "desiredChange": "Giữ nguyên hướng xử lý này.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:RENTAL-DEV-002",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SAAS-DEV-001",
+    "sheet": "02 DA NGANH",
+    "row": 4,
+    "ownerDecision": "GIU",
+    "title": "Khách hỏi giá cụ thể nhưng dữ liệu thiếu",
+    "expectedBehavior": [
+      "NO_INVENTED_PRICE",
+      "HELP_WITH_KNOWN_INFORMATION"
+    ],
+    "ownerRationale": "Thành thật về giới hạn dữ liệu giá gói Team, không tự bịa số tiền.",
+    "desiredChange": "Giữ nguyên nguyên tắc không bịa giá khi thiếu nguồn.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SAAS-DEV-001",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SAAS-DEV-002",
+    "sheet": "02 DA NGANH",
+    "row": 5,
+    "ownerDecision": "SUA",
+    "title": "Lo chất lượng/chứng chỉ so với giá",
+    "expectedBehavior": [
+      "NO_INVENTED_CERTIFICATION",
+      "NO_TEST_JARGON"
+    ],
+    "ownerRationale": "Bị lộ cụm từ nội bộ 'trong dữ liệu thử nghiệm' trong câu trả lời với khách ('Điểm có thể kiểm chứng trong dữ liệu thử nghiệm là...').",
+    "desiredChange": "Giữ nguyên tinh thần không tự bịa chứng chỉ bảo mật, nhưng diễn đạt tự nhiên ('Hiện bên em có chính sách dùng thử 7 ngày và tài liệu kỹ thuật bảo mật chi tiết để mình trực tiếp đánh giá trước khi quyết định ạ').",
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SAAS-DEV-002",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SERVICE-DEV-001",
+    "sheet": "02 DA NGANH",
+    "row": 6,
+    "ownerDecision": "GIU",
+    "title": "Khách từ chối tiếp tục và quay lại sau",
+    "expectedBehavior": [
+      "PAUSE_NO_FOLLOWUP",
+      "RESUME_WITH_MEMORY"
+    ],
+    "ownerRationale": "Tôn trọng yêu cầu tạm dừng và nối lại đúng mạch khi khách quay lại hỏi thời gian triển khai.",
+    "desiredChange": "Giữ nguyên.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SERVICE-DEV-001",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "SERVICE-DEV-002",
+    "sheet": "02 DA NGANH",
+    "row": 7,
+    "ownerDecision": "GIU",
+    "title": "Sẵn sàng mua không hỏi khám phá nữa",
+    "expectedBehavior": [
+      "BUYING_SIGNAL_NEXT_STEP",
+      "RECEIPT_BEFORE_CONFIRMATION"
+    ],
+    "ownerRationale": "Nhận diện đúng tín hiệu đặt dịch vụ, không hỏi lại nhu cầu, trung thực về việc xác nhận lịch.",
+    "desiredChange": "Giữ nguyên.",
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:SERVICE-DEV-002",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-001",
+    "sheet": "03 DOI CHIEU",
+    "row": 2,
+    "ownerDecision": "GIU",
+    "title": "Khách chỉ hỏi giá Nàng Sen lần đầu",
+    "expectedBehavior": [
+      "EARLY_SCOPED_PRICE",
+      "BRIEF_GREETING_WITH_VALUE"
+    ],
+    "ownerRationale": "Đồng ý hướng chào ngắn + định hướng nhóm dịch vụ, nhưng lưu ý khi khách đã nêu nhu cầu ở lượt kế tiếp thì phải đưa mức giá tham khảo ngay, tránh hỏi dồn nhiều lượt.",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-001",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-002",
+    "sheet": "03 DOI CHIEU",
+    "row": 3,
+    "ownerDecision": "SUA",
+    "title": "Khách mỏi vai gáy, vừa nói ở Long Biên",
+    "expectedBehavior": [
+      "FOLLOW_GOAL_AFTER_LOCATION"
+    ],
+    "ownerRationale": "Cột E viết 'nếu đủ nguồn thì em gửi luôn lựa chọn và giá' là ngôn ngữ mô tả thuật toán chứ không phải câu thoại tự nhiên nói với khách. Khi khách đã nói Long Biên thì báo luôn gói và giá tại 319 Hồng Tiến.",
+    "desiredChange": null,
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-002",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-003",
+    "sheet": "03 DOI CHIEU",
+    "row": 4,
+    "ownerDecision": "SUA",
+    "title": "Khách có ưu tiên rõ, bot đang hỏi quá nhiều",
+    "expectedBehavior": [
+      "APOLOGY_PLUS_USEFUL_ANSWER"
+    ],
+    "ownerRationale": "Cột E mới chỉ xin lỗi và hứa 'em sẽ tư vấn trên đúng thông tin ấy' nhưng chưa đưa luôn gói dịch vụ ra ngay trong lượt đó. Cần vừa xin lỗi ngắn vừa đưa luôn phương án gói.",
+    "desiredChange": null,
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-003",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-004",
+    "sheet": "03 DOI CHIEU",
+    "row": 5,
+    "ownerDecision": "SUA",
+    "title": "Khách nói rõ không lo tiền mà lo chất lượng",
+    "expectedBehavior": [
+      "QUALITY_CONCERN_PROOF",
+      "NO_DOWNSALE"
+    ],
+    "ownerRationale": "Nguyên tắc đúng (giải thích thời lượng và kỹ thuật thay vì hạ giá), nhưng cần viết thành câu thoại tự nhiên với khách, tránh câu đọc bảng 'Theo bảng gói NS03, dịch vụ ghi...'.",
+    "desiredChange": null,
+    "positive_example_eligible": false,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-004",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-005",
+    "sheet": "03 DOI CHIEU",
+    "row": 6,
+    "ownerDecision": "GIU",
+    "title": "Khách yêu cầu dừng tư vấn",
+    "expectedBehavior": [
+      "STOP_NO_MORE_MESSAGES"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: khách bảo dừng là dừng lịch sự, tuyệt đối không chèn ưu đãi 10% sau lệnh STOP.",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-005",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-006",
+    "sheet": "03 DOI CHIEU",
+    "row": 7,
+    "ownerDecision": "GIU",
+    "title": "Khách hỏi chỉ một thông tin cụ thể",
+    "expectedBehavior": [
+      "SCOPED_ROOM"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: phân biệt chính xác phòng chung (NS01/NS02) và phòng VIP riêng (NS03+).",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-006",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-007",
+    "sheet": "03 DOI CHIEU",
+    "row": 8,
+    "ownerDecision": "GIU",
+    "title": "Khách hỏi giá một gói đã chỉ rõ cơ sở",
+    "expectedBehavior": [
+      "DIRECT_PRICE_TERMS",
+      "NO_DISCOVERY_OR_CTA"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: đã rõ gói và cơ sở là báo thẳng giá + thời lượng + loại phòng + VAT, không hỏi discovery.",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-007",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-008",
+    "sheet": "03 DOI CHIEU",
+    "row": 9,
+    "ownerDecision": "GIU",
+    "title": "Khách nói muốn đặt giờ nhưng không có adapter",
+    "expectedBehavior": [
+      "RECEIPT_BEFORE_CONFIRMATION"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: không tự xác nhận còn lịch khi chưa có công cụ kiểm tra lịch thực tế (nhưng cần chủ động xin SĐT để lễ tân kiểm tra và báo lại).",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-008",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-009",
+    "sheet": "03 DOI CHIEU",
+    "row": 10,
+    "ownerDecision": "GIU",
+    "title": "Khách thích tay ga, chê giá",
+    "expectedBehavior": [
+      "PRESERVE_SELECTED_CATEGORY"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: giữ đúng loại dịch vụ khách chọn, không tự ý hạ xuống loại khách không thích.",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-009",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  },
+  {
+    "scenario_id": "PAIR-010",
+    "sheet": "03 DOI CHIEU",
+    "row": 11,
+    "ownerDecision": "GIU",
+    "title": "Khách chưa sẵn sàng, muốn cân nhắc",
+    "expectedBehavior": [
+      "PAUSE_NO_FOLLOWUP"
+    ],
+    "ownerRationale": "Hoàn toàn đồng ý: khách muốn suy nghĩ thêm thì tôn trọng, không xin lịch gọi lại làm phiền.",
+    "desiredChange": null,
+    "positive_example_eligible": true,
+    "literal_target": false,
+    "execution": "NOT_RUN",
+    "test_contract": "v2-lab:PAIR-010",
+    "sourceProvenance": "SYNTHETIC_OWNER_REVIEWED",
+    "workbook_sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847"
+  }
+]

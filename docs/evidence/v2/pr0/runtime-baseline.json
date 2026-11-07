@@ -1,0 +1,16 @@
+{
+  "image": "sha256:d7c765199c20aa53d71de7e0392e45f3c7b0a3b21f3f7e1778fb0b04a3dccfd4",
+  "started": "2026-11-07T11:20:02.450087226Z",
+  "configuration": {
+    "LLM_PROVIDER": "qwen",
+    "LLM_MODEL": "qwen3.8-max",
+    "LLM_FALLBACK_PROVIDER": "deepseek",
+    "LLM_FALLBACK_MODEL": "hada/deepseek-ai/deepseek-v4.1-flash-1017",
+    "SALES_CORE_ENABLED": "true",
+    "SALES_CORE_WRITER_CLIENT": "ALTERNATE",
+    "SALES_CORE_WRITER_REASONING": null,
+    "SALES_CORE_PLANNING_ENABLED": null,
+    "SALES_CORE_PAGE_ALLOWLIST": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+    "DOCMIND_FANPAGE_DEFAULT_PAGE_ID": "b23cd382-4f7a-4829-8c54-1d410da14bf8"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "configured_default": "b23cd382-4f7a-4829-8c54-1d410da14bf8",
+  "allowlist": "2850a8ef-ca4a-40eb-87fa-4f808640efee",
+  "binding_status": "UNVERIFIED",
+  "destructive_allowed": false,
+  "graph_http_status": 400,
+  "graph_error_code": 100,
+  "graph_error_subcode": null,
+  "reason": "Runtime has a default UUID, not a persisted numeric Messenger Page binding; validate callback scope before deletion."
+}

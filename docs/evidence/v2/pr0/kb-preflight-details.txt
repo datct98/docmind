@@ -1,0 +1,20 @@
+Nàng sen|01_giá_dịch_vụ.html|READY|f|46|46|46
+Nàng sen|01_nang_sen_catalog_2026-11-07.md|READY|t|35|35|35
+Nàng sen|02_chi_tiết_điều_trị.html|READY|f|18|18|18
+Nàng sen|02_nang_sen_service_facts_2026-11-07.md|READY|t|8|8|8
+Nàng sen|03_khuyến_mãi_phiếu_vouchers (tùy chọn).html|READY|f|1|1|1
+Nàng sen|03_nang_sen_promotions_2026-11-07.md|READY|t|3|3|3
+|t|APPROVED|Khi trả lời khách hàng nam chỉ sử dụng danh xưng 'Anh' và tuyệt đối không thêm từ 'Nam giới' vào sau danh xưng.
+|f|APPROVED|Sau khi có tín hiệu từ khách hàng, điều hướng khách đặt lịch, chốt đơn thay vì chỉ vui mừng và kết thúc cuộc trò chuyện. Mục tiêu là đặt lịch, chốt được đơn.
+|f|APPROVED|Khi khách gửi số điện thoại cần tư vấn, không liệt kê lại toàn bộ bảng giá dài dòng mà trả lời ngay: 'Dạ vâng em nhận thông tin của mình ạ, em sẽ liên hệ để tư vấn mình thêm nha anh/chị' và chuyển thông tin cho nhân viên tư vấn.
+|t|APPROVED|Khi khách hàng đề cập khung giờ h thì mặc định hiểu là buổi trưa và xác nhận giữ lịch ngay, tuyệt đối không hỏi lại khách chọn sáng hay chiều.
+service_recovery_to_consultation_pivot|t|[Tình huống tâm lý khách] Khách vừa phàn nàn cách tư vấn kèm theo một câu hỏi nghiệp vụ (hỏi giá, so sánh gói, hỏi gói khác, hỏi phạm vi) hoặc đã chuyển sang hỏ
+warm_nod_to_gentle_scheduling|t|[Tình huống tâm lý khách] Khách đồng ý thử một liệu trình cụ thể sau khi đã nghe tư vấn (Booking Cấp 2) -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Đón nhận sự
+soft_economical_bridge_and_compare|t|[Tình huống tâm lý khách] Khách ngập ngừng về ngân sách hoặc tìm phương án vừa túi tiền hơn -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Giải tỏa áp lực quyết đị
+discovery_empathy_and_scope|t|[Tình huống tâm lý khách] Khách chia sẻ cơ thể căng mỏi, làm việc nhiều, uể oải hoặc khó ngủ nhưng chưa nêu rõ hướng trải nghiệm ưu tiên -> [Nghệ thuật dẫn dắt
+graceful_pause_keep_warmth|t|[Tình huống tâm lý khách] Khách báo bận, xin suy nghĩ thêm hoặc tạm dừng cuộc trò chuyện -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Tôn trọng quyết định tạm dừ
+gentle_next_step_by_signal|t|[Tình huống tâm lý khách] Khách chủ động hỏi lịch trống, hỏi chi nhánh, giờ mở cửa, cách đặt lịch hoặc đồng ý thử một gói cụ thể (Booking Cấp 1-2) -> [Nghệ thuậ
+package_comparison_and_scope_clarity|t|[Tình huống tâm lý khách] Khách hỏi điểm khác nhau giữa 2 hay nhiều gói vừa được nhắc tới hoặc hỏi chi tiết phạm vi gói -> [Nghệ thuật dẫn dắt & Ranh giới sự th
+price_objection_sensory_value|t|[Tình huống tâm lý khách] Khách băn khoăn chi phí khi vừa nghe mức giá liệu trình -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Công nhận băn khoăn ngân sách của
+catalog_breadth_clarification|t|[Tình huống tâm lý khách] Khách hỏi còn gói nào khác không hoặc thắc mắc tưởng bên spa chỉ có 1-2 gói -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Xác nhận ngắn
+booking_careful_preparation|t|[Tình huống tâm lý khách] Khách chủ động yêu cầu đặt lịch rõ ràng hoặc chốt ngày giờ cụ thể (Booking Cấp 3) -> [Nghệ thuật dẫn dắt & Ranh giới sự thật] Ghi nhận

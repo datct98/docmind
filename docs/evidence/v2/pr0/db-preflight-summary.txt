@@ -1,0 +1,6 @@
+{"id" : "59e68078-8327-4aa0-8cca-91410f783ad4", "name" : "Page thẩm mỹ viện", "industry" : "Chăm sóc da", "documents" : 0, "chunks" : 0}
+{"id" : "2850a8ef-ca4a-40eb-87fa-4f808640efee", "name" : "Nàng sen", "industry" : "Spa", "documents" : 6, "chunks" : 111}
+46|sales customer memory|t
+45|p1 curated variant c good examples|t
+44|sbr01 cp3 4 nang sen skill audit and principle skills|t
+43|sbr01 cp3 3 neutralize discovery good example|t

@@ -1,0 +1,352 @@
+{
+  "commit": "2314bf13c9efe1fca8d4e00fdfcd9535686ddefc",
+  "tracked_text_files": 1069,
+  "source_files": 263,
+  "source_lines": 126287,
+  "classification_counts": {
+    "NEED_EVIDENCE_KEEP": 890,
+    "KEEP_REFLECTION_CONFIG": 9,
+    "KEEP_SCHEMA_HISTORY": 46,
+    "KEEP_TEST": 124
+  },
+  "exact_duplicate_candidates": [
+    [
+      "99_pipeline/orchestrator_state.json",
+      "99_pipeline/pipeline_state.json"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-01_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-01_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-01_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-08_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-08_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-08_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-20_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-20_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-20_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-01_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-01_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-01_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-01_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-01_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-02_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-02_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-02_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-05_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-05_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-05_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run3_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-07_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-07_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-07_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-06_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-06_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-06_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-02_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-02_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-03_run1_T11.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run3_T11.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-03_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-03_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-04_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-04_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-04_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-04_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-04_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run2_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-04_run1_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run2_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-04_run1_T7.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run2_T7.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-04_run1_T9.txt",
+      "benchmark/sbr01/results/prompts/CASE-04_run2_T9.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-05_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-05_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-06_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-06_run2_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-06_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-07_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-07_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-07_run2_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-07_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-08_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-08_run2_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-09_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-09_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-09_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-09_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-09_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-09_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-10_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-10_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-10_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-10_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-10_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-11_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-11_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-11_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-11_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-11_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-11_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-11_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-11_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-11_run2_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-11_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-12_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-12_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-12_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-12_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-12_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-13_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-13_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-13_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-13_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-13_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-13_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-13_run2_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-13_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-14_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-14_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-14_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-15_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-15_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-15_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-16_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-16_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-16_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-16_run1_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-16_run2_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-17_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-17_run2_T5.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-17_run2_T7.txt",
+      "benchmark/sbr01/results/prompts/CASE-17_run3_T7.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-18_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-18_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-18_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-18_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-18_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-19_run1_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-19_run2_T1.txt",
+      "benchmark/sbr01/results/prompts/CASE-19_run3_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run1_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run2_T1.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results/prompts/CASE-20_run2_T3.txt",
+      "benchmark/sbr01/results/prompts/CASE-20_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-04_run1_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-04_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run1_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run2_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-09_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-11_run1_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-11_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run1_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run1_T5.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-13_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run1_T3.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run1_T5.txt",
+      "benchmark/sbr01/results_fix2_targeted/prompts/CASE-19_run3_T5.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run1_T1.txt",
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run2_T1.txt",
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run3_T1.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run1_T3.txt",
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run3_T3.txt"
+    ],
+    [
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run1_T5.txt",
+      "benchmark/sbr01/results_fix4_case01/prompts/CASE-01_run3_T5.txt"
+    ],
+    [
+      "docs/archive_deprecated_v1/04_product_uat/release_decision.md",
+      "docs/archive_deprecated_v1/04_product_uat/uat_report.md",
+      "docs/archive_deprecated_v1/04_product_uat/uat_scenarios.md",
+      "docs/archive_deprecated_v1/04_product_uat/ux_tone_audit.md"
+    ]
+  ],
+  "largest_source_files": [
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/CleanAgentOutputRefereeAndSanitizer.java",
+      "lines": 8253
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/CleanAgentOrchestratorService.java",
+      "lines": 8157
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/AdaptiveConversationIntelligence.java",
+      "lines": 6599
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/CleanAgentCatalogAndPromptBuilder.java",
+      "lines": 6500
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/ConversationState.java",
+      "lines": 5938
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/FanpageBotService.java",
+      "lines": 5313
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/PrimaryActionRouter.java",
+      "lines": 4702
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/AgentBrainService.java",
+      "lines": 4403
+    },
+    {
+      "path": "frontend/src/components/LiveConversationInbox.vue",
+      "lines": 3999
+    },
+    {
+      "path": "frontend/src/components/FanpageBotSimulatorModal.vue",
+      "lines": 3747
+    },
+    {
+      "path": "frontend/src/App.vue",
+      "lines": 3450
+    },
+    {
+      "path": "frontend/src/components/PlaybookModal.vue",
+      "lines": 3124
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/FanpageBotPromptBuilder.java",
+      "lines": 2398
+    },
+    {
+      "path": "frontend/src/components/AgentSkillModal.vue",
+      "lines": 2101
+    },
+    {
+      "path": "api-java/src/main/java/com/example/docmind/service/bot/PackageCatalogService.java",
+      "lines": 1972
+    }
+  ],
+  "limitations": [
+    "Conditional tokens are not cyclomatic complexity.",
+    "Exact content equality does not prove unused runtime paths.",
+    "Dynamic Spring/config/reflection references require individual reachability review."
+  ]
+}

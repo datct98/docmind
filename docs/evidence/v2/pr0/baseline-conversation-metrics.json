@@ -1,0 +1,37 @@
+{
+  "turns": 6,
+  "client_latency_ms": [
+    8285,
+    11214,
+    11644,
+    16069,
+    21024,
+    30612
+  ],
+  "p50_ms": 13856.5,
+  "p95_nearest_rank_ms": 30612,
+  "llm_calls": [
+    1,
+    1,
+    1,
+    3,
+    3,
+    1
+  ],
+  "fallbacks": 0,
+  "quality_review": "AGENT_REVIEW_NOT_HUMAN_ACCEPTANCE",
+  "hard_failures": [
+    "STOP_IGNORED_T6"
+  ],
+  "soft_failures": [
+    "NO_PRICE_UNTIL_T5",
+    "LOCATION_WITHOUT_GOAL_PROGRESS",
+    "QUESTIONNAIRE",
+    "REPETITIVE_ACKNOWLEDGMENT"
+  ],
+  "known_source_gaps": [
+    "VAT missing from prior active KB",
+    "DS region promoted to Long Bien without branch availability proof"
+  ],
+  "database_snapshot": "Existing 6 documents / 111 chunks, 3 active curated documents / 46 active chunks; NOT original HTML baseline"
+}

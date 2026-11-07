@@ -1,0 +1,176 @@
+[
+  {
+    "path": "00_LENH_GUI_CODEX.md",
+    "size": 5106,
+    "sha256": "a3ce3c16a237db914f8517c8c149e8ede688c78df8784d892fdfd74abe42fc5b",
+    "matches": true
+  },
+  {
+    "path": "01_HOP_DONG_THUC_THI_TONG_THE.md",
+    "size": 13457,
+    "sha256": "76d40e129a8bbb6f67161a2c59d47ae273842a26c2228ccee2f82e0f40ea7a00",
+    "matches": true
+  },
+  {
+    "path": "02_NGHE_THUAT_NGON_TU_VA_FLEX.md",
+    "size": 10051,
+    "sha256": "12a0569ba887a82b64e7b17af2d0d2d5d0b8e29f145a11495ca25265c80de63c",
+    "matches": true
+  },
+  {
+    "path": "03_THU_VIEN_CHIEN_LUOC_SALES.md",
+    "size": 7363,
+    "sha256": "b5430a045e7089c974c61ec7ab46460bab1907f1a3c89e179ba687d1b9c4278a",
+    "matches": true
+  },
+  {
+    "path": "04_SALES_CONVERSATION_LAB_OWNER_REVIEWED.md",
+    "size": 6382,
+    "sha256": "adfa1e406a6d0f42405ea954768cb14532accfe2d8d2b08aa460f880aad53725",
+    "matches": true
+  },
+  {
+    "path": "05_DATA_NANG_SEN_CLEAN_REPLACE.md",
+    "size": 5590,
+    "sha256": "3d05310a34a50cdf41dd637c9098c8c3fba4d38400db5fd9edabd6d910a2760f",
+    "matches": true
+  },
+  {
+    "path": "06_DON_CODE_THUA_SAFE_MAINTAINABLE.md",
+    "size": 2668,
+    "sha256": "7c702a59356e4388a5bda7af1485e99c58333b42894ba65e0ba8b8f9d19c9675",
+    "matches": true
+  },
+  {
+    "path": "07_KIEM_THU_NGHIEM_THU.md",
+    "size": 6020,
+    "sha256": "a96770fc0871d5e0ed2ef1e1d910def745a58a2c55e7bf445d7b57622265bfd3",
+    "matches": true
+  },
+  {
+    "path": "BASELINE_REPO.md",
+    "size": 1410,
+    "sha256": "856504b16433078169118963da8566baac374548ef56a3da655d8b2b8f0aaf6d",
+    "matches": true
+  },
+  {
+    "path": "README_BAT_DAU.md",
+    "size": 3121,
+    "sha256": "f31d57d4a7043c351211f659a067454f4fe59783b9369f5c2a09fa9c7405e295",
+    "matches": true
+  },
+  {
+    "path": "assets/business-html/01_giá_dịch_vụ.html",
+    "size": 86178,
+    "sha256": "0ee849d10ee7bc8d26f27adba05a6eaa6f8a4e296454028018a4b5613c4b446f",
+    "matches": true
+  },
+  {
+    "path": "assets/business-html/02_chi_tiết_điều_trị.html",
+    "size": 31916,
+    "sha256": "335c46b23ba351a5cd506b426841955342b8e521b90b66be011c63fc25c99f0f",
+    "matches": true
+  },
+  {
+    "path": "assets/business-html/03_khuyến_mãi_phiếu_vouchers (tùy chọn).html",
+    "size": 2589,
+    "sha256": "833f1dbc39bf07187a4cc302a01c99b65adf65f5afff21748c0f5a88d7312c30",
+    "matches": true
+  },
+  {
+    "path": "assets/business-html/04_chính_sách.html",
+    "size": 12274,
+    "sha256": "20f81d243058e6f2f7be3e74efca33072f90d4f71c9c11de9f0a09784ad0799c",
+    "matches": true
+  },
+  {
+    "path": "assets/db/03_PREFLIGHT_KHONG_XOA.sql",
+    "size": 1830,
+    "sha256": "4cd6eefd9bf2b1a8d9187310da32e60b6daeeb6d5e3c24988ab592cd5cef7b8b",
+    "matches": true
+  },
+  {
+    "path": "assets/db/BAO_CAO_XUNG_DOT_NGUON.md",
+    "size": 4232,
+    "sha256": "0cf2db2f8f08613c41f4ad824b79f980720865497daa0bac10212de9981c3475",
+    "matches": true
+  },
+  {
+    "path": "assets/db/kiem_tra_sau_import.sql",
+    "size": 832,
+    "sha256": "9e0d164db326c05d09a0119f5d966e7a9c04d55e6df4a43ea20ba73daabc9976",
+    "matches": true
+  },
+  {
+    "path": "assets/db/nang_sen_replace_knowledge.sql",
+    "size": 127831,
+    "sha256": "2835bd32abf74057e0c09ccd87985f41b893d6e39682c664a25ce41be79b5377",
+    "matches": true
+  },
+  {
+    "path": "assets/db/seed_manifest.json",
+    "size": 999,
+    "sha256": "4964fd5ebdfb45b3ce746c61b6507f36187dfece08d178ec753cb6715ed246a9",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/contrastive_pairs.jsonl",
+    "size": 6295,
+    "sha256": "5a90b575d4c52eae6813fedf30a010775a5f30514ffc6728dc62c5495d30523a",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/episodes.jsonl",
+    "size": 27118,
+    "sha256": "ed6d1b32e97522142efa8b71a24027706ae543b1868a90de623e584518310f23",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/rubric_reference.json",
+    "size": 2050,
+    "sha256": "a7fa0e204550e5cfec52945af7e82a4091ebc38c6feac7ea5e6c03e981b8fc35",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/seed_lab_manifest.json",
+    "size": 698,
+    "sha256": "690ea561a6956010f9d6259764463c1b1e307a752e641cf30a07a1cc6e73c4ec",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/tools/check_copying.py",
+    "size": 1058,
+    "sha256": "6b90b39aff26d4e22a0d730831c3d05cdc3bcd306a6b6b27b43f30196e96fcd0",
+    "matches": true
+  },
+  {
+    "path": "assets/lab-dev/tools/validate_lab.py",
+    "size": 1830,
+    "sha256": "135cbec8886aef32a1c5c8d2b3dccf2113a09d0ed5e2dcd389e2446d16332f43",
+    "matches": true
+  },
+  {
+    "path": "assets/owner-reviewed/DocMind_Duyet_Hoi_Thoai_Danh_Cho_Ban-da-duyet.xlsx",
+    "size": 26043,
+    "sha256": "7ff158754ff814e1206ceaca461b15f6e10502562cff13268811c92259a7e847",
+    "matches": true
+  },
+  {
+    "path": "assets/owner-reviewed/PHAN_TICH_30_NHAN_XET.md",
+    "size": 24122,
+    "sha256": "a503aac815b05e293ccbef91a319b8ae7544b0a95d58e7ed785ae66e521718a1",
+    "matches": true
+  },
+  {
+    "path": "assets/owner-reviewed/owner_review_labels.jsonl",
+    "size": 50848,
+    "sha256": "b7d325127469e9a22a25bba29530bac2c47d6b840db90cf7687c52d1c6011ed5",
+    "matches": true
+  },
+  {
+    "path": "assets/strategy/SALES_STRATEGY_CARDS_REFERENCE.json",
+    "size": 8044,
+    "sha256": "017296ce9a8f98e67d2e045dd1aabeaccc2a234c6efd62f997950e2c3a792726",
+    "matches": true
+  }
+]
