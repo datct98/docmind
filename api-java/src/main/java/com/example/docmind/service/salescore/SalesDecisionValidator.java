@@ -8,7 +8,7 @@ import static com.example.docmind.service.salescore.SalesContracts.*;
 /** Checks verifiable contracts; does not claim to prove empathy or semantic entailment. */
 public final class SalesDecisionValidator {
     private static final Pattern NUMBER = Pattern.compile("\\d+(?:[.,]\\d+)*(?:\\s*(?:k|nghìn|ngàn|triệu|tr)\\b)?", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern MONEY = Pattern.compile("\\d+(?:[.,]\\d+)*\\s*(?:k\\b|nghìn\\b|ngàn\\b|triệu\\b|tr\\b|đồng\\b|vnd\\b|vnđ\\b|đ)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern MONEY = Pattern.compile("\\d+(?:[.,]\\d+)*\\s*(?:k\\b|nghìn\\b|ngàn\\b|triệu\\b|tr\\b|đồng\\b|vnd\\b|vnđ\\b|đ)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS);
     private static final Pattern UNAUTHORIZED = Pattern.compile(
             "(?iu)(?:đã|vừa)\\s+(?:đặt|giữ|chốt|xác nhận|thanh toán)|(?:đặt|giữ|thanh toán)\\s+.{0,35}thành công|(?:booking|payment|reservation)\\s+(?:is\\s+)?confirmed");
     public List<String> validate(TurnDecision d, TurnInput input) {
@@ -73,6 +73,20 @@ public final class SalesDecisionValidator {
         }
         if (d.strategy().action() == Action.HANDOFF && blank(d.handoffSummary())) errors.add("MISSING_HANDOFF_SUMMARY");
         return List.copyOf(errors);
+    }
+    public List<String> validateDelivery(TurnDecision d, boolean paced, boolean continuation, boolean recovery) {
+        if (d == null || d.bubbles() == null) return List.of("INVALID_DELIVERY");
+        boolean price = d.bubbles().stream().filter(Objects::nonNull).map(Bubble::text)
+                .filter(Objects::nonNull).anyMatch(t -> MONEY.matcher(t).find());
+        if (continuation || recovery) {
+            if (price || d.bubbles().size() > (continuation ? 1 : 2) || d.followUp() != null) return List.of("INVALID_CONTINUATION_DELIVERY");
+        } else if (paced && price && d.strategy().action() != Action.HANDOFF && d.strategy().action() != Action.PAUSE) {
+            if (d.bubbles().size() != 1 || d.followUp() == null || blank(d.followUp().aim()))
+                return List.of("PRICE_REQUIRES_SINGLE_BUBBLE_AND_FOLLOWUP_AIM");
+            if (d.bubbles().getFirst().text().contains("?")) return List.of("PRICE_BUBBLE_QUESTION_BELONGS_IN_CONTINUATION");
+        } else if (d.followUp() != null) return List.of("UNEXPECTED_FOLLOWUP");
+        if (d.followUp() != null && d.followUp().aim().length() > 500) return List.of("FOLLOWUP_AIM_TOO_LONG");
+        return List.of();
     }
     private static boolean blank(String s) { return s == null || s.isBlank(); }
     static String sourceText(Evidence source) { return (source.title() == null ? "" : source.title()) + "\n" + (source.text() == null ? "" : source.text()); }

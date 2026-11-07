@@ -383,6 +383,10 @@ public class ConversationInboxService {
         if (request == null || botResponse == null) {
             return;
         }
+        if ("GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action())) {
+            recordBotContinuation(request, botResponse);
+            return;
+        }
         if (botResponse.triggeredHooks() != null
                 && botResponse.triggeredHooks().contains("DUPLICATE_INBOUND_EVENT_SUPPRESSED")) {
             return;
@@ -466,6 +470,23 @@ public class ConversationInboxService {
         } catch (Exception ex) {
             log.warn("Không thể đồng bộ lượt chat vào ConversationInbox: {}", ex.getMessage());
         }
+    }
+
+    /** A continuation is not another customer turn and must not refresh inbound/opt-in state. */
+    private void recordBotContinuation(FanpageBotRequest request, FanpageBotResponse response) {
+        if (response.replyText() == null || response.replyText().isBlank()) return;
+        UUID pageId = parseUuidOrNull(request.pageId());
+        String psid = request.senderId();
+        if (pageId == null || psid == null || psid.isBlank()) return;
+        ConversationSessionEntity session = sessionRepository.findFirstByPageIdAndCustomerPsidOrderByUpdatedAtDesc(pageId, psid)
+                .map(ConversationSessionEntity::copySnapshot).orElse(null);
+        if (session == null) return;
+        syncFreshGuardFieldsFromDb(session);
+        applyBotResponseToSession(session, "", response);
+        session = saveSessionMonotonically(session, ConversationSessionOptimisticMergeCoordinator.WriteOptions.STANDARD_MONOTONIC);
+        messageRepository.save(ConversationMessageEntity.builder().id(UUID.randomUUID()).sessionId(session.getId())
+                .senderRole("AI_BOT").content(response.replyText()).metadataJson(serializeBotMetadata(session, response))
+                .createdAt(Instant.now()).build());
     }
 
     public Map<String, Object> sendCustomerTurnInSession(UUID sessionId, String customerMessage) {

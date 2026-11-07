@@ -668,7 +668,7 @@ const normalizeSimulatorReplyBubbles = (response) => {
       }))
       .filter(b => b.text.length > 0)
     // Chống tách kép: Nếu Backend đã tách >= 2 bubbles thì render đúng 1-1; chỉ fallback khi bản ghi cũ có 1 phần tử chứa \n\n
-    if (clean.length === 1 && /\r?\n\s*\r?\n+/.test(clean[0].text)) {
+    if (!response.triggered_hooks?.includes('SALES_CORE_V1') && clean.length === 1 && /\r?\n\s*\r?\n+/.test(clean[0].text)) {
       const parts = clean[0].text.split(/\r?\n\s*\r?\n+/).map(s => s.trim()).filter(Boolean)
       if (parts.length > 1) {
         return parts.map((text, idx) => ({
@@ -873,7 +873,7 @@ const deliverDelayedAnchorBubble = async (anchorResponse, myGen, assistantHistor
   try {
     const rawDelay = bubble2.typing_delay_ms ?? 0
     if (rawDelay >= 1000) {
-      const totalSec = Math.max(1, Math.round(rawDelay / 1000))
+      const totalSec = Math.max(1, Math.ceil(rawDelay / 1000))
       for (let sec = totalSec; sec >= 1; sec--) {
         if (myGen !== bubbleDeliveryGeneration) return
         thinkingRemainingSec.value = sec
@@ -943,7 +943,7 @@ const flushBurst = async () => {
       documentIds: docIds,
       previousTemperature: prevTemp,
       topK: 5,
-      splitPriceBubbles: false
+      splitPriceBubbles: true
     })
 
     // Cập nhật lịch sử hội thoại của khách (bong bóng assistant sẽ được ghi nhận theo từng bubble thực tế đã gửi, không gộp \n\n)

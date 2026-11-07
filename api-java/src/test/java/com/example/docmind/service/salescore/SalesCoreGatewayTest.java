@@ -168,6 +168,40 @@ class SalesCoreGatewayTest {
         assertThat(result.replyBubbles()).isEmpty();
         verify(gateway).respond(any(), any(), anyString(), any());
     }
+    @Test void continuationDoesNotRecordTheSameCustomerAgainInLedger() {
+        var gateway = mock(SalesCoreGateway.class);
+        when(gateway.enabledFor(pageId)).thenReturn(true);
+        var response = new com.example.docmind.dto.bot.FanpageBotResponse("Câu tiếp nối", List.of(new com.example.docmind.dto.bot.FanpageBotResponse.ReplyBubble("Câu tiếp nối", 0)),
+                List.of(0), "CLARIFY", 0, false, null, null, null, List.of(), null, List.of(), List.of("SALES_CORE_V1"));
+        when(gateway.respond(any(), any(), anyString(), any())).thenReturn(response);
+        when(gateway.continueAfterQuote(any(), any(), any())).thenReturn(response);
+        var service = new FanpageBotService(retrieval, SalesCoreTest.fake(() -> "{}"), new ChatProperties(), docs, pages, null, null, null, null, null);
+        service.setSalesCoreGateway(gateway);
+        String sender = UUID.randomUUID().toString();
+        var initial = new FanpageBotRequest(pageId.toString(), sender, "", "Giá", List.of(), List.of(), List.of(), 5,
+                null, null, null, null, true, null, null, "c", false);
+        service.handleCustomerMessage(initial);
+        service.handleCustomerMessage(new FanpageBotRequest(pageId.toString(), sender, "", "Giá", List.of(), List.of(), List.of(), 5,
+                null, null, null, "GENERATE_PRICE_ANCHOR_BUBBLE", true, 123L, null, "c", false));
+        var ledger = com.example.docmind.service.bot.SentBubbleLedger.snapshot(
+                com.example.docmind.service.bot.SentBubbleLedger.key(pageId.toString(), sender, "c"));
+        assertThat(ledger.stream().filter(t -> "user".equals(t.role())).count()).isEqualTo(1);
+        assertThat(ledger.stream().filter(t -> "assistant".equals(t.role())).count()).isEqualTo(2);
+    }
+    @Test void continuationChecksFreshTakeoverBeforeCallingTheModel() {
+        var gateway = mock(SalesCoreGateway.class);
+        when(gateway.enabledFor(pageId)).thenReturn(true);
+        var service = new FanpageBotService(retrieval, SalesCoreTest.fake(() -> "{}"), new ChatProperties(), docs, pages, null, null, null, null, null);
+        service.setSalesCoreGateway(gateway);
+        var inbound = mock(InboundSessionPersistenceService.class);
+        when(inbound.verifyOutboundStillPermittedFresh(pageId, "blocked")).thenReturn(false);
+        service.setInboundSessionPersistenceService(inbound);
+        var result = service.handleCustomerMessage(new FanpageBotRequest(pageId.toString(), "blocked", "", "Giá", List.of(), List.of(), List.of(), 5,
+                null, null, null, "GENERATE_PRICE_ANCHOR_BUBBLE", true, 123L, null, "c", false));
+        assertThat(result.replyBubbles()).isEmpty();
+        verify(gateway, never()).continueAfterQuote(any(), any(), any());
+        verify(gateway).cancelPending(pageId, "blocked");
+    }
     @Test void newerCustomerEpochSuppressesCompletedModelResponse() {
         var source = source();
         String sender = UUID.randomUUID().toString();

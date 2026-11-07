@@ -1,6 +1,6 @@
 # Vận hành Sales Core
 
-Core tư vấn mới ở `api-java/.../service/salescore`, tích hợp vào đường Fanpage hiện có. Cờ mặc định **tắt** để một lần build không tự chuyển tất cả Page sang engine đang pilot. Container đang chạy chưa được thay đổi.
+Core tư vấn mới ở `api-java/.../service/salescore`, tích hợp vào đường Fanpage hiện có. Cờ mặc định **tắt** để một lần build không tự chuyển tất cả Page sang engine đang pilot. Môi trường Docker cục bộ đã bật pilot cho Page Nàng Sen; các Page khác vẫn dùng engine hiện tại.
 
 Sau khi duyệt replay và chuẩn bị bản chạy thử, cấu hình:
 
@@ -8,11 +8,14 @@ Sau khi duyệt replay và chuẩn bị bản chạy thử, cấu hình:
 SALES_CORE_ENABLED=true
 SALES_CORE_PAGE_ALLOWLIST=<UUID Page chạy thử>
 SALES_CORE_WRITER_CLIENT=ALTERNATE
+SALES_CORE_PLANNING_ENABLED=true
+SALES_CORE_WRITER_REASONING=false
+SALES_CORE_QUOTE_PAUSE_MS=10000
 ```
 
-`ALTERNATE` sử dụng `LLM_FALLBACK_*` hiện có; thiếu alternate thì dùng primary. `PRIMARY` giữ model chính hiện có. Replay đã quan sát nhiều lỗi JSON/customer-fact hơn với primary đang cấu hình; đây là kết quả của endpoint/model hiện tại, không phải kết luận chung về hãng model. Allowlist có thể chứa nhiều UUID cách nhau bằng dấu phẩy; để trống nghĩa là mọi Page khi bật cờ. Tắt `SALES_CORE_ENABLED` để quay lại ACI. Việc chạy lại/deploy ứng dụng chưa được thực hiện trong đợt này.
+`ALTERNATE` sử dụng `LLM_FALLBACK_*` hiện có; thiếu alternate thì dùng primary. `PRIMARY` giữ model chính hiện có. Replay đã quan sát nhiều lỗi JSON/customer-fact hơn với primary đang cấu hình; đây là kết quả của endpoint/model hiện tại, không phải kết luận chung về hãng model. Allowlist có thể chứa nhiều UUID cách nhau bằng dấu phẩy; để trống nghĩa là mọi Page khi bật cờ. Tắt `SALES_CORE_ENABLED` để quay lại ACI.
 
-Cờ bật/tắt, allowlist và writer được đọc lúc khởi động: đổi các giá trị này cần khởi động lại ứng dụng. File JSON industry/Page được đọc theo từng lượt. Báo cáo kết quả và giới hạn ở `docs/analysis/2026-11-07-sales-core-validation.md`.
+Cờ bật/tắt, allowlist và writer được đọc lúc khởi động: đổi các giá trị này cần khởi động lại ứng dụng. File JSON industry/Page được đọc theo từng lượt. Báo cáo nền ở `docs/analysis/2026-11-07-sales-core-validation.md`; đợt sửa nhịp tư vấn ở `docs/analysis/2026-11-07-sales-core-paced-validation.md`.
 
 ## Thêm Page / ngành
 
@@ -31,7 +34,13 @@ Catalog bổ sung vào tri thức từ tài liệu. Khi thay bảng giá, phải
 
 ## Luồng và quyền hạn
 
-Inbound guard → lịch sử đã lưu → dữ kiện đúng Page → quyết định + lời thoại → kiểm tra schema/nguồn/con số/phép tính/quyền hạn → review ngữ nghĩa độc lập → outbound guard/ledger hiện có. Tối đa một lần sửa, thường 2 cuộc gọi model, tối đa 4, cùng deadline mặc định 45 giây. Không đi qua planner phản đối giá và sanitizer ACI cũ. Review có thể sai; phải chấm replay và theo dõi tỷ lệ chuyển người thật, độ trễ khi pilot.
+Inbound guard → lịch sử đã lưu → dữ kiện đúng Page → brief chọn bước tiếp theo từ hội thoại → lời thoại → kiểm tra schema/nguồn/con số/phép tính/quyền hạn → review ngữ nghĩa độc lập → outbound guard/ledger hiện có. Planner không thấy catalog để tránh chọn sản phẩm trước khi hiểu khách. Nếu lượt này chỉ cần làm rõ/lắng nghe thì writer không nhận catalog. Thường 3 cuộc gọi model ở phase đầu; tối đa một lần sửa và một lần phục hồi thành lời làm rõ, tối đa 7 cuộc gọi, cùng deadline 45 giây mỗi phase. Phase tiếp nối dùng mục đích từ phase đầu, không lập brief lần nữa. Không đi qua planner phản đối giá và sanitizer ACI cũ. Review có thể sai; phải chấm replay và theo dõi tỷ lệ chuyển người thật, độ trễ khi pilot.
+
+Với `split_price_bubbles=true`, khi có giá thì model chỉ viết bubble đầu và mục đích tiếp nối. UI gửi callback sau khi hiển thị; webhook gửi callback nội bộ sau khi Facebook chấp nhận giá. Model mới tạo bubble tiếp nối lúc đó và bật reasoning trong adapter. `SALES_CORE_QUOTE_PAUSE_MS=10000` là khoảng nghỉ tối thiểu, gồm thời gian tạo/kiểm chứng câu sau; model chậm hơn thì khoảng nghỉ dài hơn. Ticket chỉ dùng một lần, hết hạn sau 120 giây, giới hạn 512 sender. Khách chen ngang/human takeover/opt-out hủy gửi. Restart sẽ bỏ phần tiếp nối đang chờ. Hiện dùng bộ nhớ một API instance; cần kho ticket dùng chung hoặc sticky routing trước khi chạy nhiều replicas.
+
+Prompt riêng cho trả lời có dữ kiện, trao đổi làm rõ và lời tiếp nối. Lời tiếp nối chỉ sinh chiến lược + một bong bóng, giữ nguyên phần hiểu khách đã kiểm chứng vì chưa có tin khách mới. Nếu không kiểm chứng được phần tiếp nối tùy chọn thì không gửi nó. Bản nháp làm rõ thiếu nguồn có thể được sửa bằng ngữ cảnh gốc đầy đủ; planner không khóa mất khả năng phục hồi.
+
+Sau sửa Java hoặc Vue, chạy tại thư mục gốc: `docker compose up -d --build --no-deps api-java frontend` (khi các dependency đang chạy). `docker compose restart` không build mã mới. Khi khởi động toàn bộ lần đầu dùng `docker compose up -d --build`. Industry/Page JSON ngoài image được đọc theo lượt; cấu hình môi trường cần recreate container.
 
 Nếu đã cấu hình `LLM_FALLBACK_*`, core dùng model dự phòng cho review và lượt sửa lỗi schema/ngữ nghĩa; lượt sinh đầu theo `SALES_CORE_WRITER_CLIENT` (mặc định PRIMARY). Nếu chỉ có một model thì cùng model đảm nhiệm cả hai. Không chọn provider theo ngành hoặc từ khóa khách. Log `SALES-CORE-MODEL` ghi rõ mục đích và model được chọn. Deadline vẫn áp dụng cho tổng các lượt gọi; client có thể retry HTTP bên trong một lần gọi.
 

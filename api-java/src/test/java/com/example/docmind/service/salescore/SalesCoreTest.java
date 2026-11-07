@@ -62,7 +62,7 @@ class SalesCoreTest {
                 var result = core.run(input("BEAUTY_SPA", "Chốt nhé"));
                 assertThat(result.handoff()).isTrue();
                 assertThat(result.fallback()).isTrue();
-                assertThat(calls.get()).isEqualTo(2);
+                assertThat(calls.get()).isEqualTo(3); // initial, repair, then constrained clarification recovery
                 assertThat(String.join(" ", result.texts())).doesNotContain("đã xác nhận");
             }
         }
@@ -162,7 +162,7 @@ class SalesCoreTest {
             try (var core = new SalesTurnOrchestrator(provider, new IndustryProfileRegistry(), 5000)) {
                 var result = core.run(input("BEAUTY_SPA", "Đắt"));
                 assertThat(result.fallback()).isEqualTo(severity.equals("BLOCKING"));
-                assertThat(result.attempts()).isEqualTo(4);
+                assertThat(result.attempts()).isEqualTo(severity.equals("BLOCKING") ? 6 : 4);
                 if (severity.equals("QUALITY")) assertThat(result.violations()).contains("QUALITY_REVIEW_WARNING");
             }
         }

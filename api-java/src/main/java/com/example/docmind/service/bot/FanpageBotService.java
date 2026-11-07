@@ -679,6 +679,10 @@ public class FanpageBotService {
         );
     }
 
+    public boolean supportsSalesContinuation(String pageId) {
+        return salesCoreGateway != null && salesCoreGateway.enabledFor(parsePageId(pageId));
+    }
+
     public FanpageBotResponse handleCustomerMessage(FanpageBotRequest rawRequest) {
         FanpageBotRequest request = rawRequest;
         String turnId = java.util.UUID.randomUUID().toString();
@@ -707,7 +711,9 @@ public class FanpageBotService {
                         String ledgerKeyExit = SentBubbleLedger.key(request.pageId(), effSenderId, request.conversationId());
                         String mergedExit = VietnameseQueryNormalizer.sanitizeVerbatimOriginalMessage(mergeBurstMessages(request));
                         String turnIdExit = SentBubbleLedger.stableUserTurnId(ledgerKeyExit, mergedExit);
-                        SentBubbleLedger.recordCustomerTurn(ledgerKeyExit, turnIdExit, mergedExit);
+                        boolean continuation = "GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action());
+                        if (continuation) turnIdExit = "continuation:" + request.pendingTurnSequence();
+                        else SentBubbleLedger.recordCustomerTurn(ledgerKeyExit, turnIdExit, mergedExit);
                         SentBubbleLedger.recordAssistantTurn(
                                 ledgerKeyExit,
                                 turnIdExit + ":a",
@@ -831,7 +837,9 @@ public class FanpageBotService {
         if (request != null && request.senderId() != null && gatedResp.replyBubbles() != null && !gatedResp.replyBubbles().isEmpty()) {
             String ledgerKeyNow = SentBubbleLedger.key(request.pageId(), request.senderId(), request.conversationId());
             String ledgerUserTurnId = SentBubbleLedger.stableUserTurnId(ledgerKeyNow, mergedMsg);
-            SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerUserTurnId, mergedMsg);
+            if ("GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action()))
+                ledgerUserTurnId = "continuation:" + request.pendingTurnSequence();
+            else SentBubbleLedger.recordCustomerTurn(ledgerKeyNow, ledgerUserTurnId, mergedMsg);
             SentBubbleLedger.recordAssistantTurn(
                     ledgerKeyNow,
                     ledgerUserTurnId + ":a",
@@ -986,8 +994,9 @@ public class FanpageBotService {
         }
 
         if (!isGeneratePriceAnchorAction) {
+            if (useSalesCore) salesCoreGateway.cancelPending(pageId, request.senderId());
             ThinkingModePolicy.registerIncomingCustomerTurn(pageId, request.senderId());
-        } else if (request.pendingTurnSequence() != null
+        } else if (!useSalesCore && request.pendingTurnSequence() != null
                 && ThinkingModePolicy.isPendingSecondBubbleSuperseded(pageId, request.senderId(), request.pendingTurnSequence())) {
             recordCurrentTurnGuard("SUPPRESS", "CANCELLED_BY_NEWER_CUSTOMER_TURN");
             long totalCancelledMs = (System.nanoTime() - turnStartNs) / 1_000_000L;
@@ -1260,14 +1269,18 @@ public class FanpageBotService {
         // New sales decision owner; preserve entry guards, hydrated history and the outer outbound fence.
         // No legacy planner, industry intent regex, price ladder or text sanitizer participates in this path.
         if (useSalesCore) {
-            if (isGeneratePriceAnchorAction) {
-                return buildSilentSuppressedResponse("SALES_CORE_SINGLE_PASS", CURRENT_INBOUND_EXTERNAL_MID.get());
+            if (isGeneratePriceAnchorAction && inboundSessionPersistenceService != null
+                    && !inboundSessionPersistenceService.verifyOutboundStillPermittedFresh(pageId, request.senderId())) {
+                salesCoreGateway.cancelPending(pageId, request.senderId());
+                return buildSilentSuppressedResponse("SALES_CONTINUATION_BLOCKED_BY_STATE_GUARD", CURRENT_INBOUND_EXTERNAL_MID.get());
             }
             recordCurrentTurnGuard("ALLOW", "SALES_CORE_ACTIVE");
             TurnLifecycleState salesLifecycle = CURRENT_TURN_LIFECYCLE.get();
             if (salesLifecycle != null) salesLifecycle.retrievalStarted = true;
             markCurrentTurnLlmStarted();
-            FanpageBotResponse salesResponse = salesCoreGateway.respond(pageId, request, verbatimOriginalMessage, extractedLead);
+            FanpageBotResponse salesResponse = isGeneratePriceAnchorAction
+                    ? salesCoreGateway.continueAfterQuote(pageId, request, extractedLead)
+                    : salesCoreGateway.respond(pageId, request, verbatimOriginalMessage, extractedLead);
             if (!SenderEpochRegistry.checkThreadEpochStillCurrent(pageId == null ? null : pageId.toString(), request.senderId(),
                     SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) {
                 return buildSilentSuppressedResponse("SUPERSEDED_SALES_CORE_TURN", CURRENT_INBOUND_EXTERNAL_MID.get());

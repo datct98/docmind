@@ -53,9 +53,13 @@ class SalesCoreLiveReplayTest {
         String writerClient = System.getProperty("sales.writer", "PRIMARY");
         try (var core = new SalesTurnOrchestrator(recorded, new IndustryProfileRegistry(), 45000)) {
             core.setWriterClient(writerClient);
+            core.setPlanningEnabled(true);
+            core.setWriterReasoning(Boolean.parseBoolean(System.getProperty("sales.writerReasoning", "false")));
             if (!snapshotPath.isBlank()) {
                 var template = json.readValue(Files.readString(Path.of(snapshotPath)), TurnInput.class);
-                replay(core, template, List.of("Giá", "cổ vai gáy chân tay", "tất cả", "Đắt", "HN", "Đắt"), turns, calls, json, output);
+                replay(core, template, "user-reported".equals(System.getProperty("sales.scenario"))
+                        ? List.of("Giá", "tôi đau mỏi vai gáy nhức đầu khó ngủ", "HN", "Đắt")
+                        : List.of("Giá", "cổ vai gáy chân tay", "tất cả", "Đắt", "HN", "Đắt"), turns, calls, json, output);
             } else {
             replay(core, "BEAUTY_SPA", List.of(
                     new Evidence("spa-price", "Synthetic evaluation catalog", "Hà Nội: Massage cơ bản toàn thân 60 phút 399k. Dưỡng sinh cơ bản 60 phút 239k, gội đầu và cổ vai gáy, không gồm chân tay. TP.HCM: Massage cơ bản toàn thân 60 phút 570k. Dưỡng sinh cơ bản 60 phút 260k, gội đầu và cổ vai gáy, không gồm chân tay.")),
@@ -68,8 +72,10 @@ class SalesCoreLiveReplayTest {
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", catalogKind, "modelConfigured", props.resolveModel(), "writerClient", writerClient, "turns", turns, "calls", calls)));
         }
-        assertThat(turns).hasSize(snapshotPath.isBlank() ? 12 : 6);
+        assertThat(turns).hasSize(snapshotPath.isBlank() ? 12 : "user-reported".equals(System.getProperty("sales.scenario")) ? 4 : 6);
         assertThat(turns.stream().filter(t -> ((Result)t.get("result")).fallback()).count()).as("No contract fallback in these rehearsals").isZero();
+        assertThat(turns.stream().filter(t -> t.containsKey("continuation") && ((Result)t.get("continuation")).fallback()).count())
+                .as("No failed continuation in these rehearsals").isZero();
     }
     private LlmClient record(OpenAiCompatibleLlmClient client, List<Map<String,Object>> calls) {
         return new LlmClient() {
@@ -92,10 +98,18 @@ class SalesCoreLiveReplayTest {
                         List<Map<String,Object>> turns, List<Map<String,Object>> calls, ObjectMapper json, Path output) throws Exception {
         List<Message> history = new ArrayList<>();
         for (String message : customers) {
-            var result = core.run(new TurnInput(template.pageId(), template.businessName(), template.industryCode(), template.selfPronoun(), template.customerPronoun(), template.voice(),
-                    history, message, template.evidence(), template.businessPolicies(), "", template.contextTruncated()));
-            turns.add(Map.of("industry", template.industryCode(), "customer", message, "result", result));
+            var input = new TurnInput(template.pageId(), template.businessName(), template.industryCode(), template.selfPronoun(), template.customerPronoun(), template.voice(),
+                    history, message, template.evidence(), template.businessPolicies(), "", template.contextTruncated());
+            var result = Boolean.getBoolean("sales.paced") ? core.runPaced(input) : core.run(input);
+            var turn = new LinkedHashMap<String,Object>();
+            turn.put("industry", template.industryCode()); turn.put("customer", message); turn.put("result", result);
+            turns.add(turn);
             history.add(new Message("user", message)); result.texts().forEach(t -> history.add(new Message("assistant", t)));
+            if (result.decision() != null && result.decision().followUp() != null) {
+                var continuation = core.continueAfterQuote(input, result.decision());
+                turn.put("continuation", continuation);
+                continuation.texts().forEach(t -> history.add(new Message("assistant", t)));
+            }
             Files.writeString(output.resolve("replay.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(
                     Map.of("catalog", "SYNTHETIC_NOT_PRODUCTION", "turns", turns, "calls", calls)));
             System.out.println("LIVE_REPLAY " + template.industryCode() + " turn=" + (history.stream().filter(m -> m.role().equals("user")).count() - 1) + " fallback=" + result.fallback() + " ms=" + result.elapsedMs());

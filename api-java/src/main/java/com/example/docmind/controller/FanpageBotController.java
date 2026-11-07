@@ -233,7 +233,8 @@ public class FanpageBotController {
             return ResponseEntity.ok(fanpageBotService.handleReengage(request));
         }
         java.util.UUID parsedPageId = parseSafeUuid(request != null ? request.pageId() : null);
-        String msgKey = request != null
+        boolean continuation = request != null && "GENERATE_PRICE_ANCHOR_BUBBLE".equalsIgnoreCase(request.action());
+        String msgKey = request != null && !continuation
                 ? com.example.docmind.service.bot.ConversationState.buildWebhookEventKey(
                         parsedPageId,
                         request.senderId(),
@@ -709,7 +710,7 @@ public class FanpageBotController {
                     null,
                     null,
                     null,
-                    false,
+                    fanpageBotService.supportsSalesContinuation(effectivePageId),
                     null,
                     null,
                     stableWebhookConvId,
@@ -787,6 +788,7 @@ public class FanpageBotController {
                             // Non-blocking sync to inbox
                         }
                     }
+                    completePendingSalesBubble(webhookReq, batchResp, sentBubbles);
                     finalResp = batchResp;
                 }
             } finally {
@@ -867,6 +869,22 @@ public class FanpageBotController {
         return sendSequentialBubblesToFacebook(resolveEffectivePageId(defaultPageId, null), recipientPsid, null, botResp);
     }
 
+    /** Start the second model call only after the channel accepted the first bubble. */
+    void completePendingSalesBubble(FanpageBotRequest request, FanpageBotResponse first, int sentCount) {
+        if (first == null || sentCount < 1 || !first.pendingSecondBubble()
+                || first.triggeredHooks() == null || !first.triggeredHooks().contains("SALES_CORE_V1")) return;
+        if (!com.example.docmind.service.bot.SenderEpochRegistry.checkThreadEpochStillCurrent(request.pageId(), request.senderId(),
+                com.example.docmind.service.bot.SenderEpochRegistry.Checkpoint.BEFORE_STATE_AND_LEDGER_COMMIT)) return;
+        FanpageBotRequest followUp = new FanpageBotRequest(request.pageId(), request.senderId(), request.customerName(),
+                request.message(), List.of(), List.of(), List.of(), request.topK(), null, null, null,
+                "GENERATE_PRICE_ANCHOR_BUBBLE", true, first.pendingTurnSequence(), null, request.conversationId(), false);
+        sendFacebookSenderAction(request.senderId(), "typing_on");
+        FanpageBotResponse second = fanpageBotService.handleCustomerMessage(followUp);
+        if (second == null || second.replyBubbles() == null || second.replyBubbles().isEmpty()) return;
+        int delivered = sendSequentialBubblesToFacebook(request.pageId(), request.senderId(), request.conversationId(), second);
+        if (delivered > 0 && conversationInboxService != null) conversationInboxService.recordCustomerAndBotTurn(followUp, second);
+    }
+
     public int sendSequentialBubblesToFacebook(String effectivePageId, String recipientPsid, FanpageBotResponse botResp) {
         return sendSequentialBubblesToFacebook(effectivePageId, recipientPsid, null, botResp);
     }
@@ -927,6 +945,16 @@ public class FanpageBotController {
         int suppressedFromIndex = total;
 
         for (int i = 0; i < total; i++) {
+            // The continuation has one bubble: its delay is the unspent part of the post-price thinking window.
+            if (i == 0 && botResp.triggeredHooks() != null && botResp.triggeredHooks().contains("SALES_CORE_CONTINUATION")) {
+                long delay = botResp.replyBubbles().getFirst().typingDelayMs();
+                if (delay > 0 && !com.example.docmind.service.bot.SenderEpochRegistry.awaitBubbleDelayOrSupersede(
+                        resolvedPageId, cleanPsid, expectedEpoch, Math.min(delay, 30000))) {
+                    com.example.docmind.service.bot.SentBubbleLedger.markAssistantBubblesSuppressedByFenceFrom(
+                            turnHandle.ledgerKey(), turnHandle.turnId(), 0, "SUPERSEDED_DURING_PRICE_PAUSE");
+                    break;
+                }
+            }
             // 1. Pre-Send Outbound Fence (Section 3.4): verify epoch, newer inbound turn, and fresh DB state (HUMAN_TAKEOVER / OPT_OUT / newer inbound)
             String fenceBlockReason = evaluatePreSendOutboundFence(
                     resolvedPageId,

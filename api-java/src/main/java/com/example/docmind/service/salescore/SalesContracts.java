@@ -30,9 +30,15 @@ public final class SalesContracts {
     }
     public record Operand(java.math.BigDecimal value, String sourceId, String quote) {}
     public record Calculation(String operation, List<Operand> operands, java.math.BigDecimal result) {}
+    /** A purpose for a future model call, never pre-written customer-facing copy. */
+    public record FollowUp(String aim) {}
     public record TurnDecision(Understanding understanding, Strategy strategy, List<Bubble> bubbles,
-                               String handoffSummary, List<Calculation> calculations) {
+                               String handoffSummary, List<Calculation> calculations, FollowUp followUp) {
         public TurnDecision { calculations = calculations == null ? List.of() : List.copyOf(calculations); }
+        public TurnDecision(Understanding understanding, Strategy strategy, List<Bubble> bubbles,
+                            String handoffSummary, List<Calculation> calculations) {
+            this(understanding, strategy, bubbles, handoffSummary, calculations, null);
+        }
     }
     public record Result(TurnDecision decision, List<String> texts, boolean handoff, boolean fallback,
                          int attempts, List<String> violations, long elapsedMs, int promptChars,
